@@ -35,6 +35,10 @@ BAR_INTERVAL = "1h"
 
 SYMBOLS = ["BTC", "ETH", "SOL"]
 
+# Full data range for download
+DATA_START = "2020-10-01"
+DATA_END = "2026-04-10"
+
 # Date splits (UTC timestamps)
 TRAIN_START = "2023-06-01"
 TRAIN_END = "2024-06-30"
@@ -223,8 +227,8 @@ def download_data(symbols=None):
     if symbols is None:
         symbols = SYMBOLS
 
-    start_ms = int(pd.Timestamp(TRAIN_START, tz="UTC").timestamp() * 1000)
-    end_ms = int(pd.Timestamp(TEST_END, tz="UTC").timestamp() * 1000)
+    start_ms = int(pd.Timestamp(DATA_START, tz="UTC").timestamp() * 1000)
+    end_ms = int(pd.Timestamp(DATA_END, tz="UTC").timestamp() * 1000)
 
     for symbol in symbols:
         filepath = os.path.join(DATA_DIR, f"{symbol}_1h.parquet")
@@ -263,15 +267,18 @@ def download_data(symbols=None):
         print(f"  {symbol}: saved {len(df)} bars to {filepath}")
 
 
-def load_data(split: str = "val") -> dict:
-    """Load OHLCV+funding data for the given split. Returns {symbol: DataFrame}."""
-    splits = {
-        "train": (TRAIN_START, TRAIN_END),
-        "val": (VAL_START, VAL_END),
-        "test": (TEST_START, TEST_END),
-    }
-    assert split in splits, f"split must be one of {list(splits.keys())}"
-    start_str, end_str = splits[split]
+def load_data(split: str = "val", start: str | None = None, end: str | None = None) -> dict:
+    """Load OHLCV+funding data for the given split or custom date range. Returns {symbol: DataFrame}."""
+    if start is not None and end is not None:
+        start_str, end_str = start, end
+    else:
+        splits = {
+            "train": (TRAIN_START, TRAIN_END),
+            "val": (VAL_START, VAL_END),
+            "test": (TEST_START, TEST_END),
+        }
+        assert split in splits, f"split must be one of {list(splits.keys())}"
+        start_str, end_str = splits[split]
     start_ms = int(pd.Timestamp(start_str, tz="UTC").timestamp() * 1000)
     end_ms = int(pd.Timestamp(end_str, tz="UTC").timestamp() * 1000)
 
