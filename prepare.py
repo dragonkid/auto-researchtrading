@@ -566,9 +566,14 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
 
 def compute_score(result: BacktestResult) -> float:
     """
-    Composite risk-adjusted score (HIGHER is better).
+    Composite score across three dimensions (HIGHER is better).
 
-    score = sharpe * sqrt(trade_count_factor) - drawdown_penalty - turnover_penalty
+    score = w_sharpe * log(1+sharpe) + w_return * log(1+return%) - w_dd * DD²
+
+    Dimensions:
+      - Sharpe: risk-adjusted signal quality (log scale for diminishing returns)
+      - Return: absolute performance / capital utilization
+      - Max DD: tail risk (continuous quadratic penalty, no free zone)
 
     Hard cutoffs for degenerate strategies.
     """
@@ -584,14 +589,25 @@ def compute_score(result: BacktestResult) -> float:
     # Trade count factor: full credit at 50+ trades
     trade_count_factor = min(result.num_trades / 50.0, 1.0)
 
-    # Drawdown penalty: no penalty below 15%, then 5x per additional percent
-    drawdown_penalty = max(0, result.max_drawdown_pct - 15.0) * 0.05
+    # Dimension weights
+    w_sharpe = 1.0
+    w_return = 0.3
+    w_dd = 0.02
 
-    # Turnover penalty: penalize excessive churning (>500x annual)
-    turnover_ratio = result.annual_turnover / INITIAL_CAPITAL if INITIAL_CAPITAL > 0 else 0
-    turnover_penalty = max(0, turnover_ratio - 500) * 0.001
+    # Sharpe component: log scale so 1→2 matters more than 20→21
+    sharpe_component = math.log(1.0 + max(result.sharpe, 0.0))
 
-    score = result.sharpe * math.sqrt(trade_count_factor) - drawdown_penalty - turnover_penalty
+    # Return component: absolute return captures capital utilization
+    return_component = math.log(1.0 + max(result.total_return_pct, 0.0) / 100.0)
+
+    # Drawdown component: quadratic — every percent costs more than the last
+    dd_component = (result.max_drawdown_pct ** 2)
+
+    score = (
+        w_sharpe * sharpe_component * math.sqrt(trade_count_factor)
+        + w_return * return_component
+        - w_dd * dd_component
+    )
     return score
 
 # ---------------------------------------------------------------------------
