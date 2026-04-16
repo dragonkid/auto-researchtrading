@@ -102,6 +102,9 @@ while true; do
     break
   fi
 
+  # Clean up any leftover state from interrupted experiments
+  git checkout -- strategy.py 2>/dev/null || true
+
   echo "=== Experiment $EXPERIMENT_COUNT ($(date '+%H:%M:%S')) ==="
 
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
