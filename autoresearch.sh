@@ -106,10 +106,10 @@ while true; do
 
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
     --dangerously-skip-permissions \
-    --model opus \
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
-    --allowedTools "Read,Edit,Write,Bash(git:*),Bash(uv run:*),Bash(grep:*),Bash(tail:*),Bash(head:*),Bash(cat:*),Grep,Glob" \
+    --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
+    -- \
     "Run one experiment. Read program-stateless.md and results.tsv for context. Run 'git log main..HEAD --oneline' for this branch's experiment history only. Modify strategy.py, commit, backtest, record result, then EXIT." \
     || {
       echo "Claude exited with error (code $?), continuing after cooldown..."
