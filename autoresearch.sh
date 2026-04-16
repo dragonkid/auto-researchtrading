@@ -36,7 +36,7 @@ count_consecutive_discards() {
     return
   fi
   # Read status column (5th field), count consecutive "discard" from bottom
-  tail -n +2 "$RESULTS" | awk -F'\t' '{print $5}' | tac | awk '
+  tail -n +2 "$RESULTS" | awk -F'\t' '{print $5}' | tail -r | awk '
     /^discard$/ { count++; next }
     { exit }
     END { print count+0 }
