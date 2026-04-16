@@ -15,11 +15,13 @@ cd "$PROJECT_DIR"
 # Initialize: create branch if it doesn't exist
 if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
   git checkout -b "$BRANCH"
-  echo -e "commit\tscore\tsharpe\tmax_dd\tstatus\tdescription" > "$RESULTS"
-  git add "$RESULTS"
-  git commit -m "init: clean slate for ${TAG}"
 else
   git checkout "$BRANCH"
+fi
+
+# Ensure results.tsv exists with header (untracked, not committed)
+if [ ! -f "$RESULTS" ]; then
+  echo -e "commit\tscore\tsharpe\tmax_dd\tstatus\tdescription" > "$RESULTS"
 fi
 
 echo "Branch: $BRANCH"
