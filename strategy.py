@@ -1,11 +1,11 @@
 """
-Exp87: Cap total sizing multiplier at 5.5x (softer cap).
+Exp88: Increase CALM_BOOST_MAX from 0.6 to 0.8.
 
-Previous experiment (4.5x cap) reduced std well but cut mean too much.
-A softer 5.5x cap should only clip the most extreme stacking cases
-(which create the most DD risk) while preserving most of the sizing
-that drives returns. The key insight: the top ~10% of positions by size
-contribute disproportionately to DD but only modestly to returns.
+The sideways regime (12.68) is the weakest, dragging down composite score.
+Sideways markets tend to have lower volatility, so the calm boost
+(applied when short_vol < long_vol) disproportionately helps that regime.
+Previous increases (0.4->0.6) improved score. Pushing to 0.8 should
+further grow positions in calm periods without adding much DD risk.
 """
 
 import numpy as np
@@ -60,7 +60,7 @@ HIGH_CORR_THRESHOLD = 99.0
 DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
-CALM_BOOST_MAX = 0.6  # max position size boost in calm regimes
+CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.55  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
 
