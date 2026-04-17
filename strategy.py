@@ -1,12 +1,12 @@
 """
-Exp95: Increase TREND_GATE_MED_WEIGHT_SIDEWAYS from 0.75 to 0.85.
+Exp96: Reduce EMA slope threshold from 0.001 to 0.0005.
 
-In sideways (trendless) markets, the trend gate uses a weighted average of
-ret_med and ret_long to confirm direction. Increasing the ret_med weight from
-0.75 to 0.85 makes the trend gate more responsive to shorter-term momentum
-when the long-term trend is absent. This targets the weakest regime (sideways
-at 13.95 vs 17-21 for others) without affecting trending markets where
-ret_long drives the weight back toward TREND_GATE_MED_WEIGHT_BASE (0.50).
+In sideways markets, the EMA slope often hovers near zero without crossing
+the 0.001 threshold, so both slope_bull and slope_bear are False — the slope
+signal contributes no vote, making it harder to reach MIN_VOTES=3. Lowering
+to 0.0005 allows the slope signal to cast votes on weaker trends, helping
+entries in sideways conditions while not affecting trending markets where
+slope is already well above the threshold.
 """
 
 import numpy as np
@@ -250,8 +250,8 @@ class Strategy:
 
             # EMA slope: rising long EMA = bullish, falling = bearish
             ema_slope = self._calc_ema_slope(closes)
-            slope_bull = ema_slope > 0.001
-            slope_bear = ema_slope < -0.001
+            slope_bull = ema_slope > 0.0005
+            slope_bear = ema_slope < -0.0005
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear])
