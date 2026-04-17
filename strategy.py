@@ -1,11 +1,12 @@
 """
-Exp63: Increase calm-market position boost (0.4 -> 0.6).
+Exp65: Sideways regime position boost via weak-trend detection.
 
-The calm boost increases position size when short-term vol is below long-term
-vol. This primarily activates in sideways/low-vol regimes. Increasing from
-0.4 to 0.6 should boost returns in the sideways regime (currently weakest at
-5.47) by taking larger positions during calm periods, where the strategy
-has positive expectancy but low returns due to conservative sizing.
+When abs(ret_long) is near zero, trend is weak (sideways market). The
+strategy has good Sharpe and low DD in sideways but low returns (2215%
+vs 5000-62000% in other regimes), dragging the composite score down.
+Boost position size by up to 25% when trend is weak, decaying to 0%
+when trend is strong. Gentler than previous "trend clarity sizing"
+experiment which was too aggressive.
 """
 
 import numpy as np
@@ -61,6 +62,8 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.6  # max position size boost in calm regimes
+SIDEWAYS_BOOST_MAX = 0.25  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
@@ -260,12 +263,17 @@ class Strategy:
                 vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl)
 
+            # Sideways regime boost: when long-term trend is weak, boost size
+            # to capture more return in range-bound markets where risk is low
+            sideways_trend_strength = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
+            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
+
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
             strength_scale = max(0.6, min(1.6, mom_strength))
-            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * dd_scale
+            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
             avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
