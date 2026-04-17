@@ -1,13 +1,13 @@
 """
-Exp54: Momentum-strength position sizing.
+Exp55: Regime-adaptive position sizing boost in calm markets.
 
-mom_strength (= |ret_short| / dyn_threshold) is already computed but unused
-(strength_scale hardcoded to 1.0). Scale position size by clamped mom_strength
-so stronger momentum signals get larger positions. This should boost returns
-across all regimes — especially sideways (589% ann return, weakest regime) where
-catching the few strong moves with larger size matters most.
+Sideways regime (4.26) is the weakest link, dragging composite score down.
+The issue: low returns (852%) despite good Sharpe (14.1). Solution: when
+markets are calm (short vol / long vol ratio is close to 1.0), boost position
+size. In crash/volatile regimes this ratio spikes so the boost won't apply.
 
-strength_scale = clamp(mom_strength, 0.6, 1.6)
+calm_boost = 1.0 + CALM_BOOST_MAX * max(0, 1 - vol_ratio_short_long)
+where vol_ratio_short_long = short_vol / long_vol, clamped to [0.5, 2.0]
 """
 
 import numpy as np
@@ -61,6 +61,8 @@ HIGH_CORR_THRESHOLD = 99.0
 
 DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
+
+CALM_BOOST_MAX = 0.4  # max position size boost in calm regimes
 
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -233,18 +235,22 @@ class Strategy:
 
             # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
             vol_spike_scale = 1.0
+            calm_boost = 1.0
             if len(closes) >= VOL_LONG_LOOKBACK + 1:
                 short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
                 long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
                 if short_vol > long_vol * VOL_SPIKE_THRESHOLD:
                     vol_spike_scale = VOL_SPIKE_SCALE
+                # Calm regime boost: when short vol is close to or below long vol, boost size
+                vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
+                calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl)
 
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
             strength_scale = max(0.6, min(1.6, mom_strength))
-            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * dd_scale
+            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
             avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
