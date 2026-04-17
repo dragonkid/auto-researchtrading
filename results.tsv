@@ -35,3 +35,6 @@ ab531e7	10.139845	11.272450	2.265211	keep	increase BASE_POSITION_PCT from 0.24 t
 -	10.878674	12.169684	2.582020	discard	relax trend gate with dead-zone in weak-trend environments (hurt sideways and crash_bear)
 27c53c9	12.349093	13.494303	2.290420	keep	increase BASE_POSITION_PCT from 0.27 to 0.30
 -	11.240178	12.595798	2.711239	discard	trend-adaptive RSI exits tighter OB/OS in sideways (hurt all regimes, cut winners short)
+
+-	12.349093	13.494303	2.290420	discard	funding-rate carry sizing boost 20pct when carry aligns (no effect)
+-	10.839282	11.958700	2.238835	discard	momentum quality filter scaling position size by trend cleanliness (hurt mean across all regimes)
