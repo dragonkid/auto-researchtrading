@@ -1,10 +1,10 @@
 """
-Exp113: Reduce MED2_WINDOW from 16 to 14 for faster medium-term momentum.
+Exp114: Reduce MED2_WINDOW from 14 to 12 for even faster medium-term momentum.
 
-MED2_WINDOW is used for ret_med, btc_momentum, and cross_asset_rets.
-The reduction from 20->16 was one of the largest single improvements
-(+0.64 composite). Continuing this successful optimization path by
-trying 14 for more responsive medium-term signals.
+MED2_WINDOW reduction has been the most successful optimization path:
+20->16 gave +0.64, 16->14 gave +0.41 and dropped std from 3.57 to 2.85.
+Continuing by trying 12 for more responsive ret_med, btc_momentum,
+and cross_asset_rets signals.
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 14
+MED2_WINDOW = 12
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
