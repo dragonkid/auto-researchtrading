@@ -1,13 +1,12 @@
 """
-Exp99: Reduce LONG_WINDOW from 36 to 30.
+Exp100: Reduce EMA_FAST from 5 to 3.
 
-LONG_WINDOW controls ret_long, used in the trend gate, asymmetric stops,
-sideways regime detection, strength floor, and threshold scaling. At 36
-bars (~1.5 days), trend detection is sluggish during regime transitions
-and in sideways markets. Reducing to 30 bars (~30 hours) makes these
-signals more responsive. The previous increase to 48 blew DD in bull_2021,
-confirming the strategy prefers shorter trend lookbacks. This should
-improve sideways detection and trend gate responsiveness.
+The EMA crossover (EMA_FAST/EMA_SLOW = 5/23) is one of the 6 voter
+signals. A faster EMA_FAST (3 bars) makes the crossover more responsive,
+generating earlier bull/bear votes. This should help in sideways markets
+where the 5-bar EMA lags too much to capture short-lived moves, and in
+rally/crash regimes where early entry captures more return. The EMA_SLOW
+at 23 remains anchored, so only the fast side becomes more reactive.
 """
 
 import numpy as np
@@ -22,7 +21,7 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 16
 LONG_WINDOW = 30
-EMA_FAST = 5
+EMA_FAST = 3
 EMA_SLOW = 23
 RSI_PERIOD = 8
 RSI_BULL = 50
