@@ -7,3 +7,5 @@ dbaec18	5.438356	6.355824	1.834936	keep	momentum-strength position sizing (stren
 -	5.341329	6.235054	1.787449	discard	BTC lead-lag signal as 7th voter for ETH/SOL entries
 -	4.880600	5.806777	1.852354	discard	inverse-volatility symbol weighting instead of equal weights
 baca2a3	5.610560	6.555083	1.889047	keep	regime-adaptive calm-market position size boost (CALM_BOOST_MAX=0.4)
+-	5.566207	6.531691	1.930968	discard	volatility-adaptive EMA periods for faster signals in calm markets
+1edcc6c	5.618088	6.557647	1.879117	keep	trend-aligned asymmetric trailing stops (wider with trend, tighter against)
