@@ -93,7 +93,7 @@ Multiplicative per-regime score, then combined:
 ```
 Base = log(1+sharpe) × sqrt(trade_factor) × 1/(1+DD%) × 1/(1+vol) × exp(-streak/30)
 Per-regime = base × log(1 + annual_return% / 100)   # return gate
-Hard cutoffs: <10 trades, >25% DD, >25% capital loss → -999
+Hard cutoffs: <10 trades, >10% DD, >25% capital loss → -999
 
 Composite = mean(regime_scores) - 0.5 * std(regime_scores)
 ```

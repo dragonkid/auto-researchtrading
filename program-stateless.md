@@ -56,7 +56,7 @@ Base score = log(1+sharpe)         # signal quality
 
 Per-regime score = base_score × log(1 + annual_return% / 100)   # return gate
 
-Hard cutoffs: <10 trades → -999, >25% drawdown → -999, lost >25% → -999
+Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >25% → -999
 
 Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```

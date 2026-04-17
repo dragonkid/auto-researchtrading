@@ -596,7 +596,7 @@ def compute_score(result: BacktestResult) -> float:
     # Hard cutoffs — strict risk limits
     if result.num_trades < 10:
         return -999.0
-    if result.max_drawdown_pct > 25.0:
+    if result.max_drawdown_pct > 10.0:
         return -999.0
     final_equity = result.equity_curve[-1] if result.equity_curve else INITIAL_CAPITAL
     if final_equity < INITIAL_CAPITAL * 0.75:
