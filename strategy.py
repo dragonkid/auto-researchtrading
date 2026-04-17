@@ -1,12 +1,11 @@
 """
-Exp89: Increase SIDEWAYS_BOOST_MAX from 0.55 to 0.70.
+Exp90: Increase STRENGTH_FLOOR_SIDEWAYS from 1.2 to 1.4.
 
-Sideways (12.63) is the weakest regime. The sideways boost only activates
-when abs(ret_long) < SIDEWAYS_BOOST_DECAY (0.08), so it is effectively
-zero in trending regimes (bull/crash/rally where ret_long >> 0.08).
-Previous increases (0.25->0.40->0.55) both improved composite score.
-Pushing to 0.70 should boost sideways returns without affecting the
-other regimes' DD. Sideways DD is only 8.03% — room to grow.
+The strength_scale floor only activates in trendless markets (abs(ret_long)
+near zero), so it doesn't affect trending regimes where DD is tight.
+Previous increase from 1.0 to 1.2 was a keep (+0.33 composite). Sideways
+regime (13.41) remains the weakest. Raising the floor further should boost
+sideways returns without pushing DD in bull/crash/rally.
 """
 
 import numpy as np
@@ -74,7 +73,7 @@ STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully 
 TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 1.2  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 1.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
