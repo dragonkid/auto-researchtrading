@@ -1,10 +1,13 @@
 """
-Exp105: Reduce MACD_FAST from 12 to 8 for more responsive MACD histogram signal.
+Exp106: Reduce MACD_SIGNAL from 9 to 7 for faster MACD histogram response.
 
-Prior MACD tuning (exp ~80) changed MACD_SLOW/SIGNAL (12/18/7) but failed.
-This time, only change the fast EMA period. A shorter MACD_FAST makes the
-histogram cross zero earlier at regime transitions, giving the MACD voter
-faster signals — similar to how EMA_FAST 5->3 helped the EMA crossover voter.
+The MACD signal line smooths the MACD line with an EMA. A shorter signal
+period (7 vs 9) makes the histogram cross zero earlier, giving faster
+entry/exit triggers. This is especially helpful in sideways markets (the
+weakest regime at 15.07 vs 19-24 for others) where delayed signals miss
+short-lived moves. Prior exp80 changed SLOW/SIGNAL together and failed;
+this isolates just the signal period change on top of the already-reduced
+MACD_FAST=8.
 """
 
 import numpy as np
@@ -29,7 +32,7 @@ RSI_OVERSOLD = 27
 
 MACD_FAST = 8
 MACD_SLOW = 23
-MACD_SIGNAL = 9
+MACD_SIGNAL = 7
 
 EMA_SLOPE_PERIOD = 28
 EMA_SLOPE_LOOKBACK = 4
