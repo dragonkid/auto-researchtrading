@@ -1,10 +1,10 @@
 """
-Exp112: Reduce ATR_LOOKBACK from 24 to 16 for more responsive trailing stops.
+Exp113: Reduce MED2_WINDOW from 16 to 14 for faster medium-term momentum.
 
-ATR is used to compute trailing stop distances. A shorter lookback makes
-the ATR react faster to recent volatility changes, which should improve
-stop placement during regime transitions. This parameter hasn't been
-tuned in any prior experiment.
+MED2_WINDOW is used for ret_med, btc_momentum, and cross_asset_rets.
+The reduction from 20->16 was one of the largest single improvements
+(+0.64 composite). Continuing this successful optimization path by
+trying 14 for more responsive medium-term signals.
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 16
+MED2_WINDOW = 14
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
