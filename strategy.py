@@ -1,13 +1,13 @@
 """
-Exp121: Reduce BASE_THRESHOLD from 0.008 to 0.006 for more entries.
+Exp122: Squared sideways boost decay for slower falloff in moderate trends.
 
-The momentum threshold determines how much price must move before we
-consider entering. A lower base means more entries across all regimes,
-but especially helps sideways (weakest at 18.22) where momentum signals
-are weak. Dynamic threshold still adjusts by vol_ratio, and the 0.003
-floor prevents entries on pure noise. At vol_ratio=1.0: 0.006 vs 0.008.
-At vol_ratio=0.5: 0.00345 vs 0.0046. More entries should help sideways
-returns without blowing DD in other regimes (bull DD at 8.95%).
+Currently sideways_boost uses linear decay: strength = abs(ret_long)/0.08.
+This means at abs(ret_long)=0.04, sideways_boost is already halved.
+By squaring the decay ratio, the boost persists longer for moderate trends:
+at abs(ret_long)=0.04, strength goes from 0.5 to 0.25, so boost is 0.75
+of max instead of 0.5. This targets sideways (weakest at 18.26) where
+moderate trends shouldn't fully kill the sideways boost. The boost still
+fully decays at abs(ret_long)>=0.08, so crash/bull behavior is unchanged.
 """
 
 import numpy as np
@@ -294,7 +294,8 @@ class Strategy:
 
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
-            sideways_trend_strength = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
+            sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
+            sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree

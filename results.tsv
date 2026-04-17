@@ -120,3 +120,4 @@ b8f8e1f	19.509824	21.021323	3.022997	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.4
 -	20.415371	21.982332	3.133922	discard	reduce dynamic threshold upper cap 0.020->0.016 (no effect, cap rarely reached)
 1a56e85	20.431364	22.000967	3.139207	keep	make dyn_threshold more vol-sensitive (0.15+0.85*vol) to lower threshold in calm markets
 4057b8b	20.564580	22.166411	3.203662	keep	reduce BASE_THRESHOLD from 0.008 to 0.006 for more entries in low-momentum environments
+-	20.521944	22.121873	3.199857	discard	trend consistency penalty 10pct when fewer than 3/4 timeframes agree (mean dropped, marginal std gain)
