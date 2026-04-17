@@ -1,12 +1,13 @@
 """
-Exp53: Reduce MIN_VOTES from 4 to 3 (out of 6 signals) to enter on weaker consensus.
+Exp54: Momentum-strength position sizing.
 
-The sideways regime (3.92) is dragging composite score due to lower returns — fewer
-strong unanimous signals in range-bound markets. Reducing MIN_VOTES from 4 to 3
-(simple majority) should generate more entries, boosting returns in sideways while
-the trend gate (ret_med/ret_long confirmation) still filters noise. Risk: more false
-signals in other regimes, but the ATR trailing stop and RSI overbought/oversold
-exits should limit damage.
+mom_strength (= |ret_short| / dyn_threshold) is already computed but unused
+(strength_scale hardcoded to 1.0). Scale position size by clamped mom_strength
+so stronger momentum signals get larger positions. This should boost returns
+across all regimes — especially sideways (589% ann return, weakest regime) where
+catching the few strong moves with larger size matters most.
+
+strength_scale = clamp(mom_strength, 0.6, 1.6)
 """
 
 import numpy as np
@@ -242,7 +243,7 @@ class Strategy:
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
-            strength_scale = 1.0
+            strength_scale = max(0.6, min(1.6, mom_strength))
             size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
