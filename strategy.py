@@ -1,14 +1,11 @@
 """
-Exp123: Volatility compression breakout boost.
+Exp124: Raise STRENGTH_FLOOR_SIDEWAYS from 1.6 to 1.8.
 
-Add a sizing boost when volatility is compressing (short vol < long vol * 0.7),
-indicating a potential breakout. Compressed vol periods often precede directional
-moves, and entries during these windows have better risk/reward. This is different
-from the existing calm_boost (which boosts when short_vol is close to long_vol)
-— this targets specifically the *compression* phase where short-term vol drops
-well below the longer-term average. In sideways (weakest at 18.46), vol often
-compresses before range breakouts, so this should help capture those moves with
-larger size. The boost is moderate (up to 25%) to avoid DD issues.
+The strength_scale floor in trendless markets prevents weak-momentum entries
+from being overly penalized in sideways regimes. This parameter has been
+successfully increased multiple times (1.0 -> 1.2 -> 1.4 -> 1.6), each time
+improving the sideways score. Try 1.8 to further boost sizing on weak-momentum
+entries during sideways, which is still the weakest regime at 18.47.
 """
 
 import numpy as np
@@ -80,7 +77,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 1.6  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 1.8  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
