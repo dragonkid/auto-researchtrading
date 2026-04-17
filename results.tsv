@@ -76,3 +76,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 0e192bf	16.387042	17.587538	2.400992	keep	reduce EMA slope threshold from 0.001 to 0.0005 for more slope votes in sideways
 -	-999.000000	-238.443138	439.109926	discard	increase LONG_WINDOW from 36 to 48 (blew DD limit in bull_2021 at 10.1%)
 204a1d9	17.028135	18.410002	2.763733	keep	reduce MED2_WINDOW from 20 to 16 for faster medium-term momentum in sideways
+-	17.024574	18.403836	2.758524	discard	reduce ATR_STOP_MULT_MIN from 3.0 to 2.5 (essentially no effect, marginal mean drop)
