@@ -1,13 +1,12 @@
 """
-Exp94: Increase TREND_THRESHOLD_DECAY from 0.10 to 0.13.
+Exp95: Increase TREND_GATE_MED_WEIGHT_SIDEWAYS from 0.75 to 0.85.
 
-TREND_THRESHOLD_DECAY controls at what abs(ret_long) the sideways threshold
-reduction fully decays. Increasing from 0.10 to 0.13 means the reduced entry
-threshold extends further into moderate-trend conditions, generating more entries
-in the transition zone between sideways and trending markets. This should
-primarily help sideways (13.9) by capturing moves that start trending but
-ret_long hasn't pulled away enough yet. Low risk since it only affects entry
-count, not sizing.
+In sideways (trendless) markets, the trend gate uses a weighted average of
+ret_med and ret_long to confirm direction. Increasing the ret_med weight from
+0.75 to 0.85 makes the trend gate more responsive to shorter-term momentum
+when the long-term trend is absent. This targets the weakest regime (sideways
+at 13.95 vs 17-21 for others) without affecting trending markets where
+ret_long drives the weight back toward TREND_GATE_MED_WEIGHT_BASE (0.50).
 """
 
 import numpy as np
@@ -76,7 +75,7 @@ TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
-TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.75  # ret_med weight in trendless markets
+TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 1.4  # strength_scale floor in fully trendless markets
