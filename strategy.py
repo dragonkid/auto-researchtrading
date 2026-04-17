@@ -1,11 +1,13 @@
 """
-Exp127: Adaptive cooldown — skip cooldown in sideways markets.
+Exp128: Trend-dampened cross-asset boost.
 
-When abs(ret_long) is near zero (trendless/sideways), reduce cooldown
-to 0 bars so we can re-enter faster after exits. In trending markets,
-keep the full 2-bar cooldown to avoid whipsaw. This specifically
-targets the sideways regime (weakest at 18.58) where faster re-entry
-should capture more return without adding risk (DD headroom is 4.2%).
+The cross-asset agreement boost (CROSS_ASSET_BOOST=0.30) gives 30%
+larger positions when all 3 assets trend in the same direction. This
+fires most in strong bull/bear regimes where DD is already near 10%
+(bull_2021 DD=9.52%). By dampening the boost when abs(ret_long) is
+large, we reduce DD risk in trending regimes while keeping the full
+boost in sideways where return needs help. This should reduce std
+across regimes and improve composite score.
 """
 
 import numpy as np
@@ -83,6 +85,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
+CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -321,7 +324,10 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost * vol_compress_boost
+            # Dampen cross-asset boost in strong trends (where DD is already near limit)
+            cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
+            dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost
             combined_mult = min(combined_mult, MAX_COMBINED_MULT)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
