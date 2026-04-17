@@ -1,13 +1,13 @@
 """
-Exp55: Regime-adaptive position sizing boost in calm markets.
+Exp56: Trend-aligned asymmetric trailing stops.
 
-Sideways regime (4.26) is the weakest link, dragging composite score down.
-The issue: low returns (852%) despite good Sharpe (14.1). Solution: when
-markets are calm (short vol / long vol ratio is close to 1.0), boost position
-size. In crash/volatile regimes this ratio spikes so the boost won't apply.
+Sideways regime is the weakest link (4.35 vs 9.56 bull). Positions get
+stopped out too quickly. Idea: when position is aligned with the longer-term
+trend (ret_long), use a wider ATR stop multiplier (let winners run). When
+opposing the trend, use a tighter stop (cut losers faster).
 
-calm_boost = 1.0 + CALM_BOOST_MAX * max(0, 1 - vol_ratio_short_long)
-where vol_ratio_short_long = short_vol / long_vol, clamped to [0.5, 2.0]
+Adds STOP_WITH_TREND_MULT (1.2) and STOP_AGAINST_TREND_MULT (0.8) applied
+on top of the existing adaptive ATR stop multiplier.
 """
 
 import numpy as np
@@ -63,6 +63,9 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.4  # max position size boost in calm regimes
+
+STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
+STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
 
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -292,6 +295,16 @@ class Strategy:
                 # Adaptive stop: tighter in high vol, wider in low vol
                 atr_stop_mult = ATR_STOP_MULT_BASE / max(vol_ratio, 0.5)
                 atr_stop_mult = max(ATR_STOP_MULT_MIN, min(ATR_STOP_MULT_MAX, atr_stop_mult))
+
+                # Asymmetric stop: wider when position aligns with long-term trend
+                if current_pos > 0 and ret_long > 0:
+                    atr_stop_mult *= STOP_WITH_TREND_MULT
+                elif current_pos > 0 and ret_long < 0:
+                    atr_stop_mult *= STOP_AGAINST_TREND_MULT
+                elif current_pos < 0 and ret_long < 0:
+                    atr_stop_mult *= STOP_WITH_TREND_MULT
+                elif current_pos < 0 and ret_long > 0:
+                    atr_stop_mult *= STOP_AGAINST_TREND_MULT
 
                 if symbol not in self.peak_prices:
                     self.peak_prices[symbol] = mid
