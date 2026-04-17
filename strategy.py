@@ -1,14 +1,14 @@
 """
-Exp61: Increase base position size from 20% to 24%.
+Exp62: Trend-strength adaptive trailing stop width.
 
-The multiplicative scoring rewards returns via log(1 + annual_return/100).
-Larger positions increase returns proportionally but also increase DD and vol.
-However, the return gate uses log scale while DD/vol gates are linear, so
-moderate position size increases should net positive on the score.
+In sideways/trendless markets, price mean-reverts more and tight trailing
+stops get hit frequently, cutting winners short. When the long-term trend
+is weak (abs(ret_long) near zero), widen the trailing stop to let positions
+breathe. When trend is strong, keep normal stops since the directional
+move is more likely to continue.
 
-Current returns are very high (1200-18000% across regimes), so the log
-compression means the return gain from 20->24% position size is modest,
-while DD/vol increase is proportional. This is a calibration bet.
+This targets the sideways regime (weakest at 5.47) without hurting trending
+regimes, since the stop widening only activates when trend is genuinely flat.
 """
 
 import numpy as np
@@ -67,6 +67,9 @@ CALM_BOOST_MAX = 0.4  # max position size boost in calm regimes
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
+
+STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
+STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
 TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
@@ -317,6 +320,12 @@ class Strategy:
                     atr_stop_mult *= STOP_WITH_TREND_MULT
                 elif current_pos < 0 and ret_long > 0:
                     atr_stop_mult *= STOP_AGAINST_TREND_MULT
+
+                # Flat-trend stop widening: in sideways markets, widen stops
+                # to avoid premature exits from mean-reverting price action
+                flat_trend_strength = min(abs(ret_long) / STOP_FLAT_TREND_DECAY, 1.0)
+                flat_trend_boost = 1.0 + STOP_FLAT_TREND_BOOST * (1.0 - flat_trend_strength)
+                atr_stop_mult *= flat_trend_boost
 
                 if symbol not in self.peak_prices:
                     self.peak_prices[symbol] = mid
