@@ -1,12 +1,10 @@
 """
-Exp108: Reduce LONG_WINDOW from 24 to 22 for even faster trend detection.
+Exp109: Reduce LONG_WINDOW from 22 to 20 for even faster trend detection.
 
-LONG_WINDOW reductions have been consistently positive:
-36->30 (+0.66), 30->26 (+0.18), 26->24 (+0.15). The diminishing returns
-suggest we're approaching optimal but there may be one more step. A shorter
-window helps the sideways regime (15.67, still weakest) recognize and exit
-trendless states earlier. It affects ret_long, trend gate, stop adjustments,
-sideways detection, and threshold adaptation.
+LONG_WINDOW reductions have been consistently positive across 5 steps:
+36->30 (+0.66), 30->26 (+0.37), 26->24 (+0.15), 24->22 (+0.24).
+Each reduction speeds up ret_long, trend gate, stop adjustments,
+sideways detection, and threshold adaptation. Testing one more step.
 """
 
 import numpy as np
@@ -20,7 +18,7 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 16
-LONG_WINDOW = 22
+LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 23
 RSI_PERIOD = 8
