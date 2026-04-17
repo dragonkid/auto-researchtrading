@@ -1,11 +1,11 @@
 """
-Exp125: Increase CROSS_ASSET_BOOST from 0.20 to 0.30.
+Exp126: Increase STRENGTH_FLOOR_DECAY from 0.08 to 0.10.
 
-When all active assets agree on momentum direction (all positive or all
-negative), this is a strong confluence signal for trending markets. The boost
-was added at 0.20 and never tuned. Increasing to 0.30 should amplify returns
-in bull and rally regimes where cross-asset agreement is common, while having
-minimal impact on sideways regimes where agreement is rare.
+This controls how quickly the sideways strength floor (1.8) decays back
+to 0.6 as trend strength increases. A wider decay means the elevated
+floor extends to moderate-trend environments, not just flat markets.
+This should help transition periods (entering/exiting sideways) get
+better sizing without affecting strongly trending markets at all.
 """
 
 import numpy as np
@@ -78,7 +78,7 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 1.8  # strength_scale floor in fully trendless markets
-STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
+STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
