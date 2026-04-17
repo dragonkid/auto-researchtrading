@@ -1,13 +1,12 @@
 """
-Exp70: Increase sideways boost from 25% to 40%.
+Exp71: Increase BASE_POSITION_PCT from 0.24 to 0.27.
 
-Sideways regime (7.11) is the weakest regime, dragging down both mean
-and increasing std. The return gate (log(1 + annual_return%/100)) hurts
-sideways because absolute returns are lower in range-bound markets.
-Increasing SIDEWAYS_BOOST_MAX from 0.25 to 0.40 will increase position
-sizes specifically when the long-term trend is weak, targeting the
-sideways regime for improvement without significantly affecting trending
-regimes where the boost naturally decays to zero.
+The scoring formula uses log(1 + annual_return%/100) as a return gate.
+Since log is concave, a uniform position size increase helps lower-return
+regimes (sideways=19951%) proportionally more than higher-return regimes
+(bull=3658894%). This should boost sideways score more than it hurts
+bull/crash via slightly higher drawdown. Previous increase (0.20->0.24)
+was a big win (+0.90 composite).
 """
 
 import numpy as np
@@ -39,7 +38,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.24
+BASE_POSITION_PCT = 0.27
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
