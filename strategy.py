@@ -1,10 +1,9 @@
 """
-Exp76: Increase BASE_POSITION_PCT from 0.30 to 0.33.
+Exp77: Increase BASE_POSITION_PCT from 0.33 to 0.36.
 
-Position size increases have been the most consistently successful lever.
-All regimes have max drawdown 6-8%, well below the 25% hard cutoff.
-Increasing base position size should proportionally boost returns across
-all regimes, improving the return gate component of scores.
+Max drawdowns are 6.7-8.7%, well under the 25% cutoff. Position size
+increases have been the most consistently successful lever across all
+experiments. A ~9% increase continues the proven trajectory.
 """
 
 import numpy as np
@@ -36,7 +35,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.33
+BASE_POSITION_PCT = 0.36
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
