@@ -32,4 +32,6 @@ aad4f55	8.883367	9.937483	2.108232	keep	high-conviction vote bonus (15% size boo
 
 ab531e7	10.139845	11.272450	2.265211	keep	increase BASE_POSITION_PCT from 0.24 to 0.273baaf06	10.650397	11.806730	2.312667	keep	increase SIDEWAYS_BOOST_MAX from 0.40 to 0.55 for larger positions in trendless markets
 5e6715d	11.699890	12.804754	2.209727	keep	raise vol_scale upper cap from 1.5 to 2.0 for larger positions in low-vol regimes
--	10.878674	12.169684	2.582020	discard	relax trend gate with dead-zone in weak-trend environments (hurt sideways and crash_bear)27c53c9	12.349093	13.494303	2.290420	keep	increase BASE_POSITION_PCT from 0.27 to 0.30
+-	10.878674	12.169684	2.582020	discard	relax trend gate with dead-zone in weak-trend environments (hurt sideways and crash_bear)
+27c53c9	12.349093	13.494303	2.290420	keep	increase BASE_POSITION_PCT from 0.27 to 0.30
+-	11.240178	12.595798	2.711239	discard	trend-adaptive RSI exits tighter OB/OS in sideways (hurt all regimes, cut winners short)
