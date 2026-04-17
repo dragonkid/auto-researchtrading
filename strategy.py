@@ -1,11 +1,11 @@
 """
-Exp126: Increase STRENGTH_FLOOR_DECAY from 0.08 to 0.10.
+Exp127: Adaptive cooldown — skip cooldown in sideways markets.
 
-This controls how quickly the sideways strength floor (1.8) decays back
-to 0.6 as trend strength increases. A wider decay means the elevated
-floor extends to moderate-trend environments, not just flat markets.
-This should help transition periods (entering/exiting sideways) get
-better sizing without affecting strongly trending markets at all.
+When abs(ret_long) is near zero (trendless/sideways), reduce cooldown
+to 0 bars so we can re-enter faster after exits. In trending markets,
+keep the full 2-bar cooldown to avoid whipsaw. This specifically
+targets the sideways regime (weakest at 18.58) where faster re-entry
+should capture more return without adding risk (DD headroom is 4.2%).
 """
 
 import numpy as np
@@ -84,6 +84,8 @@ VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
+COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
+COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.15   # max position size boost for high-conviction entries
@@ -275,7 +277,10 @@ class Strategy:
             bullish = bull_votes >= MIN_VOTES and btc_confirm and trend_bull
             bearish = bear_votes >= MIN_VOTES and btc_confirm and trend_bear
 
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS
+            # Adaptive cooldown: shorter in sideways markets for faster re-entry
+            cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
+            effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = TARGET_VOL / realized_vol
             vol_scale = max(0.4, min(2.0, vol_scale))
