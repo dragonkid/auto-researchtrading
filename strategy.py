@@ -1,13 +1,14 @@
 """
-Exp122: Squared sideways boost decay for slower falloff in moderate trends.
+Exp123: Volatility compression breakout boost.
 
-Currently sideways_boost uses linear decay: strength = abs(ret_long)/0.08.
-This means at abs(ret_long)=0.04, sideways_boost is already halved.
-By squaring the decay ratio, the boost persists longer for moderate trends:
-at abs(ret_long)=0.04, strength goes from 0.5 to 0.25, so boost is 0.75
-of max instead of 0.5. This targets sideways (weakest at 18.26) where
-moderate trends shouldn't fully kill the sideways boost. The boost still
-fully decays at abs(ret_long)>=0.08, so crash/bull behavior is unchanged.
+Add a sizing boost when volatility is compressing (short vol < long vol * 0.7),
+indicating a potential breakout. Compressed vol periods often precede directional
+moves, and entries during these windows have better risk/reward. This is different
+from the existing calm_boost (which boosts when short_vol is close to long_vol)
+— this targets specifically the *compression* phase where short-term vol drops
+well below the longer-term average. In sideways (weakest at 18.46), vol often
+compresses before range breakouts, so this should help capture those moves with
+larger size. The boost is moderate (up to 25%) to avoid DD issues.
 """
 
 import numpy as np
@@ -82,6 +83,8 @@ TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully de
 STRENGTH_FLOOR_SIDEWAYS = 1.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
+VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
+VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -283,6 +286,7 @@ class Strategy:
             # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
             vol_spike_scale = 1.0
             calm_boost = 1.0
+            vol_compress_boost = 1.0
             if len(closes) >= VOL_LONG_LOOKBACK + 1:
                 short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
                 long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
@@ -291,6 +295,11 @@ class Strategy:
                 # Calm regime boost: when short vol is close to or below long vol, boost size
                 vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl)
+                # Vol compression boost: when short vol drops well below long vol,
+                # a breakout is likely — boost size to capture the move
+                if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
+                    compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
+                    vol_compress_boost = 1.0 + VOL_COMPRESS_BOOST * compress_strength
 
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
@@ -310,7 +319,7 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost * vol_compress_boost
             combined_mult = min(combined_mult, MAX_COMBINED_MULT)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
