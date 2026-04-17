@@ -1,13 +1,13 @@
 """
-Exp93: Increase TREND_THRESHOLD_SCALE from 0.30 to 0.38.
+Exp94: Increase TREND_THRESHOLD_DECAY from 0.10 to 0.13.
 
-The sideways regime (13.9) is the weakest by far vs bull (20.8), crash (18.1),
-rally (17.3). The return gate is the main drag. TREND_THRESHOLD_SCALE controls
-how much the entry threshold is lowered in trendless markets — increasing from
-0.30 to 0.38 means up to 38% threshold reduction when trend is flat, generating
-more entries in sideways. This is targeted: strong-trend regimes are unaffected
-since the reduction decays with abs(ret_long). No DD risk since it only affects
-entry count, not position sizing.
+TREND_THRESHOLD_DECAY controls at what abs(ret_long) the sideways threshold
+reduction fully decays. Increasing from 0.10 to 0.13 means the reduced entry
+threshold extends further into moderate-trend conditions, generating more entries
+in the transition zone between sideways and trending markets. This should
+primarily help sideways (13.9) by capturing moves that start trending but
+ret_long hasn't pulled away enough yet. Low risk since it only affects entry
+count, not sizing.
 """
 
 import numpy as np
@@ -73,7 +73,7 @@ STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
-TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
+TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.75  # ret_med weight in trendless markets
