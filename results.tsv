@@ -49,3 +49,4 @@ cead3b7	15.404958	16.670989	2.532064	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.0
 e908bb2	14.600081	15.810149	2.420136	keep	require 4+ votes to flip existing position (reduce whipsaw in sideways)
 -	14.480475	15.633965	2.306981	discard	cap combined sizing multiplier at 4.5x (mean dropped more than std improved)
 753131f	14.830952	15.977826	2.293747	keep	cap combined sizing multiplier at 5.5x to clip extreme stacking (improved mean and reduced std)
+ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.8 for larger positions in low-vol calm regimes
