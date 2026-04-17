@@ -1,12 +1,12 @@
 """
-Exp66: Cross-asset momentum agreement sizing boost.
+Exp69: High-conviction vote bonus for position sizing.
 
-When all three assets (BTC/ETH/SOL) agree on direction (all positive or
-all negative medium-term returns), increase position size by up to 20%.
-Market-wide agreement = higher conviction = justified larger bet.
-When assets disagree, keep normal sizing. This differs from the failed
-BTC lead-lag voter (which tried to gate entries) — this only scales
-sizing, so it won't reduce trade count or hurt in sideways.
+When 5 or 6 out of 6 signals agree (high conviction), boost position
+size by up to 15%. This only increases sizing for the strongest signals
+without penalizing marginal (3-4 vote) entries that are common in sideways.
+Previous "vote-count confidence scaling" failed because it reduced sizing
+on low-vote entries. This is additive-only: base case unchanged, bonus
+for strong agreement.
 """
 
 import numpy as np
@@ -77,6 +77,8 @@ TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
+HIGH_VOTE_THRESHOLD = 5  # votes at or above this count get a sizing bonus
+HIGH_VOTE_BOOST = 0.15   # max position size boost for high-conviction entries
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -282,12 +284,16 @@ class Strategy:
             sideways_trend_strength = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
+            # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
+            winning_votes = max(bull_votes, bear_votes)
+            vote_boost = 1.0 + HIGH_VOTE_BOOST if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
+
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
             strength_scale = max(0.6, min(1.6, mom_strength))
-            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * dd_scale
+            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
             avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
