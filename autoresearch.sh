@@ -12,6 +12,9 @@ COUNCIL_COUNT=0
 
 cd "$PROJECT_DIR"
 
+# Ensure Ctrl+C stops the entire script
+trap 'echo ""; echo "Interrupted. Cleaning up..."; git checkout -- strategy.py 2>/dev/null; exit 130' INT TERM
+
 # Initialize: create branch if it doesn't exist
 if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
   git checkout -b "$BRANCH"
