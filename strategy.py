@@ -1,17 +1,13 @@
 """
-Exp57: Trend-strength adaptive entry threshold.
+Exp58: Weighted trend gate (average of ret_med and ret_long).
 
-Sideways regime (4.43) is still the weakest link, dragging composite via both
-lower mean and higher std. Hypothesis: in sideways/trendless markets, the
-momentum threshold is too high relative to price moves, reducing trade count.
+OR gate is too loose (nearly always passes), AND gate is too strict (kills
+too many entries, mean dropped from 6.92 to 5.47). The OR->AND experiment
+showed std improvement was excellent (1.91->1.08) but mean loss was worse.
 
-Idea: scale down the entry threshold when the long-term trend is weak (small
-abs(ret_long)). This makes it easier to enter in sideways markets where signals
-are naturally weaker, without affecting trending regimes where ret_long is large.
-
-TREND_THRESHOLD_SCALE: how much to reduce threshold when trend is near zero.
-At abs(ret_long)=0, threshold is reduced by TREND_THRESHOLD_SCALE (e.g. 0.3 = 30% lower).
-At abs(ret_long)>=0.10, threshold is unchanged.
+Compromise: require the average of ret_med and ret_long to confirm direction.
+This allows entry when one timeframe is slightly negative as long as the other
+compensates, filtering only the truly mixed signals.
 """
 
 import numpy as np
@@ -238,9 +234,10 @@ class Strategy:
                 if bear_votes >= MIN_VOTES and self.btc_momentum > -BTC_OPPOSE_THRESHOLD:
                     btc_confirm = False
 
-            # Trend gate: at least one of med/long return must confirm direction
-            trend_bull = ret_med > 0 or ret_long > 0
-            trend_bear = ret_med < 0 or ret_long < 0
+            # Trend gate: average of med and long returns must confirm direction
+            trend_avg = 0.5 * ret_med + 0.5 * ret_long
+            trend_bull = trend_avg > 0
+            trend_bear = trend_avg < 0
 
             bullish = bull_votes >= MIN_VOTES and btc_confirm and trend_bull
             bearish = bear_votes >= MIN_VOTES and btc_confirm and trend_bear
