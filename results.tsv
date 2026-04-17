@@ -70,3 +70,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 33de3a6	16.344396	17.574785	2.460778	keep	increase TREND_THRESHOLD_SCALE from 0.30 to 0.38 for more entries in sideways markets
 -	16.221242	17.455986	2.469487	discard	adaptive FLIP_MIN_VOTES 4->3 in sideways (more whipsaw, hurt all regimes)
 -	-999.000000	-237.381576	439.723482	discard	widen STOP_WITH_TREND_MULT 1.25->1.40 (blew DD limit in bull_2021 at 10.1%)
+024f1c3	16.355534	17.589109	2.467151	keep	increase TREND_THRESHOLD_DECAY from 0.10 to 0.13 for more entries in moderate-trend zones
