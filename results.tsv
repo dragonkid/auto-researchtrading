@@ -79,3 +79,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 -	17.024574	18.403836	2.758524	discard	reduce ATR_STOP_MULT_MIN from 3.0 to 2.5 (essentially no effect, marginal mean drop)
 -	17.015929	18.375400	2.718942	discard	faster MACD params 12/18/7 (no effect, marginal mean drop)
 -	17.016596	18.430242	2.827293	discard	reduce EMA_SLOW 23->20 for faster crossover (marginal mean gain but higher std, sideways worse)
+-	16.898927	18.287872	2.777890	discard	vol-adaptive SHORT_WINDOW 6-10 for ret_vshort (rally regime hurt, marginal sideways gain)
