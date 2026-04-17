@@ -1,10 +1,10 @@
 """
-Exp110c: Reduce EMA_SLOW from 23 to 21.
+Exp111: Reduce MACD_SLOW from 23 to 21.
 
-EMA_SLOW=20 was tried and discarded (marginal mean gain but higher std,
-sideways worse). Trying a smaller step to 21: a 2-period spread reduction
-(EMA_FAST=3, EMA_SLOW=21 -> 18-period spread) may capture the
-responsiveness benefit without the noise increase of going to 20.
+EMA_SLOW was already reduced 23->21 with a small gain. The MACD_SLOW
+parameter was tried 23->20 and discarded (no effect / marginal mean drop).
+Trying the intermediate step 23->21 which may harmonize with EMA_SLOW=21
+and capture a small responsiveness improvement without the noise of 20.
 """
 
 import numpy as np
@@ -28,7 +28,7 @@ RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 
 MACD_FAST = 8
-MACD_SLOW = 23
+MACD_SLOW = 21
 MACD_SIGNAL = 7
 
 EMA_SLOPE_PERIOD = 28
