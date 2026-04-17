@@ -1,13 +1,17 @@
 """
-Exp56: Trend-aligned asymmetric trailing stops.
+Exp57: Trend-strength adaptive entry threshold.
 
-Sideways regime is the weakest link (4.35 vs 9.56 bull). Positions get
-stopped out too quickly. Idea: when position is aligned with the longer-term
-trend (ret_long), use a wider ATR stop multiplier (let winners run). When
-opposing the trend, use a tighter stop (cut losers faster).
+Sideways regime (4.43) is still the weakest link, dragging composite via both
+lower mean and higher std. Hypothesis: in sideways/trendless markets, the
+momentum threshold is too high relative to price moves, reducing trade count.
 
-Adds STOP_WITH_TREND_MULT (1.2) and STOP_AGAINST_TREND_MULT (0.8) applied
-on top of the existing adaptive ATR stop multiplier.
+Idea: scale down the entry threshold when the long-term trend is weak (small
+abs(ret_long)). This makes it easier to enter in sideways markets where signals
+are naturally weaker, without affecting trending regimes where ret_long is large.
+
+TREND_THRESHOLD_SCALE: how much to reduce threshold when trend is near zero.
+At abs(ret_long)=0, threshold is reduced by TREND_THRESHOLD_SCALE (e.g. 0.3 = 30% lower).
+At abs(ret_long)>=0.10, threshold is unchanged.
 """
 
 import numpy as np
@@ -66,6 +70,9 @@ CALM_BOOST_MAX = 0.4  # max position size boost in calm regimes
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
+
+TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
+TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
 
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -181,6 +188,13 @@ class Strategy:
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.3 + vol_ratio * 0.7)
             dyn_threshold = max(0.005, min(0.020, dyn_threshold))
+
+            # Reduce threshold in trendless markets (sideways)
+            # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
+            ret_long_raw = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            trend_strength = min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0)
+            trend_reduction = TREND_THRESHOLD_SCALE * (1.0 - trend_strength)
+            dyn_threshold *= (1.0 - trend_reduction)
 
             # Adaptive momentum lookback: shorter in high vol, longer in low vol
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
