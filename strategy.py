@@ -1,9 +1,9 @@
 """
-Exp78: Increase BASE_POSITION_PCT from 0.36 to 0.39.
+Exp79: Increase BASE_POSITION_PCT from 0.39 to 0.43.
 
-Max drawdowns are 7.3-9.5%, well under the 25% cutoff. Position size
-increases have been the most consistently successful lever across all
-experiments (~8% increase each step). Continuing the proven trajectory.
+Max drawdowns are 7.9-10.3%, well under the 25% cutoff. Larger step
+(0.04 instead of 0.03) given ample drawdown headroom. Position size
+increases remain the most reliably positive lever.
 """
 
 import numpy as np
@@ -35,7 +35,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.39
+BASE_POSITION_PCT = 0.43
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
