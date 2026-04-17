@@ -1,11 +1,11 @@
 """
-Exp72: Increase SIDEWAYS_BOOST_MAX from 0.40 to 0.55.
+Exp73: Raise vol_scale upper cap from 1.5 to 2.0.
 
-Sideways regime (8.19) is the clear drag on composite (mean=11.27, std=2.27).
-Sideways DD is only 2.97% -- lots of headroom before hitting the 25% cutoff.
-Increasing the sideways boost should disproportionately help the weakest
-regime, lifting mean AND reducing std (by raising the floor).
-Previous increase from 0.25->0.40 was a big win (+0.54 composite).
+Sideways (8.64) remains the weakest regime, 3.6 pts below next-worst.
+In sideways/calm markets, realized_vol < TARGET_VOL so vol_scale = TARGET_VOL/vol
+often hits the 1.5 cap. Raising to 2.0 allows larger positions in low-vol
+environments, boosting returns where DD headroom is ample (sideways DD = 3.1%).
+High-vol regimes are unaffected (vol_scale stays well below 1.5 there).
 """
 
 import numpy as np
@@ -264,7 +264,7 @@ class Strategy:
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS
 
             vol_scale = TARGET_VOL / realized_vol
-            vol_scale = max(0.4, min(1.5, vol_scale))
+            vol_scale = max(0.4, min(2.0, vol_scale))
 
             # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
             vol_spike_scale = 1.0
