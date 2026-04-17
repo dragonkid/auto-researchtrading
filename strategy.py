@@ -1,11 +1,10 @@
 """
-Exp104: Reduce LONG_WINDOW from 30 to 26 for more responsive trend detection.
+Exp105: Reduce MACD_FAST from 12 to 8 for more responsive MACD histogram signal.
 
-The 36->30 reduction (exp ~80) was the largest single-experiment jump (+0.66).
-LONG_WINDOW drives ret_long which feeds trend gate, sideways detection,
-threshold adaptation, and stop asymmetry. A shorter window makes all of these
-more responsive to recent regime changes, especially at regime transitions
-(e.g. sideways->rally, bull->crash). Try 26 as a moderate further reduction.
+Prior MACD tuning (exp ~80) changed MACD_SLOW/SIGNAL (12/18/7) but failed.
+This time, only change the fast EMA period. A shorter MACD_FAST makes the
+histogram cross zero earlier at regime transitions, giving the MACD voter
+faster signals — similar to how EMA_FAST 5->3 helped the EMA crossover voter.
 """
 
 import numpy as np
@@ -28,7 +27,7 @@ RSI_BEAR = 50
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 
-MACD_FAST = 12
+MACD_FAST = 8
 MACD_SLOW = 23
 MACD_SIGNAL = 9
 
