@@ -68,3 +68,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 -	15.920791	17.100395	2.359207	discard	6 experiments: vol-adaptive MACD, volume voter, dispersion sizing, vol-spike stops, EMA slope tuning (all marginal or worse)
 41359a9	16.308212	17.541317	2.466211	keep	increase BASE_POSITION_PCT from 0.36 to 0.38
 33de3a6	16.344396	17.574785	2.460778	keep	increase TREND_THRESHOLD_SCALE from 0.30 to 0.38 for more entries in sideways markets
+-	16.221242	17.455986	2.469487	discard	adaptive FLIP_MIN_VOTES 4->3 in sideways (more whipsaw, hurt all regimes)
