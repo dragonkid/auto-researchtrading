@@ -1,12 +1,11 @@
 """
-Exp71: Increase BASE_POSITION_PCT from 0.24 to 0.27.
+Exp72: Increase SIDEWAYS_BOOST_MAX from 0.40 to 0.55.
 
-The scoring formula uses log(1 + annual_return%/100) as a return gate.
-Since log is concave, a uniform position size increase helps lower-return
-regimes (sideways=19951%) proportionally more than higher-return regimes
-(bull=3658894%). This should boost sideways score more than it hurts
-bull/crash via slightly higher drawdown. Previous increase (0.20->0.24)
-was a big win (+0.90 composite).
+Sideways regime (8.19) is the clear drag on composite (mean=11.27, std=2.27).
+Sideways DD is only 2.97% -- lots of headroom before hitting the 25% cutoff.
+Increasing the sideways boost should disproportionately help the weakest
+regime, lifting mean AND reducing std (by raising the floor).
+Previous increase from 0.25->0.40 was a big win (+0.54 composite).
 """
 
 import numpy as np
@@ -62,7 +61,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.6  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.40  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.55  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
