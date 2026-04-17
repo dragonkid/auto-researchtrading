@@ -39,3 +39,4 @@ ab531e7	10.139845	11.272450	2.265211	keep	increase BASE_POSITION_PCT from 0.24 t
 -	12.349093	13.494303	2.290420	discard	funding-rate carry sizing boost 20pct when carry aligns (no effect)
 -	10.839282	11.958700	2.238835	discard	momentum quality filter scaling position size by trend cleanliness (hurt mean across all regimes)
 b16d296	12.921816	14.056435	2.269237	keep	sideways strength-scale floor to avoid double-penalizing weak momentum in trendless markets
+abbb444	13.519971	14.689273	2.338603	keep	increase BASE_POSITION_PCT from 0.30 to 0.33
