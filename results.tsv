@@ -114,3 +114,4 @@ d958903	18.778938	20.568580	3.579284	keep	reduce EMA_SLOW from 23 to 21 for fast
 b8f8e1f	19.509824	21.021323	3.022997	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.4 to 1.6 for larger sizing in trendless markets
 -	10.020525	11.411794	2.782537	discard	partial RSI exit 50% reduce instead of full close on OB/OS (score dropped from 19.817 to 10.021)
 4c1606d	19.816923	21.339448	3.045051	keep	raise strength_scale cap from 1.6 to 1.8 for more sizing on strong momentum signals
+97f84b9	20.034702	21.554962	3.040519	keep	raise strength_scale cap from 1.8 to 2.0 for more sizing on strong momentum breakouts
