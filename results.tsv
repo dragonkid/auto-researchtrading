@@ -107,3 +107,4 @@ d958903	18.778938	20.568580	3.579284	keep	reduce EMA_SLOW from 23 to 21 for fast
 -	18.737133	20.539237	3.604209	discard	reduce MED_WINDOW_MIN from 8 to 6 (sideways worse, mean dropped)
 1ec76c7	19.203849	20.627552	2.847407	keep	reduce MED2_WINDOW from 16 to 14 for faster medium-term momentum
 238c90d	19.206148	20.703017	2.993738	keep	reduce MED2_WINDOW from 14 to 12 for faster medium-term momentum
+-	19.024033	20.509607	2.971148	discard	reduce MED_WINDOW_MAX from 16 to 14 (mean dropped, sideways and rally slightly worse)
