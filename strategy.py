@@ -1,10 +1,9 @@
 """
-Exp32: Add Bollinger Band width as 6th signal for vol compression detection.
+Exp35: Reapply best config + tighter ATR stop (5.5 -> 4.5).
 
-Changes from exp28 (ATR 5.5, score 9.382):
-1. Add BB width signal: bullish when BB width is below median (compression = pending breakout)
-2. Keep MIN_VOTES at 4 but out of 6 signals now
-3. BB compression acts as a quality filter for entries
+Reapplies kept experiments (vol scaling, position 0.25) and tests
+tighter trailing stop. With max_dd at only 1.4%, tighter stops
+may reduce whipsaws on winning trades while keeping DD low.
 """
 
 import numpy as np
@@ -33,11 +32,11 @@ BB_PERIOD = 7
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.08
+BASE_POSITION_PCT = 0.25
 VOL_LOOKBACK = 36
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 24
-ATR_STOP_MULT = 5.5
+ATR_STOP_MULT = 4.5
 TAKE_PROFIT_PCT = 99.0
 BASE_THRESHOLD = 0.012
 BTC_OPPOSE_THRESHOLD = -99.0
@@ -217,7 +216,8 @@ class Strategy:
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS
 
-            vol_scale = 1.0
+            vol_scale = TARGET_VOL / realized_vol
+            vol_scale = max(0.4, min(2.0, vol_scale))
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
