@@ -1,13 +1,12 @@
 """
-Exp106: Reduce MACD_SIGNAL from 9 to 7 for faster MACD histogram response.
+Exp107: Reduce LONG_WINDOW from 26 to 24 for faster trend detection.
 
-The MACD signal line smooths the MACD line with an EMA. A shorter signal
-period (7 vs 9) makes the histogram cross zero earlier, giving faster
-entry/exit triggers. This is especially helpful in sideways markets (the
-weakest regime at 15.07 vs 19-24 for others) where delayed signals miss
-short-lived moves. Prior exp80 changed SLOW/SIGNAL together and failed;
-this isolates just the signal period change on top of the already-reduced
-MACD_FAST=8.
+Shortening LONG_WINDOW has been the most reliable improvement pattern:
+36->30 (+0.66), 30->26 (+0.17). A shorter window makes ret_long respond
+faster to trend changes, which directly helps the trend gate, sideways
+detection, stop adjustments, and threshold adaptation. The sideways
+regime (15.37) is still the weakest by far, and faster trend detection
+should help it recognize and exit trendless states earlier.
 """
 
 import numpy as np
@@ -21,7 +20,7 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 16
-LONG_WINDOW = 26
+LONG_WINDOW = 24
 EMA_FAST = 3
 EMA_SLOW = 23
 RSI_PERIOD = 8
