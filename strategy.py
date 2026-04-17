@@ -1,12 +1,11 @@
 """
-Exp82: Require higher conviction (4+ votes) to flip an existing position.
+Exp87: Cap total sizing multiplier at 5.5x (softer cap).
 
-Currently, entering a new position requires MIN_VOTES=3, but flipping
-from long-to-short (or vice versa) also only needs 3. Flips are more
-expensive (pay spread twice, reset trailing stop) and are the main source
-of whipsaw losses in sideways markets. Requiring 4+ votes to flip should
-reduce costly reversals in choppy markets while still allowing easy new
-entries after flat periods.
+Previous experiment (4.5x cap) reduced std well but cut mean too much.
+A softer 5.5x cap should only clip the most extreme stacking cases
+(which create the most DD risk) while preserving most of the sizing
+that drives returns. The key insight: the top ~10% of positions by size
+contribute disproportionately to DD but only modestly to returns.
 """
 
 import numpy as np
@@ -83,6 +82,7 @@ MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 HIGH_VOTE_THRESHOLD = 5  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.15   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
+MAX_COMBINED_MULT = 5.5  # cap on product of all sizing multipliers to prevent extreme stacking
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -300,7 +300,9 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(1.6, mom_strength))
-            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost * dd_scale
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost
+            combined_mult = min(combined_mult, MAX_COMBINED_MULT)
+            size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
             avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
