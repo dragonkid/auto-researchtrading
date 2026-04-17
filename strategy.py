@@ -1,13 +1,14 @@
 """
-Exp58: Weighted trend gate (average of ret_med and ret_long).
+Exp61: Increase base position size from 20% to 24%.
 
-OR gate is too loose (nearly always passes), AND gate is too strict (kills
-too many entries, mean dropped from 6.92 to 5.47). The OR->AND experiment
-showed std improvement was excellent (1.91->1.08) but mean loss was worse.
+The multiplicative scoring rewards returns via log(1 + annual_return/100).
+Larger positions increase returns proportionally but also increase DD and vol.
+However, the return gate uses log scale while DD/vol gates are linear, so
+moderate position size increases should net positive on the score.
 
-Compromise: require the average of ret_med and ret_long to confirm direction.
-This allows entry when one timeframe is slightly negative as long as the other
-compensates, filtering only the truly mixed signals.
+Current returns are very high (1200-18000% across regimes), so the log
+compression means the return gain from 20->24% position size is modest,
+while DD/vol increase is proportional. This is a calibration bet.
 """
 
 import numpy as np
@@ -39,7 +40,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.20
+BASE_POSITION_PCT = 0.24
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
