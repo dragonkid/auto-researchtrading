@@ -1,12 +1,12 @@
 """
-Exp65: Sideways regime position boost via weak-trend detection.
+Exp66: Cross-asset momentum agreement sizing boost.
 
-When abs(ret_long) is near zero, trend is weak (sideways market). The
-strategy has good Sharpe and low DD in sideways but low returns (2215%
-vs 5000-62000% in other regimes), dragging the composite score down.
-Boost position size by up to 25% when trend is weak, decaying to 0%
-when trend is strong. Gentler than previous "trend clarity sizing"
-experiment which was too aggressive.
+When all three assets (BTC/ETH/SOL) agree on direction (all positive or
+all negative medium-term returns), increase position size by up to 20%.
+Market-wide agreement = higher conviction = justified larger bet.
+When assets disagree, keep normal sizing. This differs from the failed
+BTC lead-lag voter (which tried to gate entries) — this only scales
+sizing, so it won't reduce trade count or hurt in sideways.
 """
 
 import numpy as np
@@ -74,6 +74,7 @@ STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully 
 TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
 
+CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 
@@ -174,6 +175,19 @@ class Strategy:
         btc_eth_corr = self._calc_correlation(bar_data)
         high_corr = btc_eth_corr > HIGH_CORR_THRESHOLD
 
+        # Cross-asset momentum agreement: check if all symbols trend in same direction
+        cross_asset_rets = []
+        for s in ACTIVE_SYMBOLS:
+            if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
+                c = bar_data[s].history["close"].values
+                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
+        if len(cross_asset_rets) >= 2:
+            all_positive = all(r > 0 for r in cross_asset_rets)
+            all_negative = all(r < 0 for r in cross_asset_rets)
+            cross_asset_agree = 1.0 + CROSS_ASSET_BOOST if (all_positive or all_negative) else 1.0
+        else:
+            cross_asset_agree = 1.0
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -273,7 +287,7 @@ class Strategy:
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
             strength_scale = max(0.6, min(1.6, mom_strength))
-            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dd_scale
+            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
             avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
