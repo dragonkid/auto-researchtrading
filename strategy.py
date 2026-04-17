@@ -1,13 +1,13 @@
 """
-Exp98: Reduce MED2_WINDOW from 20 to 16.
+Exp99: Reduce LONG_WINDOW from 36 to 30.
 
-MED2_WINDOW controls the medium-term momentum lookback (ret_med) used in
-the trend gate, BTC momentum, and cross-asset agreement. In sideways
-markets, 20 bars (almost a full day) is too slow — price can trend
-over 16h but show near-zero return over 20h due to mean reversion.
-A shorter 16-bar window makes these signals more responsive, which
-should especially help the weakest regime (sideways, score=14.0)
-by producing faster, more relevant trend gate readings.
+LONG_WINDOW controls ret_long, used in the trend gate, asymmetric stops,
+sideways regime detection, strength floor, and threshold scaling. At 36
+bars (~1.5 days), trend detection is sluggish during regime transitions
+and in sideways markets. Reducing to 30 bars (~30 hours) makes these
+signals more responsive. The previous increase to 48 blew DD in bull_2021,
+confirming the strategy prefers shorter trend lookbacks. This should
+improve sideways detection and trend gate responsiveness.
 """
 
 import numpy as np
@@ -21,7 +21,7 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 16
-LONG_WINDOW = 36
+LONG_WINDOW = 30
 EMA_FAST = 5
 EMA_SLOW = 23
 RSI_PERIOD = 8
