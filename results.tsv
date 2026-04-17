@@ -56,3 +56,10 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 -	14.888090	16.069464	2.362747	discard	raise MAX_COMBINED_MULT from 5.5 to 6.5 (sideways DD increased, score dropped)
 4efaba5	15.350644	16.522591	2.343893	keep	increase SIDEWAYS_BOOST_MAX from 0.55 to 0.70 for larger positions in trendless markets
 94e7eae	15.619965	16.777819	2.315707	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.2 to 1.4 for larger sizing in trendless markets
+-	-999.000000	-491.815573	507.185847	discard	increase HIGH_VOTE_BOOST from 0.15 to 0.30 (blew DD in bull and crash regimes)
+-	15.598924	16.769158	2.340468	discard	rebalance sizing BASE_POSITION_PCT 0.36->0.34 and SIDEWAYS_BOOST_MAX 0.70->0.90 (net negative)
+-	-999.000000	-236.958773	439.971140	discard	widen SIDEWAYS_BOOST_DECAY 0.08->0.12 (crash DD exceeded 10%)
+-	15.459577	16.674433	2.429712	discard	activate DD_REDUCE_THRESHOLD at 7% (counterproductive, extended DD in sideways)
+-	15.513068	16.681001	2.335866	discard	reduce SHORT_WINDOW from 8 to 6 (rally regime whipsaws)
+-	15.608885	16.767315	2.316861	discard	vol-adaptive EMA slope threshold 0.07*realized_vol (neutral, marginal sideways drop)
+-	15.607188	16.770383	2.326390	discard	tighten STOP_AGAINST_TREND_MULT 0.75->0.65 (no effect, sideways slightly worse)
