@@ -81,3 +81,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 -	17.016596	18.430242	2.827293	discard	reduce EMA_SLOW 23->20 for faster crossover (marginal mean gain but higher std, sideways worse)
 -	16.898927	18.287872	2.777890	discard	vol-adaptive SHORT_WINDOW 6-10 for ret_vshort (rally regime hurt, marginal sideways gain)
 46e9562	17.685228	19.197540	3.024625	keep	reduce LONG_WINDOW from 36 to 30 for more responsive trend detection
+-	17.685908	19.199857	3.027898	discard	vote-conviction-adaptive stop multiplier (no meaningful effect)
