@@ -28,9 +28,11 @@ b50fcfa	8.439987	9.437392	1.994810	keep	cross-asset momentum agreement sizing bo
 -	7.874690	9.036461	2.323542	discard	bypass trend gate in trendless markets (hurt sideways and increased variance)
 aad4f55	8.883367	9.937483	2.108232	keep	high-conviction vote bonus (15% size boost when 5+ of 6 signals agree)
 
-0153b6a	9.423538	10.507598	2.168119	keep	increase SIDEWAYS_BOOST_MAX from 0.25 to 0.40 for larger positions in trendless markets-	9.227607	10.499047	2.542881	discard	reduce COOLDOWN_BARS from 2 to 1 (increased variance in crash/rally)
+0153b6a	9.423538	10.507598	2.168119	keep	increase SIDEWAYS_BOOST_MAX from 0.25 to 0.40 for larger positions in trendless markets
+-	9.227607	10.499047	2.542881	discard	reduce COOLDOWN_BARS from 2 to 1 (increased variance in crash/rally)
 
-ab531e7	10.139845	11.272450	2.265211	keep	increase BASE_POSITION_PCT from 0.24 to 0.273baaf06	10.650397	11.806730	2.312667	keep	increase SIDEWAYS_BOOST_MAX from 0.40 to 0.55 for larger positions in trendless markets
+ab531e7	10.139845	11.272450	2.265211	keep	increase BASE_POSITION_PCT from 0.24 to 0.27
+3baaf06	10.650397	11.806730	2.312667	keep	increase SIDEWAYS_BOOST_MAX from 0.40 to 0.55 for larger positions in trendless markets
 5e6715d	11.699890	12.804754	2.209727	keep	raise vol_scale upper cap from 1.5 to 2.0 for larger positions in low-vol regimes
 -	10.878674	12.169684	2.582020	discard	relax trend gate with dead-zone in weak-trend environments (hurt sideways and crash_bear)
 27c53c9	12.349093	13.494303	2.290420	keep	increase BASE_POSITION_PCT from 0.27 to 0.30
@@ -45,7 +47,8 @@ f5d8741	14.051806	15.250675	2.397737	keep	increase BASE_POSITION_PCT from 0.33 t
 -	14.051806	15.250675	2.397737	discard	profit-based trailing stop ratchet (no effect)
 ca9c487	14.525045	15.749276	2.448463	keep	increase BASE_POSITION_PCT from 0.36 to 0.39
 9c9d7fa	15.076017	16.328797	2.505559	keep	increase BASE_POSITION_PCT from 0.39 to 0.43
-cead3b7	15.404958	16.670989	2.532064	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.0 to 1.2 for targeted sizing boost in trendless markets-	-999.000000	-491.316383	507.684693	discard	widen RSI OB/OS exit thresholds 73/27 to 78/22 (blew DD limit in crash_bear and sideways)
+cead3b7	15.404958	16.670989	2.532064	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.0 to 1.2 for targeted sizing boost in trendless markets
+-	-999.000000	-491.316383	507.684693	discard	widen RSI OB/OS exit thresholds 73/27 to 78/22 (blew DD limit in crash_bear and sideways)
 e908bb2	14.600081	15.810149	2.420136	keep	require 4+ votes to flip existing position (reduce whipsaw in sideways)
 -	14.480475	15.633965	2.306981	discard	cap combined sizing multiplier at 4.5x (mean dropped more than std improved)
 753131f	14.830952	15.977826	2.293747	keep	cap combined sizing multiplier at 5.5x to clip extreme stacking (improved mean and reduced std)

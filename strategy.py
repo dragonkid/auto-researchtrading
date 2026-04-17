@@ -1,11 +1,12 @@
 """
-Exp88: Increase CALM_BOOST_MAX from 0.6 to 0.8.
+Exp89: Increase SIDEWAYS_BOOST_MAX from 0.55 to 0.70.
 
-The sideways regime (12.68) is the weakest, dragging down composite score.
-Sideways markets tend to have lower volatility, so the calm boost
-(applied when short_vol < long_vol) disproportionately helps that regime.
-Previous increases (0.4->0.6) improved score. Pushing to 0.8 should
-further grow positions in calm periods without adding much DD risk.
+Sideways (12.63) is the weakest regime. The sideways boost only activates
+when abs(ret_long) < SIDEWAYS_BOOST_DECAY (0.08), so it is effectively
+zero in trending regimes (bull/crash/rally where ret_long >> 0.08).
+Previous increases (0.25->0.40->0.55) both improved composite score.
+Pushing to 0.70 should boost sideways returns without affecting the
+other regimes' DD. Sideways DD is only 8.03% — room to grow.
 """
 
 import numpy as np
@@ -61,7 +62,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.55  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
