@@ -1,10 +1,10 @@
 """
-Exp111: Reduce MACD_SLOW from 23 to 21.
+Exp112: Reduce ATR_LOOKBACK from 24 to 16 for more responsive trailing stops.
 
-EMA_SLOW was already reduced 23->21 with a small gain. The MACD_SLOW
-parameter was tried 23->20 and discarded (no effect / marginal mean drop).
-Trying the intermediate step 23->21 which may harmonize with EMA_SLOW=21
-and capture a small responsiveness improvement without the noise of 20.
+ATR is used to compute trailing stop distances. A shorter lookback makes
+the ATR react faster to recent volatility changes, which should improve
+stop placement during regime transitions. This parameter hasn't been
+tuned in any prior experiment.
 """
 
 import numpy as np
@@ -43,7 +43,7 @@ VOL_LONG_LOOKBACK = 48
 VOL_SPIKE_THRESHOLD = 1.5
 VOL_SPIKE_SCALE = 0.6
 TARGET_VOL = 0.015
-ATR_LOOKBACK = 24
+ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
