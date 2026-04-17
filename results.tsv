@@ -29,3 +29,5 @@ b50fcfa	8.439987	9.437392	1.994810	keep	cross-asset momentum agreement sizing bo
 aad4f55	8.883367	9.937483	2.108232	keep	high-conviction vote bonus (15% size boost when 5+ of 6 signals agree)
 
 0153b6a	9.423538	10.507598	2.168119	keep	increase SIDEWAYS_BOOST_MAX from 0.25 to 0.40 for larger positions in trendless markets-	9.227607	10.499047	2.542881	discard	reduce COOLDOWN_BARS from 2 to 1 (increased variance in crash/rally)
+
+ab531e7	10.139845	11.272450	2.265211	keep	increase BASE_POSITION_PCT from 0.24 to 0.27
