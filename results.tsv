@@ -44,3 +44,4 @@ abbb444	13.519971	14.689273	2.338603	keep	increase BASE_POSITION_PCT from 0.30 t
 f5d8741	14.051806	15.250675	2.397737	keep	increase BASE_POSITION_PCT from 0.33 to 0.36
 -	14.051806	15.250675	2.397737	discard	profit-based trailing stop ratchet (no effect)
 ca9c487	14.525045	15.749276	2.448463	keep	increase BASE_POSITION_PCT from 0.36 to 0.39
+9c9d7fa	15.076017	16.328797	2.505559	keep	increase BASE_POSITION_PCT from 0.39 to 0.43
