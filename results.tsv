@@ -10,3 +10,8 @@ baca2a3	5.610560	6.555083	1.889047	keep	regime-adaptive calm-market position siz
 -	5.566207	6.531691	1.930968	discard	volatility-adaptive EMA periods for faster signals in calm markets
 1edcc6c	5.618088	6.557647	1.879117	keep	trend-aligned asymmetric trailing stops (wider with trend, tighter against)
 62b4540	5.971617	6.924876	1.906518	keep	trend-strength adaptive entry threshold (lower threshold in sideways/trendless markets)
+-	5.160668	6.071719	1.822102	discard	vote-count confidence scaling for position sizing
+-	5.971617	6.924876	1.906518	discard	max holding period with trend-dependent duration (no effect)
+-	5.471272	6.343999	1.745455	discard	volume confirmation scaling for position sizing
+-	4.931327	5.473077	1.083500	discard	trend gate OR->AND (too restrictive, killed mean)
+0f905d3	6.002239	6.812157	1.619835	keep	weighted trend gate using avg of ret_med and ret_long
