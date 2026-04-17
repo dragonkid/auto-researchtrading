@@ -1,12 +1,13 @@
 """
-Exp96: Reduce EMA slope threshold from 0.001 to 0.0005.
+Exp98: Reduce MED2_WINDOW from 20 to 16.
 
-In sideways markets, the EMA slope often hovers near zero without crossing
-the 0.001 threshold, so both slope_bull and slope_bear are False — the slope
-signal contributes no vote, making it harder to reach MIN_VOTES=3. Lowering
-to 0.0005 allows the slope signal to cast votes on weaker trends, helping
-entries in sideways conditions while not affecting trending markets where
-slope is already well above the threshold.
+MED2_WINDOW controls the medium-term momentum lookback (ret_med) used in
+the trend gate, BTC momentum, and cross-asset agreement. In sideways
+markets, 20 bars (almost a full day) is too slow — price can trend
+over 16h but show near-zero return over 20h due to mean reversion.
+A shorter 16-bar window makes these signals more responsive, which
+should especially help the weakest regime (sideways, score=14.0)
+by producing faster, more relevant trend gate readings.
 """
 
 import numpy as np
@@ -19,7 +20,7 @@ SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 20
+MED2_WINDOW = 16
 LONG_WINDOW = 36
 EMA_FAST = 5
 EMA_SLOW = 23
