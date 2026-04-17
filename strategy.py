@@ -1,13 +1,13 @@
 """
-Exp120: Make dyn_threshold more vol-sensitive (0.3+0.7*vol -> 0.15+0.85*vol).
+Exp121: Reduce BASE_THRESHOLD from 0.008 to 0.006 for more entries.
 
-In low-vol sideways, vol_ratio < 1.0, so increasing the vol_ratio weight
-from 0.7 to 0.85 (and reducing the constant from 0.3 to 0.15) further
-lowers the entry threshold in calm markets. This specifically targets the
-sideways regime (18.23, weakest) by allowing more entries when vol is low.
-In high-vol crash/rally, the threshold rises more, providing better
-protection against whipsaws. Net effect: more entries in sideways, fewer
-risky entries in volatile periods.
+The momentum threshold determines how much price must move before we
+consider entering. A lower base means more entries across all regimes,
+but especially helps sideways (weakest at 18.22) where momentum signals
+are weak. Dynamic threshold still adjusts by vol_ratio, and the 0.003
+floor prevents entries on pure noise. At vol_ratio=1.0: 0.006 vs 0.008.
+At vol_ratio=0.5: 0.00345 vs 0.0046. More entries should help sideways
+returns without blowing DD in other regimes (bull DD at 8.95%).
 """
 
 import numpy as np
@@ -51,7 +51,7 @@ ATR_STOP_MULT_BASE = 4.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
-BASE_THRESHOLD = 0.008
+BASE_THRESHOLD = 0.006
 BTC_OPPOSE_THRESHOLD = -99.0
 
 PYRAMID_THRESHOLD = 0.015
