@@ -1,11 +1,10 @@
 """
-Exp73: Raise vol_scale upper cap from 1.5 to 2.0.
+Exp74: Increase BASE_POSITION_PCT from 0.27 to 0.30.
 
-Sideways (8.64) remains the weakest regime, 3.6 pts below next-worst.
-In sideways/calm markets, realized_vol < TARGET_VOL so vol_scale = TARGET_VOL/vol
-often hits the 1.5 cap. Raising to 2.0 allows larger positions in low-vol
-environments, boosting returns where DD headroom is ample (sideways DD = 3.1%).
-High-vol regimes are unaffected (vol_scale stays well below 1.5 there).
+Max DD across regimes is 5-7%, well under the 25% hard cutoff.
+Previous position size increases (0.20->0.24->0.27) each yielded +1-2 pts
+on composite score. Pushing to 0.30 should boost returns across all regimes
+proportionally, with acceptable DD increase.
 """
 
 import numpy as np
@@ -37,7 +36,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.27
+BASE_POSITION_PCT = 0.30
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
