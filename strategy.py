@@ -1,10 +1,10 @@
 """
-Exp109: Reduce LONG_WINDOW from 22 to 20 for even faster trend detection.
+Exp110c: Reduce EMA_SLOW from 23 to 21.
 
-LONG_WINDOW reductions have been consistently positive across 5 steps:
-36->30 (+0.66), 30->26 (+0.37), 26->24 (+0.15), 24->22 (+0.24).
-Each reduction speeds up ret_long, trend gate, stop adjustments,
-sideways detection, and threshold adaptation. Testing one more step.
+EMA_SLOW=20 was tried and discarded (marginal mean gain but higher std,
+sideways worse). Trying a smaller step to 21: a 2-period spread reduction
+(EMA_FAST=3, EMA_SLOW=21 -> 18-period spread) may capture the
+responsiveness benefit without the noise increase of going to 20.
 """
 
 import numpy as np
@@ -20,7 +20,7 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 16
 LONG_WINDOW = 20
 EMA_FAST = 3
-EMA_SLOW = 23
+EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_BULL = 50
 RSI_BEAR = 50
