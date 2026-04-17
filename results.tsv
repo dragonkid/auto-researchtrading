@@ -95,3 +95,4 @@ b47be4f	18.092440	19.718612	3.252345	keep	reduce MACD_FAST from 12 to 8 for more
 d7aae9d	18.182906	19.753446	3.141081	keep	reduce MACD_SIGNAL from 9 to 7 for faster MACD histogram response
 -	18.181272	19.751495	3.140446	discard	reduce MACD_SLOW from 23 to 20 (no effect, marginal mean drop)
 6960ce2	18.328344	19.901653	3.146617	keep	reduce LONG_WINDOW from 26 to 24 for faster trend detection
+-	18.160552	19.749678	3.178251	discard	invert adaptive momentum lookback direction (shorter in low vol, longer in high vol)
