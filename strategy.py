@@ -1,11 +1,12 @@
 """
-Exp52: Reduce EMA_SLOW from 26 to 23 for faster EMA crossover signal.
+Exp53: Reduce MIN_VOTES from 4 to 3 (out of 6 signals) to enter on weaker consensus.
 
-The EMA crossover (fast/slow) is one of the 6 voting signals. EMA_FAST was already
-reduced from 7 to 5 successfully. Now nudge EMA_SLOW from 26 to 23 to make the slow
-line more responsive. Previous attempt at 21 was too aggressive (hurt bull, increased
-std). 23 is a moderate step that should retain trend-following ability while being
-slightly more responsive to regime changes.
+The sideways regime (3.92) is dragging composite score due to lower returns — fewer
+strong unanimous signals in range-bound markets. Reducing MIN_VOTES from 4 to 3
+(simple majority) should generate more entries, boosting returns in sideways while
+the trend gate (ret_med/ret_long confirmation) still filters noise. Risk: more false
+signals in other regimes, but the ATR trailing stop and RSI overbought/oversold
+exits should limit damage.
 """
 
 import numpy as np
@@ -61,7 +62,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 COOLDOWN_BARS = 2
-MIN_VOTES = 4  # out of 6 now
+MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
