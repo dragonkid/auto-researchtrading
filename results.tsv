@@ -98,3 +98,4 @@ d7aae9d	18.182906	19.753446	3.141081	keep	reduce MACD_SIGNAL from 9 to 7 for fas
 -	18.160552	19.749678	3.178251	discard	invert adaptive momentum lookback direction (shorter in low vol, longer in high vol)
 c8d9e96	18.563681	20.171933	3.216504	keep	reduce LONG_WINDOW from 24 to 22 for faster trend detection
 919828e	18.739939	20.511362	3.542846	keep	reduce LONG_WINDOW from 22 to 20 for faster trend detection
+-	18.620762	20.347543	3.453563	discard	reduce LONG_WINDOW from 20 to 18 (mean dropped, std increased, sideways worse)
