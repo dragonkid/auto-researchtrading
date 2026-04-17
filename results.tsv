@@ -91,3 +91,4 @@ dfac26a	17.862533	19.338925	2.952784	keep	reduce EMA_SLOPE_LOOKBACK from 6 to 4 
 -	-999.000000	-236.304799	440.348166	discard	reduce RSI_PERIOD 8->6 (bull DD blew 10.47%, sideways also worse)
 -	17.734731	19.210589	2.951717	discard	more vol-responsive dynamic threshold 0.2+0.8*vol (rally entries filtered, mean dropped)
 486d879	18.055763	19.665638	3.219750	keep	reduce LONG_WINDOW from 30 to 26 for more responsive trend detection
+b47be4f	18.092440	19.718612	3.252345	keep	reduce MACD_FAST from 12 to 8 for more responsive MACD histogram signal
