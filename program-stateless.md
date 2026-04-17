@@ -28,14 +28,14 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 4. **Implement**: Edit `strategy.py` with your change.
 5. **Commit**: `git commit -am "exp: <short description of what you changed>"`.
 6. **Backtest**: `uv run backtest.py > run.log 2>&1`.
-7. **Parse results**: `grep "^score:\|^sharpe:\|^max_drawdown_pct:\|^num_trades:" run.log`.
+7. **Parse results**: `grep "^score:\|^sharpe:\|^total_return_pct:\|^max_drawdown_pct:\|^num_trades:" run.log`.
 8. **Record**: If score improved vs the best in `results.tsv`, append a `keep` line. If score is worse or equal, run `git reset --hard HEAD~1` and append a `discard` line.
 9. **Exit**: You are done. The outer loop will invoke you again for the next experiment.
 
 ## Results TSV format
 
 ```
-commit	score	sharpe	max_dd	status	description
+commit	score	sharpe	return_pct	max_dd	status	description
 ```
 
 Append one line per experiment. Use the short commit hash, or `-` for discarded experiments.

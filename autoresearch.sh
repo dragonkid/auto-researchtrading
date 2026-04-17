@@ -21,7 +21,7 @@ fi
 
 # Ensure results.tsv exists with header (untracked, not committed)
 if [ ! -f "$RESULTS" ]; then
-  echo -e "commit\tscore\tsharpe\tmax_dd\tstatus\tdescription" > "$RESULTS"
+  echo -e "commit\tscore\tsharpe\treturn_pct\tmax_dd\tstatus\tdescription" > "$RESULTS"
 fi
 
 echo "Branch: $BRANCH"
