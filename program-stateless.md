@@ -48,11 +48,13 @@ commit	score	mean_score	std_score	status	description
 Each regime is scored via multiplicative `compute_score()`, then combined:
 
 ```
-Per-regime score = log(1+sharpe)         # signal quality
-                 × sqrt(trade_factor)    # sample sufficiency
-                 × 1/(1 + DD%)           # drawdown gate
-                 × 1/(1 + vol)           # volatility gate
-                 × exp(-streak/30)       # consecutive loss gate
+Base score = log(1+sharpe)         # signal quality
+           × sqrt(trade_factor)    # sample sufficiency
+           × 1/(1 + DD%)           # drawdown gate
+           × 1/(1 + vol)           # volatility gate
+           × exp(-streak/30)       # consecutive loss gate
+
+Per-regime score = base_score × log(1 + annual_return% / 100)   # return gate
 
 Hard cutoffs: <10 trades → -999, >25% drawdown → -999, lost >25% → -999
 
@@ -60,6 +62,7 @@ Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
+The return gate prevents gaming via position-size reduction (smaller positions improve DD/vol gates but reduce returns).
 The composite rewards strategies that perform **consistently across all market conditions**.
 
 Search regimes (4 non-overlapping periods):

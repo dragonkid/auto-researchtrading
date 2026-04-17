@@ -62,8 +62,13 @@ def _run_regime_worker(args: tuple) -> dict:
     regime_hours = len(first_df)
 
     result = run_backtest(strategy, data)
-    score = compute_score(result)
+    base_score = compute_score(result)
     annual_return = annualize_return(result.total_return_pct, regime_hours)
+
+    # Return gate: penalize low absolute returns (prevents position-size gaming)
+    # ann_return 1000% → gate 2.40, ann_return 100% → gate 0.69, ann_return 0% → gate 0
+    return_gate = math.log(1.0 + max(annual_return, 0.0) / 100.0)
+    score = base_score * return_gate if base_score > 0 else base_score
 
     return {
         "name": name,
