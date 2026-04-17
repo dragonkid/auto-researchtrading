@@ -1,11 +1,11 @@
 """
-Exp124: Raise STRENGTH_FLOOR_SIDEWAYS from 1.6 to 1.8.
+Exp125: Increase CROSS_ASSET_BOOST from 0.20 to 0.30.
 
-The strength_scale floor in trendless markets prevents weak-momentum entries
-from being overly penalized in sideways regimes. This parameter has been
-successfully increased multiple times (1.0 -> 1.2 -> 1.4 -> 1.6), each time
-improving the sideways score. Try 1.8 to further boost sizing on weak-momentum
-entries during sideways, which is still the weakest regime at 18.47.
+When all active assets agree on momentum direction (all positive or all
+negative), this is a strong confluence signal for trending markets. The boost
+was added at 0.20 and never tuned. Increasing to 0.30 should amplify returns
+in bull and rally regimes where cross-asset agreement is common, while having
+minimal impact on sideways regimes where agreement is rare.
 """
 
 import numpy as np
@@ -82,7 +82,7 @@ STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
-CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
+CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
