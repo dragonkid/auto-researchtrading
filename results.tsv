@@ -87,3 +87,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 dfac26a	17.862533	19.338925	2.952784	keep	reduce EMA_SLOPE_LOOKBACK from 6 to 4 for faster slope signal
 -	17.837789	19.329421	2.983264	discard	reduce EMA_SLOPE_PERIOD from 28 to 20 (marginal mean drop, std increase)
 -	17.856822	19.326556	2.939467	discard	reduce ATR_STOP_MULT_BASE from 4.5 to 4.0 (tighter stops, marginal mean drop)
+6ad92b1	17.871204	19.345071	2.947735	keep	lower dynamic threshold floor from 0.005 to 0.003 for more entries in calm sideways markets
