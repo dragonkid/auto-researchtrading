@@ -105,3 +105,4 @@ d958903	18.778938	20.568580	3.579284	keep	reduce EMA_SLOW from 23 to 21 for fast
 71ad4ca	18.797843	20.583950	3.572214	keep	reduce ATR_LOOKBACK from 24 to 16 for more responsive trailing stops
 -	18.778222	20.580494	3.604543	discard	reduce EMA_SLOPE_PERIOD from 28 to 24 (marginal mean and std both worse)
 -	18.737133	20.539237	3.604209	discard	reduce MED_WINDOW_MIN from 8 to 6 (sideways worse, mean dropped)
+1ec76c7	19.203849	20.627552	2.847407	keep	reduce MED2_WINDOW from 16 to 14 for faster medium-term momentum
