@@ -1,11 +1,11 @@
 """
-Exp117: Raise strength_scale cap from 1.8 to 2.0.
+Exp118: Lower HIGH_VOTE_THRESHOLD from 5 to 4.
 
-The cap raise from 1.6 to 1.8 improved all regimes (19.510 -> 19.817).
-Continuing to push: 1.8 -> 2.0 lets very strong momentum breakouts get
-even more sizing. Max DD across regimes is 8.0% (bull), well under the
-10% hard cutoff, so there's headroom for slightly larger positions on
-high-conviction breakout moves.
+Currently the 15% vote_boost only triggers when 5+ of 6 signals agree,
+which is rare especially in sideways. Lowering to 4 means any entry with
+above-minimum conviction (4+ vs 3 minimum) gets the boost. This should
+increase effective position sizing for moderate-conviction entries without
+the DD risk of raising BASE_POSITION_PCT or the global sizing multipliers.
 """
 
 import numpy as np
@@ -83,7 +83,7 @@ STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
-HIGH_VOTE_THRESHOLD = 5  # votes at or above this count get a sizing bonus
+HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.15   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.5  # cap on product of all sizing multipliers to prevent extreme stacking
