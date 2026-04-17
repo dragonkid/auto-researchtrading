@@ -1,13 +1,13 @@
 """
-Exp102: Reduce EMA_SLOPE_LOOKBACK from 6 to 4 for faster slope signal.
+Exp103: Lower dynamic threshold floor from 0.005 to 0.003.
 
-The EMA slope voter compares EMA values separated by LOOKBACK bars.
-Reducing from 6 to 4 makes this signal detect trend changes 2 bars earlier,
-generating more responsive slope votes especially in sideways markets
-where EMA slope is small and sluggish. Unlike the RSI_PERIOD=6 attempt
-which blew DD in bull_2021, this is a more targeted change — it only
-affects the slope voter (1 of 6), and slope signals are already dampened
-by the 0.0005 threshold.
+The sideways regime (15.08) is the weakest, dragging down composite via std.
+The dynamic threshold is clamped to [0.005, 0.020]. In calm sideways markets,
+both vol_ratio and trend_reduction push the threshold down, but the 0.005 floor
+prevents it from going lower. Lowering to 0.003 lets more signals trigger in
+quiet trendless markets (where vol is low), generating more trades to boost
+sideways score. In trending/volatile regimes, the threshold stays well above
+0.005 anyway, so this change is mostly targeted at the sideways gap.
 """
 
 import numpy as np
@@ -213,7 +213,7 @@ class Strategy:
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.3 + vol_ratio * 0.7)
-            dyn_threshold = max(0.005, min(0.020, dyn_threshold))
+            dyn_threshold = max(0.003, min(0.020, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
