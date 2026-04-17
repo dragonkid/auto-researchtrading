@@ -1,9 +1,12 @@
 """
-Exp79: Increase BASE_POSITION_PCT from 0.39 to 0.43.
+Exp80: Raise STRENGTH_FLOOR_SIDEWAYS from 1.0 to 1.2.
 
-Max drawdowns are 7.9-10.3%, well under the 25% cutoff. Larger step
-(0.04 instead of 0.03) given ample drawdown headroom. Position size
-increases remain the most reliably positive lever.
+The sideways regime (12.73) is the weakest by far (vs 16-20 for others),
+dragging down the composite via high std (2.51). Max DD in sideways is
+only 9.7%, so there's room for more risk. Raising the strength-scale
+floor in trendless markets gives a targeted sizing boost to sideways
+without affecting trending regimes where abs(ret_long) is high enough
+that the floor doesn't bind.
 """
 
 import numpy as np
@@ -71,7 +74,7 @@ STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully 
 TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 1.0  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 1.2  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
