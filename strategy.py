@@ -1,14 +1,11 @@
 """
-Exp62: Trend-strength adaptive trailing stop width.
+Exp63: Increase calm-market position boost (0.4 -> 0.6).
 
-In sideways/trendless markets, price mean-reverts more and tight trailing
-stops get hit frequently, cutting winners short. When the long-term trend
-is weak (abs(ret_long) near zero), widen the trailing stop to let positions
-breathe. When trend is strong, keep normal stops since the directional
-move is more likely to continue.
-
-This targets the sideways regime (weakest at 5.47) without hurting trending
-regimes, since the stop widening only activates when trend is genuinely flat.
+The calm boost increases position size when short-term vol is below long-term
+vol. This primarily activates in sideways/low-vol regimes. Increasing from
+0.4 to 0.6 should boost returns in the sideways regime (currently weakest at
+5.47) by taking larger positions during calm periods, where the strategy
+has positive expectancy but low returns due to conservative sizing.
 """
 
 import numpy as np
@@ -63,7 +60,7 @@ HIGH_CORR_THRESHOLD = 99.0
 DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
-CALM_BOOST_MAX = 0.4  # max position size boost in calm regimes
+CALM_BOOST_MAX = 0.6  # max position size boost in calm regimes
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
