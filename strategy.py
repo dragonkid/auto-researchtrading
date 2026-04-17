@@ -1,10 +1,11 @@
 """
-Exp74: Increase BASE_POSITION_PCT from 0.27 to 0.30.
+Exp75: Sideways strength-scale floor.
 
-Max DD across regimes is 5-7%, well under the 25% hard cutoff.
-Previous position size increases (0.20->0.24->0.27) each yielded +1-2 pts
-on composite score. Pushing to 0.30 should boost returns across all regimes
-proportionally, with acceptable DD increase.
+In sideways/trendless markets, momentum signals are naturally weaker.
+The strength_scale (mom_strength clamped 0.6-1.6) penalizes these weak
+signals, partially canceling the sideways_boost. Fix: raise the floor
+of strength_scale when the long-term trend is flat, so weak momentum
+signals aren't double-penalized in range-bound conditions.
 """
 
 import numpy as np
@@ -71,6 +72,9 @@ STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully 
 
 TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
+
+STRENGTH_FLOOR_SIDEWAYS = 1.0  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 COOLDOWN_BARS = 2
@@ -290,7 +294,10 @@ class Strategy:
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
-            strength_scale = max(0.6, min(1.6, mom_strength))
+            # In sideways markets, raise the floor so weak momentum isn't double-penalized
+            sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
+            strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
+            strength_scale = max(strength_floor, min(1.6, mom_strength))
             size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
