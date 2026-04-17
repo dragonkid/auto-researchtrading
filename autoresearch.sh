@@ -29,7 +29,7 @@ fi
 
 echo "Branch: $BRANCH"
 echo "Max experiments: ${MAX_EXPERIMENTS:-unlimited}"
-echo "Council threshold: $COUNCIL_THRESHOLD consecutive discards"
+echo "Council threshold: $COUNCIL_THRESHOLD (discards or plateau)"
 echo ""
 
 # Count consecutive discards from the tail of results.tsv
@@ -38,7 +38,6 @@ count_consecutive_discards() {
     echo 0
     return
   fi
-  # Read status column (5th field), count consecutive "discard" from bottom
   tail -n +2 "$RESULTS" | awk -F'\t' '{print $5}' | tail -r | awk '
     /^discard$/ { count++; next }
     { exit }
@@ -46,13 +45,90 @@ count_consecutive_discards() {
   '
 }
 
+# Detect score plateau: recent N experiments improved less than median keep delta
+# Returns 1 if plateau detected, 0 otherwise
+check_score_plateau() {
+  local window="$1"
+  if [ ! -f "$RESULTS" ]; then
+    echo 0
+    return
+  fi
+
+  tail -n +2 "$RESULTS" | awk -F'\t' -v window="$window" '
+  {
+    scores[NR] = $2 + 0
+    statuses[NR] = $5
+    n = NR
+  }
+  END {
+    if (n < window) { print 0; exit }
+
+    # Collect all keep scores in order
+    keep_count = 0
+    for (i = 1; i <= n; i++) {
+      if (statuses[i] == "keep") {
+        keep_count++
+        keep_scores[keep_count] = scores[i]
+      }
+    }
+    if (keep_count < 3) { print 0; exit }
+
+    # Compute keep deltas (improvement per keep)
+    delta_count = 0
+    for (i = 2; i <= keep_count; i++) {
+      delta_count++
+      deltas[delta_count] = keep_scores[i] - keep_scores[i-1]
+    }
+    if (delta_count < 2) { print 0; exit }
+
+    # Sort deltas to find median (simple insertion sort)
+    for (i = 2; i <= delta_count; i++) {
+      key = deltas[i]
+      j = i - 1
+      while (j > 0 && deltas[j] > key) {
+        deltas[j+1] = deltas[j]
+        j--
+      }
+      deltas[j+1] = key
+    }
+    if (delta_count % 2 == 1)
+      median = deltas[int(delta_count/2) + 1]
+    else
+      median = (deltas[delta_count/2] + deltas[delta_count/2 + 1]) / 2
+
+    # Best keep score before the window
+    best_before = -999
+    cutoff = n - window
+    for (i = 1; i <= cutoff; i++) {
+      if (statuses[i] == "keep" && scores[i] > best_before) {
+        best_before = scores[i]
+      }
+    }
+    if (best_before <= -999) { print 0; exit }
+
+    # Best keep score within the window
+    best_in_window = -999
+    for (i = cutoff + 1; i <= n; i++) {
+      if (statuses[i] == "keep" && scores[i] > best_in_window) {
+        best_in_window = scores[i]
+      }
+    }
+    if (best_in_window <= -999) best_in_window = best_before
+
+    recent_improvement = best_in_window - best_before
+    plateau = (recent_improvement < median) ? 1 : 0
+    print plateau
+  }'
+}
+
 # Run a Council Mode session
 run_council() {
+  local reason="$1"
   local council_num=$((COUNCIL_COUNT + 1))
   echo ""
-  echo "╔══════════════════════════════════════════════════════════╗"
-  echo "║  COUNCIL MODE #${council_num} — ${COUNCIL_THRESHOLD} consecutive discards detected  ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
+  echo "========================================================"
+  echo "  COUNCIL MODE #${council_num} — ${reason}"
+  echo "========================================================"
   echo ""
 
   local council_output
@@ -62,7 +138,7 @@ run_council() {
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-council.md" \
     --allowedTools "Read,Edit,Write,Bash(git:*),Bash(uv run:*),Bash(grep:*),Bash(tail:*),Bash(head:*),Bash(cat:*),Bash(echo:*),Grep,Glob" \
-    "Run Council Mode. Read program-council.md for instructions. This is Council Session #${council_num}." \
+    "Run Council Mode. Read program-council.md for instructions. This is Council Session #${council_num}. Trigger reason: ${reason}." \
     2>&1) || true
 
   COUNCIL_COUNT=$council_num
@@ -90,13 +166,18 @@ run_council() {
 
 # Main loop
 while true; do
-  # Check convergence before each experiment
+  # Check convergence: consecutive discards OR score plateau
   consecutive_discards=$(count_consecutive_discards)
+  plateau=$(check_score_plateau "$COUNCIL_THRESHOLD")
+
   if [ "$consecutive_discards" -ge "$COUNCIL_THRESHOLD" ]; then
-    if ! run_council; then
+    if ! run_council "${COUNCIL_THRESHOLD} consecutive discards"; then
       break
     fi
-    # Council ACCEPT: reset and continue
+  elif [ "$plateau" -eq 1 ]; then
+    if ! run_council "score plateau (recent improvement < median keep delta)"; then
+      break
+    fi
   fi
 
   EXPERIMENT_COUNT=$((EXPERIMENT_COUNT + 1))
@@ -121,6 +202,9 @@ while true; do
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5
     }
+
+  # Ensure results.tsv ends with a newline (agent sometimes uses Write/Edit tool which strips it)
+  [ -f "$RESULTS" ] && [ -n "$(tail -c1 "$RESULTS")" ] && echo >> "$RESULTS"
 
   echo ""
 done
