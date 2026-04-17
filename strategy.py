@@ -1,12 +1,13 @@
 """
-Exp69: High-conviction vote bonus for position sizing.
+Exp70: Increase sideways boost from 25% to 40%.
 
-When 5 or 6 out of 6 signals agree (high conviction), boost position
-size by up to 15%. This only increases sizing for the strongest signals
-without penalizing marginal (3-4 vote) entries that are common in sideways.
-Previous "vote-count confidence scaling" failed because it reduced sizing
-on low-vote entries. This is additive-only: base case unchanged, bonus
-for strong agreement.
+Sideways regime (7.11) is the weakest regime, dragging down both mean
+and increasing std. The return gate (log(1 + annual_return%/100)) hurts
+sideways because absolute returns are lower in range-bound markets.
+Increasing SIDEWAYS_BOOST_MAX from 0.25 to 0.40 will increase position
+sizes specifically when the long-term trend is weak, targeting the
+sideways regime for improvement without significantly affecting trending
+regimes where the boost naturally decays to zero.
 """
 
 import numpy as np
@@ -62,7 +63,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.6  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.25  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.40  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
