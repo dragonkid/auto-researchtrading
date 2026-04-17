@@ -95,6 +95,8 @@ class BacktestResult:
     win_rate_pct: float = 0.0
     profit_factor: float = 0.0
     annual_turnover: float = 0.0
+    return_volatility: float = 0.0       # annualized std of hourly returns
+    max_consecutive_losses: int = 0      # longest streak of losing trades
     backtest_seconds: float = 0.0
     equity_curve: list = field(default_factory=list)
     trade_log: list = field(default_factory=list)
@@ -547,6 +549,19 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     else:
         annual_turnover = 0.0
 
+    # Return volatility (annualized)
+    return_volatility = float(returns.std() * np.sqrt(HOURS_PER_YEAR)) if len(returns) > 1 else 0.0
+
+    # Max consecutive losses
+    max_consecutive_losses = 0
+    current_streak = 0
+    for pnl in trade_pnls:
+        if pnl < 0:
+            current_streak += 1
+            max_consecutive_losses = max(max_consecutive_losses, current_streak)
+        else:
+            current_streak = 0
+
     return BacktestResult(
         sharpe=sharpe,
         total_return_pct=total_return_pct,
@@ -555,6 +570,8 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         win_rate_pct=win_rate_pct,
         profit_factor=profit_factor,
         annual_turnover=annual_turnover,
+        return_volatility=return_volatility,
+        max_consecutive_losses=max_consecutive_losses,
         backtest_seconds=t_end - t_start,
         equity_curve=equity_curve,
         trade_log=trade_log,
@@ -566,48 +583,42 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
 
 def compute_score(result: BacktestResult) -> float:
     """
-    Composite score across three dimensions (HIGHER is better).
+    Multiplicative risk-adjusted score (HIGHER is better).
 
-    score = w_sharpe * log(1+sharpe) + w_return * log(1+return%) - w_dd * DD²
+    Inspired by GT-Score and Fitness = PF × SQN / MaxDD:
+    each dimension acts as a gate — any dimension being terrible
+    collapses the entire score. No manual weight tuning needed.
 
-    Dimensions:
-      - Sharpe: risk-adjusted signal quality (log scale for diminishing returns)
-      - Return: absolute performance / capital utilization
-      - Max DD: tail risk (continuous quadratic penalty, no free zone)
+    score = signal_quality × sample_factor × dd_gate × vol_gate × streak_gate
 
     Hard cutoffs for degenerate strategies.
     """
-    # Hard cutoffs
+    # Hard cutoffs — strict risk limits
     if result.num_trades < 10:
         return -999.0
-    if result.max_drawdown_pct > 50.0:
+    if result.max_drawdown_pct > 25.0:
         return -999.0
     final_equity = result.equity_curve[-1] if result.equity_curve else INITIAL_CAPITAL
-    if final_equity < INITIAL_CAPITAL * 0.5:
+    if final_equity < INITIAL_CAPITAL * 0.75:
         return -999.0
 
-    # Trade count factor: full credit at 50+ trades
-    trade_count_factor = min(result.num_trades / 50.0, 1.0)
+    # Signal quality: log(1+sharpe) — diminishing returns at high Sharpe
+    signal_quality = math.log(1.0 + max(result.sharpe, 0.0))
 
-    # Dimension weights
-    w_sharpe = 1.0
-    w_return = 0.3
-    w_dd = 0.02
+    # Sample sufficiency: sqrt ramp, full credit at 50+ trades
+    sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))
 
-    # Sharpe component: log scale so 1→2 matters more than 20→21
-    sharpe_component = math.log(1.0 + max(result.sharpe, 0.0))
+    # Drawdown gate: 1/(1 + DD%) — DD=0% → 1.0, DD=10% → 0.91, DD=25% → 0.80
+    dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
 
-    # Return component: absolute return captures capital utilization
-    return_component = math.log(1.0 + max(result.total_return_pct, 0.0) / 100.0)
+    # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
+    vol_gate = 1.0 / (1.0 + result.return_volatility)
 
-    # Drawdown component: quadratic — every percent costs more than the last
-    dd_component = (result.max_drawdown_pct ** 2)
+    # Consecutive loss gate: exp(-streak/30) — smooth exponential decay
+    # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
+    streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
 
-    score = (
-        w_sharpe * sharpe_component * math.sqrt(trade_count_factor)
-        + w_return * return_component
-        - w_dd * dd_component
-    )
+    score = signal_quality * sample_factor * dd_gate * vol_gate * streak_gate
     return score
 
 # ---------------------------------------------------------------------------

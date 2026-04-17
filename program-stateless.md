@@ -16,9 +16,9 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 
 ## What you CANNOT do
 
-- Modify `prepare.py`, `backtest.py`, or anything in `benchmarks/`.
+- Modify `prepare.py`, `backtest.py`, `regime_test.py`, or anything in `benchmarks/`.
 - Install new packages. Only numpy, pandas, scipy, and standard library.
-- Look at test set data.
+- Look at holdout data (2025-01 onwards).
 
 ## Your single experiment
 
@@ -27,9 +27,9 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 3. **Propose one change**: Pick one specific, testable idea. Prefer ideas that are different from recent experiments.
 4. **Implement**: Edit `strategy.py` with your change.
 5. **Commit**: `git commit -am "exp: <short description of what you changed>"`.
-6. **Backtest**: `uv run backtest.py > run.log 2>&1`.
-7. **Parse results**: `grep "^score:\|^sharpe:\|^total_return_pct:\|^max_drawdown_pct:\|^num_trades:" run.log`.
-8. **Record**: If score improved vs the best in `results.tsv`, append a `keep` line. If score is worse or equal, run `git reset --hard HEAD~1` and append a `discard` line.
+6. **Backtest**: `uv run regime_test.py > run.log 2>&1`. This runs backtests across 4 non-overlapping market regimes (bull, bear crash, sideways, rally) and outputs a composite score.
+7. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`. The key metric is `composite_score` (= mean - 0.5*std across regimes). Also check individual regime scores for insights.
+8. **Record**: If `composite_score` improved vs the best in `results.tsv`, append a `keep` line. If worse or equal, run `git reset --hard HEAD~1` and append a `discard` line.
 9. **Exit**: You are done. The outer loop will invoke you again for the next experiment.
 
 ## Results TSV format
@@ -40,15 +40,30 @@ commit	score	sharpe	return_pct	max_dd	status	description
 
 Append one line per experiment. Use the short commit hash, or `-` for discarded experiments.
 
-## Scoring formula (from prepare.py)
+## Scoring formula
+
+Each regime is scored via multiplicative `compute_score()`, then combined:
 
 ```
-score = sharpe * sqrt(trade_count_factor) - drawdown_penalty - turnover_penalty
-trade_count_factor = min(num_trades / 50, 1.0)
-drawdown_penalty = max(0, max_drawdown_pct - 15) * 0.05
-turnover_penalty = max(0, annual_turnover/capital - 500) * 0.001
-Hard cutoffs: <10 trades → -999, >50% drawdown → -999, lost >50% → -999
+Per-regime score = log(1+sharpe)         # signal quality
+                 × sqrt(trade_factor)    # sample sufficiency
+                 × 1/(1 + DD%)           # drawdown gate
+                 × 1/(1 + vol)           # volatility gate
+                 × exp(-streak/30)       # consecutive loss gate
+
+Hard cutoffs: <10 trades → -999, >25% drawdown → -999, lost >25% → -999
+
+Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
+
+Multiplicative structure: any dimension being terrible collapses the entire score.
+The composite rewards strategies that perform **consistently across all market conditions**.
+
+Search regimes (4 non-overlapping periods):
+- bull_2021: 2021-01 ~ 2021-10 (bull market)
+- crash_bear: 2021-11 ~ 2022-12 (Luna/FTX crash + deep bear)
+- sideways: 2023-01 ~ 2023-12 (sideways recovery)
+- rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 
 ## Strategy research directions
 
