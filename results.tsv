@@ -84,3 +84,4 @@ ee589e8	14.906634	16.062130	2.310991	keep	increase CALM_BOOST_MAX from 0.6 to 0.
 -	17.685908	19.199857	3.027898	discard	vote-conviction-adaptive stop multiplier (no meaningful effect)
 6e40a98	17.755017	19.277409	3.044783	keep	reduce EMA_FAST from 5 to 3 for more responsive crossover signal
 3c0ce70	17.772150	19.293054	3.041809	keep	reduce vshort threshold multiplier from 0.7 to 0.5 for more vshort voter triggers
+dfac26a	17.862533	19.338925	2.952784	keep	reduce EMA_SLOPE_LOOKBACK from 6 to 4 for faster slope signal
