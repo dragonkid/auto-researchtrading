@@ -4,14 +4,14 @@ Computes a composite score = mean(scores) - k*std(scores) to reward
 strategies that work across ALL market conditions.
 
 Usage: uv run regime_test.py
+       uv run regime_test.py --holdout    # run holdout validation only
 """
 
 import math
 import time
-import signal as sig
+from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 
 from prepare import load_data, run_backtest, compute_score, TIME_BUDGET
-from strategy import Strategy
 
 # Non-overlapping regimes for parameter search
 # These cover 4 distinct market conditions across 4 years
@@ -31,28 +31,40 @@ HOLDOUT_REGIMES = [
 # Consistency penalty weight: higher k = stricter consistency requirement
 CONSISTENCY_K = 0.5
 
-
-def timeout_handler(signum, frame):
-    print("TIMEOUT: backtest exceeded time budget")
-    raise TimeoutError
+# Per-regime timeout (seconds)
+REGIME_TIMEOUT = TIME_BUDGET + 60
 
 
-def run_regime(name: str, start: str, end: str, desc: str) -> dict:
-    sig.signal(sig.SIGALRM, timeout_handler)
-    sig.alarm(TIME_BUDGET + 60)
+def annualize_return(total_return_pct: float, hours: int) -> float:
+    """Convert total return to annualized return percentage."""
+    if hours <= 0 or total_return_pct <= -100.0:
+        return total_return_pct
+    years = hours / 8760.0
+    growth = 1.0 + total_return_pct / 100.0
+    annual_growth = growth ** (1.0 / years)
+    return (annual_growth - 1.0) * 100.0
+
+
+def _run_regime_worker(args: tuple) -> dict:
+    """Worker function for multiprocessing. Must be top-level for pickling."""
+    from strategy import Strategy
+
+    name, start, end, desc = args
 
     strategy = Strategy()
     data = load_data(start=start, end=end)
 
     total_bars = sum(len(df) for df in data.values())
     if total_bars == 0:
-        sig.alarm(0)
         return {"name": name, "desc": desc, "bars": 0, "error": "no data"}
+
+    first_df = next(iter(data.values()))
+    regime_hours = len(first_df)
 
     result = run_backtest(strategy, data)
     score = compute_score(result)
+    annual_return = annualize_return(result.total_return_pct, regime_hours)
 
-    sig.alarm(0)
     return {
         "name": name,
         "desc": desc,
@@ -60,6 +72,7 @@ def run_regime(name: str, start: str, end: str, desc: str) -> dict:
         "score": score,
         "sharpe": result.sharpe,
         "return_pct": result.total_return_pct,
+        "annual_return_pct": annual_return,
         "max_dd_pct": result.max_drawdown_pct,
         "trades": result.num_trades,
         "win_rate": result.win_rate_pct,
@@ -89,33 +102,47 @@ def compute_composite_score(results: list[dict]) -> float:
 if __name__ == "__main__":
     import sys
 
-    # --holdout flag runs holdout regimes instead of search regimes
     use_holdout = "--holdout" in sys.argv
     regimes = HOLDOUT_REGIMES if use_holdout else SEARCH_REGIMES
 
     if use_holdout:
         print("=== HOLDOUT VALIDATION (not for autoresearch) ===\n")
 
+    t_total = time.time()
+
+    # Run all regimes in parallel
     results = []
-    for name, start, end, desc in regimes:
-        print(f"Running: {name} ({start} ~ {end})...")
-        t0 = time.time()
-        try:
-            r = run_regime(name, start, end, desc)
-        except (TimeoutError, Exception) as e:
-            r = {"name": name, "desc": desc, "bars": 0, "error": str(e)}
-        elapsed = time.time() - t0
-        r["wall_time"] = elapsed
-        results.append(r)
-        if "error" in r:
-            print(f"  ERROR: {r['error']}")
-        else:
-            print(f"  Sharpe: {r['sharpe']:>8.2f}  Return: {r['return_pct']:>+8.1f}%  MaxDD: {r['max_dd_pct']:>6.2f}%  Score: {r['score']:>8.2f}")
-        print()
+    regime_order = {r[0]: i for i, r in enumerate(regimes)}
+
+    print(f"Running {len(regimes)} regimes in parallel...\n")
+    with ProcessPoolExecutor(max_workers=len(regimes)) as executor:
+        futures = {executor.submit(_run_regime_worker, r): r for r in regimes}
+
+        for future in futures:
+            name, start, end, desc = futures[future]
+            try:
+                r = future.result(timeout=REGIME_TIMEOUT)
+            except FuturesTimeout:
+                r = {"name": name, "desc": desc, "bars": 0, "error": "timeout"}
+            except Exception as e:
+                r = {"name": name, "desc": desc, "bars": 0, "error": str(e)}
+            results.append(r)
+
+            if "error" in r:
+                print(f"  {name}: ERROR — {r['error']}")
+            else:
+                print(f"  {name}: Sharpe={r['sharpe']:.2f}  AnnReturn={r['annual_return_pct']:+.1f}%  MaxDD={r['max_dd_pct']:.2f}%  Score={r['score']:.2f}")
+
+    # Sort results back to original regime order
+    results.sort(key=lambda r: regime_order.get(r["name"], 99))
+
+    wall_time = time.time() - t_total
+    print(f"\nTotal wall time: {wall_time:.1f}s")
 
     # Summary table
+    print()
     print("=" * 120)
-    print(f"{'Regime':<15} {'Period':<25} {'Sharpe':>8} {'Return%':>9} {'MaxDD%':>8} {'Trades':>7} {'Win%':>7} {'PF':>6} {'Score':>8}")
+    print(f"{'Regime':<15} {'Period':<25} {'Sharpe':>8} {'AnnRet%':>10} {'MaxDD%':>8} {'Trades':>7} {'Win%':>7} {'PF':>6} {'Score':>8}")
     print("-" * 120)
     for (name, start, end, desc), r in zip(regimes, results):
         if "error" in r:
@@ -124,7 +151,7 @@ if __name__ == "__main__":
             print(
                 f"{name:<15} {start}~{end}"
                 f"  {r['sharpe']:>8.2f}"
-                f"  {r['return_pct']:>+8.1f}%"
+                f"  {r['annual_return_pct']:>+9.1f}%"
                 f"  {r['max_dd_pct']:>7.2f}%"
                 f"  {r['trades']:>6}"
                 f"  {r['win_rate']:>6.1f}%"
@@ -151,5 +178,5 @@ if __name__ == "__main__":
             if "error" not in r:
                 print(f"regime_{r['name']}_score: {r['score']:.6f}")
                 print(f"regime_{r['name']}_sharpe: {r['sharpe']:.6f}")
-                print(f"regime_{r['name']}_return_pct: {r['return_pct']:.6f}")
+                print(f"regime_{r['name']}_annual_return_pct: {r['annual_return_pct']:.6f}")
                 print(f"regime_{r['name']}_max_dd: {r['max_dd_pct']:.6f}")
