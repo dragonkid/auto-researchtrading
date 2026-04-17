@@ -1,11 +1,14 @@
 """
-Exp90: Increase STRENGTH_FLOOR_SIDEWAYS from 1.2 to 1.4.
+Exp91: Adaptive trend gate weighting for sideways markets.
 
-The strength_scale floor only activates in trendless markets (abs(ret_long)
-near zero), so it doesn't affect trending regimes where DD is tight.
-Previous increase from 1.0 to 1.2 was a keep (+0.33 composite). Sideways
-regime (13.41) remains the weakest. Raising the floor further should boost
-sideways returns without pushing DD in bull/crash/rally.
+The trend gate uses trend_avg = 0.5*ret_med + 0.5*ret_long. In sideways
+markets (abs(ret_long) near zero), the 36-bar return is noisy and often
+has the wrong sign, blocking valid entries. This experiment shifts the
+trend gate weight toward ret_med (20-bar) when the market is trendless,
+making the filter more responsive in range-bound conditions.
+
+When abs(ret_long) is near zero: weight = 0.75*ret_med + 0.25*ret_long
+When abs(ret_long) is high:      weight = 0.50*ret_med + 0.50*ret_long (unchanged)
 """
 
 import numpy as np
@@ -72,6 +75,10 @@ STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully 
 
 TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
+
+TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
+TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.75  # ret_med weight in trendless markets
+TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 1.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
@@ -258,8 +265,11 @@ class Strategy:
                 if bear_votes >= MIN_VOTES and self.btc_momentum > -BTC_OPPOSE_THRESHOLD:
                     btc_confirm = False
 
-            # Trend gate: average of med and long returns must confirm direction
-            trend_avg = 0.5 * ret_med + 0.5 * ret_long
+            # Trend gate: weighted average of med and long returns must confirm direction
+            # In sideways markets, shift weight toward faster ret_med for responsiveness
+            trend_adapt_strength = min(abs(ret_long) / TREND_GATE_ADAPT_DECAY, 1.0)
+            trend_med_weight = TREND_GATE_MED_WEIGHT_SIDEWAYS + (TREND_GATE_MED_WEIGHT_BASE - TREND_GATE_MED_WEIGHT_SIDEWAYS) * trend_adapt_strength
+            trend_avg = trend_med_weight * ret_med + (1.0 - trend_med_weight) * ret_long
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
