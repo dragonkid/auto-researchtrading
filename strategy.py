@@ -1,11 +1,13 @@
 """
-Exp92: Increase BASE_POSITION_PCT from 0.36 to 0.38.
+Exp93: Increase TREND_THRESHOLD_SCALE from 0.30 to 0.38.
 
-Previous increase to 0.43 caused DD limit violations, but since then
-multiple defensive mechanisms have been added: FLIP_MIN_VOTES=4 reduces
-whipsaw, MAX_COMBINED_MULT=5.5 caps extreme sizing, and better sideways
-detection avoids over-trading in choppy markets. A modest 5.5% increase
-to 0.38 should be safe within the 10% DD limit.
+The sideways regime (13.9) is the weakest by far vs bull (20.8), crash (18.1),
+rally (17.3). The return gate is the main drag. TREND_THRESHOLD_SCALE controls
+how much the entry threshold is lowered in trendless markets — increasing from
+0.30 to 0.38 means up to 38% threshold reduction when trend is flat, generating
+more entries in sideways. This is targeted: strong-trend regimes are unaffected
+since the reduction decays with abs(ret_long). No DD risk since it only affects
+entry count, not position sizing.
 """
 
 import numpy as np
@@ -70,7 +72,7 @@ STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term t
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
-TREND_THRESHOLD_SCALE = 0.30  # max threshold reduction when trend is flat
+TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
