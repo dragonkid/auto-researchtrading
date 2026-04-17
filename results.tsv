@@ -124,3 +124,4 @@ b8f8e1f	19.509824	21.021323	3.022997	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.4
 
 ef6ebb3	20.794278	22.431222	3.273888	keep	squared sideways boost decay for slower falloff in moderate-trend regimes
 d366e36	20.801515	22.436590	3.270151	keep	vol compression breakout boost (25% size increase when short vol < 70% of long vol)
+e2c6462	20.873962	22.517186	3.286448	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.6 to 1.8 for larger sizing in trendless markets
