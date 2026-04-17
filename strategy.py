@@ -1,12 +1,13 @@
 """
-Exp119: Reduce BASE_THRESHOLD from 0.010 to 0.008.
+Exp120: Make dyn_threshold more vol-sensitive (0.3+0.7*vol -> 0.15+0.85*vol).
 
-The momentum entry threshold is the base for dyn_threshold. Lowering it
-allows more entries in low-momentum environments (especially sideways),
-where signals are currently filtered too aggressively. The vote system
-(MIN_VOTES=3) and trend gate still provide quality control. This should
-particularly help the sideways regime (weakest at 18.13) by generating
-more trades without significantly increasing DD in trending regimes.
+In low-vol sideways, vol_ratio < 1.0, so increasing the vol_ratio weight
+from 0.7 to 0.85 (and reducing the constant from 0.3 to 0.15) further
+lowers the entry threshold in calm markets. This specifically targets the
+sideways regime (18.23, weakest) by allowing more entries when vol is low.
+In high-vol crash/rally, the threshold rises more, providing better
+protection against whipsaws. Net effect: more entries in sideways, fewer
+risky entries in volatile periods.
 """
 
 import numpy as np
@@ -211,7 +212,7 @@ class Strategy:
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
-            dyn_threshold = BASE_THRESHOLD * (0.3 + vol_ratio * 0.7)
+            dyn_threshold = BASE_THRESHOLD * (0.15 + vol_ratio * 0.85)
             dyn_threshold = max(0.003, min(0.020, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)

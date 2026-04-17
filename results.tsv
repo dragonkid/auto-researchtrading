@@ -117,3 +117,4 @@ b8f8e1f	19.509824	21.021323	3.022997	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.4
 97f84b9	20.034702	21.554962	3.040519	keep	raise strength_scale cap from 1.8 to 2.0 for more sizing on strong momentum breakouts
 -	20.034702	21.554962	3.040519	discard	funding-rate crowded-trade stop tightening (no effect, identical score)
 37b0d1c	20.273000	21.819014	3.092028	keep	lower HIGH_VOTE_THRESHOLD from 5 to 4 for vote_boost on moderate-conviction entries
+-	20.415371	21.982332	3.133922	discard	reduce dynamic threshold upper cap 0.020->0.016 (no effect, cap rarely reached)
