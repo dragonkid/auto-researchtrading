@@ -115,3 +115,5 @@ b8f8e1f	19.509824	21.021323	3.022997	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.4
 -	10.020525	11.411794	2.782537	discard	partial RSI exit 50% reduce instead of full close on OB/OS (score dropped from 19.817 to 10.021)
 4c1606d	19.816923	21.339448	3.045051	keep	raise strength_scale cap from 1.6 to 1.8 for more sizing on strong momentum signals
 97f84b9	20.034702	21.554962	3.040519	keep	raise strength_scale cap from 1.8 to 2.0 for more sizing on strong momentum breakouts
+-	20.034702	21.554962	3.040519	discard	funding-rate crowded-trade stop tightening (no effect, identical score)
+37b0d1c	20.273000	21.819014	3.092028	keep	lower HIGH_VOTE_THRESHOLD from 5 to 4 for vote_boost on moderate-conviction entries
