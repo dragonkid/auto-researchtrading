@@ -1,12 +1,13 @@
 """
-Exp100: Reduce EMA_FAST from 5 to 3.
+Exp101: Reduce vshort threshold multiplier from 0.7 to 0.5.
 
-The EMA crossover (EMA_FAST/EMA_SLOW = 5/23) is one of the 6 voter
-signals. A faster EMA_FAST (3 bars) makes the crossover more responsive,
-generating earlier bull/bear votes. This should help in sideways markets
-where the 5-bar EMA lags too much to capture short-lived moves, and in
-rally/crash regimes where early entry captures more return. The EMA_SLOW
-at 23 remains anchored, so only the fast side becomes more reactive.
+The vshort voter uses dyn_threshold * 0.5 as its trigger. Reducing to
+0.5 makes this signal fire more easily, especially in sideways markets
+where short moves are small relative to the threshold. Since vshort is
+just 1 of 6 voter signals and MIN_VOTES=3, making it easier to trigger
+means more situations reach the 3-vote minimum, particularly in sideways.
+This shouldn't blow DD in trending regimes because the other sizing
+controls (vol_scale, ATR stops) already manage risk there.
 """
 
 import numpy as np
@@ -232,8 +233,8 @@ class Strategy:
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.7
-            vshort_bear = ret_vshort < -dyn_threshold * 0.7
+            vshort_bull = ret_vshort > dyn_threshold * 0.5
+            vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
