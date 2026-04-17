@@ -123,3 +123,4 @@ b8f8e1f	19.509824	21.021323	3.022997	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.4
 -	20.521944	22.121873	3.199857	discard	trend consistency penalty 10pct when fewer than 3/4 timeframes agree (mean dropped, marginal std gain)
 
 ef6ebb3	20.794278	22.431222	3.273888	keep	squared sideways boost decay for slower falloff in moderate-trend regimes
+d366e36	20.801515	22.436590	3.270151	keep	vol compression breakout boost (25% size increase when short vol < 70% of long vol)
