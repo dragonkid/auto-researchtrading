@@ -1,11 +1,11 @@
 """
-Exp115: Raise STRENGTH_FLOOR_SIDEWAYS from 1.4 to 1.6.
+Exp116: Raise strength_scale cap from 1.6 to 1.8.
 
-Sideways regime is the weakest (16.87 vs 24.85 bull), dragging down both
-mean and std. The strength floor prevents weak momentum from being
-double-penalized in trendless markets. Previous increases 1.0->1.2->1.4
-both improved score. Pushing to 1.6 should boost sideways returns
-without meaningfully affecting trending regimes.
+Currently strength_scale = max(floor, min(1.6, mom_strength)).
+In sideways the floor is 1.6, so the cap=1.6 means strength is always 1.6
+regardless of actual signal quality. Raising cap to 1.8 lets strong momentum
+signals differentiate (1.6-1.8 range) in sideways, and gives all regimes a
+boost on strong breakouts. Sideways DD is only 5.3% so there's headroom.
 """
 
 import numpy as np
@@ -306,7 +306,7 @@ class Strategy:
             # In sideways markets, raise the floor so weak momentum isn't double-penalized
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
-            strength_scale = max(strength_floor, min(1.6, mom_strength))
+            strength_scale = max(strength_floor, min(1.8, mom_strength))
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost
             combined_mult = min(combined_mult, MAX_COMBINED_MULT)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
