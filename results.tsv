@@ -20,3 +20,6 @@ d8a8492	6.897180	7.797913	1.801466	keep	increase BASE_POSITION_PCT from 0.20 to 
 -	6.897180	7.797913	1.801466	discard	profit-adaptive trailing stop tightening (no effect)
 -	6.790008	7.669556	1.759097	discard	trend-adaptive RSI exit thresholds (widen OB/OS in strong trends)
 722d90c	6.905079	7.827876	1.845594	keep	trend-strength adaptive trailing stop width (wider stops in trendless markets)
+-	6.905079	7.827876	1.845594	discard	funding rate contrarian signal as 7th voter (no effect)
+-	6.058413	6.904566	1.692305	discard	momentum acceleration position sizing (hurt all regimes)
+fa68ead	6.971212	7.904211	1.865997	keep	increase CALM_BOOST_MAX from 0.4 to 0.6 for larger positions in low-vol regimes
