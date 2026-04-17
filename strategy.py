@@ -1,13 +1,13 @@
 """
-Exp101: Reduce vshort threshold multiplier from 0.7 to 0.5.
+Exp102: Reduce EMA_SLOPE_LOOKBACK from 6 to 4 for faster slope signal.
 
-The vshort voter uses dyn_threshold * 0.5 as its trigger. Reducing to
-0.5 makes this signal fire more easily, especially in sideways markets
-where short moves are small relative to the threshold. Since vshort is
-just 1 of 6 voter signals and MIN_VOTES=3, making it easier to trigger
-means more situations reach the 3-vote minimum, particularly in sideways.
-This shouldn't blow DD in trending regimes because the other sizing
-controls (vol_scale, ATR stops) already manage risk there.
+The EMA slope voter compares EMA values separated by LOOKBACK bars.
+Reducing from 6 to 4 makes this signal detect trend changes 2 bars earlier,
+generating more responsive slope votes especially in sideways markets
+where EMA slope is small and sluggish. Unlike the RSI_PERIOD=6 attempt
+which blew DD in bull_2021, this is a more targeted change — it only
+affects the slope voter (1 of 6), and slope signals are already dampened
+by the 0.0005 threshold.
 """
 
 import numpy as np
@@ -35,7 +35,7 @@ MACD_SLOW = 23
 MACD_SIGNAL = 9
 
 EMA_SLOPE_PERIOD = 28
-EMA_SLOPE_LOOKBACK = 6
+EMA_SLOPE_LOOKBACK = 4
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
