@@ -1,11 +1,12 @@
 """
-Exp118: Lower HIGH_VOTE_THRESHOLD from 5 to 4.
+Exp119: Reduce BASE_THRESHOLD from 0.010 to 0.008.
 
-Currently the 15% vote_boost only triggers when 5+ of 6 signals agree,
-which is rare especially in sideways. Lowering to 4 means any entry with
-above-minimum conviction (4+ vs 3 minimum) gets the boost. This should
-increase effective position sizing for moderate-conviction entries without
-the DD risk of raising BASE_POSITION_PCT or the global sizing multipliers.
+The momentum entry threshold is the base for dyn_threshold. Lowering it
+allows more entries in low-momentum environments (especially sideways),
+where signals are currently filtered too aggressively. The vote system
+(MIN_VOTES=3) and trend gate still provide quality control. This should
+particularly help the sideways regime (weakest at 18.13) by generating
+more trades without significantly increasing DD in trending regimes.
 """
 
 import numpy as np
@@ -49,7 +50,7 @@ ATR_STOP_MULT_BASE = 4.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
-BASE_THRESHOLD = 0.010
+BASE_THRESHOLD = 0.008
 BTC_OPPOSE_THRESHOLD = -99.0
 
 PYRAMID_THRESHOLD = 0.015
