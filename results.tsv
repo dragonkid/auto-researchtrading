@@ -103,3 +103,4 @@ c8d9e96	18.563681	20.171933	3.216504	keep	reduce LONG_WINDOW from 24 to 22 for f
 d958903	18.778938	20.568580	3.579284	keep	reduce EMA_SLOW from 23 to 21 for faster crossover signal
 15ebd67	18.797291	20.582214	3.569846	keep	reduce MACD_SLOW from 23 to 21 for faster MACD signal aligned with EMA_SLOW
 71ad4ca	18.797843	20.583950	3.572214	keep	reduce ATR_LOOKBACK from 24 to 16 for more responsive trailing stops
+-	18.778222	20.580494	3.604543	discard	reduce EMA_SLOPE_PERIOD from 28 to 24 (marginal mean and std both worse)
