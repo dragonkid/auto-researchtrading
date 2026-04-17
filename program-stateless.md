@@ -35,10 +35,13 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 ## Results TSV format
 
 ```
-commit	score	sharpe	return_pct	max_dd	status	description
+commit	score	mean_score	std_score	status	description
 ```
 
-Append one line per experiment. Use the short commit hash, or `-` for discarded experiments.
+- `score` = composite_score (mean - 0.5*std)
+- `mean_score` = average across 4 regimes
+- `std_score` = std across regimes (lower = more consistent)
+- Append one line per experiment. Use the short commit hash, or `-` for discarded.
 
 ## Scoring formula
 

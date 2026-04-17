@@ -81,7 +81,7 @@ COUNCIL_PASS / COUNCIL_ACCEPT Proposal X (philosophy)
 
 Also record each proposal test in `results.tsv`:
 ```
-commit	score	sharpe	return_pct	max_dd	status	description
+commit	score	mean_score	std_score	status	description
 ```
 
 Use status `council_discard` or `council_keep` to distinguish from normal experiments.
