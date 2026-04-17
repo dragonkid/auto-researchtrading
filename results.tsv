@@ -18,3 +18,4 @@ baca2a3	5.610560	6.555083	1.889047	keep	regime-adaptive calm-market position siz
 -	4.297041	4.969919	1.345755	discard	trend clarity position sizing (too aggressive, hurt all regimes)
 d8a8492	6.897180	7.797913	1.801466	keep	increase BASE_POSITION_PCT from 0.20 to 0.24
 -	6.897180	7.797913	1.801466	discard	profit-adaptive trailing stop tightening (no effect)
+-	6.790008	7.669556	1.759097	discard	trend-adaptive RSI exit thresholds (widen OB/OS in strong trends)
