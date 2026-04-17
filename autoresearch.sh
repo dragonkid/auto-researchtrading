@@ -122,5 +122,8 @@ while true; do
       sleep 5
     }
 
+  # Ensure results.tsv ends with a newline (agent sometimes uses Write/Edit tool which strips it)
+  [ -f "$RESULTS" ] && [ -n "$(tail -c1 "$RESULTS")" ] && echo >> "$RESULTS"
+
   echo ""
 done
