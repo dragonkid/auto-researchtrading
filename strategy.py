@@ -1,11 +1,10 @@
 """
-Exp75: Sideways strength-scale floor.
+Exp76: Increase BASE_POSITION_PCT from 0.30 to 0.33.
 
-In sideways/trendless markets, momentum signals are naturally weaker.
-The strength_scale (mom_strength clamped 0.6-1.6) penalizes these weak
-signals, partially canceling the sideways_boost. Fix: raise the floor
-of strength_scale when the long-term trend is flat, so weak momentum
-signals aren't double-penalized in range-bound conditions.
+Position size increases have been the most consistently successful lever.
+All regimes have max drawdown 6-8%, well below the 25% hard cutoff.
+Increasing base position size should proportionally boost returns across
+all regimes, improving the return gate component of scores.
 """
 
 import numpy as np
@@ -37,7 +36,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.30
+BASE_POSITION_PCT = 0.33
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
