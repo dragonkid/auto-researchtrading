@@ -1,11 +1,11 @@
 """
-Exp116: Raise strength_scale cap from 1.6 to 1.8.
+Exp117: Raise strength_scale cap from 1.8 to 2.0.
 
-Currently strength_scale = max(floor, min(1.6, mom_strength)).
-In sideways the floor is 1.6, so the cap=1.6 means strength is always 1.6
-regardless of actual signal quality. Raising cap to 1.8 lets strong momentum
-signals differentiate (1.6-1.8 range) in sideways, and gives all regimes a
-boost on strong breakouts. Sideways DD is only 5.3% so there's headroom.
+The cap raise from 1.6 to 1.8 improved all regimes (19.510 -> 19.817).
+Continuing to push: 1.8 -> 2.0 lets very strong momentum breakouts get
+even more sizing. Max DD across regimes is 8.0% (bull), well under the
+10% hard cutoff, so there's headroom for slightly larger positions on
+high-conviction breakout moves.
 """
 
 import numpy as np
@@ -306,7 +306,7 @@ class Strategy:
             # In sideways markets, raise the floor so weak momentum isn't double-penalized
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
-            strength_scale = max(strength_floor, min(1.8, mom_strength))
+            strength_scale = max(strength_floor, min(2.0, mom_strength))
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * cross_asset_agree * vote_boost
             combined_mult = min(combined_mult, MAX_COMBINED_MULT)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
