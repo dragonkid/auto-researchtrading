@@ -1,10 +1,11 @@
 """
-Exp114: Reduce MED2_WINDOW from 14 to 12 for even faster medium-term momentum.
+Exp115: Raise STRENGTH_FLOOR_SIDEWAYS from 1.4 to 1.6.
 
-MED2_WINDOW reduction has been the most successful optimization path:
-20->16 gave +0.64, 16->14 gave +0.41 and dropped std from 3.57 to 2.85.
-Continuing by trying 12 for more responsive ret_med, btc_momentum,
-and cross_asset_rets signals.
+Sideways regime is the weakest (16.87 vs 24.85 bull), dragging down both
+mean and std. The strength floor prevents weak momentum from being
+double-penalized in trendless markets. Previous increases 1.0->1.2->1.4
+both improved score. Pushing to 1.6 should boost sideways returns
+without meaningfully affecting trending regimes.
 """
 
 import numpy as np
@@ -76,7 +77,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 1.4  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 1.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
