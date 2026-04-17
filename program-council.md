@@ -31,14 +31,14 @@ You MUST output exactly one of these two lines as the very last thing before exi
 ## What you CAN do
 
 - Modify `strategy.py` — this is the only file you edit.
-- Run `uv run backtest.py > run.log 2>&1` for each proposal.
+- Run `uv run regime_test.py > run.log 2>&1` for each proposal.
 - Commit and revert as needed.
 
 ## What you CANNOT do
 
-- Modify `prepare.py`, `backtest.py`, or anything in `benchmarks/`.
+- Modify `prepare.py`, `backtest.py`, `regime_test.py`, or anything in `benchmarks/`.
 - Install new packages. Only numpy, pandas, scipy, and standard library.
-- Look at test set data.
+- Look at holdout data (2025-01 onwards).
 - Skip proposals — you must test at least 3 before declaring PASS.
 
 ## Council log
@@ -86,12 +86,16 @@ commit	score	sharpe	return_pct	max_dd	status	description
 
 Use status `council_discard` or `council_keep` to distinguish from normal experiments.
 
-## Scoring formula (from prepare.py)
+## Scoring formula
+
+Each regime is scored individually, then combined:
 
 ```
-score = sharpe * sqrt(trade_count_factor) - drawdown_penalty - turnover_penalty
-trade_count_factor = min(num_trades / 50, 1.0)
-drawdown_penalty = max(0, max_drawdown_pct - 15) * 0.05
-turnover_penalty = max(0, annual_turnover/capital - 500) * 0.001
-Hard cutoffs: <10 trades → -999, >50% drawdown → -999, lost >50% → -999
+Per-regime score = w_sharpe * log(1+sharpe) * sqrt(trade_count_factor)
+                 + w_return * log(1+return%)
+                 - w_dd * DD²
+
+Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
+
+The composite score is the key metric. Parse it from `grep "^composite_score:" run.log`.
