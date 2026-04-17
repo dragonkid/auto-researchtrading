@@ -110,3 +110,4 @@ d958903	18.778938	20.568580	3.579284	keep	reduce EMA_SLOW from 23 to 21 for fast
 -	19.024033	20.509607	2.971148	discard	reduce MED_WINDOW_MAX from 16 to 14 (mean dropped, sideways and rally slightly worse)
 -	18.845100	20.407868	3.125536	discard	reduce MED2_WINDOW from 12 to 10 (mean dropped, sideways worse)
 -	17.619012	19.220838	3.203651	discard	tighten RSI exit thresholds 73/27->70/30 (19.206 -> 17.619, cut winners too short)
+-	19.085130	20.575460	2.980659	discard	reduce VOL_LOOKBACK from 24 to 20 (19.206 -> 19.085, mean dropped)
