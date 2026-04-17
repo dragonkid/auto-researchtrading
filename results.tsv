@@ -126,3 +126,5 @@ ef6ebb3	20.794278	22.431222	3.273888	keep	squared sideways boost decay for slowe
 d366e36	20.801515	22.436590	3.270151	keep	vol compression breakout boost (25% size increase when short vol < 70% of long vol)
 e2c6462	20.873962	22.517186	3.286448	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.6 to 1.8 for larger sizing in trendless markets
 1f8fbd1	20.875017	22.484391	3.218747	keep	increase CROSS_ASSET_BOOST from 0.20 to 0.30 for larger positions when all assets agree
+-	20.407710	21.909762	3.004105	discard	one-sided volume scaling on low-volume bars floor 0.7 (mean dropped too much, 22.48 -> 21.91)
+ef00f36	20.903920	22.516816	3.225793	keep	increase STRENGTH_FLOOR_DECAY from 0.08 to 0.10 for wider sideways floor coverage
