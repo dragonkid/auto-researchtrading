@@ -1,12 +1,12 @@
 """
-Exp80: Raise STRENGTH_FLOOR_SIDEWAYS from 1.0 to 1.2.
+Exp82: Require higher conviction (4+ votes) to flip an existing position.
 
-The sideways regime (12.73) is the weakest by far (vs 16-20 for others),
-dragging down the composite via high std (2.51). Max DD in sideways is
-only 9.7%, so there's room for more risk. Raising the strength-scale
-floor in trendless markets gives a targeted sizing boost to sideways
-without affecting trending regimes where abs(ret_long) is high enough
-that the floor doesn't bind.
+Currently, entering a new position requires MIN_VOTES=3, but flipping
+from long-to-short (or vice versa) also only needs 3. Flips are more
+expensive (pay spread twice, reset trailing stop) and are the main source
+of whipsaw losses in sideways markets. Requiring 4+ votes to flip should
+reduce costly reversals in choppy markets while still allowing easy new
+entries after flat periods.
 """
 
 import numpy as np
@@ -82,6 +82,7 @@ COOLDOWN_BARS = 2
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 HIGH_VOTE_THRESHOLD = 5  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.15   # max position size boost for high-conviction entries
+FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -385,9 +386,12 @@ class Strategy:
                 elif current_pos < 0 and rsi < RSI_OVERSOLD:
                     target = 0.0
 
-                if current_pos > 0 and bearish and not in_cooldown:
+                # Require higher conviction to flip (more expensive than new entry)
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
+                if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bullish and not in_cooldown:
+                elif current_pos < 0 and flip_bullish and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
