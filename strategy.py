@@ -1,13 +1,11 @@
 """
-Exp103: Lower dynamic threshold floor from 0.005 to 0.003.
+Exp104: Reduce LONG_WINDOW from 30 to 26 for more responsive trend detection.
 
-The sideways regime (15.08) is the weakest, dragging down composite via std.
-The dynamic threshold is clamped to [0.005, 0.020]. In calm sideways markets,
-both vol_ratio and trend_reduction push the threshold down, but the 0.005 floor
-prevents it from going lower. Lowering to 0.003 lets more signals trigger in
-quiet trendless markets (where vol is low), generating more trades to boost
-sideways score. In trending/volatile regimes, the threshold stays well above
-0.005 anyway, so this change is mostly targeted at the sideways gap.
+The 36->30 reduction (exp ~80) was the largest single-experiment jump (+0.66).
+LONG_WINDOW drives ret_long which feeds trend gate, sideways detection,
+threshold adaptation, and stop asymmetry. A shorter window makes all of these
+more responsive to recent regime changes, especially at regime transitions
+(e.g. sideways->rally, bull->crash). Try 26 as a moderate further reduction.
 """
 
 import numpy as np
@@ -21,7 +19,7 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 16
-LONG_WINDOW = 30
+LONG_WINDOW = 26
 EMA_FAST = 3
 EMA_SLOW = 23
 RSI_PERIOD = 8
