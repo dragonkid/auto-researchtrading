@@ -16,3 +16,4 @@ baca2a3	5.610560	6.555083	1.889047	keep	regime-adaptive calm-market position siz
 -	4.931327	5.473077	1.083500	discard	trend gate OR->AND (too restrictive, killed mean)
 0f905d3	6.002239	6.812157	1.619835	keep	weighted trend gate using avg of ret_med and ret_long
 -	4.297041	4.969919	1.345755	discard	trend clarity position sizing (too aggressive, hurt all regimes)
+d8a8492	6.897180	7.797913	1.801466	keep	increase BASE_POSITION_PCT from 0.20 to 0.24
