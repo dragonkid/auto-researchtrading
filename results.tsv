@@ -1,0 +1,9 @@
+commit	score	mean_score	std_score	status	description
+5f3b75a	5.117753	5.820869	1.406231	keep	reduce MIN_VOTES from 4 to 3 for more entries in weak-signal regimes
+-	5.096811	5.797228	1.400832	discard	add Bollinger Band mean-reversion as 7th voter signal
+dbaec18	5.438356	6.355824	1.834936	keep	momentum-strength position sizing (strength_scale = clamp(mom_strength, 0.6, 1.6))
+-	5.340970	6.183272	1.684604	discard	tighten momentum-strength sizing range (0.75-1.35) to reduce regime variance
+-	5.293822	6.193053	1.798461	discard	sqrt strength scaling to boost weak-signal sizing in sideways regimes
+-	5.341329	6.235054	1.787449	discard	BTC lead-lag signal as 7th voter for ETH/SOL entries
+-	4.880600	5.806777	1.852354	discard	inverse-volatility symbol weighting instead of equal weights
+baca2a3	5.610560	6.555083	1.889047	keep	regime-adaptive calm-market position size boost (CALM_BOOST_MAX=0.4)
