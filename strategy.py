@@ -1,14 +1,11 @@
 """
-Exp91: Adaptive trend gate weighting for sideways markets.
+Exp92: Increase BASE_POSITION_PCT from 0.36 to 0.38.
 
-The trend gate uses trend_avg = 0.5*ret_med + 0.5*ret_long. In sideways
-markets (abs(ret_long) near zero), the 36-bar return is noisy and often
-has the wrong sign, blocking valid entries. This experiment shifts the
-trend gate weight toward ret_med (20-bar) when the market is trendless,
-making the filter more responsive in range-bound conditions.
-
-When abs(ret_long) is near zero: weight = 0.75*ret_med + 0.25*ret_long
-When abs(ret_long) is high:      weight = 0.50*ret_med + 0.50*ret_long (unchanged)
+Previous increase to 0.43 caused DD limit violations, but since then
+multiple defensive mechanisms have been added: FLIP_MIN_VOTES=4 reduces
+whipsaw, MAX_COMBINED_MULT=5.5 caps extreme sizing, and better sideways
+detection avoids over-trading in choppy markets. A modest 5.5% increase
+to 0.38 should be safe within the 10% DD limit.
 """
 
 import numpy as np
@@ -40,7 +37,7 @@ EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
-BASE_POSITION_PCT = 0.36
+BASE_POSITION_PCT = 0.38
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
