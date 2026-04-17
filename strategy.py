@@ -1,9 +1,11 @@
 """
-Exp35: Reapply best config + tighter ATR stop (5.5 -> 4.5).
+Exp52: Reduce EMA_SLOW from 26 to 23 for faster EMA crossover signal.
 
-Reapplies kept experiments (vol scaling, position 0.25) and tests
-tighter trailing stop. With max_dd at only 1.4%, tighter stops
-may reduce whipsaws on winning trades while keeping DD low.
+The EMA crossover (fast/slow) is one of the 6 voting signals. EMA_FAST was already
+reduced from 7 to 5 successfully. Now nudge EMA_SLOW from 26 to 23 to make the slow
+line more responsive. Previous attempt at 21 was too aggressive (hurt bull, increased
+std). 23 is a moderate step that should retain trend-following ability while being
+slightly more responsive to regime changes.
 """
 
 import numpy as np
@@ -12,33 +14,42 @@ from prepare import Signal, PortfolioState, BarData
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
-SHORT_WINDOW = 6
+SHORT_WINDOW = 8
 MED_WINDOW = 12
-MED2_WINDOW = 24
+MED_WINDOW_MIN = 8
+MED_WINDOW_MAX = 16
+MED2_WINDOW = 20
 LONG_WINDOW = 36
-EMA_FAST = 7
-EMA_SLOW = 26
+EMA_FAST = 5
+EMA_SLOW = 23
 RSI_PERIOD = 8
 RSI_BULL = 50
 RSI_BEAR = 50
-RSI_OVERBOUGHT = 69
-RSI_OVERSOLD = 31
+RSI_OVERBOUGHT = 73
+RSI_OVERSOLD = 27
 
-MACD_FAST = 14
+MACD_FAST = 12
 MACD_SLOW = 23
 MACD_SIGNAL = 9
 
-BB_PERIOD = 7
+EMA_SLOPE_PERIOD = 28
+EMA_SLOPE_LOOKBACK = 6
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 BASE_POSITION_PCT = 0.20
-VOL_LOOKBACK = 36
+VOL_LOOKBACK = 24
+VOL_SHORT_LOOKBACK = 12
+VOL_LONG_LOOKBACK = 48
+VOL_SPIKE_THRESHOLD = 1.5
+VOL_SPIKE_SCALE = 0.6
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 24
-ATR_STOP_MULT = 4.5
+ATR_STOP_MULT_BASE = 4.5
+ATR_STOP_MULT_MIN = 3.0
+ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
-BASE_THRESHOLD = 0.012
+BASE_THRESHOLD = 0.010
 BTC_OPPOSE_THRESHOLD = -99.0
 
 PYRAMID_THRESHOLD = 0.015
@@ -122,24 +133,14 @@ class Strategy:
         signal_line = ema(macd_line, MACD_SIGNAL)
         return macd_line[-1] - signal_line[-1]
 
-    def _calc_bb_width_pctile(self, closes, period):
-        """Calculate current BB width percentile over lookback."""
-        if len(closes) < period * 3:
-            return 50.0
-        # Calculate rolling BB width
-        widths = []
-        for i in range(period * 2, len(closes)):
-            window = closes[i-period:i]
-            sma = np.mean(window)
-            std = np.std(window)
-            width = (2 * std) / sma if sma > 0 else 0
-            widths.append(width)
-        if len(widths) < 2:
-            return 50.0
-        current_width = widths[-1]
-        # Percentile of current width
-        pctile = 100 * np.sum(np.array(widths) <= current_width) / len(widths)
-        return pctile
+    def _calc_ema_slope(self, closes):
+        """Calculate slope of a long EMA over recent bars. Positive = uptrend."""
+        if len(closes) < EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5:
+            return 0.0
+        ema_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+        # Slope = change in EMA over lookback period, normalized by price
+        slope = (ema_arr[-1] - ema_arr[-EMA_SLOPE_LOOKBACK]) / ema_arr[-EMA_SLOPE_LOOKBACK]
+        return slope
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -163,7 +164,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, BB_PERIOD * 3) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -174,8 +175,12 @@ class Strategy:
             dyn_threshold = BASE_THRESHOLD * (0.3 + vol_ratio * 0.7)
             dyn_threshold = max(0.005, min(0.020, dyn_threshold))
 
+            # Adaptive momentum lookback: shorter in high vol, longer in low vol
+            adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
+            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
+
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (closes[-1] - closes[-MED_WINDOW]) / closes[-MED_WINDOW]
+            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
 
@@ -197,12 +202,13 @@ class Strategy:
             macd_bull = macd_hist > 0
             macd_bear = macd_hist < 0
 
-            # BB width: low percentile = compression = pending breakout
-            bb_pctile = self._calc_bb_width_pctile(closes, BB_PERIOD)
-            bb_compressed = bb_pctile < 90  # Below 40th percentile = compressed
+            # EMA slope: rising long EMA = bullish, falling = bearish
+            ema_slope = self._calc_ema_slope(closes)
+            slope_bull = ema_slope > 0.001
+            slope_bear = ema_slope < -0.001
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, bb_compressed])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, bb_compressed])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear])
 
             btc_confirm = True
             if symbol != "BTC":
@@ -211,19 +217,32 @@ class Strategy:
                 if bear_votes >= MIN_VOTES and self.btc_momentum > -BTC_OPPOSE_THRESHOLD:
                     btc_confirm = False
 
-            bullish = bull_votes >= MIN_VOTES and btc_confirm
-            bearish = bear_votes >= MIN_VOTES and btc_confirm
+            # Trend gate: at least one of med/long return must confirm direction
+            trend_bull = ret_med > 0 or ret_long > 0
+            trend_bear = ret_med < 0 or ret_long < 0
+
+            bullish = bull_votes >= MIN_VOTES and btc_confirm and trend_bull
+            bearish = bear_votes >= MIN_VOTES and btc_confirm and trend_bear
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS
 
             vol_scale = TARGET_VOL / realized_vol
-            vol_scale = max(0.4, min(2.0, vol_scale))
+            vol_scale = max(0.4, min(1.5, vol_scale))
+
+            # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
+            vol_spike_scale = 1.0
+            if len(closes) >= VOL_LONG_LOOKBACK + 1:
+                short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
+                long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
+                if short_vol > long_vol * VOL_SPIKE_THRESHOLD:
+                    vol_spike_scale = VOL_SPIKE_SCALE
+
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
             strength_scale = 1.0
-            size = equity * BASE_POSITION_PCT * weight * vol_scale * strength_scale * dd_scale
+            size = equity * BASE_POSITION_PCT * weight * vol_scale * vol_spike_scale * strength_scale * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
             avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
@@ -262,17 +281,21 @@ class Strategy:
                 if atr is None:
                     atr = self.atr_at_entry.get(symbol, mid * 0.02)
 
+                # Adaptive stop: tighter in high vol, wider in low vol
+                atr_stop_mult = ATR_STOP_MULT_BASE / max(vol_ratio, 0.5)
+                atr_stop_mult = max(ATR_STOP_MULT_MIN, min(ATR_STOP_MULT_MAX, atr_stop_mult))
+
                 if symbol not in self.peak_prices:
                     self.peak_prices[symbol] = mid
 
                 if current_pos > 0:
                     self.peak_prices[symbol] = max(self.peak_prices[symbol], mid)
-                    stop = self.peak_prices[symbol] - ATR_STOP_MULT * atr
+                    stop = self.peak_prices[symbol] - atr_stop_mult * atr
                     if mid < stop:
                         target = 0.0
                 else:
                     self.peak_prices[symbol] = min(self.peak_prices[symbol], mid)
-                    stop = self.peak_prices[symbol] + ATR_STOP_MULT * atr
+                    stop = self.peak_prices[symbol] + atr_stop_mult * atr
                     if mid > stop:
                         target = 0.0
 
