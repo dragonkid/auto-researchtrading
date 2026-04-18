@@ -1,10 +1,10 @@
 """
-Exp162: Reduce LINREG_PERIOD from 20 to 16 for faster linreg slope voter.
+Exp163: Vol-compression threshold reduction for earlier breakout entries.
 
-Shorter linreg window makes the slope voter more responsive, which should
-help in sideways markets where trends are short-lived. All other lookback
-windows have been shortened during optimization; linreg is the only one
-still at its original 20-bar value.
+When short-term vol is compressed relative to long-term vol, a breakout is
+likely. Lower the entry threshold during compression so we catch breakouts
+earlier. The vol_compress_boost already increases sizing during compression;
+this complements it by also making entries easier to trigger.
 """
 
 import numpy as np
@@ -91,6 +91,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
+VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
@@ -266,6 +267,16 @@ class Strategy:
             trend_strength = min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0)
             trend_reduction = TREND_THRESHOLD_SCALE * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
+
+            # Vol-compression threshold reduction: when short vol << long vol,
+            # a breakout is brewing — lower entry threshold to catch it early
+            if len(closes) >= VOL_LONG_LOOKBACK + 1:
+                vc_short = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
+                vc_long = self._calc_vol(closes, VOL_LONG_LOOKBACK)
+                vc_ratio = max(0.3, min(1.5, vc_short / max(vc_long, 1e-10)))
+                if vc_ratio < VOL_COMPRESS_THRESHOLD:
+                    compress_str = (VOL_COMPRESS_THRESHOLD - vc_ratio) / VOL_COMPRESS_THRESHOLD
+                    dyn_threshold *= (1.0 - VOL_COMPRESS_THRESH_REDUCE * compress_str)
 
             # Adaptive momentum lookback: shorter in high vol, longer in low vol
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))

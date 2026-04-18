@@ -174,3 +174,4 @@ e714303	25.546837	27.651844	4.210014	keep	tighter low-vol cap threshold (0.8->0.
 9ffafda	25.709626	27.781849	4.144447	keep	conservative multi-timeframe agreement sizing (10% boost dampened by trend strength)
 da52c9b	25.721852	27.816676	4.189647	keep	relax mean-reversion RSI entry thresholds (32/68 -> 35/65) for more MR entries
 6f3759f	25.776176	27.870635	4.188918	keep	reduce LINREG_PERIOD from 20 to 16 for faster linreg slope voter
+-	25.766345	27.896415	4.260140	discard	lower linreg slope threshold 0.0003->0.0001 (mean up but std up more, sideways slightly worse)
