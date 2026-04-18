@@ -153,3 +153,4 @@ e6755dc	22.025477	23.984327	3.917698	keep	momentum deceleration early exit when 
 cda4bd6	22.145680	24.112099	3.932837	keep	volume confirmation boost for entry sizing (scale by recent vs baseline volume ratio)
 -	22.131418	24.081377	3.899918	discard	tighten DECEL_MULT_BASE 0.4->0.3 (mean dropped 24.112->24.081, marginal std improvement insufficient)
 545ec4e	22.149831	24.110547	3.921433	keep	volume-price divergence exit (tighter decel when volume fading on profitable position)
+bbcd0e3	22.168399	24.125912	3.915027	keep	RSI mean-reversion entries in sideways markets (50% size when RSI extreme and trend flat)
