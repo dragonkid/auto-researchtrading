@@ -1,11 +1,11 @@
 """
-Exp159: Rolling linear regression slope voter.
+Exp160: Multi-timeframe agreement sizing (sideways only, conservative).
 
-Replace the EMA slope voter with a rolling OLS regression slope of log
-prices over 20 bars. Linear regression is a more robust trend estimator
-than EMA slope — it fits a line to all N points rather than decaying
-exponentially. This should give better trend detection especially in
-noisy sideways markets where EMA slope oscillates.
+Boost position size by up to 10% when ret_vshort, ret_short, and ret_long
+all agree on direction. Dampen the boost in trending markets (where DD
+headroom is tight) so it primarily benefits sideways regimes. The first
+attempt at 20% undampened blew DD in bull/rally by 0.1%. This version
+is conservative: 10% max, dampened by trend strength.
 """
 
 import numpy as np
@@ -120,6 +120,8 @@ MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headro
 MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
+MTF_AGREE_BOOST = 0.10  # max sizing boost when all 3 timeframe returns agree on direction
+MTF_AGREE_TREND_DECAY = 0.10  # abs(ret_long) at which MTF boost fully decays (only active in sideways)
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -397,6 +399,14 @@ class Strategy:
                     # Below average: reduce down to VOL_CONFIRM_FLOOR
                     vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
 
+            # Multi-timeframe agreement: boost when vshort, short, and long all agree
+            # Dampened by trend strength so it only helps in sideways (DD-safe) regimes
+            mtf_agree_mult = 1.0
+            if (ret_vshort > 0 and ret_short > 0 and ret_long > 0) or \
+               (ret_vshort < 0 and ret_short < 0 and ret_long < 0):
+                mtf_trend_str = min(abs(ret_long) / MTF_AGREE_TREND_DECAY, 1.0)
+                mtf_agree_mult = 1.0 + MTF_AGREE_BOOST * (1.0 - mtf_trend_str)
+
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
@@ -408,7 +418,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
