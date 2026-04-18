@@ -1,11 +1,11 @@
 """
-Exp141: RSI mean-reversion entries in sideways markets.
+Exp143: Increase mean-reversion entry size in sideways markets.
 
-In trendless markets (abs(ret_long) small), add RSI-based mean-reversion entries
-when no position exists. When RSI < RSI_OVERSOLD and market is sideways, enter
-long (bounce expected). When RSI > RSI_OVERBOUGHT and sideways, enter short.
-This only activates when trend_strength is below a threshold, so it won't
-interfere with the momentum strategy in trending markets.
+Raise MEANREV_SIZE_SCALE from 0.5 to 0.7 so mean-reversion entries in
+sideways markets are larger. The sideways regime is the weakest (19.53 vs
+mean 24.12), and mean-reversion entries only activate when abs(ret_long) <
+0.03, so bigger positions here should improve the sideways score without
+affecting trending regimes.
 """
 
 import numpy as np
@@ -95,7 +95,7 @@ VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_SIZE_SCALE = 0.5        # mean-reversion entries use smaller size (50% of normal)
+MEANREV_SIZE_SCALE = 0.7        # mean-reversion entries use 70% of normal size
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
