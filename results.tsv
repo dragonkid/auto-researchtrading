@@ -162,3 +162,4 @@ cbd2abc	22.186499	24.171086	3.969173	keep	widen DECEL_MULT_TREND from 0.8 to 1.0
 6b70be6	22.280796	24.261346	3.961100	keep	momentum acceleration voter as 7th signal (compare ret_short vs ACCEL_LOOKBACK bars ago)
 95c63f3	23.408116	25.573190	4.330148	keep	regime-adaptive RSI period (6 in sideways, 8 in trends)
 -	23.233539	25.403725	4.340372	discard	trend-strength adaptive combined multiplier cap (mean dropped, std unchanged)
+4e2f80f	23.426300	25.584782	4.316964	keep	volatility breakout voter as 8th signal (confirm entries when short vol > long vol)
