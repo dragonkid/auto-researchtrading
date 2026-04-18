@@ -1,11 +1,10 @@
 """
-Exp164: Trend-adaptive RSI exit widening in sideways markets.
+Exp165: Increase mean-reversion entry size from 0.7 to 1.0.
 
-In sideways/trendless markets, widen RSI OB/OS exit thresholds so profitable
-positions are held longer (less premature exits from noise). In trending markets,
-keep current thresholds. This is layered on top of the vol-adaptive exit:
-the vol adjustment tightens in high-vol, this widens in low-trend. Net effect:
-sideways+low-vol gets widest thresholds, trend+high-vol gets tightest.
+Mean-reversion entries only fire in sideways markets (abs(ret_long) < 0.03),
+where DD headroom is generous (7.8% vs 10% limit). Using full position size
+for mean-reversion entries should boost sideways returns without affecting
+bull/crash/rally regimes at all (since MR entries are gated by trend threshold).
 """
 
 import numpy as np
@@ -105,7 +104,7 @@ VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_SIZE_SCALE = 0.7        # mean-reversion entries use 70% of normal size
+MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 35       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 65     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
