@@ -1,14 +1,14 @@
 """
-Exp139: Volume confirmation boost for entries.
+Exp140: Volume-price divergence exit.
 
-Most signal-quality and sizing experiments have been exhausted. One unexplored
-dimension: volume confirms momentum. High volume on a move validates the signal;
-low volume suggests a false move.
+When in a profitable position and price is trending favorably but volume is
+declining (bearish divergence for longs, bullish divergence for shorts), exit
+early. Declining volume on a continued price move suggests exhaustion. This
+targets the "held too long" problem across all regimes.
 
-Change: compute a volume ratio (recent avg volume / longer avg volume) and use
-it as a sizing multiplier. When volume is above average, boost entry size up to
-+25%. When below, reduce slightly. This should improve signal quality in all
-regimes by sizing up on high-conviction moves and sizing down on noise.
+Change: when in profit and the price momentum (ret_vshort) aligns with position
+but volume ratio (recent/base) < 0.7, use a tighter deceleration threshold to
+exit sooner.
 """
 
 import numpy as np
@@ -95,6 +95,8 @@ VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
 VOL_CONFIRM_BOOST = 0.25      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
+VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
+VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -327,15 +329,16 @@ class Strategy:
 
             # Volume confirmation: boost size when recent volume is above longer-term average
             vol_confirm_mult = 1.0
+            vol_ratio_raw = 1.0  # raw volume ratio for divergence detection
             volumes = bd.history["volume"].values
             if len(volumes) >= VOL_CONFIRM_BASE:
                 recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
                 if base_vol > 0:
-                    vol_ratio_confirm = recent_vol / base_vol
+                    vol_ratio_raw = recent_vol / base_vol
                     # Above average: boost up to VOL_CONFIRM_BOOST
                     # Below average: reduce down to VOL_CONFIRM_FLOOR
-                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_confirm))
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
 
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
@@ -436,6 +439,9 @@ class Strategy:
                     elif pnl > 0:
                         decel_trend_str = min(abs(ret_long) / DECEL_TREND_DECAY, 1.0)
                         decel_mult = DECEL_MULT_BASE + (DECEL_MULT_TREND - DECEL_MULT_BASE) * decel_trend_str
+                        # Volume-price divergence: tighten decel when volume is fading
+                        if vol_ratio_raw < VOL_DIVERGENCE_THRESHOLD:
+                            decel_mult *= VOL_DIVERGENCE_DECEL_MULT
                         decel_threshold = dyn_threshold * decel_mult
                         if current_pos > 0 and ret_vshort < -decel_threshold:
                             target = 0.0
