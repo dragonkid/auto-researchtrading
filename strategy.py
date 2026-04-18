@@ -1,9 +1,9 @@
 """
-Exp169: Relax mean-reversion RSI entry thresholds from 38/62 to 42/58 for
-more frequent mean-reversion entries in sideways markets. The current
-thresholds still require moderately extreme RSI; relaxing them should
-capture more reversals in range-bound conditions where the sideways
-regime score (23.66) is the weakest link.
+Exp170: Increase VOL_CONFIRM_BOOST from 0.25 to 0.35 for larger position
+sizing bonus when recent volume exceeds baseline. Volume confirmation is
+especially valuable in sideways markets where volume spikes distinguish
+genuine moves from noise. The sideways regime (23.63) has DD headroom
+(7.8% vs 10% limit) to support larger positions on high-volume entries.
 """
 
 import numpy as np
@@ -98,7 +98,7 @@ CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
-VOL_CONFIRM_BOOST = 0.25      # max sizing boost when volume is above average
+VOL_CONFIRM_BOOST = 0.35      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
