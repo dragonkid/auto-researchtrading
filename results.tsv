@@ -179,3 +179,4 @@ dc35f4e	25.777703	27.865531	4.175657	keep	vol-compression threshold reduction fo
 a67cf2c	26.110021	28.060297	3.900552	keep	trend-adaptive RSI exit widening in sideways (76/24 trendless to 73/27 in trends)
 7625fdf	26.169692	28.123559	3.907733	keep	increase MEANREV_SIZE_SCALE from 0.7 to 1.0 for full-size mean-reversion entries in sideways
 ebfc24a	26.206172	28.182027	3.951711	keep	relax mean-reversion RSI entry thresholds from 35/65 to 38/62 for more MR entries
+9c9c9d3	26.207884	28.183324	3.950879	keep	profit-scaled deceleration exit tightening (lock in gains when pnl > 2%)
