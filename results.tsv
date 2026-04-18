@@ -138,3 +138,4 @@ ea146a1	21.604069	23.595218	3.982298	keep	increase HIGH_VOTE_BOOST from 0.15 to 
 ee687c5	21.624398	23.612693	3.976588	keep	increase CROSS_ASSET_TREND_DECAY from 0.10 to 0.14 for wider cross-asset boost in moderate trends
 -	21.623786	23.612183	3.976794	discard	add breakout channel voter as 7th signal (no effect, essentially identical score)
 c168530	21.625939	23.613036	3.974195	keep	increase VOL_COMPRESS_BOOST from 0.25 to 0.40 for larger positions during vol compression breakouts
+5505e11	21.655871	23.649020	3.986298	keep	raise STRENGTH_FLOOR_SIDEWAYS from 2.0 to 2.2 for larger sizing in trendless markets
