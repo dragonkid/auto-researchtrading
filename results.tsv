@@ -139,3 +139,4 @@ ee687c5	21.624398	23.612693	3.976588	keep	increase CROSS_ASSET_TREND_DECAY from 
 -	21.623786	23.612183	3.976794	discard	add breakout channel voter as 7th signal (no effect, essentially identical score)
 c168530	21.625939	23.613036	3.974195	keep	increase VOL_COMPRESS_BOOST from 0.25 to 0.40 for larger positions during vol compression breakouts
 5505e11	21.655871	23.649020	3.986298	keep	raise STRENGTH_FLOOR_SIDEWAYS from 2.0 to 2.2 for larger sizing in trendless markets
+156c0e7	21.688713	23.678089	3.978752	keep	raise STRENGTH_FLOOR_SIDEWAYS from 2.2 to 2.4 for larger sizing in trendless markets
