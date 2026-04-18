@@ -1,15 +1,16 @@
 """
-Exp137: Momentum deceleration early exit.
+Exp138: Trend-adaptive deceleration exit threshold.
 
-When in a position, if very-short-term momentum (ret_vshort) opposes the
-position direction beyond a threshold while the position is in profit, exit
-early before the trailing stop triggers. This catches the beginning of
-reversals proactively. The exit only fires when:
-1) Position is currently profitable (pnl > 0)
-2) ret_vshort moves against position by more than half the entry threshold
-This targets sideways whipsaws and crash reversals where the trailing stop
-triggers too late, while preserving trend-following in strong trends (where
-ret_vshort rarely opposes strongly enough to trigger the exit).
+The deceleration exit (exp137) uses a fixed 0.5x dyn_threshold multiplier.
+In trending markets, short pullbacks are normal — exiting on them cuts
+winners short (bull_2021 and rally_2024 may benefit from wider threshold).
+In sideways markets, even small reversals are meaningful — tight exit is good.
+
+Change: scale the deceleration threshold multiplier by trend strength.
+- Strong trend (large abs(ret_long)): multiplier up to 0.8 (harder to trigger exit)
+- Weak/no trend: multiplier stays at 0.4 (easier to trigger exit)
+This should improve bull/rally scores by holding winners longer, while
+maintaining or improving sideways by exiting sooner.
 """
 
 import numpy as np
@@ -73,6 +74,10 @@ STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term t
 
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
+
+DECEL_MULT_BASE = 0.4           # deceleration threshold multiplier in sideways (tighter exit)
+DECEL_MULT_TREND = 0.8          # deceleration threshold multiplier in trends (wider, hold winners)
+DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
@@ -413,8 +418,11 @@ class Strategy:
                         target = 0.0
                     # Momentum deceleration exit: if in profit and very-short-term
                     # momentum reverses, exit before trailing stop catches up
+                    # Adaptive: wider threshold in trends (hold winners), tighter in sideways
                     elif pnl > 0:
-                        decel_threshold = dyn_threshold * 0.5
+                        decel_trend_str = min(abs(ret_long) / DECEL_TREND_DECAY, 1.0)
+                        decel_mult = DECEL_MULT_BASE + (DECEL_MULT_TREND - DECEL_MULT_BASE) * decel_trend_str
+                        decel_threshold = dyn_threshold * decel_mult
                         if current_pos > 0 and ret_vshort < -decel_threshold:
                             target = 0.0
                         elif current_pos < 0 and ret_vshort > decel_threshold:
