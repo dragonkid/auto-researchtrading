@@ -151,3 +151,4 @@ e6755dc	22.025477	23.984327	3.917698	keep	momentum deceleration early exit when 
 -	-999.000000	-490.275751	508.725231	discard	trend-gated RSI OB/OS exit (blew DD in bull 16.1% and crash 11.7%)
 -	22.031298	24.035363	4.008130	discard	raise DECEL_MULT_BASE from 0.4 to 0.6 (sideways slightly worse, std increased)
 cda4bd6	22.145680	24.112099	3.932837	keep	volume confirmation boost for entry sizing (scale by recent vs baseline volume ratio)
+-	22.131418	24.081377	3.899918	discard	tighten DECEL_MULT_BASE 0.4->0.3 (mean dropped 24.112->24.081, marginal std improvement insufficient)
