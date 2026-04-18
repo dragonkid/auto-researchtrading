@@ -1,12 +1,13 @@
 """
-Exp147: Regime-adaptive RSI period.
+Exp148: Volatility breakout voter as 8th signal.
 
-Use shorter RSI period (6) in sideways markets for faster mean-reversion
-detection, and standard period (8) in trending markets. The sideways
-regime is the weakest at 19.50 — faster RSI should improve entry timing
-for both momentum and mean-reversion signals in trendless conditions.
-Previous attempt to reduce RSI_PERIOD globally to 6 blew DD in bull;
-making it adaptive avoids that by keeping longer period in trends.
+When short-term realized vol breaks above its recent average, a directional
+move is likely underway. Add this as an independent confirmation signal.
+In sideways (weakest regime at 20.28), this should help filter out entries
+during dead-calm chop and enter when vol confirms a breakout. The signal
+is naturally regime-adaptive: it fires more in breakouts and less in
+flat consolidation. We keep MIN_VOTES at 3 so this adds a new vote
+dimension without raising the bar.
 """
 
 import numpy as np
@@ -101,6 +102,9 @@ MEANREV_SIZE_SCALE = 0.7        # mean-reversion entries use 70% of normal size
 MEANREV_RSI_OVERSOLD = 32       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 68     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
+VOL_BREAKOUT_SHORT = 6   # short window for vol breakout detection
+VOL_BREAKOUT_LONG = 24   # long window for vol breakout baseline
+VOL_BREAKOUT_MULT = 1.2  # short vol must exceed long vol * this to trigger
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -285,8 +289,21 @@ class Strategy:
                 accel_bull = ret_short > prev_ret_short and ret_short > 0
                 accel_bear = ret_short < prev_ret_short and ret_short < 0
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear])
+            # Volatility breakout voter: vol expanding signals directional move
+            vol_breakout_bull = False
+            vol_breakout_bear = False
+            if len(closes) >= VOL_BREAKOUT_LONG + 1:
+                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
+                if vb_short > vb_long * VOL_BREAKOUT_MULT:
+                    # Vol is expanding — vote with the short-term direction
+                    if ret_vshort > 0:
+                        vol_breakout_bull = True
+                    elif ret_vshort < 0:
+                        vol_breakout_bear = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear])
 
             btc_confirm = True
             if symbol != "BTC":
