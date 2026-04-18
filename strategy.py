@@ -1,12 +1,12 @@
 """
-Exp149: Regime-adaptive combined multiplier cap.
+Exp150: Lower MAX_COMBINED_VOL_THRESHOLD from 1.2 to 1.0.
 
-Current issue: bull regime scores 32.5 but DD is 9.85% (near 10% limit),
-while sideways scores only 20.5 with DD at 5.5%. The std of 4.32 costs
-2.16 points. By making MAX_COMBINED_MULT adaptive to realized volatility,
-we can allow more aggressive sizing in calm/sideways (where DD headroom
-exists) and rein in sizing in volatile trending markets (where DD is near
-limit). This directly targets the regime variance penalty.
+The adaptive cap currently only starts tightening when vol_ratio > 1.2,
+meaning the tighter cap misses borderline-volatile periods (vol_ratio 1.0-1.2)
+where DD risk is still elevated. Lowering to 1.0 starts the cap tightening
+earlier, which should reduce DD in bull and crash regimes (where DD is near
+the 10% limit) while leaving low-vol (sideways) regimes unaffected.
+This targets std reduction via the composite = mean - 0.5*std formula.
 """
 
 import numpy as np
@@ -114,7 +114,7 @@ FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_V
 MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 7.0  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 4.5  # tighter cap in high-vol regimes (protect DD)
-MAX_COMBINED_VOL_THRESHOLD = 1.2  # vol_ratio above this triggers tighter cap
+MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
