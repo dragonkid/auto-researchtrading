@@ -169,3 +169,4 @@ b764a5d	25.146414	27.250356	4.207884	keep	tighten MAX_COMBINED_MULT_HIGH_VOL fro
 ffd63a5	25.203201	27.319134	4.231867	keep	continuous vol-adaptive RSI exit thresholds (73/27 calm to 68/32 high-vol)
 e714303	25.546837	27.651844	4.210014	keep	tighter low-vol cap threshold (0.8->0.6) with moderate cap increase (7.0->7.5)
 -	25.539559	27.650425	4.221732	discard	reduce MAX_COMBINED_MULT 5.5->5.0 (bull DD improved 9.1->9.0 but sideways/rally slightly worse, net -0.007)
+9009391	25.579178	27.642910	4.127465	keep	add rolling linear regression slope as 9th voter for more robust trend detection
