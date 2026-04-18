@@ -1,10 +1,11 @@
 """
-Exp163: Vol-compression threshold reduction for earlier breakout entries.
+Exp164: Trend-adaptive RSI exit widening in sideways markets.
 
-When short-term vol is compressed relative to long-term vol, a breakout is
-likely. Lower the entry threshold during compression so we catch breakouts
-earlier. The vol_compress_boost already increases sizing during compression;
-this complements it by also making entries easier to trigger.
+In sideways/trendless markets, widen RSI OB/OS exit thresholds so profitable
+positions are held longer (less premature exits from noise). In trending markets,
+keep current thresholds. This is layered on top of the vol-adaptive exit:
+the vol adjustment tightens in high-vol, this widens in low-trend. Net effect:
+sideways+low-vol gets widest thresholds, trend+high-vol gets tightest.
 """
 
 import numpy as np
@@ -29,8 +30,11 @@ RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 68     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 32     # tightest OS exit in extreme high-vol
+RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
+RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
+RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 8
 MACD_SLOW = 21
@@ -544,10 +548,16 @@ class Strategy:
                         elif current_pos < 0 and ret_vshort > decel_threshold:
                             target = 0.0
 
-                # Continuous vol-adaptive RSI exit: tighter in high vol
+                # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
-                effective_ob = RSI_OVERBOUGHT - (RSI_OVERBOUGHT - RSI_OB_TIGHT) * vol_exit_blend
-                effective_os = RSI_OVERSOLD + (RSI_OS_TIGHT - RSI_OVERSOLD) * vol_exit_blend
+                # Trend-adaptive widening: in sideways markets, widen OB/OS to hold winners longer
+                trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0)
+                sideways_ob_widen = (RSI_OB_WIDE - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
+                sideways_os_widen = (RSI_OVERSOLD - RSI_OS_WIDE) * (1.0 - trend_exit_strength)
+                base_ob = RSI_OVERBOUGHT + sideways_ob_widen
+                base_os = RSI_OVERSOLD + sideways_os_widen
+                effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
+                effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
