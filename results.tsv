@@ -135,3 +135,4 @@ d5999f4	21.502380	23.480179	3.955598	keep	increase SIDEWAYS_BOOST_DECAY from 0.0
 -	21.308637	23.281640	3.946006	discard	reduce VOL_SPIKE_SCALE from 0.6 to 0.5 (mean dropped, crash DD unchanged)
 -	-999.000000	-231.714046	443.012993	discard	increase COOLDOWN_SIDEWAYS_DECAY from 0.06 to 0.08 (blew crash_bear DD 10.14%)
 ea146a1	21.604069	23.595218	3.982298	keep	increase HIGH_VOTE_BOOST from 0.15 to 0.20 for larger positions on high-conviction entries
+ee687c5	21.624398	23.612693	3.976588	keep	increase CROSS_ASSET_TREND_DECAY from 0.10 to 0.14 for wider cross-asset boost in moderate trends
