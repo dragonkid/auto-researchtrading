@@ -1,11 +1,11 @@
 """
-Exp153: Tighter low-vol cap threshold with moderate cap increase.
+Exp159: Rolling linear regression slope voter.
 
-Previous exp showed raising MAX_COMBINED_MULT_LOW_VOL to 8.0 helped
-sideways/crash/rally but blew bull DD (11.6%). Root cause: vol_ratio<0.8
-threshold catches bull periods too. Fix: lower the threshold to 0.6
-(truly calm only) and raise cap moderately to 7.5. This targets the
-gain (sideways +0.6) while avoiding bull DD blow.
+Replace the EMA slope voter with a rolling OLS regression slope of log
+prices over 20 bars. Linear regression is a more robust trend estimator
+than EMA slope — it fits a line to all N points rather than decaying
+exponentially. This should give better trend detection especially in
+noisy sideways markets where EMA slope oscillates.
 """
 
 import numpy as np
@@ -39,6 +39,7 @@ MACD_SIGNAL = 7
 
 EMA_SLOPE_PERIOD = 28
 EMA_SLOPE_LOOKBACK = 4
+LINREG_PERIOD = 20  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
@@ -199,6 +200,19 @@ class Strategy:
         slope = (ema_arr[-1] - ema_arr[-EMA_SLOPE_LOOKBACK]) / ema_arr[-EMA_SLOPE_LOOKBACK]
         return slope
 
+    def _calc_linreg_slope(self, closes):
+        """Rolling OLS linear regression slope of log prices. Per-bar change rate."""
+        if len(closes) < LINREG_PERIOD:
+            return 0.0
+        y = np.log(closes[-LINREG_PERIOD:])
+        n = LINREG_PERIOD
+        x = np.arange(n, dtype=float)
+        x_mean = (n - 1) / 2.0
+        y_mean = y.mean()
+        # OLS slope = sum((x-xbar)(y-ybar)) / sum((x-xbar)^2)
+        slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
+        return slope
+
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
@@ -287,6 +301,11 @@ class Strategy:
             slope_bull = ema_slope > 0.0005
             slope_bear = ema_slope < -0.0005
 
+            # Linear regression slope voter: more robust trend detection
+            linreg_slope = self._calc_linreg_slope(closes)
+            linreg_bull = linreg_slope > 0.0003
+            linreg_bear = linreg_slope < -0.0003
+
             # Momentum acceleration: is momentum strengthening vs ACCEL_LOOKBACK bars ago?
             accel_bull = False
             accel_bear = False
@@ -308,8 +327,8 @@ class Strategy:
                     elif ret_vshort < 0:
                         vol_breakout_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear])
 
             btc_confirm = True
             if symbol != "BTC":
