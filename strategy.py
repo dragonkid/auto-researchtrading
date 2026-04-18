@@ -1,11 +1,11 @@
 """
-Exp143: Increase mean-reversion entry size in sideways markets.
+Exp144: Widen deceleration exit threshold in trends.
 
-Raise MEANREV_SIZE_SCALE from 0.5 to 0.7 so mean-reversion entries in
-sideways markets are larger. The sideways regime is the weakest (19.53 vs
-mean 24.12), and mean-reversion entries only activate when abs(ret_long) <
-0.03, so bigger positions here should improve the sideways score without
-affecting trending regimes.
+Raise DECEL_MULT_TREND from 0.8 to 1.0 so that in strongly trending markets,
+the decel exit requires a larger short-term reversal before triggering.
+This should hold winning positions longer in bull and rally regimes where the
+trailing stop already provides downside protection. Sideways is unaffected
+since it uses DECEL_MULT_BASE (0.4).
 """
 
 import numpy as np
@@ -71,7 +71,7 @@ STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
 DECEL_MULT_BASE = 0.4           # deceleration threshold multiplier in sideways (tighter exit)
-DECEL_MULT_TREND = 0.8          # deceleration threshold multiplier in trends (wider, hold winners)
+DECEL_MULT_TREND = 1.0          # deceleration threshold multiplier in trends (wider, hold winners)
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
