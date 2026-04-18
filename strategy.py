@@ -1,13 +1,13 @@
 """
-Exp131: Increase HIGH_VOTE_BOOST from 0.15 to 0.20.
+Exp132: Increase CROSS_ASSET_TREND_DECAY from 0.10 to 0.14.
 
-When 4+ of 6 signals agree (HIGH_VOTE_THRESHOLD), position size gets a
-multiplicative boost. Increasing from 15% to 20% rewards high-conviction
-entries with larger positions.
-
-Previous attempt to jump to 0.30 blew DD in bull and crash. 0.20 is a
-moderate intermediate step. This should help sideways (where high-conviction
-entries are rare but high-quality) and rally (6.9% DD, well within limits).
+The cross-asset agreement boost (30% larger when all 3 assets trend same
+direction) is dampened in trending markets via CROSS_ASSET_TREND_DECAY.
+Currently it decays to zero when |ret_long| > 0.10. Widening to 0.14
+keeps the boost partially active in moderate-trend environments like
+rally_2024 (22.0, weakest after sideways). This should improve rally
+and potentially help consistency (lower std) without much DD risk since
+the boost is only 30% and already capped by MAX_COMBINED_MULT.
 """
 
 import numpy as np
@@ -85,7 +85,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
-CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
+CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
