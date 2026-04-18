@@ -1,11 +1,10 @@
 """
-Exp160: Multi-timeframe agreement sizing (sideways only, conservative).
+Exp161: Relax mean-reversion RSI entry thresholds (32/68 -> 35/65).
 
-Boost position size by up to 10% when ret_vshort, ret_short, and ret_long
-all agree on direction. Dampen the boost in trending markets (where DD
-headroom is tight) so it primarily benefits sideways regimes. The first
-attempt at 20% undampened blew DD in bull/rally by 0.1%. This version
-is conservative: 10% max, dampened by trend strength.
+The mean-reversion path is only active in sideways markets (abs(ret_long) <
+MEANREV_TREND_THRESHOLD). Making the RSI thresholds less extreme generates
+more MR entries, which should lift the weakest regime (sideways at 22.74)
+without affecting trending regimes at all (gate is abs(ret_long) < 0.03).
 """
 
 import numpy as np
@@ -102,8 +101,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 0.7        # mean-reversion entries use 70% of normal size
-MEANREV_RSI_OVERSOLD = 32       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 68     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 35       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 65     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 VOL_BREAKOUT_SHORT = 6   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 24   # long window for vol breakout baseline
