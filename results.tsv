@@ -148,3 +148,4 @@ d2bd9b0	21.775853	23.781511	4.011317	keep	increase TREND_GATE_MED_WEIGHT_SIDEWAY
 -	21.762300	23.776888	4.029177	discard	increase TREND_GATE_ADAPT_DECAY from 0.08 to 0.10 (marginal mean and std both worse)
 e6755dc	22.025477	23.984327	3.917698	keep	momentum deceleration early exit when in profit and ret_vshort reverses
 0352882	22.053476	24.031500	3.956047	keep	trend-adaptive deceleration exit threshold (wider in trends to hold winners, tighter in sideways)
+-	-999.000000	-490.275751	508.725231	discard	trend-gated RSI OB/OS exit (blew DD in bull 16.1% and crash 11.7%)
