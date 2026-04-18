@@ -1,9 +1,9 @@
 """
-Exp166: Relax mean-reversion RSI entry thresholds from 35/65 to 38/62 for
-more MR entries in sideways markets. Sideways regime has most DD headroom
-(7.8% vs 10% limit) and is weakest regime (23.58 vs 26.87+ others). More
-MR entries should boost sideways without affecting other regimes (gated by
-abs(ret_long) < 0.03 trend threshold).
+Exp167: Profit-scaled deceleration exit — when trade profit exceeds 2%,
+progressively tighten the decel exit threshold (scale decel_mult by
+1/(1 + profit_excess*10)). This locks in larger profits earlier while
+leaving small-profit trades to run. Should improve win rate and reduce
+profit giveback without affecting entry sizing or DD.
 """
 
 import numpy as np
@@ -107,6 +107,8 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 38       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 62     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
+PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
+PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 VOL_BREAKOUT_SHORT = 6   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 24   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.2  # short vol must exceed long vol * this to trigger
@@ -540,6 +542,10 @@ class Strategy:
                         # Volume-price divergence: tighten decel when volume is fading
                         if vol_ratio_raw < VOL_DIVERGENCE_THRESHOLD:
                             decel_mult *= VOL_DIVERGENCE_DECEL_MULT
+                        # Profit-scaled tightening: lock in larger profits earlier
+                        if pnl > PROFIT_DECEL_THRESHOLD:
+                            profit_excess = pnl - PROFIT_DECEL_THRESHOLD
+                            decel_mult /= (1.0 + profit_excess * PROFIT_DECEL_SCALE)
                         decel_threshold = dyn_threshold * decel_mult
                         if current_pos > 0 and ret_vshort < -decel_threshold:
                             target = 0.0
