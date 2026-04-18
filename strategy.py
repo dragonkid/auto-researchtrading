@@ -1,9 +1,8 @@
 """
-Exp167: Profit-scaled deceleration exit — when trade profit exceeds 2%,
-progressively tighten the decel exit threshold (scale decel_mult by
-1/(1 + profit_excess*10)). This locks in larger profits earlier while
-leaving small-profit trades to run. Should improve win rate and reduce
-profit giveback without affecting entry sizing or DD.
+Exp168: Lower VOL_BREAKOUT_MULT from 1.2 to 1.0 — trigger the vol breakout
+voter whenever short vol exceeds long vol (instead of requiring 20% excess).
+More frequent breakout signals should help catch directional moves earlier,
+especially in sideways regimes transitioning to trending.
 """
 
 import numpy as np
@@ -111,7 +110,7 @@ PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 VOL_BREAKOUT_SHORT = 6   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 24   # long window for vol breakout baseline
-VOL_BREAKOUT_MULT = 1.2  # short vol must exceed long vol * this to trigger
+VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
