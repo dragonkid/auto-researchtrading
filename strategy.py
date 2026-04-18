@@ -1,12 +1,13 @@
 """
-Exp150: Lower MAX_COMBINED_VOL_THRESHOLD from 1.2 to 1.0.
+Exp151: Tighten MAX_COMBINED_MULT_HIGH_VOL from 4.5 to 4.0.
 
-The adaptive cap currently only starts tightening when vol_ratio > 1.2,
-meaning the tighter cap misses borderline-volatile periods (vol_ratio 1.0-1.2)
-where DD risk is still elevated. Lowering to 1.0 starts the cap tightening
-earlier, which should reduce DD in bull and crash regimes (where DD is near
-the 10% limit) while leaving low-vol (sideways) regimes unaffected.
-This targets std reduction via the composite = mean - 0.5*std formula.
+Bull DD is at 9.85% and crash DD at 8.48%. Both are high-vol regimes where
+the sizing cap matters most. Reducing the high-vol cap from 4.5x to 4.0x
+should clip the largest positions during volatile periods, directly reducing
+peak DD. Sideways (low-vol) uses the 7.0x cap so is unaffected. The
+regime-adaptive cap was a huge win (23.4 -> 25.1), suggesting further
+tightening in high-vol specifically could yield additional gains via the
+1/(1+DD%) scoring gate.
 """
 
 import numpy as np
@@ -113,7 +114,7 @@ HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 7.0  # higher cap in low-vol regimes (more DD headroom)
-MAX_COMBINED_MULT_HIGH_VOL = 4.5  # tighter cap in high-vol regimes (protect DD)
+MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 
 def ema(values, span):
