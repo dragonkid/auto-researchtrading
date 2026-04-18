@@ -1,16 +1,14 @@
 """
-Exp138: Trend-adaptive deceleration exit threshold.
+Exp139: Volume confirmation boost for entries.
 
-The deceleration exit (exp137) uses a fixed 0.5x dyn_threshold multiplier.
-In trending markets, short pullbacks are normal — exiting on them cuts
-winners short (bull_2021 and rally_2024 may benefit from wider threshold).
-In sideways markets, even small reversals are meaningful — tight exit is good.
+Most signal-quality and sizing experiments have been exhausted. One unexplored
+dimension: volume confirms momentum. High volume on a move validates the signal;
+low volume suggests a false move.
 
-Change: scale the deceleration threshold multiplier by trend strength.
-- Strong trend (large abs(ret_long)): multiplier up to 0.8 (harder to trigger exit)
-- Weak/no trend: multiplier stays at 0.4 (easier to trigger exit)
-This should improve bull/rally scores by holding winners longer, while
-maintaining or improving sideways by exiting sooner.
+Change: compute a volume ratio (recent avg volume / longer avg volume) and use
+it as a sizing multiplier. When volume is above average, boost entry size up to
++25%. When below, reduce slightly. This should improve signal quality in all
+regimes by sizing up on high-conviction moves and sizing down on noise.
 """
 
 import numpy as np
@@ -93,6 +91,10 @@ VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
+VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
+VOL_CONFIRM_BASE = 48         # longer-term volume average window
+VOL_CONFIRM_BOOST = 0.25      # max sizing boost when volume is above average
+VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -323,6 +325,18 @@ class Strategy:
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = 1.0 + HIGH_VOTE_BOOST if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
+            # Volume confirmation: boost size when recent volume is above longer-term average
+            vol_confirm_mult = 1.0
+            volumes = bd.history["volume"].values
+            if len(volumes) >= VOL_CONFIRM_BASE:
+                recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
+                base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
+                if base_vol > 0:
+                    vol_ratio_confirm = recent_vol / base_vol
+                    # Above average: boost up to VOL_CONFIRM_BOOST
+                    # Below average: reduce down to VOL_CONFIRM_FLOOR
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_confirm))
+
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
@@ -334,7 +348,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             combined_mult = min(combined_mult, MAX_COMBINED_MULT)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
