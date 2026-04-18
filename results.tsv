@@ -159,3 +159,4 @@ bbcd0e3	22.168399	24.125912	3.915027	keep	RSI mean-reversion entries in sideways
 cbd2abc	22.186499	24.171086	3.969173	keep	widen DECEL_MULT_TREND from 0.8 to 1.0 to hold winners longer in trending markets
 -	21.614807	23.569388	3.909162	discard	adaptive MIN_VOTES 4 in sideways / 3 in trends (mean dropped too much, sideways entries filtered)
 8c94890	22.196992	24.190015	3.986045	keep	separate mean-reversion RSI entry thresholds (32/68) from exit thresholds (27/73) for more MR entries
+6b70be6	22.280796	24.261346	3.961100	keep	momentum acceleration voter as 7th signal (compare ret_short vs ACCEL_LOOKBACK bars ago)
