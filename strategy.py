@@ -1,15 +1,13 @@
 """
-Exp130: Increase SIDEWAYS_BOOST_DECAY from 0.08 to 0.10.
+Exp131: Increase HIGH_VOTE_BOOST from 0.15 to 0.20.
 
-This parameter controls how fast the sideways position-size boost decays
-as abs(ret_long) grows. At 0.08, the boost fully decays once abs(ret_long)
-reaches ~0.08 (8% long-term return). At 0.10, the sideways boost persists
-deeper into moderate-trend regimes, effectively widening the "sideways" zone.
+When 4+ of 6 signals agree (HIGH_VOTE_THRESHOLD), position size gets a
+multiplicative boost. Increasing from 15% to 20% rewards high-conviction
+entries with larger positions.
 
-Previous attempt to jump from 0.08 to 0.12 blew crash_bear DD (>10%).
-This is a more conservative intermediate step. Sideways is the weakest
-regime (18.63 vs mean 23.34) with only 6.03% DD, so more sizing there
-helps without DD risk.
+Previous attempt to jump to 0.30 blew DD in bull and crash. 0.20 is a
+moderate intermediate step. This should help sideways (where high-conviction
+entries are rare but high-quality) and rally (6.9% DD, well within limits).
 """
 
 import numpy as np
@@ -93,7 +91,7 @@ COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
-HIGH_VOTE_BOOST = 0.15   # max position size boost for high-conviction entries
+HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.5  # cap on product of all sizing multipliers to prevent extreme stacking
 
