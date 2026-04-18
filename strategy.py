@@ -1,10 +1,10 @@
 """
-Exp161: Relax mean-reversion RSI entry thresholds (32/68 -> 35/65).
+Exp162: Reduce LINREG_PERIOD from 20 to 16 for faster linreg slope voter.
 
-The mean-reversion path is only active in sideways markets (abs(ret_long) <
-MEANREV_TREND_THRESHOLD). Making the RSI thresholds less extreme generates
-more MR entries, which should lift the weakest regime (sideways at 22.74)
-without affecting trending regimes at all (gate is abs(ret_long) < 0.03).
+Shorter linreg window makes the slope voter more responsive, which should
+help in sideways markets where trends are short-lived. All other lookback
+windows have been shortened during optimization; linreg is the only one
+still at its original 20-bar value.
 """
 
 import numpy as np
@@ -38,7 +38,7 @@ MACD_SIGNAL = 7
 
 EMA_SLOPE_PERIOD = 28
 EMA_SLOPE_LOOKBACK = 4
-LINREG_PERIOD = 20  # rolling linear regression window for slope voter
+LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
