@@ -172,3 +172,4 @@ e714303	25.546837	27.651844	4.210014	keep	tighter low-vol cap threshold (0.8->0.
 9009391	25.579178	27.642910	4.127465	keep	add rolling linear regression slope as 9th voter for more robust trend detection
 -	25.479332	27.658298	4.357933	discard	increase LINREG_PERIOD 20->40 for timescale diversification (mean flat, std increased 4.13->4.36)
 9ffafda	25.709626	27.781849	4.144447	keep	conservative multi-timeframe agreement sizing (10% boost dampened by trend strength)
+da52c9b	25.721852	27.816676	4.189647	keep	relax mean-reversion RSI entry thresholds (32/68 -> 35/65) for more MR entries
