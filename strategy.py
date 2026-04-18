@@ -1,8 +1,9 @@
 """
-Exp168: Lower VOL_BREAKOUT_MULT from 1.2 to 1.0 — trigger the vol breakout
-voter whenever short vol exceeds long vol (instead of requiring 20% excess).
-More frequent breakout signals should help catch directional moves earlier,
-especially in sideways regimes transitioning to trending.
+Exp169: Relax mean-reversion RSI entry thresholds from 38/62 to 42/58 for
+more frequent mean-reversion entries in sideways markets. The current
+thresholds still require moderately extreme RSI; relaxing them should
+capture more reversals in range-bound conditions where the sideways
+regime score (23.66) is the weakest link.
 """
 
 import numpy as np
@@ -103,8 +104,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 38       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 62     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 42       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 58     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
