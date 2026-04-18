@@ -1,13 +1,11 @@
 """
-Exp128: Trend-dampened cross-asset boost.
+Exp129: Raise STRENGTH_FLOOR_SIDEWAYS from 1.8 to 2.0.
 
-The cross-asset agreement boost (CROSS_ASSET_BOOST=0.30) gives 30%
-larger positions when all 3 assets trend in the same direction. This
-fires most in strong bull/bear regimes where DD is already near 10%
-(bull_2021 DD=9.52%). By dampening the boost when abs(ret_long) is
-large, we reduce DD risk in trending regimes while keeping the full
-boost in sideways where return needs help. This should reduce std
-across regimes and improve composite score.
+In trendless (sideways) markets, weak momentum signals get penalized
+by the strength_scale factor. STRENGTH_FLOOR_SIDEWAYS sets the minimum
+strength_scale in these regimes. Each increase from 1.0->1.2->1.4->1.6->1.8
+has consistently improved composite score. Try 2.0 to further boost
+sizing in sideways where DD headroom is large (6.03% vs 10% limit).
 """
 
 import numpy as np
@@ -79,7 +77,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 1.8  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.0  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
