@@ -1,13 +1,13 @@
 """
-Exp151: Tighten MAX_COMBINED_MULT_HIGH_VOL from 4.5 to 4.0.
+Exp152: Continuous regime-adaptive RSI exit thresholds.
 
-Bull DD is at 9.85% and crash DD at 8.48%. Both are high-vol regimes where
-the sizing cap matters most. Reducing the high-vol cap from 4.5x to 4.0x
-should clip the largest positions during volatile periods, directly reducing
-peak DD. Sideways (low-vol) uses the 7.0x cap so is unaffected. The
-regime-adaptive cap was a huge win (23.4 -> 25.1), suggesting further
-tightening in high-vol specifically could yield additional gains via the
-1/(1+DD%) scoring gate.
+Instead of binary switching between OB/OS thresholds, smoothly tighten
+RSI exits as volatility increases. At vol_ratio=0.5 (calm), use wide
+thresholds (73/27). At vol_ratio=2.0 (high vol), use tight thresholds
+(68/32). Linear interpolation between. This surgically reduces DD in
+high-vol regimes (bull DD 9.85%) while preserving winner-holding in
+calm regimes. Continuous adaptation avoids the cliff effect of the
+previous binary approach.
 """
 
 import numpy as np
@@ -30,6 +30,10 @@ RSI_BULL = 50
 RSI_BEAR = 50
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
+RSI_OB_TIGHT = 68     # tightest OB exit in extreme high-vol
+RSI_OS_TIGHT = 32     # tightest OS exit in extreme high-vol
+RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
+RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 
 MACD_FAST = 8
 MACD_SLOW = 21
@@ -502,9 +506,13 @@ class Strategy:
                         elif current_pos < 0 and ret_vshort > decel_threshold:
                             target = 0.0
 
-                if current_pos > 0 and rsi > RSI_OVERBOUGHT:
+                # Continuous vol-adaptive RSI exit: tighter in high vol
+                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
+                effective_ob = RSI_OVERBOUGHT - (RSI_OVERBOUGHT - RSI_OB_TIGHT) * vol_exit_blend
+                effective_os = RSI_OVERSOLD + (RSI_OS_TIGHT - RSI_OVERSOLD) * vol_exit_blend
+                if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < RSI_OVERSOLD:
+                elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
