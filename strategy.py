@@ -1,12 +1,12 @@
 """
-Exp135: Raise STRENGTH_FLOOR_SIDEWAYS from 2.2 to 2.4.
+Exp136: Increase TREND_GATE_MED_WEIGHT_SIDEWAYS from 0.85 to 0.90.
 
-Each increment of STRENGTH_FLOOR_SIDEWAYS has monotonically improved
-the composite score (1.0→1.2→1.4→1.6→1.8→2.0→2.2). The sideways
-regime remains the weakest (18.93) with only 6.4% DD vs the 10% limit,
-leaving ample headroom for more aggressive sizing. Pushing to 2.4
-should continue the trend of boosting sizing in trendless markets
-where the strategy has the most room to grow.
+The trend gate uses a weighted average of ret_med and ret_long to confirm
+direction. In sideways markets, ret_long is near zero and noisy — weighting
+ret_med more heavily (0.85->0.90) makes the gate more responsive to recent
+momentum, allowing more entries. The previous 0.75->0.85 increase was a keep.
+This is a signal-quality improvement that doesn't change position sizing,
+so it avoids DD pressure in bull/crash regimes near the 10% limit.
 """
 
 import numpy as np
@@ -75,7 +75,7 @@ TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
-TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
+TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
