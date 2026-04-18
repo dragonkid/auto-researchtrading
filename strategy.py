@@ -1,14 +1,11 @@
 """
-Exp140: Volume-price divergence exit.
+Exp141: RSI mean-reversion entries in sideways markets.
 
-When in a profitable position and price is trending favorably but volume is
-declining (bearish divergence for longs, bullish divergence for shorts), exit
-early. Declining volume on a continued price move suggests exhaustion. This
-targets the "held too long" problem across all regimes.
-
-Change: when in profit and the price momentum (ret_vshort) aligns with position
-but volume ratio (recent/base) < 0.7, use a tighter deceleration threshold to
-exit sooner.
+In trendless markets (abs(ret_long) small), add RSI-based mean-reversion entries
+when no position exists. When RSI < RSI_OVERSOLD and market is sideways, enter
+long (bounce expected). When RSI > RSI_OVERBOUGHT and sideways, enter short.
+This only activates when trend_strength is below a threshold, so it won't
+interfere with the momentum strategy in trending markets.
 """
 
 import numpy as np
@@ -97,6 +94,8 @@ VOL_CONFIRM_BOOST = 0.25      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
+MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_SIZE_SCALE = 0.5        # mean-reversion entries use smaller size (50% of normal)
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -374,6 +373,15 @@ class Strategy:
                             funding_mult = 1.0 + FUNDING_BOOST
                         target = -size * funding_mult
                         self.pyramided[symbol] = False
+                    # Mean-reversion entries in sideways markets
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                        mr_size = size * MEANREV_SIZE_SCALE
+                        if rsi < RSI_OVERSOLD:
+                            target = mr_size
+                            self.pyramided[symbol] = False
+                        elif rsi > RSI_OVERBOUGHT:
+                            target = -mr_size
+                            self.pyramided[symbol] = False
             else:
                 if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
                     entry = self.entry_prices[symbol]
