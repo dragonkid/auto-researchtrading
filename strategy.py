@@ -1,12 +1,11 @@
 """
-Exp145: Separate mean-reversion RSI entry thresholds from exit thresholds.
+Exp146: Momentum acceleration voter for entry confirmation.
 
-Currently RSI_OVERBOUGHT/OVERSOLD (73/27) serve double duty for both
-exits (close profitable positions) and mean-reversion entries. These are
-quite extreme for entries, meaning few mean-reversion trades fire.
-Add MEANREV_RSI_OVERSOLD=32 and MEANREV_RSI_OVERBOUGHT=68 so that
-mean-reversion entries trigger more frequently in sideways markets,
-while keeping the exit thresholds unchanged at 73/27.
+Add a 7th voter signal: momentum acceleration. Compare current
+ret_short with ret_short from ACCEL_LOOKBACK bars ago. If momentum
+is increasing (accelerating), it confirms the trend direction.
+This captures a different dimension than level-based signals — it
+measures whether the move is strengthening, not just its magnitude.
 """
 
 import numpy as np
@@ -99,6 +98,7 @@ MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-revers
 MEANREV_SIZE_SCALE = 0.7        # mean-reversion entries use 70% of normal size
 MEANREV_RSI_OVERSOLD = 32       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 68     # less extreme RSI threshold for mean-reversion entries
+ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -272,8 +272,16 @@ class Strategy:
             slope_bull = ema_slope > 0.0005
             slope_bear = ema_slope < -0.0005
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear])
+            # Momentum acceleration: is momentum strengthening vs ACCEL_LOOKBACK bars ago?
+            accel_bull = False
+            accel_bear = False
+            if len(closes) >= adaptive_med + ACCEL_LOOKBACK + 1:
+                prev_ret_short = (closes[-1 - ACCEL_LOOKBACK] - closes[-adaptive_med - ACCEL_LOOKBACK]) / closes[-adaptive_med - ACCEL_LOOKBACK]
+                accel_bull = ret_short > prev_ret_short and ret_short > 0
+                accel_bear = ret_short < prev_ret_short and ret_short < 0
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear])
 
             btc_confirm = True
             if symbol != "BTC":
