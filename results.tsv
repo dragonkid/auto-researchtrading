@@ -131,3 +131,4 @@ ef00f36	20.903920	22.516816	3.225793	keep	increase STRENGTH_FLOOR_DECAY from 0.0
 -	21.336965	23.192366	3.710802	discard	trend-dampened sizing to reduce position size in strong trends (std improved but mean dropped more)
 3851f40	21.350466	23.287874	3.874815	keep	adaptive cooldown + trend-dampened cross-asset boost
 9328498	21.393275	23.343813	3.901077	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.8 to 2.0 for larger sizing in trendless markets
+d5999f4	21.502380	23.480179	3.955598	keep	increase SIDEWAYS_BOOST_DECAY from 0.08 to 0.10 for wider sideways zone
