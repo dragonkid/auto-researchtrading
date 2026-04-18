@@ -183,3 +183,11 @@ ebfc24a	26.206172	28.182027	3.951711	keep	relax mean-reversion RSI entry thresho
 c689d92	26.239404	28.221669	3.964529	keep	lower VOL_BREAKOUT_MULT from 1.2 to 1.0 for more frequent vol breakout voter triggers
 -	26.239264	28.228417	3.978306	discard	widen MEANREV_TREND_THRESHOLD 0.03->0.04 (no effect, essentially identical score)
 667dc41	26.270460	28.249184	3.957449	keep	relax mean-reversion RSI entry thresholds from 38/62 to 42/58 for more MR entries in sideways
+-	26.237351	28.237591	4.000480	discard	MR RSI exit at neutral 47-53 (hurt sideways, exiting too early)
+-	-999.000000	-486.549928	512.451371	discard	MAX_COMBINED_MULT_LOW_VOL 7.5->8.5 (blew DD in bull 11.1% and rally 10.2%)
+-	26.240545	28.236230	3.991370	discard	DECEL_MULT_BASE 0.4->0.5 (mean dropped, marginal std gain)
+-	26.243635	28.244271	4.001274	discard	linreg slope threshold 0.0003->0.0002 (sideways hurt, rally improved but net worse)
+-	26.268422	28.254919	3.972994	discard	PROFIT_DECEL_THRESHOLD 0.02->0.015 (no meaningful effect)
+-	26.270460	28.249184	3.957449	discard	continuous funding carry sizing boost 15% (no effect, identical score)
+-	25.905624	27.568049	3.324850	discard	BTC_OPPOSE_THRESHOLD at -0.02 (std improved but mean dropped more, too restrictive)
+-	26.188534	28.184981	3.992893	discard	ACCEL_LOOKBACK 4->3 (mean dropped, all regimes slightly worse)
