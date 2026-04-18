@@ -1,12 +1,12 @@
 """
-Exp134: Raise STRENGTH_FLOOR_SIDEWAYS from 2.0 to 2.2.
+Exp135: Raise STRENGTH_FLOOR_SIDEWAYS from 2.2 to 2.4.
 
-The strength floor in sideways markets prevents weak momentum from
-being double-penalized by both low signals and low strength_scale.
-Each increment from 1.0→2.0 improved score. The sideways regime
-still has the lowest score (18.88) with low DD (6.4%), suggesting
-room for more aggressive sizing. Pushing to 2.2 provides a modest
-additional boost in trendless markets.
+Each increment of STRENGTH_FLOOR_SIDEWAYS has monotonically improved
+the composite score (1.0→1.2→1.4→1.6→1.8→2.0→2.2). The sideways
+regime remains the weakest (18.93) with only 6.4% DD vs the 10% limit,
+leaving ample headroom for more aggressive sizing. Pushing to 2.4
+should continue the trend of boosting sizing in trendless markets
+where the strategy has the most room to grow.
 """
 
 import numpy as np
@@ -78,7 +78,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 2.2  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
