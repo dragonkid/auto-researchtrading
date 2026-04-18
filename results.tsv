@@ -171,3 +171,4 @@ e714303	25.546837	27.651844	4.210014	keep	tighter low-vol cap threshold (0.8->0.
 -	25.539559	27.650425	4.221732	discard	reduce MAX_COMBINED_MULT 5.5->5.0 (bull DD improved 9.1->9.0 but sideways/rally slightly worse, net -0.007)
 9009391	25.579178	27.642910	4.127465	keep	add rolling linear regression slope as 9th voter for more robust trend detection
 -	25.479332	27.658298	4.357933	discard	increase LINREG_PERIOD 20->40 for timescale diversification (mean flat, std increased 4.13->4.36)
+9ffafda	25.709626	27.781849	4.144447	keep	conservative multi-timeframe agreement sizing (10% boost dampened by trend strength)
