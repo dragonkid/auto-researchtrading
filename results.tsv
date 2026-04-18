@@ -132,3 +132,6 @@ ef00f36	20.903920	22.516816	3.225793	keep	increase STRENGTH_FLOOR_DECAY from 0.0
 3851f40	21.350466	23.287874	3.874815	keep	adaptive cooldown + trend-dampened cross-asset boost
 9328498	21.393275	23.343813	3.901077	keep	raise STRENGTH_FLOOR_SIDEWAYS from 1.8 to 2.0 for larger sizing in trendless markets
 d5999f4	21.502380	23.480179	3.955598	keep	increase SIDEWAYS_BOOST_DECAY from 0.08 to 0.10 for wider sideways zone
+-	21.308637	23.281640	3.946006	discard	reduce VOL_SPIKE_SCALE from 0.6 to 0.5 (mean dropped, crash DD unchanged)
+-	-999.000000	-231.714046	443.012993	discard	increase COOLDOWN_SIDEWAYS_DECAY from 0.06 to 0.08 (blew crash_bear DD 10.14%)
+ea146a1	21.604069	23.595218	3.982298	keep	increase HIGH_VOTE_BOOST from 0.15 to 0.20 for larger positions on high-conviction entries
