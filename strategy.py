@@ -1,11 +1,15 @@
 """
-Exp129: Raise STRENGTH_FLOOR_SIDEWAYS from 1.8 to 2.0.
+Exp130: Increase SIDEWAYS_BOOST_DECAY from 0.08 to 0.10.
 
-In trendless (sideways) markets, weak momentum signals get penalized
-by the strength_scale factor. STRENGTH_FLOOR_SIDEWAYS sets the minimum
-strength_scale in these regimes. Each increase from 1.0->1.2->1.4->1.6->1.8
-has consistently improved composite score. Try 2.0 to further boost
-sizing in sideways where DD headroom is large (6.03% vs 10% limit).
+This parameter controls how fast the sideways position-size boost decays
+as abs(ret_long) grows. At 0.08, the boost fully decays once abs(ret_long)
+reaches ~0.08 (8% long-term return). At 0.10, the sideways boost persists
+deeper into moderate-trend regimes, effectively widening the "sideways" zone.
+
+Previous attempt to jump from 0.08 to 0.12 blew crash_bear DD (>10%).
+This is a more conservative intermediate step. Sideways is the weakest
+regime (18.63 vs mean 23.34) with only 6.03% DD, so more sizing there
+helps without DD risk.
 """
 
 import numpy as np
@@ -62,7 +66,7 @@ DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
-SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
