@@ -167,3 +167,4 @@ cbd2abc	22.186499	24.171086	3.969173	keep	widen DECEL_MULT_TREND from 0.8 to 1.0
 1b9af6a	25.138634	27.257512	4.237755	keep	lower MAX_COMBINED_VOL_THRESHOLD from 1.2 to 1.0 for earlier cap tightening in borderline-volatile regimes
 b764a5d	25.146414	27.250356	4.207884	keep	tighten MAX_COMBINED_MULT_HIGH_VOL from 4.5 to 4.0 to reduce DD in high-vol regimes
 ffd63a5	25.203201	27.319134	4.231867	keep	continuous vol-adaptive RSI exit thresholds (73/27 calm to 68/32 high-vol)
+e714303	25.546837	27.651844	4.210014	keep	tighter low-vol cap threshold (0.8->0.6) with moderate cap increase (7.0->7.5)
