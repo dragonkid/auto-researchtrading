@@ -165,3 +165,4 @@ cbd2abc	22.186499	24.171086	3.969173	keep	widen DECEL_MULT_TREND from 0.8 to 1.0
 4e2f80f	23.426300	25.584782	4.316964	keep	volatility breakout voter as 8th signal (confirm entries when short vol > long vol)
 74a9761	25.120890	27.243390	4.245001	keep	regime-adaptive combined multiplier cap (higher in low-vol, tighter in high-vol)
 1b9af6a	25.138634	27.257512	4.237755	keep	lower MAX_COMBINED_VOL_THRESHOLD from 1.2 to 1.0 for earlier cap tightening in borderline-volatile regimes
+b764a5d	25.146414	27.250356	4.207884	keep	tighten MAX_COMBINED_MULT_HIGH_VOL from 4.5 to 4.0 to reduce DD in high-vol regimes
