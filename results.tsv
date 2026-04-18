@@ -156,3 +156,4 @@ cda4bd6	22.145680	24.112099	3.932837	keep	volume confirmation boost for entry si
 bbcd0e3	22.168399	24.125912	3.915027	keep	RSI mean-reversion entries in sideways markets (50% size when RSI extreme and trend flat)
 -	22.167626	24.124030	3.912807	discard	widen MEANREV_TREND_THRESHOLD 0.03->0.05 (mean dropped marginally, no improvement)
 0b10af1	22.183188	24.140741	3.915106	keep	increase MEANREV_SIZE_SCALE from 0.5 to 0.7 for larger mean-reversion entries in sideways
+cbd2abc	22.186499	24.171086	3.969173	keep	widen DECEL_MULT_TREND from 0.8 to 1.0 to hold winners longer in trending markets
