@@ -1,9 +1,8 @@
 """
-Exp170: Increase VOL_CONFIRM_BOOST from 0.25 to 0.35 for larger position
-sizing bonus when recent volume exceeds baseline. Volume confirmation is
-especially valuable in sideways markets where volume spikes distinguish
-genuine moves from noise. The sideways regime (23.63) has DD headroom
-(7.8% vs 10% limit) to support larger positions on high-volume entries.
+Exp171: Increase MTF_AGREE_BOOST from 0.10 to 0.15 for larger sizing
+when all three timeframes (vshort, short, long) agree on direction. This
+boost is trend-dampened (only active in sideways), so increasing it
+targets the weakest regime (23.78) where DD headroom is ample (7.8%).
 """
 
 import numpy as np
@@ -124,7 +123,7 @@ MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headro
 MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
-MTF_AGREE_BOOST = 0.10  # max sizing boost when all 3 timeframe returns agree on direction
+MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
 MTF_AGREE_TREND_DECAY = 0.10  # abs(ret_long) at which MTF boost fully decays (only active in sideways)
 
 def ema(values, span):
