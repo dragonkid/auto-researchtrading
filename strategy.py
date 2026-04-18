@@ -1,13 +1,13 @@
 """
-Exp132: Increase CROSS_ASSET_TREND_DECAY from 0.10 to 0.14.
+Exp133: Increase VOL_COMPRESS_BOOST from 0.25 to 0.40.
 
-The cross-asset agreement boost (30% larger when all 3 assets trend same
-direction) is dampened in trending markets via CROSS_ASSET_TREND_DECAY.
-Currently it decays to zero when |ret_long| > 0.10. Widening to 0.14
-keeps the boost partially active in moderate-trend environments like
-rally_2024 (22.0, weakest after sideways). This should improve rally
-and potentially help consistency (lower std) without much DD risk since
-the boost is only 30% and already capped by MAX_COMBINED_MULT.
+Vol compression (short_vol < 70% of long_vol) signals an impending
+breakout. The current 25% position size boost during compression
+was added in exp d366e36. Increasing to 40% should help capture
+breakout moves, especially in sideways→trend transitions. This is
+a targeted boost that only activates when vol is compressed, so
+DD risk is limited (breakout environments tend to be directional,
+not choppy).
 """
 
 import numpy as np
@@ -83,7 +83,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.0  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
-VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
+VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 COOLDOWN_BARS = 2
