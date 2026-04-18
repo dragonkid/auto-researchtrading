@@ -1,13 +1,11 @@
 """
-Exp152: Continuous regime-adaptive RSI exit thresholds.
+Exp153: Tighter low-vol cap threshold with moderate cap increase.
 
-Instead of binary switching between OB/OS thresholds, smoothly tighten
-RSI exits as volatility increases. At vol_ratio=0.5 (calm), use wide
-thresholds (73/27). At vol_ratio=2.0 (high vol), use tight thresholds
-(68/32). Linear interpolation between. This surgically reduces DD in
-high-vol regimes (bull DD 9.85%) while preserving winner-holding in
-calm regimes. Continuous adaptation avoids the cliff effect of the
-previous binary approach.
+Previous exp showed raising MAX_COMBINED_MULT_LOW_VOL to 8.0 helped
+sideways/crash/rally but blew bull DD (11.6%). Root cause: vol_ratio<0.8
+threshold catches bull periods too. Fix: lower the threshold to 0.6
+(truly calm only) and raise cap moderately to 7.5. This targets the
+gain (sideways +0.6) while avoiding bull DD blow.
 """
 
 import numpy as np
@@ -117,9 +115,10 @@ HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
-MAX_COMBINED_MULT_LOW_VOL = 7.0  # higher cap in low-vol regimes (more DD headroom)
+MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
+MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -393,13 +392,13 @@ class Strategy:
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
-            if vol_ratio < 0.8:
+            if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL
             elif vol_ratio > MAX_COMBINED_VOL_THRESHOLD:
                 adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL
             else:
                 # Linear interpolation between low-vol and base caps
-                blend = (vol_ratio - 0.8) / (MAX_COMBINED_VOL_THRESHOLD - 0.8)
+                blend = (vol_ratio - MAX_COMBINED_LOW_VOL_THRESHOLD) / (MAX_COMBINED_VOL_THRESHOLD - MAX_COMBINED_LOW_VOL_THRESHOLD)
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL + (MAX_COMBINED_MULT - MAX_COMBINED_MULT_LOW_VOL) * blend
             combined_mult = min(combined_mult, adaptive_cap)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
