@@ -1,13 +1,12 @@
 """
-Exp133: Increase VOL_COMPRESS_BOOST from 0.25 to 0.40.
+Exp134: Raise STRENGTH_FLOOR_SIDEWAYS from 2.0 to 2.2.
 
-Vol compression (short_vol < 70% of long_vol) signals an impending
-breakout. The current 25% position size boost during compression
-was added in exp d366e36. Increasing to 40% should help capture
-breakout moves, especially in sideways→trend transitions. This is
-a targeted boost that only activates when vol is compressed, so
-DD risk is limited (breakout environments tend to be directional,
-not choppy).
+The strength floor in sideways markets prevents weak momentum from
+being double-penalized by both low signals and low strength_scale.
+Each increment from 1.0→2.0 improved score. The sideways regime
+still has the lowest score (18.88) with low DD (6.4%), suggesting
+room for more aggressive sizing. Pushing to 2.2 provides a modest
+additional boost in trendless markets.
 """
 
 import numpy as np
@@ -79,7 +78,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 2.0  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.2  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
