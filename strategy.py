@@ -1,12 +1,15 @@
 """
-Exp136: Increase TREND_GATE_MED_WEIGHT_SIDEWAYS from 0.85 to 0.90.
+Exp137: Momentum deceleration early exit.
 
-The trend gate uses a weighted average of ret_med and ret_long to confirm
-direction. In sideways markets, ret_long is near zero and noisy — weighting
-ret_med more heavily (0.85->0.90) makes the gate more responsive to recent
-momentum, allowing more entries. The previous 0.75->0.85 increase was a keep.
-This is a signal-quality improvement that doesn't change position sizing,
-so it avoids DD pressure in bull/crash regimes near the 10% limit.
+When in a position, if very-short-term momentum (ret_vshort) opposes the
+position direction beyond a threshold while the position is in profit, exit
+early before the trailing stop triggers. This catches the beginning of
+reversals proactively. The exit only fires when:
+1) Position is currently profitable (pnl > 0)
+2) ret_vshort moves against position by more than half the entry threshold
+This targets sideways whipsaws and crash reversals where the trailing stop
+triggers too late, while preserving trend-following in strong trends (where
+ret_vshort rarely opposes strongly enough to trigger the exit).
 """
 
 import numpy as np
@@ -408,6 +411,14 @@ class Strategy:
                         pnl = -pnl
                     if pnl > TAKE_PROFIT_PCT:
                         target = 0.0
+                    # Momentum deceleration exit: if in profit and very-short-term
+                    # momentum reverses, exit before trailing stop catches up
+                    elif pnl > 0:
+                        decel_threshold = dyn_threshold * 0.5
+                        if current_pos > 0 and ret_vshort < -decel_threshold:
+                            target = 0.0
+                        elif current_pos < 0 and ret_vshort > decel_threshold:
+                            target = 0.0
 
                 if current_pos > 0 and rsi > RSI_OVERBOUGHT:
                     target = 0.0
