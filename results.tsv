@@ -191,3 +191,5 @@ c689d92	26.239404	28.221669	3.964529	keep	lower VOL_BREAKOUT_MULT from 1.2 to 1.
 -	26.270460	28.249184	3.957449	discard	continuous funding carry sizing boost 15% (no effect, identical score)
 -	25.905624	27.568049	3.324850	discard	BTC_OPPOSE_THRESHOLD at -0.02 (std improved but mean dropped more, too restrictive)
 -	26.188534	28.184981	3.992893	discard	ACCEL_LOOKBACK 4->3 (mean dropped, all regimes slightly worse)
+-	25.863719	28.118244	4.509052	discard	weighted voting system (smoother signals 1.2x, noisy 0.7x) -- mean flat, std increased
+7f8ac1d	26.347359	28.319538	3.944359	keep	increase VOL_CONFIRM_BOOST from 0.25 to 0.35 for larger volume-confirmed entries
