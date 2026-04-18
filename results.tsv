@@ -194,3 +194,4 @@ c689d92	26.239404	28.221669	3.964529	keep	lower VOL_BREAKOUT_MULT from 1.2 to 1.
 -	25.863719	28.118244	4.509052	discard	weighted voting system (smoother signals 1.2x, noisy 0.7x) -- mean flat, std increased
 7f8ac1d	26.347359	28.319538	3.944359	keep	increase VOL_CONFIRM_BOOST from 0.25 to 0.35 for larger volume-confirmed entries
 0f4b167	26.387490	28.367320	3.959660	keep	increase MTF_AGREE_BOOST from 0.10 to 0.15 for larger sideways sizing on timeframe agreement
+-	26.380255	28.361690	3.962870	discard	increase VOL_COMPRESS_THRESH_REDUCE 0.25->0.35 (no effect, marginal mean drop 28.367->28.362)
