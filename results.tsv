@@ -141,3 +141,8 @@ c168530	21.625939	23.613036	3.974195	keep	increase VOL_COMPRESS_BOOST from 0.25 
 5505e11	21.655871	23.649020	3.986298	keep	raise STRENGTH_FLOOR_SIDEWAYS from 2.0 to 2.2 for larger sizing in trendless markets
 156c0e7	21.688713	23.678089	3.978752	keep	raise STRENGTH_FLOOR_SIDEWAYS from 2.2 to 2.4 for larger sizing in trendless markets
 d2bd9b0	21.775853	23.781511	4.011317	keep	increase TREND_GATE_MED_WEIGHT_SIDEWAYS from 0.85 to 0.90 for more responsive trend gate in trendless markets
+-	-999.000000	-233.418962	442.011668	discard	increase SIDEWAYS_BOOST_MAX from 0.70 to 0.85 (bull DD blew 10.5%)
+-	21.773533	23.772913	3.998760	discard	lower vol_scale floor from 0.4 to 0.3 (no effect, floor rarely binds)
+-	-999.000000	-233.803197	441.789906	discard	rebalance symbol weights BTC 0.40 ETH 0.33 SOL 0.27 (bull DD blew 11.2%)
+-	21.774722	23.797531	4.045617	discard	increase TREND_GATE_MED_WEIGHT_BASE from 0.50 to 0.55 (mean up but std up more)
+-	21.762300	23.776888	4.029177	discard	increase TREND_GATE_ADAPT_DECAY from 0.08 to 0.10 (marginal mean and std both worse)
