@@ -176,3 +176,4 @@ da52c9b	25.721852	27.816676	4.189647	keep	relax mean-reversion RSI entry thresho
 6f3759f	25.776176	27.870635	4.188918	keep	reduce LINREG_PERIOD from 20 to 16 for faster linreg slope voter
 -	25.766345	27.896415	4.260140	discard	lower linreg slope threshold 0.0003->0.0001 (mean up but std up more, sideways slightly worse)
 dc35f4e	25.777703	27.865531	4.175657	keep	vol-compression threshold reduction for earlier breakout entries
+a67cf2c	26.110021	28.060297	3.900552	keep	trend-adaptive RSI exit widening in sideways (76/24 trendless to 73/27 in trends)
