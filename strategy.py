@@ -1,13 +1,12 @@
 """
-Exp148: Volatility breakout voter as 8th signal.
+Exp149: Regime-adaptive combined multiplier cap.
 
-When short-term realized vol breaks above its recent average, a directional
-move is likely underway. Add this as an independent confirmation signal.
-In sideways (weakest regime at 20.28), this should help filter out entries
-during dead-calm chop and enter when vol confirms a breakout. The signal
-is naturally regime-adaptive: it fires more in breakouts and less in
-flat consolidation. We keep MIN_VOTES at 3 so this adds a new vote
-dimension without raising the bar.
+Current issue: bull regime scores 32.5 but DD is 9.85% (near 10% limit),
+while sideways scores only 20.5 with DD at 5.5%. The std of 4.32 costs
+2.16 points. By making MAX_COMBINED_MULT adaptive to realized volatility,
+we can allow more aggressive sizing in calm/sideways (where DD headroom
+exists) and rein in sizing in volatile trending markets (where DD is near
+limit). This directly targets the regime variance penalty.
 """
 
 import numpy as np
@@ -112,7 +111,10 @@ MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
-MAX_COMBINED_MULT = 5.5  # cap on product of all sizing multipliers to prevent extreme stacking
+MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
+MAX_COMBINED_MULT_LOW_VOL = 7.0  # higher cap in low-vol regimes (more DD headroom)
+MAX_COMBINED_MULT_HIGH_VOL = 4.5  # tighter cap in high-vol regimes (protect DD)
+MAX_COMBINED_VOL_THRESHOLD = 1.2  # vol_ratio above this triggers tighter cap
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -384,7 +386,17 @@ class Strategy:
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
-            combined_mult = min(combined_mult, MAX_COMBINED_MULT)
+            # Adaptive cap: allow more stacking in low-vol (sideways) regimes
+            # where DD headroom exists, tighter in high-vol regimes to protect DD
+            if vol_ratio < 0.8:
+                adaptive_cap = MAX_COMBINED_MULT_LOW_VOL
+            elif vol_ratio > MAX_COMBINED_VOL_THRESHOLD:
+                adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL
+            else:
+                # Linear interpolation between low-vol and base caps
+                blend = (vol_ratio - 0.8) / (MAX_COMBINED_VOL_THRESHOLD - 0.8)
+                adaptive_cap = MAX_COMBINED_MULT_LOW_VOL + (MAX_COMBINED_MULT - MAX_COMBINED_MULT_LOW_VOL) * blend
+            combined_mult = min(combined_mult, adaptive_cap)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
