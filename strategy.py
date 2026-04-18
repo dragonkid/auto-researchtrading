@@ -1,11 +1,12 @@
 """
-Exp146: Momentum acceleration voter for entry confirmation.
+Exp147: Regime-adaptive RSI period.
 
-Add a 7th voter signal: momentum acceleration. Compare current
-ret_short with ret_short from ACCEL_LOOKBACK bars ago. If momentum
-is increasing (accelerating), it confirms the trend direction.
-This captures a different dimension than level-based signals — it
-measures whether the move is strengthening, not just its magnitude.
+Use shorter RSI period (6) in sideways markets for faster mean-reversion
+detection, and standard period (8) in trending markets. The sideways
+regime is the weakest at 19.50 — faster RSI should improve entry timing
+for both momentum and mean-reversion signals in trendless conditions.
+Previous attempt to reduce RSI_PERIOD globally to 6 blew DD in bull;
+making it adaptive avoids that by keeping longer period in trends.
 """
 
 import numpy as np
@@ -23,6 +24,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
+RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
 RSI_OVERBOUGHT = 73
@@ -259,7 +261,10 @@ class Strategy:
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
-            rsi = calc_rsi(closes, RSI_PERIOD)
+            # Adaptive RSI: shorter period in sideways for faster signals
+            rsi_trend_str = min(abs(ret_long_raw) / 0.10, 1.0)
+            adaptive_rsi_period = int(round(RSI_PERIOD_SIDEWAYS + (RSI_PERIOD - RSI_PERIOD_SIDEWAYS) * rsi_trend_str))
+            rsi = calc_rsi(closes, adaptive_rsi_period)
             rsi_bull = rsi > RSI_BULL
             rsi_bear = rsi < RSI_BEAR
 
