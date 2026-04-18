@@ -155,3 +155,4 @@ cda4bd6	22.145680	24.112099	3.932837	keep	volume confirmation boost for entry si
 545ec4e	22.149831	24.110547	3.921433	keep	volume-price divergence exit (tighter decel when volume fading on profitable position)
 bbcd0e3	22.168399	24.125912	3.915027	keep	RSI mean-reversion entries in sideways markets (50% size when RSI extreme and trend flat)
 -	22.167626	24.124030	3.912807	discard	widen MEANREV_TREND_THRESHOLD 0.03->0.05 (mean dropped marginally, no improvement)
+0b10af1	22.183188	24.140741	3.915106	keep	increase MEANREV_SIZE_SCALE from 0.5 to 0.7 for larger mean-reversion entries in sideways
