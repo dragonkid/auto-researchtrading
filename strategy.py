@@ -1,11 +1,12 @@
 """
-Exp144: Widen deceleration exit threshold in trends.
+Exp145: Separate mean-reversion RSI entry thresholds from exit thresholds.
 
-Raise DECEL_MULT_TREND from 0.8 to 1.0 so that in strongly trending markets,
-the decel exit requires a larger short-term reversal before triggering.
-This should hold winning positions longer in bull and rally regimes where the
-trailing stop already provides downside protection. Sideways is unaffected
-since it uses DECEL_MULT_BASE (0.4).
+Currently RSI_OVERBOUGHT/OVERSOLD (73/27) serve double duty for both
+exits (close profitable positions) and mean-reversion entries. These are
+quite extreme for entries, meaning few mean-reversion trades fire.
+Add MEANREV_RSI_OVERSOLD=32 and MEANREV_RSI_OVERBOUGHT=68 so that
+mean-reversion entries trigger more frequently in sideways markets,
+while keeping the exit thresholds unchanged at 73/27.
 """
 
 import numpy as np
@@ -96,6 +97,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 0.7        # mean-reversion entries use 70% of normal size
+MEANREV_RSI_OVERSOLD = 32       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 68     # less extreme RSI threshold for mean-reversion entries
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -376,10 +379,10 @@ class Strategy:
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         mr_size = size * MEANREV_SIZE_SCALE
-                        if rsi < RSI_OVERSOLD:
+                        if rsi < MEANREV_RSI_OVERSOLD:
                             target = mr_size
                             self.pyramided[symbol] = False
-                        elif rsi > RSI_OVERBOUGHT:
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
                             target = -mr_size
                             self.pyramided[symbol] = False
             else:
