@@ -1,9 +1,9 @@
 """
-Exp192: Profit-based trailing stop tightening — when unrealized P&L exceeds
-3%, progressively tighten the ATR stop multiplier (up to 40% tighter at 8%+
-profit). This protects larger gains via the trailing stop mechanism itself,
-complementing the decel exit. Trades with modest profits keep normal stop
-width, but big winners get locked in before reversal erodes them.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -113,9 +113,6 @@ PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
-PROFIT_STOP_THRESHOLD = 0.03    # profit above this tightens trailing stop
-PROFIT_STOP_MAX_TIGHTEN = 0.40  # max stop reduction at large profits
-PROFIT_STOP_SCALE = 0.05        # profit level at which max tightening reached
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
@@ -533,17 +530,6 @@ class Strategy:
                 flat_trend_strength = min(abs(ret_long) / STOP_FLAT_TREND_DECAY, 1.0)
                 flat_trend_boost = 1.0 + STOP_FLAT_TREND_BOOST * (1.0 - flat_trend_strength)
                 atr_stop_mult *= flat_trend_boost
-
-                # Profit-based stop tightening: protect large unrealized gains
-                if symbol in self.entry_prices:
-                    entry_p = self.entry_prices[symbol]
-                    unreal_pnl = (mid - entry_p) / entry_p
-                    if current_pos < 0:
-                        unreal_pnl = -unreal_pnl
-                    if unreal_pnl > PROFIT_STOP_THRESHOLD:
-                        excess = unreal_pnl - PROFIT_STOP_THRESHOLD
-                        tighten_frac = min(PROFIT_STOP_MAX_TIGHTEN, excess / PROFIT_STOP_SCALE * PROFIT_STOP_MAX_TIGHTEN)
-                        atr_stop_mult *= (1.0 - tighten_frac)
 
                 if symbol not in self.peak_prices:
                     self.peak_prices[symbol] = mid
