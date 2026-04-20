@@ -1,7 +1,8 @@
 """
-Exp182: Expand calm-market vote relaxation. Raise MIN_VOTES_CALM_VOL
-from 0.6 to 0.7 so more bars qualify for the reduced 2-vote entry
-threshold. More entries in moderate-vol sideways conditions.
+Exp183: Increase VOL_SPIKE_SCALE from 0.6 to 0.7 for less aggressive
+position size reduction during vol spikes. With improved exit mechanisms
+(decel, funding crowding, vol divergence), we can afford larger entries
+during elevated vol without blowing DD.
 """
 
 import numpy as np
@@ -49,7 +50,7 @@ VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
 VOL_SPIKE_THRESHOLD = 1.5
-VOL_SPIKE_SCALE = 0.6
+VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
