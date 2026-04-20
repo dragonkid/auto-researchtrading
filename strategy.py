@@ -1,8 +1,9 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp200: Increase HIGH_VOTE_THRESHOLD from 4 to 5. With 10 voters, requiring
+5+ for the sizing bonus (instead of 4+) means only truly high-conviction
+entries get boosted. This should reduce DD by giving fewer entries the boost,
+particularly helping bull_2021 (9.86% DD) by being more selective about when
+to size up. The standard entries (3+ votes) still proceed at normal size.
 """
 
 import numpy as np
@@ -120,7 +121,7 @@ COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.7  # vol_ratio below which reduced votes apply
-HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
+HIGH_VOTE_THRESHOLD = 5  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
