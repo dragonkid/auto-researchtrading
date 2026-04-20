@@ -1,9 +1,9 @@
 """
-Exp192: Adaptive flip vote requirement — in sideways (trendless) markets,
-reduce FLIP_MIN_VOTES from 4 to 3, allowing faster position reversals when
-momentum shifts. In trending markets, keep the higher threshold (4) to avoid
-getting shaken out of winning trades. This should improve the sideways regime
-without hurting trending regimes.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -126,8 +126,6 @@ MIN_VOTES_CALM_VOL = 0.7  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
-FLIP_MIN_VOTES_SIDEWAYS = 3  # lower flip threshold in trendless markets for faster reversals
-FLIP_SIDEWAYS_DECAY = 0.08   # abs(ret_long) at which flip threshold returns to full FLIP_MIN_VOTES
 MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
@@ -600,11 +598,8 @@ class Strategy:
                     target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
-                # Adaptive: lower threshold in sideways markets for faster reversals
-                flip_trend_str = min(abs(ret_long) / FLIP_SIDEWAYS_DECAY, 1.0)
-                effective_flip_votes = FLIP_MIN_VOTES_SIDEWAYS + (FLIP_MIN_VOTES - FLIP_MIN_VOTES_SIDEWAYS) * flip_trend_str
-                flip_bearish = bear_votes >= effective_flip_votes and btc_confirm and trend_bear
-                flip_bullish = bull_votes >= effective_flip_votes and btc_confirm and trend_bull
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
