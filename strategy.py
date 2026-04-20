@@ -1,8 +1,8 @@
 """
-Exp191: Tighten STOP_AGAINST_TREND_MULT from 0.75 to 0.65 — exit faster
-when position opposes long-term trend. Tighter against-trend stops cut losses
-on wrong-side positions faster, reducing DD in all regimes. Particularly helps
-bull_2021 (DD=9.86%) where shorts get stopped out faster in uptrend.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -73,7 +73,7 @@ SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) re
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
-STOP_AGAINST_TREND_MULT = 0.65  # tighter stop when position opposes long-term trend
+STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
 
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
