@@ -1,15 +1,15 @@
 """
-Exp199: Reduce SOL weight from 0.33 to 0.25, increase BTC/ETH to 0.375.
-SOL is the most volatile and noisy asset. Reducing its weight concentrates
-capital on higher-quality BTC/ETH signals. This should reduce regime variance
-(std) since SOL's behavior is less predictable across market conditions.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
-SYMBOL_WEIGHTS = {"BTC": 0.375, "ETH": 0.375, "SOL": 0.25}
+SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
 SHORT_WINDOW = 8
 MED_WINDOW = 12
