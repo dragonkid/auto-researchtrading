@@ -1,10 +1,8 @@
 """
-Exp204: Tighten mean-reversion RSI thresholds from 49/51 to 38/62.
-The current thresholds are barely selective (RSI oscillates around 50),
-so MR entries fire on nearly every bar in sideways markets — adding noise.
-Tighter thresholds ensure MR entries only trigger on genuine oversold/overbought
-conditions, which should improve signal quality especially in sideways regime
-(currently the weakest at 16.005).
+Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
+short, long all same sign) is redundant with the trend gate and high-vote
+boost already capturing momentum alignment.  Removing it simplifies sizing
+and may reduce overfitting — one fewer stacking multiplier in the chain.
 """
 
 import numpy as np
@@ -107,8 +105,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 38       # selective RSI threshold for MR entries (was 49 — too loose)
-MEANREV_RSI_OVERBOUGHT = 62     # selective RSI threshold for MR entries (was 51 — too loose)
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
