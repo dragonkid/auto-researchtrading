@@ -1,10 +1,10 @@
 """
-Exp198: Reduce BASE_POSITION_PCT from 0.35 to 0.33.  Bull DD 8.56% and rally
-DD 8.06% are the worst regimes.  The exponential DD penalty at 8% gives ~0.55x
-vs ~0.67x at 7%, so even 1% DD improvement is worth ~0.12x multiplicative gain.
-Annual returns are so high (10^14%!) that the log return gate is fully saturated
-and insensitive to small position cuts.  Continuing the proven sizing-reduction
-trend: every BASE_POSITION_PCT cut so far has been a keep.
+Exp199: Reduce MAX_COMBINED_MULT_HIGH_VOL from 3.5 to 3.0.  Rally regime is the
+weakest (12.94 vs mean 15.00) with DD 7.60%.  The exponential DD penalty at 7.6%
+gives ~0.60x; dropping DD to ~7.0% would yield ~0.67x — a 0.07x multiplicative
+gain.  The high-vol cap directly limits peak sizing during volatile episodes that
+drive DD.  The prior 4.0->3.5 cut was a keep (727b98a).  Returns are so saturated
+that the log return gate won't notice the reduced peak sizing.
 """
 
 import numpy as np
@@ -128,7 +128,7 @@ HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 4.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
-MAX_COMBINED_MULT_HIGH_VOL = 3.5  # tighter cap in high-vol regimes (protect DD)
+MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
