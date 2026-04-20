@@ -1,9 +1,11 @@
 """
-Exp191: Widen decel threshold for small winners — when position profit is
-below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
-get more room to develop before momentum decel exit triggers. This avoids
-cutting winners too early while the profit-scaled tightening (>2%) still
-locks in larger gains. Net effect: hold marginal winners longer.
+Exp192: Asymmetric ATR stop bounds — tighten min (3.0→2.5) to cut losses
+faster in high-vol, widen max (6.0→6.5) to hold winners longer in low-vol.
+The vol-adaptive stop formula (ATR_STOP_MULT_BASE / vol_ratio) already scales
+stops with volatility, but the bounds were symmetric. By making the bounds
+asymmetric, we get faster defensive exits in dangerous markets while giving
+more room to breathe in calm conditions. Expected effect: lower DD in crash
+regime, slightly better hold time in sideways/rally.
 """
 
 import numpy as np
@@ -55,8 +57,8 @@ VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
-ATR_STOP_MULT_MIN = 3.0
-ATR_STOP_MULT_MAX = 6.0
+ATR_STOP_MULT_MIN = 2.5
+ATR_STOP_MULT_MAX = 6.5
 TAKE_PROFIT_PCT = 99.0
 BASE_THRESHOLD = 0.006
 BTC_OPPOSE_THRESHOLD = -99.0
