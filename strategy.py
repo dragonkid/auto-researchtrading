@@ -1,8 +1,10 @@
 """
-Exp171: Increase MTF_AGREE_BOOST from 0.10 to 0.15 for larger sizing
-when all three timeframes (vshort, short, long) agree on direction. This
-boost is trend-dampened (only active in sideways), so increasing it
-targets the weakest regime (23.78) where DD headroom is ample (7.8%).
+Exp173: Relax mean-reversion RSI entry thresholds from 42/58 to 45/55
+for more MR entries in sideways markets. MR entries only trigger when
+abs(ret_long) < 0.03, so they are strictly confined to sideways where
+DD headroom is ample (7.8%). The series 27/73->42/58 has consistently
+improved score. Each step generates more MR entries to capture sideways
+range-bound oscillations.
 """
 
 import numpy as np
@@ -103,8 +105,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 42       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 58     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 45       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 55     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
