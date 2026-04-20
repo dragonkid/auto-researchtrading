@@ -1,8 +1,8 @@
 """
-Exp188: Tighten DECEL_MULT_BASE from 0.4 to 0.3 — in sideways markets, exit
-even faster when very-short-term momentum reverses. The adaptive decel system
-already widens in trending markets (DECEL_MULT_TREND=1.0), so this only affects
-sideways/trendless regimes where quick profit-taking is optimal.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -78,7 +78,7 @@ STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term t
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
-DECEL_MULT_BASE = 0.3           # deceleration threshold multiplier in sideways (tighter exit)
+DECEL_MULT_BASE = 0.4           # deceleration threshold multiplier in sideways (tighter exit)
 DECEL_MULT_TREND = 1.0          # deceleration threshold multiplier in trends (wider, hold winners)
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
