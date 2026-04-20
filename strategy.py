@@ -1,9 +1,10 @@
 """
-Exp191: Widen decel threshold for small winners — when position profit is
-below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
-get more room to develop before momentum decel exit triggers. This avoids
-cutting winners too early while the profit-scaled tightening (>2%) still
-locks in larger gains. Net effect: hold marginal winners longer.
+Exp192: Trend-aligned position sizing — when entry direction matches the
+long-term trend (ret_long), boost position size by up to 20%. When entry
+opposes the trend, reduce size by up to 15%. This rewards higher-probability
+with-trend entries and reduces exposure on counter-trend entries, which should
+improve Sharpe without significantly increasing DD (since with-trend trades
+have wider trailing stops already).
 """
 
 import numpy as np
@@ -133,6 +134,9 @@ MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
 MTF_AGREE_TREND_DECAY = 0.10  # abs(ret_long) at which MTF boost fully decays (only active in sideways)
+TREND_ALIGN_BOOST = 0.20  # max sizing boost when entry aligns with long-term trend
+TREND_ALIGN_REDUCE = 0.15  # max sizing reduction when entry opposes long-term trend
+TREND_ALIGN_DECAY = 0.12   # abs(ret_long) at which alignment bonus reaches full value
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -471,18 +475,33 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Trend-aligned sizing: scale size based on alignment with long-term trend
+            trend_align_strength = min(abs(ret_long) / TREND_ALIGN_DECAY, 1.0)
+
             if current_pos == 0:
                 if not in_cooldown:
                     funding_mult = 1.0
                     if bullish:
                         if avg_funding < 0:
                             funding_mult = 1.0 + FUNDING_BOOST
-                        target = size * funding_mult
+                        # Boost size when going long aligns with uptrend
+                        align_mult = 1.0
+                        if ret_long > 0:
+                            align_mult = 1.0 + TREND_ALIGN_BOOST * trend_align_strength
+                        elif ret_long < 0:
+                            align_mult = 1.0 - TREND_ALIGN_REDUCE * trend_align_strength
+                        target = size * funding_mult * align_mult
                         self.pyramided[symbol] = False
                     elif bearish:
                         if avg_funding > 0:
                             funding_mult = 1.0 + FUNDING_BOOST
-                        target = -size * funding_mult
+                        # Boost size when going short aligns with downtrend
+                        align_mult = 1.0
+                        if ret_long < 0:
+                            align_mult = 1.0 + TREND_ALIGN_BOOST * trend_align_strength
+                        elif ret_long > 0:
+                            align_mult = 1.0 - TREND_ALIGN_REDUCE * trend_align_strength
+                        target = -size * funding_mult * align_mult
                         self.pyramided[symbol] = False
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
@@ -601,9 +620,11 @@ class Strategy:
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
-                    target = -size
+                    flip_align = 1.0 + TREND_ALIGN_BOOST * trend_align_strength if ret_long < 0 else 1.0 - TREND_ALIGN_REDUCE * trend_align_strength if ret_long > 0 else 1.0
+                    target = -size * flip_align
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
-                    target = size
+                    flip_align = 1.0 + TREND_ALIGN_BOOST * trend_align_strength if ret_long > 0 else 1.0 - TREND_ALIGN_REDUCE * trend_align_strength if ret_long < 0 else 1.0
+                    target = size * flip_align
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
