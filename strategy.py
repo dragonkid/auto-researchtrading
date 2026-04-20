@@ -1,10 +1,10 @@
 """
-Exp200: Reduce MAX_COMBINED_MULT from 4.5 to 4.0.  This is the base cap for
-moderate-vol regimes.  Rally_2024 is the weakest regime (12.90 vs mean 15.25)
-with DD 7.60%.  The exponential DD penalty at 7.6% gives ~0.60x.  Reducing
-peak sizing in the moderate-vol band should improve rally DD without
-meaningfully affecting returns (log return gate is saturated).  Prior
-reductions 5.5->5.0 and 5.0->4.5 were both keeps.
+Exp201: Reduce linreg slope thresholds from 0.0003 to 0.0001.  The linreg
+voter currently requires slope > 0.0003 to vote bull, which is somewhat
+restrictive in sideways/low-momentum periods.  A lower threshold (0.0001)
+lets this voter contribute more votes in weak-trend conditions, potentially
+pushing marginal entries over the MIN_VOTES bar — especially in sideways
+and rally regimes which are the weakest (16.0 and 16.7 vs bull 23.7).
 """
 
 import numpy as np
@@ -326,8 +326,8 @@ class Strategy:
 
             # Linear regression slope voter: more robust trend detection
             linreg_slope = self._calc_linreg_slope(closes)
-            linreg_bull = linreg_slope > 0.0003
-            linreg_bear = linreg_slope < -0.0003
+            linreg_bull = linreg_slope > 0.0001
+            linreg_bear = linreg_slope < -0.0001
 
             # Volatility breakout voter: vol expanding signals directional move
             vol_breakout_bull = False
