@@ -1,10 +1,10 @@
 """
-Exp201: Reduce linreg slope thresholds from 0.0003 to 0.0001.  The linreg
-voter currently requires slope > 0.0003 to vote bull, which is somewhat
-restrictive in sideways/low-momentum periods.  A lower threshold (0.0001)
-lets this voter contribute more votes in weak-trend conditions, potentially
-pushing marginal entries over the MIN_VOTES bar — especially in sideways
-and rally regimes which are the weakest (16.0 and 16.7 vs bull 23.7).
+Exp202: Raise MIN_VOTES_CALM_VOL from 0.7 to 0.9 to extend reduced vote
+requirement (MIN_VOTES_CALM=2) to moderate-vol regimes.  Currently only
+very calm markets (vol_ratio < 0.7) get the easier entry bar.  The sideways
+regime (our weakest at 16.0) likely has vol_ratio 0.7-1.0, so it doesn't
+benefit.  Expanding the threshold lets more entries through in sideways/rally
+without affecting high-vol crash periods (vol_ratio > 1).
 """
 
 import numpy as np
@@ -122,7 +122,7 @@ COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
-MIN_VOTES_CALM_VOL = 0.7  # vol_ratio below which reduced votes apply
+MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
