@@ -1,8 +1,10 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp204: Remove mean-reversion entry logic.  The meanrev path triggers when
+abs(ret_long) < 3% AND RSI is barely below/above 50 (thresholds 49/51),
+essentially entering on noise in sideways markets.  Earlier experiment
+tightening thresholds to 38/62 hurt score, but full removal is cleaner:
+it eliminates a noisy entry path and reduces trade count in trendless
+regimes, which should improve Sharpe and reduce DD.
 """
 
 import numpy as np
@@ -474,15 +476,8 @@ class Strategy:
                             funding_mult = 1.0 + FUNDING_BOOST
                         target = -size * funding_mult
                         self.pyramided[symbol] = False
-                    # Mean-reversion entries in sideways markets
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        mr_size = size * MEANREV_SIZE_SCALE
-                        if rsi < MEANREV_RSI_OVERSOLD:
-                            target = mr_size
-                            self.pyramided[symbol] = False
-                        elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -mr_size
-                            self.pyramided[symbol] = False
+                    # Mean-reversion entries DISABLED — RSI 49/51 thresholds
+                    # fired on noise in sideways markets, hurting Sharpe
             else:
                 if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
                     entry = self.entry_prices[symbol]
