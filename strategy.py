@@ -1,10 +1,8 @@
 """
-Exp204: Reduce EMA_SLOW from 21 to 18 for a faster EMA crossover voter.
-The EMA crossover (fast=3, slow=21) is one of 8 voters. A faster slow EMA
-should detect trend changes sooner, particularly helping crash_bear and
-sideways regimes where late trend detection costs performance. EMA_SLOW was
-previously reduced from 23→21 (kept). This continues the trend toward a more
-responsive crossover signal.
+Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
+short, long all same sign) is redundant with the trend gate and high-vote
+boost already capturing momentum alignment.  Removing it simplifies sizing
+and may reduce overfitting — one fewer stacking multiplier in the chain.
 """
 
 import numpy as np
@@ -20,7 +18,7 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 12
 LONG_WINDOW = 20
 EMA_FAST = 3
-EMA_SLOW = 18
+EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
