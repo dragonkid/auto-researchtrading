@@ -1,8 +1,11 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp187: Holding-period adaptive trailing stop — the longer we hold a position,
+the tighter the trailing stop becomes. Fresh entries get the full ATR-based
+stop width, but after HOLD_TIGHTEN_START bars the stop multiplier decays
+linearly toward HOLD_TIGHTEN_MIN_MULT of its initial value by HOLD_TIGHTEN_END
+bars. This should help sideways and crash regimes where holding too long gives
+back profits, without hurting trending regimes (positions there get stopped
+out by decel/RSI exits before the hold timer kicks in).
 """
 
 import numpy as np
@@ -114,6 +117,9 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
+HOLD_TIGHTEN_START = 16   # bars before stop tightening begins
+HOLD_TIGHTEN_END = 48     # bars at which max tightening is reached
+HOLD_TIGHTEN_MIN_MULT = 0.6  # stop mult decays to this fraction of its original value
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -160,6 +166,7 @@ class Strategy:
         self.pyramided = {}
         self.peak_equity = 100000.0
         self.exit_bar = {}
+        self.entry_bar = {}
         self.bar_count = 0
 
     def _calc_atr(self, history, lookback):
@@ -528,6 +535,13 @@ class Strategy:
                 flat_trend_boost = 1.0 + STOP_FLAT_TREND_BOOST * (1.0 - flat_trend_strength)
                 atr_stop_mult *= flat_trend_boost
 
+                # Holding-period adaptive tightening: decay stop width over time
+                bars_held = self.bar_count - self.entry_bar.get(symbol, self.bar_count)
+                if bars_held > HOLD_TIGHTEN_START:
+                    hold_progress = min((bars_held - HOLD_TIGHTEN_START) / (HOLD_TIGHTEN_END - HOLD_TIGHTEN_START), 1.0)
+                    hold_decay = 1.0 - (1.0 - HOLD_TIGHTEN_MIN_MULT) * hold_progress
+                    atr_stop_mult *= hold_decay
+
                 if symbol not in self.peak_prices:
                     self.peak_prices[symbol] = mid
 
@@ -605,16 +619,19 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
+                    self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
                     self.pyramided.pop(symbol, None)
+                    self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
+                    self.entry_bar[symbol] = self.bar_count
                     self.pyramided[symbol] = False
 
         return signals
