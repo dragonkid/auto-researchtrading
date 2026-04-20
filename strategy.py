@@ -1,9 +1,9 @@
 """
-Exp192: Cross-asset lead-lag voter — BTC momentum from 3 bars ago predicts
-ETH/SOL direction 1-6h later. Add a lead-lag voter for non-BTC symbols that
-checks if BTC's lagged short-term return exceeds the threshold. This gives
-an earlier entry signal for ETH/SOL when BTC has already moved, capturing
-the well-documented crypto lead-lag effect.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -117,9 +117,6 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-BTC_LEADLAG_LAG = 3        # bars of lag for BTC lead signal
-BTC_LEADLAG_WINDOW = 8     # momentum window for lagged BTC signal
-BTC_LEADLAG_THRESHOLD = 0.005  # min BTC lagged return to trigger voter
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -244,13 +241,6 @@ class Strategy:
             btc_closes = bar_data["BTC"].history["close"].values
             self.btc_momentum = (btc_closes[-1] - btc_closes[-MED2_WINDOW]) / btc_closes[-MED2_WINDOW]
 
-        # Lead-lag: BTC lagged momentum for non-BTC voter
-        btc_lagged_ret = 0.0
-        if "BTC" in bar_data and len(bar_data["BTC"].history) >= BTC_LEADLAG_LAG + BTC_LEADLAG_WINDOW + 1:
-            btc_c = bar_data["BTC"].history["close"].values
-            # Return from BTC_LEADLAG_LAG bars ago over BTC_LEADLAG_WINDOW
-            btc_lagged_ret = (btc_c[-1 - BTC_LEADLAG_LAG] - btc_c[-BTC_LEADLAG_LAG - BTC_LEADLAG_WINDOW]) / btc_c[-BTC_LEADLAG_LAG - BTC_LEADLAG_WINDOW]
-
         btc_eth_corr = self._calc_correlation(bar_data)
         high_corr = btc_eth_corr > HIGH_CORR_THRESHOLD
 
@@ -371,17 +361,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            # Lead-lag voter: for non-BTC symbols, BTC lagged momentum predicts direction
-            leadlag_bull = False
-            leadlag_bear = False
-            if symbol != "BTC":
-                if btc_lagged_ret > BTC_LEADLAG_THRESHOLD:
-                    leadlag_bull = True
-                elif btc_lagged_ret < -BTC_LEADLAG_THRESHOLD:
-                    leadlag_bear = True
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull, leadlag_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear, leadlag_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
