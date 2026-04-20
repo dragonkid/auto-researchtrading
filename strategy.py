@@ -1,8 +1,8 @@
 """
-Exp177: Relax mean-reversion RSI entry thresholds from 45/55 to 47/53
-for even more mean-reversion entries in sideways markets. Since MR only
-activates when abs(ret_long) < 0.03, this exclusively targets the
-sideways regime (weakest at 24.0) without affecting bull/crash/rally.
+Exp178: Vol-adaptive MIN_VOTES. Require only 2 votes when vol_ratio < 0.6
+(very calm/sideways markets) instead of the standard 3. This generates
+more entries specifically in the sideways regime where DD headroom exists,
+without adding risk in high-vol regimes.
 """
 
 import numpy as np
@@ -116,6 +116,8 @@ COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
+MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
+MIN_VOTES_CALM_VOL = 0.6  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
@@ -372,8 +374,9 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            bullish = bull_votes >= MIN_VOTES and btc_confirm and trend_bull
-            bearish = bear_votes >= MIN_VOTES and btc_confirm and trend_bear
+            effective_min_votes = MIN_VOTES_CALM if vol_ratio < MIN_VOTES_CALM_VOL else MIN_VOTES
+            bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull
+            bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
