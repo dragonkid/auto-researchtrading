@@ -1,9 +1,8 @@
 """
-Exp197: Funding carry sizing boost. When the position earns funding (short +
-positive funding, long + negative funding), slightly boost sizing. This
-rewards carry-earning positions, which is especially helpful in crash_bear
-(positive funding = shorts earn carry) improving risk-adjusted returns.
-Capped at 15% boost with gentle threshold to avoid noise.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -131,8 +130,6 @@ MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
 MTF_AGREE_TREND_DECAY = 0.10  # abs(ret_long) at which MTF boost fully decays (only active in sideways)
-FUNDING_CARRY_BOOST = 0.15    # max sizing boost when position earns funding carry
-FUNDING_CARRY_THRESHOLD = 0.0001  # min abs(avg_funding) to trigger carry boost
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -477,20 +474,12 @@ class Strategy:
                     if bullish:
                         if avg_funding < 0:
                             funding_mult = 1.0 + FUNDING_BOOST
-                        # Carry boost: longs earn when funding is negative
-                        carry_boost = 1.0
-                        if avg_funding < -FUNDING_CARRY_THRESHOLD:
-                            carry_boost = 1.0 + FUNDING_CARRY_BOOST * min(1.0, abs(avg_funding) / 0.001)
-                        target = size * funding_mult * carry_boost
+                        target = size * funding_mult
                         self.pyramided[symbol] = False
                     elif bearish:
                         if avg_funding > 0:
                             funding_mult = 1.0 + FUNDING_BOOST
-                        # Carry boost: shorts earn when funding is positive
-                        carry_boost = 1.0
-                        if avg_funding > FUNDING_CARRY_THRESHOLD:
-                            carry_boost = 1.0 + FUNDING_CARRY_BOOST * min(1.0, avg_funding / 0.001)
-                        target = -size * funding_mult * carry_boost
+                        target = -size * funding_mult
                         self.pyramided[symbol] = False
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
