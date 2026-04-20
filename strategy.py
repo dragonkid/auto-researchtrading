@@ -1,10 +1,10 @@
 """
-Exp199: Reduce MAX_COMBINED_MULT_HIGH_VOL from 3.5 to 3.0.  Rally regime is the
-weakest (12.94 vs mean 15.00) with DD 7.60%.  The exponential DD penalty at 7.6%
-gives ~0.60x; dropping DD to ~7.0% would yield ~0.67x — a 0.07x multiplicative
-gain.  The high-vol cap directly limits peak sizing during volatile episodes that
-drive DD.  The prior 4.0->3.5 cut was a keep (727b98a).  Returns are so saturated
-that the log return gate won't notice the reduced peak sizing.
+Exp200: Reduce MAX_COMBINED_MULT from 4.5 to 4.0.  This is the base cap for
+moderate-vol regimes.  Rally_2024 is the weakest regime (12.90 vs mean 15.25)
+with DD 7.60%.  The exponential DD penalty at 7.6% gives ~0.60x.  Reducing
+peak sizing in the moderate-vol band should improve rally DD without
+meaningfully affecting returns (log return gate is saturated).  Prior
+reductions 5.5->5.0 and 5.0->4.5 were both keeps.
 """
 
 import numpy as np
@@ -126,7 +126,7 @@ MIN_VOTES_CALM_VOL = 0.7  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
-MAX_COMBINED_MULT = 4.5  # base cap on product of all sizing multipliers
+MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
