@@ -1,8 +1,8 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp187: Add Bollinger Band voter as 11th signal. Price above upper band =
+bullish breakout, price below lower band = bearish breakout. Uses 20-period
+SMA with 2.0 standard deviations. Should help capture breakout entries
+especially in sideways-to-trending transitions.
 """
 
 import numpy as np
@@ -113,6 +113,8 @@ PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
+BBAND_PERIOD = 20   # Bollinger Band SMA period
+BBAND_STD = 2.0     # standard deviations for band width
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
@@ -358,8 +360,22 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            # Bollinger Band breakout voter: price above upper band = bullish, below lower = bearish
+            bband_bull = False
+            bband_bear = False
+            if len(closes) >= BBAND_PERIOD + 1:
+                bband_closes = closes[-BBAND_PERIOD:]
+                bband_sma = np.mean(bband_closes)
+                bband_std = np.std(bband_closes)
+                upper_band = bband_sma + BBAND_STD * bband_std
+                lower_band = bband_sma - BBAND_STD * bband_std
+                if mid > upper_band:
+                    bband_bull = True
+                elif mid < lower_band:
+                    bband_bear = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull, bband_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear, bband_bear])
 
             btc_confirm = True
             if symbol != "BTC":
