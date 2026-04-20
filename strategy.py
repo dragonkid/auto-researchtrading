@@ -1,8 +1,8 @@
 """
-Exp193: Increase SIDEWAYS_BOOST_MAX from 0.70 to 0.85. The sideways regime
-has DD=7.5% (vs 10% cutoff), meaning 2.5% DD headroom for larger positions.
-Boosting sideways sizing should increase returns in that regime, improving
-the composite score by reducing the gap between sideways (18.5) and bull (31.8).
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -69,7 +69,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.85  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
