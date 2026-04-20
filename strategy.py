@@ -1,9 +1,9 @@
 """
-Exp174: Reduce VOL_BREAKOUT_SHORT from 6 to 4 for faster volatility
-breakout detection. This makes the vol breakout voter more responsive
-to sudden vol expansions, triggering earlier in directional moves.
-Purely a signal quality change — no sizing impact, so bull DD (9.99%)
-should remain safe.
+Exp175: Reduce VOL_BREAKOUT_LONG from 24 to 20 for a shorter vol
+baseline in the breakout voter. This makes it easier for short-term vol
+to exceed the baseline (since the baseline is more recent/reactive),
+triggering more vol breakout votes and catching directional moves earlier.
+Signal-only change, no sizing impact.
 """
 
 import numpy as np
@@ -110,7 +110,7 @@ ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
-VOL_BREAKOUT_LONG = 24   # long window for vol breakout baseline
+VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
