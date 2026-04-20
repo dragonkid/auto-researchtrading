@@ -1,8 +1,10 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp205: Widen RSI voter deadzone from 50/50 to 55/45.  The current RSI_BULL=50
+and RSI_BEAR=50 means RSI votes on any side of the midline — effectively noise
+in choppy markets.  Requiring RSI > 55 for bullish and RSI < 45 for bearish
+makes the RSI voter more selective, reducing false votes in sideways regimes
+where RSI oscillates around 50.  In trending markets, RSI is typically
+far from 50 so the wider deadzone won't suppress valid votes.
 """
 
 import numpy as np
@@ -21,8 +23,8 @@ EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
-RSI_BULL = 50
-RSI_BEAR = 50
+RSI_BULL = 55
+RSI_BEAR = 45
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 68     # tightest OB exit in extreme high-vol
