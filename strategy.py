@@ -1,8 +1,9 @@
 """
-Exp178: Vol-adaptive MIN_VOTES. Require only 2 votes when vol_ratio < 0.6
-(very calm/sideways markets) instead of the standard 3. This generates
-more entries specifically in the sideways regime where DD headroom exists,
-without adding risk in high-vol regimes.
+Exp179: Further relax mean-reversion RSI entry thresholds from 47/53 to
+48/52. Each prior relaxation step (from 32/68 to 47/53) produced small
+but consistent gains. The MR entry is already gated by trend flatness
+(abs(ret_long) < 0.03), so slightly more entries in truly sideways
+markets should be safe.
 """
 
 import numpy as np
@@ -103,8 +104,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 47       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 53     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 48       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 52     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
