@@ -1,8 +1,9 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp204: Smooth MACD signal line (MACD_SIGNAL 7->9).  A slower signal line
+means the histogram flips sign less often, producing fewer whipsaw votes in
+sideways / choppy regimes.  In strong trends the histogram is far from zero
+so the signal-line speed barely matters.  Net effect: fewer false MACD votes
+in sideways, same vote contribution in trends.
 """
 
 import numpy as np
@@ -35,7 +36,7 @@ RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully de
 
 MACD_FAST = 8
 MACD_SLOW = 21
-MACD_SIGNAL = 7
+MACD_SIGNAL = 9
 
 EMA_SLOPE_PERIOD = 28
 EMA_SLOPE_LOOKBACK = 4
