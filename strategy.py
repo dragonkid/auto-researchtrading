@@ -1,9 +1,8 @@
 """
-Exp204: Raise HIGH_VOTE_THRESHOLD from 4 to 5 (out of 8 voters).  With 8
-voters, 4/8 agreement is easy to achieve — the sizing boost fires too often.
-Requiring 5/8 makes the boost more selective and should reduce variance
-across regimes (fewer oversized positions in noisy conditions) while keeping
-mean returns for high-conviction entries.
+Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
+short, long all same sign) is redundant with the trend gate and high-vote
+boost already capturing momentum alignment.  Removing it simplifies sizing
+and may reduce overfitting — one fewer stacking multiplier in the chain.
 """
 
 import numpy as np
@@ -122,7 +121,7 @@ COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
-HIGH_VOTE_THRESHOLD = 5  # votes at or above this count get a sizing bonus
+HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
