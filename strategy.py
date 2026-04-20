@@ -1,8 +1,9 @@
 """
-Exp190: Widen DECEL_MULT_TREND from 1.0 to 1.2 — hold winners longer in
-trending markets by requiring a larger counter-move before momentum decel
-exit triggers. Sideways markets unaffected (uses DECEL_MULT_BASE=0.4).
-Previously widened from 0.8 to 1.0 successfully. Should boost bull and rally.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -110,6 +111,8 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
+PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
+PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
@@ -558,8 +561,11 @@ class Strategy:
                         # Volume-price divergence: tighten decel when volume is fading
                         if vol_ratio_raw < VOL_DIVERGENCE_THRESHOLD:
                             decel_mult *= VOL_DIVERGENCE_DECEL_MULT
+                        # Small-winner widening: give marginal winners room to develop
+                        if pnl < PROFIT_SMALL_THRESHOLD:
+                            decel_mult *= PROFIT_SMALL_DECEL_WIDEN
                         # Profit-scaled tightening: lock in larger profits earlier
-                        if pnl > PROFIT_DECEL_THRESHOLD:
+                        elif pnl > PROFIT_DECEL_THRESHOLD:
                             profit_excess = pnl - PROFIT_DECEL_THRESHOLD
                             decel_mult /= (1.0 + profit_excess * PROFIT_DECEL_SCALE)
                         # Funding crowding: tighten decel when position is on crowded side
