@@ -1,8 +1,8 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp202: Increase RSI_EXIT_TREND_DECAY from 0.10 to 0.11. Slightly wider
+zone for sideways RSI exit thresholds (76/24 persist a bit longer into
+moderate trends). 0.12 showed sideways +0.07 and std improvement but
+mean dropped slightly; 0.11 may be the sweet spot with less mean loss.
 """
 
 import numpy as np
@@ -31,7 +31,7 @@ RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
 RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
-RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
+RSI_EXIT_TREND_DECAY = 0.11  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 8
 MACD_SLOW = 21
