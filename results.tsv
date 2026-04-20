@@ -211,3 +211,4 @@ f8cd84a	26.665269	28.693022	4.055506	keep	relax mean-reversion RSI entry thresho
 94942d1	26.694305	28.737370	4.086130	keep	raise MIN_VOTES_CALM_VOL from 0.6 to 0.7 for more entries in moderate-vol sideways
 bdbf613	26.815855	28.862336	4.092963	keep	increase VOL_SPIKE_SCALE from 0.6 to 0.7 for less aggressive size reduction during vol spikes
 -	26.421833	28.484694	4.125722	discard	anti-streak sizing reduction 0.7x after 3 consecutive losses (mean dropped 28.86->28.48)
+1511de4	26.852203	28.940057	4.175708	keep	raise VOL_SPIKE_THRESHOLD from 1.5 to 1.7 (require larger vol spike before size reduction)
