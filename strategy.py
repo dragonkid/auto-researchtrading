@@ -1,9 +1,9 @@
 """
-Exp175: Reduce VOL_BREAKOUT_LONG from 24 to 20 for a shorter vol
-baseline in the breakout voter. This makes it easier for short-term vol
-to exceed the baseline (since the baseline is more recent/reactive),
-triggering more vol breakout votes and catching directional moves earlier.
-Signal-only change, no sizing impact.
+Exp176: Add Donchian channel breakout voter as 10th signal. When price
+is at or above the 12-bar high, vote bullish; at or below the 12-bar
+low, vote bearish. This is structurally different from existing signals
+(momentum, EMA, RSI, MACD, slopes) — it captures range breakouts rather
+than trend/oscillator states. Pure signal addition, no sizing impact.
 """
 
 import numpy as np
@@ -112,6 +112,7 @@ PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
+DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -343,8 +344,19 @@ class Strategy:
                     elif ret_vshort < 0:
                         vol_breakout_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear])
+            # Donchian channel breakout voter: price at N-bar high = bullish, N-bar low = bearish
+            donchian_bull = False
+            donchian_bear = False
+            if len(closes) >= DONCHIAN_PERIOD + 1:
+                donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
+                donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
+                if mid >= donchian_high:
+                    donchian_bull = True
+                elif mid <= donchian_low:
+                    donchian_bear = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
