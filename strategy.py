@@ -79,8 +79,8 @@ STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term t
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
-DECEL_MULT_BASE = 0.4           # deceleration threshold multiplier in sideways (tighter exit)
-DECEL_MULT_TREND = 1.2          # deceleration threshold multiplier in trends (wider, hold winners)
+DECEL_MULT_BASE = 999.0         # DISABLED: decel exit hurts score (+0.430 when removed)
+DECEL_MULT_TREND = 999.0        # DISABLED: RSI exit + flip is better exit mechanism
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
@@ -361,8 +361,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
