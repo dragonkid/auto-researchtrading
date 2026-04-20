@@ -1,9 +1,9 @@
 """
-Exp192: Tighten mean-reversion RSI thresholds from 49/51 to 35/65.
-The current thresholds are nearly non-selective (any slight RSI lean triggers
-entry in sideways markets). By requiring more extreme RSI conditions, we
-get fewer but higher-quality mean-reversion entries with less whipsaw noise.
-This should improve consistency (lower std) across regimes.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -106,8 +106,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 35       # more selective RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 65     # more selective RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
