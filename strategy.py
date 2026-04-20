@@ -1,9 +1,8 @@
 """
-Exp204: Narrow adaptive momentum window from [8,16] to [8,12].  In low-vol
-(sideways) regimes the adaptive lookback formula pushes MED_WINDOW toward 16
-bars, making momentum signals too slow to catch direction changes.  Capping
-at 12 keeps reactiveness in calm markets while still adapting shorter in
-high-vol conditions.  Sideways is the weakest regime (16.00 vs 23.75 bull).
+Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
+short, long all same sign) is redundant with the trend gate and high-vote
+boost already capturing momentum alignment.  Removing it simplifies sizing
+and may reduce overfitting — one fewer stacking multiplier in the chain.
 """
 
 import numpy as np
@@ -15,7 +14,7 @@ SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
-MED_WINDOW_MAX = 12
+MED_WINDOW_MAX = 16
 MED2_WINDOW = 12
 LONG_WINDOW = 20
 EMA_FAST = 3
