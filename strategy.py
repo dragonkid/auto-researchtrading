@@ -1,9 +1,8 @@
 """
-Exp187: Add VWMA (volume-weighted moving average) voter as 11th signal.
-Price above its VWMA = bullish, below = bearish. This combines volume and
-price into a single trend confirmation signal — high-volume bars pull the
-average toward the dominant direction, so breakouts on volume get earlier
-confirmation. Novel vs existing voters which use price-only or vol-only.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -114,7 +113,6 @@ PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
-VWMA_PERIOD = 16  # lookback for volume-weighted moving average voter
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
@@ -264,7 +262,6 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
-            volumes = bd.history["volume"].values
             mid = bd.close
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
@@ -361,22 +358,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            # VWMA voter: price above volume-weighted moving average = bullish
-            vwma_bull = False
-            vwma_bear = False
-            if len(closes) >= VWMA_PERIOD and len(volumes) >= VWMA_PERIOD:
-                vwma_closes = closes[-VWMA_PERIOD:]
-                vwma_vols = volumes[-VWMA_PERIOD:]
-                total_vol = np.sum(vwma_vols)
-                if total_vol > 0:
-                    vwma_val = np.sum(vwma_closes * vwma_vols) / total_vol
-                    if mid > vwma_val:
-                        vwma_bull = True
-                    elif mid < vwma_val:
-                        vwma_bear = True
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull, vwma_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear, vwma_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
@@ -436,6 +419,7 @@ class Strategy:
             # Volume confirmation: boost size when recent volume is above longer-term average
             vol_confirm_mult = 1.0
             vol_ratio_raw = 1.0  # raw volume ratio for divergence detection
+            volumes = bd.history["volume"].values
             if len(volumes) >= VOL_CONFIRM_BASE:
                 recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
