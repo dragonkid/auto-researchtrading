@@ -1,8 +1,8 @@
 """
-Exp183: Increase VOL_SPIKE_SCALE from 0.6 to 0.7 for less aggressive
-position size reduction during vol spikes. With improved exit mechanisms
-(decel, funding crowding, vol divergence), we can afford larger entries
-during elevated vol without blowing DD.
+Exp185: Raise VOL_SPIKE_THRESHOLD from 1.5 to 1.7 — require a larger vol
+spike before triggering the position size reduction. Combined with the
+existing adaptive cap, this allows slightly larger positions in moderate-vol
+environments without blowing DD on extreme spikes (which are still capped).
 """
 
 import numpy as np
@@ -49,7 +49,7 @@ BASE_POSITION_PCT = 0.38
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
-VOL_SPIKE_THRESHOLD = 1.5
+VOL_SPIKE_THRESHOLD = 1.7
 VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
