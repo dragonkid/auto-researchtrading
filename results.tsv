@@ -201,3 +201,4 @@ c689d92	26.239404	28.221669	3.964529	keep	lower VOL_BREAKOUT_MULT from 1.2 to 1.
 de1acbf	26.514416	28.504166	3.979501	keep	reduce VOL_BREAKOUT_LONG from 24 to 20 for shorter vol breakout baseline
 e74137f	26.618589	28.632640	4.028102	keep	add Donchian channel breakout voter as 10th signal (price at 12-bar high/low)
 -	26.526363	28.629655	4.206584	discard	vol-adaptive Donchian period (shorter in low-vol, longer in high-vol)
+ea8326b	26.635797	28.652144	4.032695	keep	relax mean-reversion RSI entry thresholds from 45/55 to 47/53 for more MR entries in sideways
