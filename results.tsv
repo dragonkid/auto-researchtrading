@@ -206,3 +206,4 @@ ea8326b	26.635797	28.652144	4.032695	keep	relax mean-reversion RSI entry thresho
 -	26.578784	28.578829	4.000090	discard	increase DONCHIAN_PERIOD from 12 to 14 (mean dropped, bull/crash/rally all slightly worse)
 58d4098	26.655496	28.680659	4.050326	keep	vol-adaptive MIN_VOTES (2 votes when vol_ratio < 0.6 for more entries in calm sideways)
 75d992a	26.663497	28.687246	4.047498	keep	relax mean-reversion RSI entry thresholds from 47/53 to 48/52 for more MR entries in sideways
+f8cd84a	26.665269	28.693022	4.055506	keep	relax mean-reversion RSI entry thresholds from 48/52 to 49/51 for more MR entries in sideways
