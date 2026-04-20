@@ -1,8 +1,8 @@
 """
-Exp194: Rebalance sizing — reduce BASE_POSITION_PCT from 0.37 to 0.36 while
-increasing SIDEWAYS_BOOST_MAX from 0.70 to 0.80. Lower base protects bull DD
-(9.86% is dangerously close to 10% cutoff), while higher sideways boost
-compensates returns in trendless markets. Net: safer bull, stronger sideways.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -45,7 +45,7 @@ FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
-BASE_POSITION_PCT = 0.36
+BASE_POSITION_PCT = 0.37
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
@@ -69,7 +69,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.80  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
