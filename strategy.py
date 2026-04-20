@@ -1,9 +1,9 @@
 """
-Exp191: Widen decel threshold for small winners — when position profit is
-below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
-get more room to develop before momentum decel exit triggers. This avoids
-cutting winners too early while the profit-scaled tightening (>2%) still
-locks in larger gains. Net effect: hold marginal winners longer.
+Exp192: Remove momentum acceleration voter (accel_bull/accel_bear). This
+voter compares current ret_short vs ret_short from ACCEL_LOOKBACK bars ago,
+which is noisy and adds a marginal signal. With 8 remaining voters and
+MIN_VOTES=3, entries should still fire reliably. Simplification reduces
+overfitting risk and may improve consistency across regimes.
 """
 
 import numpy as np
@@ -108,7 +108,6 @@ MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-revers
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
-ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -329,14 +328,6 @@ class Strategy:
             linreg_bull = linreg_slope > 0.0003
             linreg_bear = linreg_slope < -0.0003
 
-            # Momentum acceleration: is momentum strengthening vs ACCEL_LOOKBACK bars ago?
-            accel_bull = False
-            accel_bear = False
-            if len(closes) >= adaptive_med + ACCEL_LOOKBACK + 1:
-                prev_ret_short = (closes[-1 - ACCEL_LOOKBACK] - closes[-adaptive_med - ACCEL_LOOKBACK]) / closes[-adaptive_med - ACCEL_LOOKBACK]
-                accel_bull = ret_short > prev_ret_short and ret_short > 0
-                accel_bear = ret_short < prev_ret_short and ret_short < 0
-
             # Volatility breakout voter: vol expanding signals directional move
             vol_breakout_bull = False
             vol_breakout_bear = False
@@ -361,8 +352,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
