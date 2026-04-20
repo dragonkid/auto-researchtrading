@@ -1,8 +1,8 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp190: Widen DECEL_MULT_TREND from 1.0 to 1.2 — hold winners longer in
+trending markets by requiring a larger counter-move before momentum decel
+exit triggers. Sideways markets unaffected (uses DECEL_MULT_BASE=0.4).
+Previously widened from 0.8 to 1.0 successfully. Should boost bull and rally.
 """
 
 import numpy as np
@@ -79,7 +79,7 @@ STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
 DECEL_MULT_BASE = 0.4           # deceleration threshold multiplier in sideways (tighter exit)
-DECEL_MULT_TREND = 1.0          # deceleration threshold multiplier in trends (wider, hold winners)
+DECEL_MULT_TREND = 1.2          # deceleration threshold multiplier in trends (wider, hold winners)
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
