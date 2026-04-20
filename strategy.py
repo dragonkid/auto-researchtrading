@@ -1,8 +1,9 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp198: Add volume trend voter (11th signal). Rising volume on a price move
+confirms the move's strength. Compare short-term volume SMA to longer-term
+volume SMA — if volume is expanding in the same direction as price, it's
+a bullish/bearish confirmation. This adds an orthogonal signal dimension
+(volume) to the existing 10 price-based voters.
 """
 
 import numpy as np
@@ -130,6 +131,8 @@ MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
 MTF_AGREE_TREND_DECAY = 0.10  # abs(ret_long) at which MTF boost fully decays (only active in sideways)
+VOL_TREND_SHORT = 6   # short volume SMA for volume trend voter
+VOL_TREND_LONG = 24   # long volume SMA for volume trend voter
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -263,6 +266,7 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
+            volumes = bd.history["volume"].values
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
@@ -358,8 +362,19 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            # Volume trend voter: rising volume confirms directional price moves
+            vol_trend_bull = False
+            vol_trend_bear = False
+            if len(volumes) >= VOL_TREND_LONG:
+                vol_short_avg = np.mean(volumes[-VOL_TREND_SHORT:])
+                vol_long_avg = np.mean(volumes[-VOL_TREND_LONG:])
+                if vol_short_avg > vol_long_avg and ret_vshort > 0:
+                    vol_trend_bull = True
+                elif vol_short_avg > vol_long_avg and ret_vshort < 0:
+                    vol_trend_bear = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull, vol_trend_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear, vol_trend_bear])
 
             btc_confirm = True
             if symbol != "BTC":
@@ -419,7 +434,6 @@ class Strategy:
             # Volume confirmation: boost size when recent volume is above longer-term average
             vol_confirm_mult = 1.0
             vol_ratio_raw = 1.0  # raw volume ratio for divergence detection
-            volumes = bd.history["volume"].values
             if len(volumes) >= VOL_CONFIRM_BASE:
                 recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
