@@ -1,10 +1,9 @@
 """
-Exp192: Early-hold stop widening — widen trailing stop by up to 30% during
-the first 6 bars of a new position. Fresh trades haven't built a profit
-cushion yet and are vulnerable to normal noise causing premature stop-outs.
-The widening decays linearly from 1.3x at bar 0 to 1.0x at bar 6+. This
-keeps the same stop discipline for mature positions but gives new entries
-more room to develop directional edge before being judged.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -118,8 +117,6 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-EARLY_HOLD_BARS = 6       # bars during which trailing stop is widened for fresh positions
-EARLY_HOLD_WIDEN = 0.30   # max stop widening factor at bar 0 (decays linearly to 0)
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -166,7 +163,6 @@ class Strategy:
         self.pyramided = {}
         self.peak_equity = 100000.0
         self.exit_bar = {}
-        self.entry_bar = {}
         self.bar_count = 0
 
     def _calc_atr(self, history, lookback):
@@ -535,12 +531,6 @@ class Strategy:
                 flat_trend_boost = 1.0 + STOP_FLAT_TREND_BOOST * (1.0 - flat_trend_strength)
                 atr_stop_mult *= flat_trend_boost
 
-                # Early-hold widening: fresh positions get wider stops to survive initial noise
-                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < EARLY_HOLD_BARS:
-                    early_decay = bars_held / EARLY_HOLD_BARS  # 0 at entry, 1 at EARLY_HOLD_BARS
-                    atr_stop_mult *= (1.0 + EARLY_HOLD_WIDEN * (1.0 - early_decay))
-
                 if symbol not in self.peak_prices:
                     self.peak_prices[symbol] = mid
 
@@ -621,19 +611,16 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
-                    self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
                     self.pyramided.pop(symbol, None)
-                    self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
-                    self.entry_bar[symbol] = self.bar_count
                     self.pyramided[symbol] = False
 
         return signals
