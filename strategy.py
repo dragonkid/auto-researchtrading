@@ -1,8 +1,9 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp189: Enable DD-adaptive position reduction (DD_REDUCE_THRESHOLD 99->0.07).
+Currently bull_2021 DD is 9.86% — dangerously close to the 10% hard cutoff.
+Activating proactive size reduction at 7% DD gives a safety cushion. This
+scales positions down as DD approaches 10%, preventing hard cutoff failure
+while maintaining full sizing in normal conditions.
 """
 
 import numpy as np
@@ -65,7 +66,7 @@ PYRAMID_SIZE = 0.0
 CORR_LOOKBACK = 72
 HIGH_CORR_THRESHOLD = 99.0
 
-DD_REDUCE_THRESHOLD = 99.0
+DD_REDUCE_THRESHOLD = 0.07
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
