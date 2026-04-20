@@ -1,8 +1,9 @@
 """
-Exp192: Remove mean-reversion entry logic. The MR RSI thresholds (49/51)
-are barely selective — they fire on almost any RSI in sideways markets
-(abs(ret_long) < 0.03). This may be adding noisy entries that hurt
-consistency. Simplification experiment: remove MR entries entirely.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -103,10 +104,10 @@ VOL_CONFIRM_BOOST = 0.35      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
-MEANREV_TREND_THRESHOLD = 0.03  # DISABLED: MR entries removed (exp192)
-MEANREV_SIZE_SCALE = 1.0        # DISABLED
-MEANREV_RSI_OVERSOLD = 49       # DISABLED
-MEANREV_RSI_OVERBOUGHT = 51     # DISABLED
+MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
@@ -483,8 +484,15 @@ class Strategy:
                             funding_mult = 1.0 + FUNDING_BOOST
                         target = -size * funding_mult
                         self.pyramided[symbol] = False
-                    # Mean-reversion entries DISABLED (exp192: simplification)
-                    pass
+                    # Mean-reversion entries in sideways markets
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                        mr_size = size * MEANREV_SIZE_SCALE
+                        if rsi < MEANREV_RSI_OVERSOLD:
+                            target = mr_size
+                            self.pyramided[symbol] = False
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                            target = -mr_size
+                            self.pyramided[symbol] = False
             else:
                 if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
                     entry = self.entry_prices[symbol]
