@@ -1,8 +1,9 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp192: Reduce SHORT_WINDOW from 8 to 6. Faster vshort momentum calculation
+helps in sideways markets where price mean-reverts within shorter cycles.
+The vshort voter and decel exit both use this window — a shorter lookback
+catches reversals earlier (better exits) and detects short-lived moves
+faster (better entries in sideways).
 """
 
 import numpy as np
@@ -11,7 +12,7 @@ from prepare import Signal, PortfolioState, BarData
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
-SHORT_WINDOW = 8
+SHORT_WINDOW = 6
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
