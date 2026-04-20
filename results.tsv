@@ -213,3 +213,4 @@ bdbf613	26.815855	28.862336	4.092963	keep	increase VOL_SPIKE_SCALE from 0.6 to 0
 -	26.421833	28.484694	4.125722	discard	anti-streak sizing reduction 0.7x after 3 consecutive losses (mean dropped 28.86->28.48)
 1511de4	26.852203	28.940057	4.175708	keep	raise VOL_SPIKE_THRESHOLD from 1.5 to 1.7 (require larger vol spike before size reduction)
 -	-999.000000	-229.685234	444.166692	discard	tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 (blew bull DD 10.2%)
+-	21.836226	24.221221	4.769989	discard	raise ATR_STOP_MULT_MIN from 3.0 to 3.5 (sideways dropped badly, wider stops let losers run too long)
