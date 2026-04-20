@@ -44,7 +44,7 @@ LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
-FUNDING_EXTREME_DECEL_MULT = 0.4   # tighten decel by this factor when crowded
+FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.37
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
