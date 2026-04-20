@@ -1,8 +1,8 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp195: Reduce COOLDOWN_BARS from 2 to 1. Faster re-entry after exits in
+trending markets. Currently sideways already has 0 cooldown; this gives
+trending regimes (crash_bear, rally) faster re-entry too, catching more of
+the continuation moves after decel/RSI exits trigger.
 """
 
 import numpy as np
@@ -114,7 +114,7 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-COOLDOWN_BARS = 2
+COOLDOWN_BARS = 1
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
