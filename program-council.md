@@ -32,7 +32,7 @@ You MUST output exactly one of these two lines as the very last thing before exi
 
 - Modify `strategy.py` — this is the only file you edit.
 - Run `uv run regime_test.py > run.log 2>&1` for each proposal.
-- Commit and revert as needed.
+- Commit and revert as needed. To revert a failed proposal, use `git revert --no-edit HEAD`. NEVER use `git reset --hard` — it destroys commits before the experiment.
 
 ## What you CANNOT do
 
