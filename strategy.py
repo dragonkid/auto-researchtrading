@@ -1,10 +1,10 @@
 """
-Exp202: Raise MIN_VOTES_CALM_VOL from 0.7 to 0.9 to extend reduced vote
-requirement (MIN_VOTES_CALM=2) to moderate-vol regimes.  Currently only
-very calm markets (vol_ratio < 0.7) get the easier entry bar.  The sideways
-regime (our weakest at 16.0) likely has vol_ratio 0.7-1.0, so it doesn't
-benefit.  Expanding the threshold lets more entries through in sideways/rally
-without affecting high-vol crash periods (vol_ratio > 1).
+Exp203: Raise FLIP_MIN_VOTES from 4 to 5 to require stronger conviction
+before flipping an existing position.  Flips are expensive (close + reopen
+in opposite direction) and especially harmful in sideways/rally regimes
+where price oscillates.  With 8 voters, requiring 5/8 agreement for flips
+should reduce whipsaw flips while still allowing new entries at lower
+thresholds (MIN_VOTES=3 or MIN_VOTES_CALM=2).
 """
 
 import numpy as np
@@ -125,7 +125,7 @@ MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
-FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
+FLIP_MIN_VOTES = 5       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
