@@ -1,9 +1,8 @@
 """
-Exp176: Add Donchian channel breakout voter as 10th signal. When price
-is at or above the 12-bar high, vote bullish; at or below the 12-bar
-low, vote bearish. This is structurally different from existing signals
-(momentum, EMA, RSI, MACD, slopes) — it captures range breakouts rather
-than trend/oscillator states. Pure signal addition, no sizing impact.
+Exp177: Relax mean-reversion RSI entry thresholds from 45/55 to 47/53
+for even more mean-reversion entries in sideways markets. Since MR only
+activates when abs(ret_long) < 0.03, this exclusively targets the
+sideways regime (weakest at 24.0) without affecting bull/crash/rally.
 """
 
 import numpy as np
@@ -104,8 +103,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 45       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 55     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 47       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 53     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
