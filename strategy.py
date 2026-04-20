@@ -1,8 +1,8 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp189: BTC lead-lag voter for ETH/SOL — add an 11th voter for non-BTC assets
+that votes based on BTC's very-short-term momentum. BTC typically leads alt
+moves by 1-6 hours; capturing this lead-lag relationship should boost entries
+on ETH/SOL without affecting BTC signals. Controlled by BTC_LEAD_THRESHOLD.
 """
 
 import numpy as np
@@ -114,6 +114,7 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
+BTC_LEAD_THRESHOLD = 0.003  # BTC vshort ret must exceed this to generate lead-lag vote for alts
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -237,6 +238,9 @@ class Strategy:
         if "BTC" in bar_data and len(bar_data["BTC"].history) >= LONG_WINDOW + 1:
             btc_closes = bar_data["BTC"].history["close"].values
             self.btc_momentum = (btc_closes[-1] - btc_closes[-MED2_WINDOW]) / btc_closes[-MED2_WINDOW]
+            self.btc_ret_vshort = (btc_closes[-1] - btc_closes[-SHORT_WINDOW]) / btc_closes[-SHORT_WINDOW]
+        else:
+            self.btc_ret_vshort = 0.0
 
         btc_eth_corr = self._calc_correlation(bar_data)
         high_corr = btc_eth_corr > HIGH_CORR_THRESHOLD
@@ -358,8 +362,17 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            # BTC lead-lag voter: BTC's recent momentum predicts alt moves
+            btc_lead_bull = False
+            btc_lead_bear = False
+            if symbol != "BTC":
+                if self.btc_ret_vshort > BTC_LEAD_THRESHOLD:
+                    btc_lead_bull = True
+                elif self.btc_ret_vshort < -BTC_LEAD_THRESHOLD:
+                    btc_lead_bear = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, slope_bull, accel_bull, vol_breakout_bull, linreg_bull, donchian_bull, btc_lead_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, slope_bear, accel_bear, vol_breakout_bear, linreg_bear, donchian_bear, btc_lead_bear])
 
             btc_confirm = True
             if symbol != "BTC":
