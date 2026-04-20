@@ -1,8 +1,9 @@
 """
-Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
-when position is on the crowded side of funding rate. In bull markets, longs
-get crowded and funding spikes positive; tighter decel here locks in profits
-before the crowded-unwind reversal hits. Should help bull_2021 DD.
+Exp196: Increase ATR_STOP_MULT_BASE from 4.5 to 5.0. The decel exit and RSI
+exit handle most risk-on exits (proven: STOP_AGAINST_TREND had zero effect).
+Wider trailing stops give winning positions more room against temporary
+pullbacks, letting winners run longer. This should boost returns while
+the decel/RSI exits still protect against actual reversals.
 """
 
 import numpy as np
@@ -53,7 +54,7 @@ VOL_SPIKE_THRESHOLD = 1.7
 VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
-ATR_STOP_MULT_BASE = 4.5
+ATR_STOP_MULT_BASE = 5.0
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
