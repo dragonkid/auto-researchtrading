@@ -1,10 +1,8 @@
 """
-Exp202: Raise MIN_VOTES_CALM_VOL from 0.7 to 0.9 to extend reduced vote
-requirement (MIN_VOTES_CALM=2) to moderate-vol regimes.  Currently only
-very calm markets (vol_ratio < 0.7) get the easier entry bar.  The sideways
-regime (our weakest at 16.0) likely has vol_ratio 0.7-1.0, so it doesn't
-benefit.  Expanding the threshold lets more entries through in sideways/rally
-without affecting high-vol crash periods (vol_ratio > 1).
+Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
+short, long all same sign) is redundant with the trend gate and high-vote
+boost already capturing momentum alignment.  Removing it simplifies sizing
+and may reduce overfitting — one fewer stacking multiplier in the chain.
 """
 
 import numpy as np
@@ -131,8 +129,8 @@ MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headro
 MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
-MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
-MTF_AGREE_TREND_DECAY = 0.10  # abs(ret_long) at which MTF boost fully decays (only active in sideways)
+MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
+MTF_AGREE_TREND_DECAY = 0.10
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
