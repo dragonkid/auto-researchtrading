@@ -1,9 +1,9 @@
 """
-Exp194: Reduce MAX_COMBINED_MULT_HIGH_VOL from 4.0 to 3.5 to cut peak
-sizing in high-vol regimes. Rally_2024 has the worst score (9.99) driven
-by 9.35% DD — the steep exponential penalty above 5% means even a small
-DD reduction (e.g. 9.35->8.5%) yields ~0.15x score recovery. This tighter
-high-vol cap targets rally/crash regimes without affecting low-vol sizing.
+Exp195: Reduce BASE_POSITION_PCT from 0.37 to 0.35 to lower DD across all
+regimes. Rally_2024 is the bottleneck at 9.35% DD — the steep exponential
+penalty (exp(-(DD-5)/5)) means DD 9.35%->7.5% improves the multiplier from
+~0.42x to ~0.60x, which should outweigh the return gate's penalty from
+slightly smaller positions.
 """
 
 import numpy as np
@@ -46,7 +46,7 @@ FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
-BASE_POSITION_PCT = 0.37
+BASE_POSITION_PCT = 0.35
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
