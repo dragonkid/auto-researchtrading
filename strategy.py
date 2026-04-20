@@ -1,10 +1,9 @@
 """
-Exp173: Relax mean-reversion RSI entry thresholds from 42/58 to 45/55
-for more MR entries in sideways markets. MR entries only trigger when
-abs(ret_long) < 0.03, so they are strictly confined to sideways where
-DD headroom is ample (7.8%). The series 27/73->42/58 has consistently
-improved score. Each step generates more MR entries to capture sideways
-range-bound oscillations.
+Exp174: Reduce VOL_BREAKOUT_SHORT from 6 to 4 for faster volatility
+breakout detection. This makes the vol breakout voter more responsive
+to sudden vol expansions, triggering earlier in directional moves.
+Purely a signal quality change — no sizing impact, so bull DD (9.99%)
+should remain safe.
 """
 
 import numpy as np
@@ -110,7 +109,7 @@ MEANREV_RSI_OVERBOUGHT = 55     # less extreme RSI threshold for mean-reversion 
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
-VOL_BREAKOUT_SHORT = 6   # short window for vol breakout detection
+VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 24   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 COOLDOWN_BARS = 2
