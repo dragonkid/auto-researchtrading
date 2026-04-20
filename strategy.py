@@ -1,9 +1,9 @@
 """
-Exp192: Vol-adaptive cooldown — scale the cooldown period by vol_ratio in
-high-vol regimes (>1.0). When markets are volatile, whipsaw risk is high so
-we wait longer before re-entering. Low-vol regimes keep the existing fast
-re-entry. This should reduce spurious trades in crash/bear regimes (lower std)
-without hurting calm-regime performance (mean preserved).
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -384,11 +384,8 @@ class Strategy:
             bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
-            # Also scale by vol_ratio: longer cooldown in high-vol to avoid whipsaw
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
             effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
-            if vol_ratio > 1.0:
-                effective_cooldown *= min(vol_ratio, 2.0)
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = TARGET_VOL / realized_vol
