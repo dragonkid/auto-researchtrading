@@ -1,8 +1,8 @@
 """
-Exp185: Raise VOL_SPIKE_THRESHOLD from 1.5 to 1.7 — require a larger vol
-spike before triggering the position size reduction. Combined with the
-existing adaptive cap, this allows slightly larger positions in moderate-vol
-environments without blowing DD on extreme spikes (which are still capped).
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -44,7 +44,7 @@ LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
-FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
+FUNDING_EXTREME_DECEL_MULT = 0.4   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.37
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
