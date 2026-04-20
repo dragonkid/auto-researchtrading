@@ -1,9 +1,11 @@
 """
-Exp195: Reduce BASE_POSITION_PCT from 0.37 to 0.35 to lower DD across all
-regimes. Rally_2024 is the bottleneck at 9.35% DD — the steep exponential
-penalty (exp(-(DD-5)/5)) means DD 9.35%->7.5% improves the multiplier from
-~0.42x to ~0.60x, which should outweigh the return gate's penalty from
-slightly smaller positions.
+Exp196: Reduce MAX_COMBINED_MULT_LOW_VOL from 7.5 to 6.5.  This caps peak
+sizing specifically in low-vol regimes where combined multipliers stack
+highest.  Rally_2024 (8.84% DD) and bull_2021 (8.93% DD) should benefit
+most — the exponential DD penalty is steep above 5%, so even a modest DD
+reduction (e.g. 8.84%->8.0%) improves the multiplier from ~0.47x to ~0.55x.
+Unlike reducing BASE_POSITION_PCT, this only clips the tail of the sizing
+distribution, preserving average position sizes and the return gate.
 """
 
 import numpy as np
@@ -126,7 +128,7 @@ HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.0  # base cap on product of all sizing multipliers
-MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headroom)
+MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 3.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
