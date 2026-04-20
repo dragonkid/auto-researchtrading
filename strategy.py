@@ -1,9 +1,8 @@
 """
-Exp187: Raise ATR_STOP_MULT_MIN from 3.0 to 3.5 — widen the stop floor
-so trailing stops are never tighter than 3.5 ATR from peak. In high-vol regimes
-(crash_bear, bull spikes), the adaptive stop formula (BASE/vol_ratio) hits the
-floor frequently; a wider floor reduces premature stop-outs on vol spikes while
-decel and RSI exits handle smart profit-taking.
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -55,7 +54,7 @@ VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
-ATR_STOP_MULT_MIN = 3.5
+ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
 BASE_THRESHOLD = 0.006
