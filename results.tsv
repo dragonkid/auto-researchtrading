@@ -204,3 +204,4 @@ e74137f	26.618589	28.632640	4.028102	keep	add Donchian channel breakout voter as
 ea8326b	26.635797	28.652144	4.032695	keep	relax mean-reversion RSI entry thresholds from 45/55 to 47/53 for more MR entries in sideways
 -	26.609837	28.664060	4.108447	discard	reduce DONCHIAN_PERIOD from 12 to 10 (mean flat, std increased, net worse)
 -	26.578784	28.578829	4.000090	discard	increase DONCHIAN_PERIOD from 12 to 14 (mean dropped, bull/crash/rally all slightly worse)
+58d4098	26.655496	28.680659	4.050326	keep	vol-adaptive MIN_VOTES (2 votes when vol_ratio < 0.6 for more entries in calm sideways)
