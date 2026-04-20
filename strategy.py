@@ -1,9 +1,8 @@
 """
-Exp190: Faster decel exit via shorter lookback (DECEL_VSHORT_WINDOW = 5).
-The deceleration exit currently uses ret_vshort (SHORT_WINDOW=8 bars).
-A shorter 5-bar window for the decel check catches momentum reversals
-earlier, especially in sideways markets where 8 bars is slow relative to
-the mean-reversion cycle. This doesn't affect entry signals (still 8 bars).
+Exp186: Tighten FUNDING_EXTREME_DECEL_MULT from 0.5 to 0.4 — exit faster
+when position is on the crowded side of funding rate. In bull markets, longs
+get crowded and funding spikes positive; tighter decel here locks in profits
+before the crowded-unwind reversal hits. Should help bull_2021 DD.
 """
 
 import numpy as np
@@ -108,7 +107,6 @@ MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-revers
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
-DECEL_VSHORT_WINDOW = 5  # shorter window for decel exit (vs SHORT_WINDOW=8 for entries)
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
@@ -293,7 +291,6 @@ class Strategy:
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_decel = (closes[-1] - closes[-DECEL_VSHORT_WINDOW]) / closes[-DECEL_VSHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
@@ -574,9 +571,9 @@ class Strategy:
                             elif current_pos < 0 and funding_pctile < (1.0 - FUNDING_EXTREME_PERCENTILE):
                                 decel_mult *= FUNDING_EXTREME_DECEL_MULT
                         decel_threshold = dyn_threshold * decel_mult
-                        if current_pos > 0 and ret_decel < -decel_threshold:
+                        if current_pos > 0 and ret_vshort < -decel_threshold:
                             target = 0.0
-                        elif current_pos < 0 and ret_decel > decel_threshold:
+                        elif current_pos < 0 and ret_vshort > decel_threshold:
                             target = 0.0
 
                 # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
