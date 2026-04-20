@@ -209,3 +209,4 @@ ea8326b	26.635797	28.652144	4.032695	keep	relax mean-reversion RSI entry thresho
 f8cd84a	26.665269	28.693022	4.055506	keep	relax mean-reversion RSI entry thresholds from 48/52 to 49/51 for more MR entries in sideways
 5a4f9ed	26.691805	28.729711	4.075811	keep	funding rate crowding tightens deceleration exit (exit faster when on crowded side)
 94942d1	26.694305	28.737370	4.086130	keep	raise MIN_VOTES_CALM_VOL from 0.6 to 0.7 for more entries in moderate-vol sideways
+bdbf613	26.815855	28.862336	4.092963	keep	increase VOL_SPIKE_SCALE from 0.6 to 0.7 for less aggressive size reduction during vol spikes
