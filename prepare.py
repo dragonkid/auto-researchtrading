@@ -593,10 +593,10 @@ def compute_score(result: BacktestResult) -> float:
 
     Hard cutoffs for degenerate strategies.
     """
-    # Hard cutoffs — strict risk limits
+    # Hard cutoffs — strict risk limits (safety nets only)
     if result.num_trades < 10:
         return -999.0
-    if result.max_drawdown_pct > 10.0:
+    if result.max_drawdown_pct > 20.0:
         return -999.0
     final_equity = result.equity_curve[-1] if result.equity_curve else INITIAL_CAPITAL
     if final_equity < INITIAL_CAPITAL * 0.75:
@@ -608,8 +608,12 @@ def compute_score(result: BacktestResult) -> float:
     # Sample sufficiency: sqrt ramp, full credit at 50+ trades
     sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))
 
-    # Drawdown gate: 1/(1 + DD%) — DD=0% → 1.0, DD=10% → 0.91, DD=25% → 0.80
+    # Drawdown gate: base 1/(1+DD%) plus soft exponential penalty above 5%
+    # DD=5% → 0.95, DD=8% → 0.52, DD=10% → 0.34, DD=15% → 0.12
+    # Creates smooth gradient that discourages approaching DD boundary
     dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
+    dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
+    dd_gate *= math.exp(-dd_excess / 5.0)
 
     # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
     vol_gate = 1.0 / (1.0 + result.return_volatility)

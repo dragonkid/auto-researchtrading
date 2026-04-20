@@ -50,18 +50,20 @@ Each regime is scored via multiplicative `compute_score()`, then combined:
 ```
 Base score = log(1+sharpe)         # signal quality
            × sqrt(trade_factor)    # sample sufficiency
-           × 1/(1 + DD%)           # drawdown gate
+           × 1/(1 + DD%)           # base drawdown gate
+           × exp(-max(0, DD%-5)/5) # soft DD penalty (steep above 5%)
            × 1/(1 + vol)           # volatility gate
            × exp(-streak/30)       # consecutive loss gate
 
 Per-regime score = base_score × log(1 + annual_return% / 100)   # return gate
 
-Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >25% → -999
+Hard cutoffs: <10 trades → -999, >20% drawdown → -999, lost >25% → -999
 
 Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
+The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.55x, 10%→0.37x, 15%→0.14x.
 The return gate prevents gaming via position-size reduction (smaller positions improve DD/vol gates but reduce returns).
 The composite rewards strategies that perform **consistently across all market conditions**.
 
@@ -108,4 +110,7 @@ Start with these high-probability ideas:
 - One change per experiment. Keep it atomic so you know what caused the score change.
 - If you have no ideas, re-read `strategy.py` carefully and look for parameters to tune or signals to add/remove.
 - All else equal, simpler is better. A 0.001 improvement that adds 20 lines of hacky code is not worth it.
+- **Simplification experiments are as valuable as additions.** Try removing a voter, disabling a sizing multiplier, or deleting dead code. If the score holds or improves, keep the simpler version. Complexity has a hidden cost: it hurts out-of-sample generalization.
+- **Funding rate data is all zeros** — do not waste experiments on funding-related features.
+- **ATR trailing stop never triggers** — decel/RSI exits always fire first. Do not tune ATR stop parameters.
 - Do NOT ask for confirmation. You are fully autonomous for this one experiment.
