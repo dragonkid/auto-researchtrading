@@ -1,11 +1,9 @@
 """
-Exp192: Autocorrelation-based entry filter — compute the lag-1
-autocorrelation of recent hourly returns over a 12-bar window. When
-autocorrelation is negative (mean-reverting/choppy), momentum signals are
-less reliable, so we raise the effective MIN_VOTES by 1, requiring stronger
-consensus before entering. When autocorrelation is positive (trending), we
-keep the normal threshold. This should reduce losses from whipsaws in choppy
-regimes while preserving entries in trending ones.
+Exp191: Widen decel threshold for small winners — when position profit is
+below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
+get more room to develop before momentum decel exit triggers. This avoids
+cutting winners too early while the profit-scaled tightening (>2%) still
+locks in larger gains. Net effect: hold marginal winners longer.
 """
 
 import numpy as np
@@ -111,9 +109,6 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
-AUTOCORR_LOOKBACK = 12  # window for lag-1 autocorrelation of returns
-AUTOCORR_CHOPPY_THRESHOLD = 0.0  # below this = choppy, raise vote requirement
-AUTOCORR_EXTRA_VOTES = 1  # additional votes required in choppy regime
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -217,24 +212,6 @@ class Strategy:
         # Slope = change in EMA over lookback period, normalized by price
         slope = (ema_arr[-1] - ema_arr[-EMA_SLOPE_LOOKBACK]) / ema_arr[-EMA_SLOPE_LOOKBACK]
         return slope
-
-    def _calc_autocorr(self, closes, lookback):
-        """Lag-1 autocorrelation of log returns over lookback window."""
-        if len(closes) < lookback + 2:
-            return 0.0
-        log_rets = np.diff(np.log(closes[-(lookback + 1):]))
-        if len(log_rets) < 4:
-            return 0.0
-        r1 = log_rets[:-1]
-        r2 = log_rets[1:]
-        mean1 = np.mean(r1)
-        mean2 = np.mean(r2)
-        std1 = np.std(r1)
-        std2 = np.std(r2)
-        if std1 < 1e-10 or std2 < 1e-10:
-            return 0.0
-        corr = np.mean((r1 - mean1) * (r2 - mean2)) / (std1 * std2)
-        return float(np.clip(corr, -1.0, 1.0))
 
     def _calc_linreg_slope(self, closes):
         """Rolling OLS linear regression slope of log prices. Per-bar change rate."""
@@ -403,10 +380,6 @@ class Strategy:
             trend_bear = trend_avg < 0
 
             effective_min_votes = MIN_VOTES_CALM if vol_ratio < MIN_VOTES_CALM_VOL else MIN_VOTES
-            # Autocorrelation filter: raise vote requirement in choppy (mean-reverting) regimes
-            autocorr = self._calc_autocorr(closes, AUTOCORR_LOOKBACK)
-            if autocorr < AUTOCORR_CHOPPY_THRESHOLD:
-                effective_min_votes += AUTOCORR_EXTRA_VOTES
             bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull
             bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
