@@ -1,10 +1,9 @@
 """
-Exp193: Reduce MAX_COMBINED_MULT from 5.5 to 5.0 to cap peak position sizes
-in moderate-vol regimes. Rally_2024 has the weakest score (10.00 vs 11.5+
-elsewhere) driven by 9.35% DD. The DD penalty is exponential above 5%, so
-even a small DD reduction yields disproportionate score improvement. This
-tighter cap limits multiplier stacking without affecting low-vol (7.5 cap)
-or high-vol (4.0 cap) regimes.
+Exp194: Reduce MAX_COMBINED_MULT_HIGH_VOL from 4.0 to 3.5 to cut peak
+sizing in high-vol regimes. Rally_2024 has the worst score (9.99) driven
+by 9.35% DD — the steep exponential penalty above 5% means even a small
+DD reduction (e.g. 9.35->8.5%) yields ~0.15x score recovery. This tighter
+high-vol cap targets rally/crash regimes without affecting low-vol sizing.
 """
 
 import numpy as np
@@ -128,7 +127,7 @@ HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 5.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headroom)
-MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
+MAX_COMBINED_MULT_HIGH_VOL = 3.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.15  # max sizing boost when all 3 timeframe returns agree on direction
