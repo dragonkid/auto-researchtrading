@@ -1,8 +1,9 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp204: Remove vol_confirm_mult sizing multiplier.  Volume confirmation
+(boost when recent volume > longer-term average, floor when below) likely
+hurts sideways regimes where volume is naturally low — the floor of 0.85
+is a persistent drag on position size.  Removing it simplifies sizing and
+should help the weakest regime (sideways: 15.61).
 """
 
 import numpy as np
@@ -409,18 +410,14 @@ class Strategy:
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = 1.0 + HIGH_VOTE_BOOST if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
-            # Volume confirmation: boost size when recent volume is above longer-term average
-            vol_confirm_mult = 1.0
-            vol_ratio_raw = 1.0  # raw volume ratio for divergence detection
+            # Volume ratio for divergence detection (used in decel exit)
+            vol_ratio_raw = 1.0
             volumes = bd.history["volume"].values
             if len(volumes) >= VOL_CONFIRM_BASE:
                 recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
                 if base_vol > 0:
                     vol_ratio_raw = recent_vol / base_vol
-                    # Above average: boost up to VOL_CONFIRM_BOOST
-                    # Below average: reduce down to VOL_CONFIRM_FLOOR
-                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
 
             # Multi-timeframe agreement: boost when vshort, short, and long all agree
             # Dampened by trend strength so it only helps in sideways (DD-safe) regimes
@@ -441,7 +438,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * mtf_agree_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
