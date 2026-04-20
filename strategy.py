@@ -1,9 +1,9 @@
 """
-Exp179: Further relax mean-reversion RSI entry thresholds from 47/53 to
-48/52. Each prior relaxation step (from 32/68 to 47/53) produced small
-but consistent gains. The MR entry is already gated by trend flatness
-(abs(ret_long) < 0.03), so slightly more entries in truly sideways
-markets should be safe.
+Exp180: Relax mean-reversion RSI entry thresholds from 48/52 to 49/51.
+Each prior step (32->35->38->42->45->47->48) produced small gains. At
+49/51, nearly any RSI reading triggers MR entry when trend is flat,
+effectively making MR entries in sideways almost unconditional (still
+gated by abs(ret_long) < 0.03). Testing the limit of this approach.
 """
 
 import numpy as np
@@ -104,8 +104,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 48       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 52     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 ACCEL_LOOKBACK = 4  # bars to look back for momentum acceleration comparison
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
