@@ -1,9 +1,10 @@
 """
-Exp197: Reduce MAX_COMBINED_MULT from 5.0 to 4.5.  The base cap applies in
-moderate-vol regimes (vol_ratio between 0.6 and 1.0).  Rally_2024 (8.06% DD)
-and bull_2021 (8.79% DD) are the weakest regimes — the exponential DD penalty
-at 8% gives ~0.55x and at 7% gives ~0.67x, so even a 1% DD reduction is
-substantial.  Continuing the proven trend of tighter sizing caps.
+Exp198: Reduce BASE_POSITION_PCT from 0.35 to 0.33.  Bull DD 8.56% and rally
+DD 8.06% are the worst regimes.  The exponential DD penalty at 8% gives ~0.55x
+vs ~0.67x at 7%, so even 1% DD improvement is worth ~0.12x multiplicative gain.
+Annual returns are so high (10^14%!) that the log return gate is fully saturated
+and insensitive to small position cuts.  Continuing the proven sizing-reduction
+trend: every BASE_POSITION_PCT cut so far has been a keep.
 """
 
 import numpy as np
@@ -46,7 +47,7 @@ FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
-BASE_POSITION_PCT = 0.35
+BASE_POSITION_PCT = 0.33
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
