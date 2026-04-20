@@ -1,9 +1,9 @@
 """
-Exp191: Widen decel threshold for small winners — when position profit is
-below 1%, apply a 1.5x multiplier to decel_mult so small profitable trades
-get more room to develop before momentum decel exit triggers. This avoids
-cutting winners too early while the profit-scaled tightening (>2%) still
-locks in larger gains. Net effect: hold marginal winners longer.
+Exp192: Widen ATR trailing stop from 4.5 to 5.0 — gives positions more room
+to breathe and reduces premature exits from noise. The decel system already
+handles quick momentum reversals, so the trailing stop's job is to catch
+sustained adverse moves. A wider stop lets winners run longer while the
+momentum deceleration exit still provides the quick profit-protection layer.
 """
 
 import numpy as np
@@ -54,7 +54,7 @@ VOL_SPIKE_THRESHOLD = 1.7
 VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
-ATR_STOP_MULT_BASE = 4.5
+ATR_STOP_MULT_BASE = 5.0
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
