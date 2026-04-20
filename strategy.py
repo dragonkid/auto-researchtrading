@@ -1,9 +1,10 @@
 """
-Exp192: Remove momentum acceleration voter (accel_bull/accel_bear). This
-voter compares current ret_short vs ret_short from ACCEL_LOOKBACK bars ago,
-which is noisy and adds a marginal signal. With 8 remaining voters and
-MIN_VOTES=3, entries should still fire reliably. Simplification reduces
-overfitting risk and may improve consistency across regimes.
+Exp193: Reduce MAX_COMBINED_MULT from 5.5 to 5.0 to cap peak position sizes
+in moderate-vol regimes. Rally_2024 has the weakest score (10.00 vs 11.5+
+elsewhere) driven by 9.35% DD. The DD penalty is exponential above 5%, so
+even a small DD reduction yields disproportionate score improvement. This
+tighter cap limits multiplier stacking without affecting low-vol (7.5 cap)
+or high-vol (4.0 cap) regimes.
 """
 
 import numpy as np
@@ -125,7 +126,7 @@ MIN_VOTES_CALM_VOL = 0.7  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
-MAX_COMBINED_MULT = 5.5  # base cap on product of all sizing multipliers
+MAX_COMBINED_MULT = 5.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 4.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
