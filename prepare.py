@@ -608,12 +608,12 @@ def compute_score(result: BacktestResult) -> float:
     # Sample sufficiency: sqrt ramp, full credit at 50+ trades
     sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))
 
-    # Drawdown gate: base 1/(1+DD%) plus soft exponential penalty above 5%
-    # DD=5% → 0.95, DD=8% → 0.52, DD=10% → 0.34, DD=15% → 0.12
-    # Creates smooth gradient that discourages approaching DD boundary
+    # Drawdown gate: base 1/(1+DD%) plus mild exponential penalty above 5%
+    # DD=5% → 0.95, DD=8% → 0.68, DD=10% → 0.55, DD=15% → 0.32
+    # Milder slope (divisor=10) to avoid over-incentivizing DD reduction
     dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
     dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
-    dd_gate *= math.exp(-dd_excess / 5.0)
+    dd_gate *= math.exp(-dd_excess / 10.0)
 
     # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
     vol_gate = 1.0 / (1.0 + result.return_volatility)

@@ -51,7 +51,7 @@ Each regime is scored via multiplicative `compute_score()`, then combined:
 Base score = log(1+sharpe)         # signal quality
            × sqrt(trade_factor)    # sample sufficiency
            × 1/(1 + DD%)           # base drawdown gate
-           × exp(-max(0, DD%-5)/5) # soft DD penalty (steep above 5%)
+           × exp(-max(0, DD%-5)/10) # soft DD penalty (mild slope above 5%)
            × 1/(1 + vol)           # volatility gate
            × exp(-streak/30)       # consecutive loss gate
 
@@ -63,7 +63,7 @@ Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
-The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.55x, 10%→0.37x, 15%→0.14x.
+The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.74x, 10%→0.61x, 15%→0.37x.
 The return gate prevents gaming via position-size reduction (smaller positions improve DD/vol gates but reduce returns).
 The composite rewards strategies that perform **consistently across all market conditions**.
 

@@ -91,10 +91,10 @@ Use status `council_discard` or `council_keep` to distinguish from normal experi
 Multiplicative per-regime score, then combined:
 
 ```
-Base = log(1+sharpe) × sqrt(trade_factor) × 1/(1+DD%) × exp(-max(0,DD%-5)/5) × 1/(1+vol) × exp(-streak/30)
+Base = log(1+sharpe) × sqrt(trade_factor) × 1/(1+DD%) × exp(-max(0,DD%-5)/10) × 1/(1+vol) × exp(-streak/30)
 Per-regime = base × log(1 + annual_return% / 100)   # return gate
 Hard cutoffs: <10 trades, >20% DD, >25% capital loss → -999
-Soft DD penalty: exponential decay above 5% DD (8%→0.55x, 10%→0.37x)
+Soft DD penalty: mild exponential decay above 5% DD (8%→0.74x, 10%→0.61x)
 
 Composite = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
