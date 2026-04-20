@@ -1,10 +1,8 @@
 """
-Exp200: Reduce MAX_COMBINED_MULT from 4.5 to 4.0.  This is the base cap for
-moderate-vol regimes.  Rally_2024 is the weakest regime (12.90 vs mean 15.25)
-with DD 7.60%.  The exponential DD penalty at 7.6% gives ~0.60x.  Reducing
-peak sizing in the moderate-vol band should improve rally DD without
-meaningfully affecting returns (log return gate is saturated).  Prior
-reductions 5.5->5.0 and 5.0->4.5 were both keeps.
+Exp201: Remove vol_breakout voter.  Originally added for +0.018 score uplift
+(23.408->23.426).  Many experiments later, the signal may be redundant with
+the Donchian breakout voter (both react to vol expansion / breakout).
+Removing simplifies from 8 to 7 voters and reduces overfitting risk.
 """
 
 import numpy as np
@@ -113,9 +111,9 @@ PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
-VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
-VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
-VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
+VOL_BREAKOUT_SHORT = 4   # UNUSED: vol breakout voter removed (exp201)
+VOL_BREAKOUT_LONG = 20   # UNUSED: vol breakout voter removed (exp201)
+VOL_BREAKOUT_MULT = 1.0  # UNUSED: vol breakout voter removed (exp201)
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
@@ -329,19 +327,6 @@ class Strategy:
             linreg_bull = linreg_slope > 0.0003
             linreg_bear = linreg_slope < -0.0003
 
-            # Volatility breakout voter: vol expanding signals directional move
-            vol_breakout_bull = False
-            vol_breakout_bear = False
-            if len(closes) >= VOL_BREAKOUT_LONG + 1:
-                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
-                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long * VOL_BREAKOUT_MULT:
-                    # Vol is expanding — vote with the short-term direction
-                    if ret_vshort > 0:
-                        vol_breakout_bull = True
-                    elif ret_vshort < 0:
-                        vol_breakout_bear = True
-
             # Donchian channel breakout voter: price at N-bar high = bullish, N-bar low = bearish
             donchian_bull = False
             donchian_bear = False
@@ -353,8 +338,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
