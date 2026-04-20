@@ -1,8 +1,7 @@
 """
-Exp181: Extreme funding rate exit signal. When holding a position and
-the current funding rate is extremely crowded in the same direction
-(top/bottom 5% of recent distribution), tighten the deceleration exit
-by halving the decel threshold. Crowded positions tend to mean-revert.
+Exp182: Expand calm-market vote relaxation. Raise MIN_VOTES_CALM_VOL
+from 0.6 to 0.7 so more bars qualify for the reduced 2-vote entry
+threshold. More entries in moderate-vol sideways conditions.
 """
 
 import numpy as np
@@ -119,7 +118,7 @@ COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
-MIN_VOTES_CALM_VOL = 0.6  # vol_ratio below which reduced votes apply
+MIN_VOTES_CALM_VOL = 0.7  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
