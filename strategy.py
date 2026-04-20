@@ -1,9 +1,8 @@
 """
-Exp180: Relax mean-reversion RSI entry thresholds from 48/52 to 49/51.
-Each prior step (32->35->38->42->45->47->48) produced small gains. At
-49/51, nearly any RSI reading triggers MR entry when trend is flat,
-effectively making MR entries in sideways almost unconditional (still
-gated by abs(ret_long) < 0.03). Testing the limit of this approach.
+Exp181: Extreme funding rate exit signal. When holding a position and
+the current funding rate is extremely crowded in the same direction
+(top/bottom 5% of recent distribution), tighten the deceleration exit
+by halving the decel threshold. Crowded positions tend to mean-revert.
 """
 
 import numpy as np
@@ -44,6 +43,8 @@ LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
+FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
+FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.38
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
@@ -561,6 +562,14 @@ class Strategy:
                         if pnl > PROFIT_DECEL_THRESHOLD:
                             profit_excess = pnl - PROFIT_DECEL_THRESHOLD
                             decel_mult /= (1.0 + profit_excess * PROFIT_DECEL_SCALE)
+                        # Funding crowding: tighten decel when position is on crowded side
+                        if len(funding_rates) >= FUNDING_LOOKBACK:
+                            current_funding = funding_rates[-1]
+                            funding_pctile = np.mean(funding_rates <= current_funding)
+                            if current_pos > 0 and funding_pctile > FUNDING_EXTREME_PERCENTILE:
+                                decel_mult *= FUNDING_EXTREME_DECEL_MULT
+                            elif current_pos < 0 and funding_pctile < (1.0 - FUNDING_EXTREME_PERCENTILE):
+                                decel_mult *= FUNDING_EXTREME_DECEL_MULT
                         decel_threshold = dyn_threshold * decel_mult
                         if current_pos > 0 and ret_vshort < -decel_threshold:
                             target = 0.0
