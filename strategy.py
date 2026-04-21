@@ -1,9 +1,9 @@
 """
-Exp229: Trend-adaptive sizing cap.
-In sideways markets (weak trend), allow a higher combined sizing multiplier cap
-since DD risk is lower and we need more aggressive sizing to capture returns.
-In strong trends, tighten the cap to protect against DD.
-This is orthogonal to the existing vol-based cap interpolation.
+Exp230: Gentler profit-scaled RSI exit tightening.
+Reduce RSI_EXIT_PROFIT_SCALE from 20.0 to 12.0 so that profit-triggered
+RSI exit tightening ramps more gradually. This lets positions develop
+longer before RSI exits fire, particularly helping in sideways markets
+where profits are smaller and premature exits hurt returns.
 """
 
 import numpy as np
@@ -110,7 +110,7 @@ MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion 
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
-RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
+RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
