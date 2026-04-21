@@ -1,9 +1,10 @@
 """
-Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
-The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
-volume confirmation more responsive to recent volume patterns. Shorter baseline
-means volume ratio reacts faster to regime changes, potentially improving entries
-during transitions between regimes.
+Exp332: Increase SIDEWAYS_BOOST_DECAY 0.10->0.12 to restrict sideways boost
+to more truly trendless markets. The squared decay (sideways_trend_strength^2)
+makes the boost aggressive — with decay 0.10, a 10% ret_long only halves the
+boost. Raising to 0.12 makes the boost decay faster with trend, which should
+reduce DD in trending regimes while preserving the benefit in truly sideways
+markets where the boost helps most.
 """
 
 import numpy as np
@@ -73,7 +74,7 @@ DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
-SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_DECAY = 0.12  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
