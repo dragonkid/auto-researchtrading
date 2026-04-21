@@ -1,9 +1,8 @@
 """
-Exp361: Increase TREND_THRESHOLD_DECAY 0.13->0.16. This extends the sideways entry
-threshold reduction into moderate-trend territory. Currently the threshold reduction
-decays fully when abs(ret_long) reaches 0.13. By raising to 0.16, the reduction
-persists longer as trend strength increases, allowing more entries in weak-to-moderate
-trending periods. This may help catch early-stage trends that start from sideways.
+Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
+regardless of position age. Older positions (>8 bars) have exhausted their momentum —
+tighten giveback to lock in profits earlier. Young positions keep the standard
+giveback. This targets aging winners that are just slowly bleeding away gains.
 """
 
 import numpy as np
@@ -86,7 +85,7 @@ DECEL_MULT_TREND = 999.0        # DISABLED: RSI exit + flip is better exit mecha
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.32  # max threshold reduction when trend is flat
-TREND_THRESHOLD_DECAY = 0.16  # abs(ret_long) at which reduction fully decays
+TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
