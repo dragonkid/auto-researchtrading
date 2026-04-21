@@ -1,8 +1,8 @@
 """
-Exp377: Increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend elevated
-strength_scale floor into moderate-trend environments. Sideways regime
-has lowest DD (4.49%) with room for more risk. This widens the zone
-where the elevated strength floor (2.6) applies before decaying to 0.6.
+Exp381: Inline dead/no-op constants for simplicity bonus.
+Remove MED_WINDOW (unused), MEANREV_SIZE_SCALE (1.0 = no-op),
+COOLDOWN_SIDEWAYS_BARS (0 = no-op), PEAK_PROFIT_GRACE_BARS (inline 1).
+Zero behavior change, -5 LOC.
 """
 
 import numpy as np
@@ -12,7 +12,6 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
 SHORT_WINDOW = 8
-MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
@@ -87,7 +86,6 @@ VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
@@ -96,7 +94,6 @@ RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
-PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
@@ -108,7 +105,6 @@ VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
-COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
@@ -357,7 +353,7 @@ class Strategy:
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
-            effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
+            effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
@@ -448,11 +444,10 @@ class Strategy:
                         target = -size
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        mr_size = size * MEANREV_SIZE_SCALE
                         if rsi < MEANREV_RSI_OVERSOLD:
-                            target = mr_size
+                            target = size
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -mr_size
+                            target = -size
             else:
                 atr = self._calc_atr(bd.history, ATR_LOOKBACK)
                 if atr is None:
@@ -529,7 +524,7 @@ class Strategy:
                 # Peak-profit trailing exit: lock in winners that are fading
                 # Profit-scaled giveback: tighter for larger peaks to protect big wins
                 # Grace period: don't activate for very young positions
-                if target != 0 and symbol in self.entry_prices and bars_held >= PEAK_PROFIT_GRACE_BARS:
+                if target != 0 and symbol in self.entry_prices and bars_held >= 1:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
