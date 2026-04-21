@@ -1,9 +1,9 @@
 """
-Exp370: Reduce RSI_TREND_BIAS from 2.0 to 1.5 for less aggressive RSI voter
-trend alignment. The current 2.0 bias shifts RSI thresholds by up to 2 points
-in the trend direction. Reducing to 1.5 makes the RSI voter more neutral,
-which may help in transition zones and reduce false signals when the long-term
-trend is about to reverse.
+Exp371: Increase MEANREV_TREND_THRESHOLD from 0.04 to 0.05 to widen the
+sideways detection zone. This threshold controls when mean-reversion entries
+and reduced MIN_VOTES activate. Widening it to 5% abs(ret_long) lets the
+strategy capture more trades in the weakly-trending zone (4-5%), which should
+particularly help the sideways regime (currently weakest at 19.23).
 """
 
 import numpy as np
@@ -106,7 +106,7 @@ VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
-MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
