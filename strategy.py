@@ -1,8 +1,8 @@
 """
-Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
-trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
-fully transition, the strategy spends more time using the faster ret_med
-weighting that drove the last two composite wins.
+Exp223: Expand MEANREV_TREND_THRESHOLD 0.03->0.04 so mean-reversion entries
+activate in a wider range of low-trend environments.  The sideways regime
+(15.67) is the weakest by far; broader mean-reversion coverage should add
+entries in range-bound conditions where these counter-trend trades work best.
 """
 
 import numpy as np
@@ -103,7 +103,7 @@ VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
-MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
