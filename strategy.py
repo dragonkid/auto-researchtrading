@@ -1,9 +1,9 @@
 """
-Exp206: Reduce BASE_THRESHOLD from 0.006 to 0.005 to allow entries on
-weaker momentum signals.  The dynamic threshold still scales with vol, so
-high-vol regimes stay protected.  Lower base threshold should increase
-trade count (improving trade_factor in scoring) and help sideways regime
-where momentum is inherently weaker.
+Exp207: Increase COOLDOWN_BARS from 2 to 3 to reduce whipsaw re-entries.
+After an exit, waiting one extra bar should filter out impulsive re-entries
+that reverse quickly.  The sideways adaptive cooldown (COOLDOWN_SIDEWAYS_BARS=0)
+still applies, so sideways gets faster re-entry.  This should mainly help
+crash_bear and rally where false re-entries are costly.
 """
 
 import numpy as np
@@ -116,7 +116,7 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-COOLDOWN_BARS = 2
+COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
