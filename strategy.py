@@ -1,9 +1,11 @@
 """
-Exp337: Reduce HIGH_VOTE_THRESHOLD 4->3 for easier high-conviction sizing boost.
-Currently the +20% sizing boost requires 4+ voters agreeing. With MIN_VOTES
-effectively 2-3, many valid entries miss the boost. Lowering to 3 means most
-entries that pass the vote gate also get the sizing boost, increasing position
-sizes modestly across all regimes.
+Exp338: Symbol-specific cross-asset boost — BTC gets no cross-asset boost.
+BTC leads the crypto market; ETH/SOL follow. Cross-asset agreement (all 3
+trending same direction) is mostly confirming what BTC already dictates.
+Giving BTC the same sizing boost as ETH/SOL double-counts BTC's own momentum.
+Remove the cross-asset boost for BTC to reduce BTC position sizes slightly
+(improving DD) while keeping the boost for ETH/SOL where it adds real value
+as BTC-confirmation signal.
 """
 
 import numpy as np
@@ -479,8 +481,13 @@ class Strategy:
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
+            # BTC leads the market — cross-asset agreement adds no information for BTC,
+            # so skip the boost entirely. ETH/SOL benefit from BTC-confirmation.
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
-            dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
+            if symbol == "BTC":
+                dampened_cross_agree = 1.0
+            else:
+                dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
