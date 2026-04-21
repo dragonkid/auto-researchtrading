@@ -1,8 +1,8 @@
 """
-Exp226: Reduce VOL_LONG_LOOKBACK 48->36 for more responsive vol regime
-detection. This affects vol-spike protection, calm boost, and vol-compression
-boost/threshold reduction. A shorter lookback makes these indicators adapt
-faster to regime transitions, which should help cross-regime consistency (std).
+Exp227: Reduce VOL_BREAKOUT_MULT 1.0->0.85 so vol breakout voter fires
+when short vol is at least 85% of long vol (not just exceeding it). This
+gives an additional directional vote more frequently, particularly helping
+marginal entries in sideways markets where momentum signals are weaker.
 """
 
 import numpy as np
@@ -113,7 +113,7 @@ PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
-VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
+VOL_BREAKOUT_MULT = 0.85  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
