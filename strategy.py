@@ -1,7 +1,7 @@
 """
-Exp290: Increase VOL_COMPRESS_BOOST 0.40->0.50 for stronger position sizing during
-vol compression breakouts. Vol compression signals impending breakout — larger
-positions should capture more of the move, especially in sideways markets.
+Exp294: Raise VOL_CONFIRM_FLOOR 0.95->0.98 to further reduce low-volume sizing penalty.
+Historical trend: 0.85->0.92->0.95 each improved composite. Low-volume penalty drags
+returns without meaningful DD improvement — nearly eliminating it should help.
 """
 
 import numpy as np
@@ -99,7 +99,7 @@ CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
-VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
+VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
