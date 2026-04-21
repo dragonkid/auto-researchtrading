@@ -1,7 +1,8 @@
 """
-Exp290: Increase VOL_COMPRESS_BOOST 0.40->0.50 for stronger position sizing during
-vol compression breakouts. Vol compression signals impending breakout — larger
-positions should capture more of the move, especially in sideways markets.
+Exp293: Reduce MACD_SIGNAL 5->4 for even faster MACD histogram response.
+The MACD signal line has been progressively reduced (7->5) with positive results.
+A faster signal line makes the MACD voter react sooner to momentum shifts,
+complementing the already-faster MACD_FAST=6 and MACD_SLOW=16.
 """
 
 import numpy as np
@@ -34,7 +35,7 @@ RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully de
 
 MACD_FAST = 6
 MACD_SLOW = 16
-MACD_SIGNAL = 5
+MACD_SIGNAL = 4
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
