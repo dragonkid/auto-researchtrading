@@ -1,8 +1,9 @@
 """
-Exp235: Tighten RSI_OB_WIDE/RSI_OS_WIDE 74/26->72/28 for faster sideways
-RSI exits. In range-bound markets, holding too long allows mean-reversion
-to erode gains. Tighter OB/OS in sideways should lock in more profits.
-Previous tightening from 76/24->74/26 helped (+0.046 composite).
+Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
+In trendless markets, the strength_scale floor determines minimum sizing.
+Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
+size increase should improve returns without blowing DD. 2.8 was tried
+before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
 """
 
 import numpy as np
@@ -27,8 +28,8 @@ RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
-RSI_OB_WIDE = 72      # widest OB exit in sideways/trendless markets
-RSI_OS_WIDE = 28      # widest OS exit in sideways/trendless markets
+RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
+RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
