@@ -1,9 +1,9 @@
 """
-Exp240: RSI exit loss-widening — when a position is underwater, widen
-RSI exit thresholds to give it more room to recover instead of exiting
-on a weak RSI signal. Sideways markets have many oscillations around
-breakeven; premature RSI exits on small losers lock in unnecessary losses.
-Max widening of 0.10 at loss >= 2%, scaling linearly from 0.5% loss.
+Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
+This makes threshold more responsive to vol: lower in calm markets (more
+entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
+higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
+Should help both sideways and crash_bear simultaneously.
 """
 
 import numpy as np
@@ -111,9 +111,6 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
-RSI_EXIT_LOSS_THRESHOLD = 0.005   # loss below which RSI exit starts widening
-RSI_EXIT_LOSS_WIDEN = 0.10        # max widening blend away from center at deep loss
-RSI_EXIT_LOSS_SCALE = 5.0         # how fast widening ramps with loss depth
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -600,26 +597,18 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_os_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
-                # PnL-scaled RSI exit adjustment
+                # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pos_pnl = -pos_pnl
-                    # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
                     if pos_pnl > RSI_EXIT_PROFIT_THRESHOLD:
                         profit_excess = pos_pnl - RSI_EXIT_PROFIT_THRESHOLD
                         profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN, profit_excess * RSI_EXIT_PROFIT_SCALE)
                         # Tighten toward center (50): reduce OB, raise OS
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
-                    # Loss-scaled widening: give losers room to recover by widening OB/OS away from center
-                    elif pos_pnl < -RSI_EXIT_LOSS_THRESHOLD:
-                        loss_depth = -pos_pnl - RSI_EXIT_LOSS_THRESHOLD
-                        loss_blend = min(RSI_EXIT_LOSS_WIDEN, loss_depth * RSI_EXIT_LOSS_SCALE)
-                        # Widen away from center: raise OB, lower OS
-                        effective_ob = effective_ob + (100.0 - effective_ob) * loss_blend
-                        effective_os = effective_os - effective_os * loss_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
