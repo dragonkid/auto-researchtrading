@@ -1,10 +1,10 @@
 """
-Exp242: Lower PEAK_PROFIT_MIN 0.02->0.015 for trailing exit on smaller winners.
-The peak-profit trailing exit currently only activates on >2% profits,
-missing many small-to-medium winners that fade. Lowering to 1.5% should
-protect more profits in sideways and crash regimes where typical moves
-are smaller, without hurting trend-following in bull/rally where profits
-grow well past this threshold anyway.
+Exp241: Add peak-profit trailing exit.
+Track peak unrealized PnL per position. When profit has reached a significant
+level (>PEAK_PROFIT_MIN) but then gives back more than PEAK_PROFIT_GIVEBACK
+fraction, exit the position. This locks in winners that are fading — especially
+valuable in sideways markets where moves reverse quickly. Should improve all
+regimes by reducing round-trip losses on winning trades.
 """
 
 import numpy as np
@@ -112,7 +112,7 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
-PEAK_PROFIT_MIN = 0.015           # min peak profit before trailing exit activates
+PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
