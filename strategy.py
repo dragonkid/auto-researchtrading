@@ -1,9 +1,8 @@
 """
-Exp354: Gradual cross-asset agreement boost instead of binary all-or-nothing.
-Currently cross_asset_agree is 1.0+BOOST if ALL assets agree, 1.0 otherwise.
-With 3 assets, if 2/3 agree on direction, give 2/3 of the boost (proportional).
-This allows partial sizing boost when most assets confirm, capturing BTC/ETH
-agreement even when SOL diverges (lead-lag effect).
+Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
+regardless of position age. Older positions (>8 bars) have exhausted their momentum —
+tighten giveback to lock in profits earlier. Young positions keep the standard
+giveback. This targets aging winners that are just slowly bleeding away gains.
 """
 
 import numpy as np
@@ -121,6 +120,8 @@ PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activat
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
+PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
+PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -669,6 +670,11 @@ class Strategy:
                         # Scale giveback: tighter for larger profits
                         profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (PEAK_PROFIT_TIGHT_AT - PEAK_PROFIT_MIN))
                         effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
+                        # Age-adaptive tightening: older positions get tighter giveback
+                        if bars_held > PEAK_PROFIT_AGE_BARS:
+                            age_excess = min(1.0, (bars_held - PEAK_PROFIT_AGE_BARS) / PEAK_PROFIT_AGE_BARS)
+                            effective_giveback -= PEAK_PROFIT_AGE_TIGHTEN * age_excess
+                            effective_giveback = max(0.10, effective_giveback)  # floor to avoid hair-trigger
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
