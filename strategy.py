@@ -1,9 +1,9 @@
 """
-Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
-Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
-Applying ^0.85 makes entry threshold reduction decay more gradually from
-sideways into moderate trends, keeping slightly lower thresholds active longer
-and allowing more entries in moderate-trend regimes.
+Exp370: Reduce RSI_TREND_BIAS from 2.0 to 1.5 for less aggressive RSI voter
+trend alignment. The current 2.0 bias shifts RSI thresholds by up to 2 points
+in the trend direction. Reducing to 1.5 makes the RSI voter more neutral,
+which may help in transition zones and reduce false signals when the long-term
+trend is about to reverse.
 """
 
 import numpy as np
@@ -24,7 +24,7 @@ RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
-RSI_TREND_BIAS = 2.0           # max RSI voter threshold shift toward trend direction
+RSI_TREND_BIAS = 1.5           # max RSI voter threshold shift toward trend direction
 RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
