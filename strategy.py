@@ -1,11 +1,11 @@
 """
-Exp319: Tighten RSI_OVERBOUGHT 73->72 and RSI_OVERSOLD 27->28.
-The base OB/OS thresholds haven't been tuned directly. RSI_OB_WIDE (74)
-and RSI_OB_TIGHT (65) have been optimized, but the base interpolation anchor
-sits at 73/27. Tightening to 72/28 makes normal-vol RSI exits trigger
-slightly sooner, protecting profits better without the extremity of the
-65/35 tight exits. This should reduce DD in sideways (the weakest regime
-at 19.16 vs mean 25.32) while being gentle enough not to hurt trending regimes.
+Exp318: Reduce CROSS_ASSET_TREND_DECAY 0.10->0.08.
+The cross-asset decay series has been productive:
+  0.14->0.10: +0.036 (exp87)
+  CROSS_ASSET_BOOST 0.30->0.20: +0.017 (exp148)
+Further reducing decay to 0.08 means cross-asset boost dampens even faster
+in trending markets, restricting it to only the most trendless (sideways) regimes
+where it helps without pushing DD higher.
 """
 
 import numpy as np
@@ -28,8 +28,8 @@ RSI_BULL = 50
 RSI_BEAR = 50
 RSI_TREND_BIAS = 2.0           # max RSI voter threshold shift toward trend direction
 RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
-RSI_OVERBOUGHT = 72
-RSI_OVERSOLD = 28
+RSI_OVERBOUGHT = 73
+RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
 RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
