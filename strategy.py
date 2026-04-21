@@ -1,7 +1,7 @@
 """
-Exp214: Raise VOL_CONFIRM_FLOOR 0.92->0.95 to further reduce sizing penalty
-when recent volume is below average. Previous raise 0.85->0.92 improved
-composite by +0.021. This is a smaller step in the same direction.
+Exp215: Reduce VOL_CONFIRM_BOOST 0.35->0.20 to compress cross-regime sizing
+variance. High-volume boosts fire more in trending regimes (bull/rally),
+amplifying inter-regime spread. Smaller boost should reduce std.
 """
 
 import numpy as np
@@ -98,7 +98,7 @@ CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
-VOL_CONFIRM_BOOST = 0.35      # max sizing boost when volume is above average
+VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
