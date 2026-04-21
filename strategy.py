@@ -1,9 +1,8 @@
 """
-Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
-This makes threshold more responsive to vol: lower in calm markets (more
-entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
-higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
-Should help both sideways and crash_bear simultaneously.
+Exp240: Reduce RSI_PERIOD_SIDEWAYS 6->5 for even faster RSI in trendless
+markets. With adaptive RSI (period interpolates between sideways and trending),
+a faster floor makes mean-reversion entries and RSI exits more responsive
+in sideways regimes where the strategy is weakest.
 """
 
 import numpy as np
@@ -21,7 +20,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
-RSI_PERIOD_SIDEWAYS = 6
+RSI_PERIOD_SIDEWAYS = 5
 RSI_BULL = 50
 RSI_BEAR = 50
 RSI_OVERBOUGHT = 73
