@@ -1,9 +1,9 @@
 """
-Exp207: Reduce DONCHIAN_PERIOD from 12 to 8 for faster breakout signals.
-Shorter lookback catches range breakouts earlier — helpful in sideways
-regimes where ranges are shorter-lived.  The previous experiment tried
-raising it to 20 (hurt); going shorter should generate more breakout
-votes and pair well with the recently lowered BASE_THRESHOLD.
+Exp206: Reduce BASE_THRESHOLD from 0.006 to 0.005 to allow entries on
+weaker momentum signals.  The dynamic threshold still scales with vol, so
+high-vol regimes stay protected.  Lower base threshold should increase
+trade count (improving trade_factor in scoring) and help sideways regime
+where momentum is inherently weaker.
 """
 
 import numpy as np
@@ -115,7 +115,7 @@ PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
-DONCHIAN_PERIOD = 8  # lookback for Donchian channel breakout voter
+DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
