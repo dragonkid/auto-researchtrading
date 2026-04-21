@@ -1,8 +1,8 @@
 """
-Exp266: Increase VOL_SPIKE_SCALE 0.7->0.8 for less aggressive position reduction
-during vol spikes. In trending regimes (bull, rally), momentum often continues
-after a vol spike. The current 0.7 floor may be cutting positions too much
-and missing the continuation. 0.8 means at max spike, size is 80% instead of 70%.
+Exp267: Increase VOL_SPIKE_SCALE 0.8->0.85 for even less aggressive position
+reduction during vol spikes. Exp266 showed 0.7->0.8 improved all regimes and
+reduced std. Continue in same direction: in trending regimes, momentum often
+continues after a vol spike, so 85% floor at max spike retains more exposure.
 """
 
 import numpy as np
@@ -50,7 +50,7 @@ VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
-VOL_SPIKE_SCALE = 0.8
+VOL_SPIKE_SCALE = 0.85
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
