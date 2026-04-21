@@ -1,8 +1,8 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp204: Reduce COOLDOWN_BARS from 2 to 1.  In trending markets, waiting
+2 bars after an exit delays re-entry and misses follow-through.  One bar
+of cooldown still avoids immediate whipsaw re-entry but allows faster
+re-engagement with the trend.  Sideways cooldown stays at 0.
 """
 
 import numpy as np
@@ -115,7 +115,7 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-COOLDOWN_BARS = 2
+COOLDOWN_BARS = 1
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
