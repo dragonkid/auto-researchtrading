@@ -1,9 +1,10 @@
 """
-Exp328: Reduce SHORT_WINDOW 8->7 for slightly faster vshort voter.
-8->6 was tried early and failed (-1.7), but 8->7 is more moderate.
-The vshort voter uses this for ret_vshort, which feeds vote counting
-and decel exit. A slightly shorter window makes vshort more reactive
-to recent moves without the noise of a very short window.
+Exp325: Reduce MIN_VOTES in sideways markets regardless of vol.
+Currently MIN_VOTES drops to 2 only when vol_ratio<0.9 or vol is compressed.
+In sideways markets (abs(ret_long)<0.04), vol can be normal, keeping MIN_VOTES=3.
+Since sideways DD is only 4.41% (lowest regime), there's headroom for more entries.
+Adding in_sideways to the MIN_VOTES_CALM condition allows more entries in trendless
+markets, potentially boosting the weakest regime score (19.2 vs 25+ others).
 """
 
 import numpy as np
@@ -12,7 +13,7 @@ from prepare import Signal, PortfolioState, BarData
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
-SHORT_WINDOW = 7
+SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
