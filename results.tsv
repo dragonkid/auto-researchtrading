@@ -242,3 +242,4 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 
 412d38f	23.314614	25.667742	4.706256	keep	power-dampened inverse-vol sizing (TARGET_VOL/vol)^0.85 for compressed sizing extremes (all regimes up, mean +0.15, composite +0.040)
 -	23.308478	25.727881	4.838807	discard	increase power-dampened vol exponent 0.85->0.80 (mean up 25.73 but std up 4.84, composite 23.315->23.308)
+2aafcd7	23.345944	25.691037	4.690186	keep	power-dampened strength_scale (mom_strength^0.85) for compressed extreme momentum signals (all regimes up, composite +0.031)
