@@ -1,9 +1,9 @@
 """
-Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
-factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
-the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
-(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
-consistency by compressing the spread of entry threshold across vol regimes.
+Exp351: Power-dampened calm_boost. Apply ^0.85 compression to the calm boost factor:
+calm_boost = 1.0 + CALM_BOOST_MAX * max(0, 1.0 - vol_ratio_sl) ^ 0.85.
+This compresses the calm sizing boost in extremely calm markets, preventing over-sizing
+when short vol is far below long vol. Should reduce DD in calm-then-spike transitions
+while keeping the boost moderate for typical calm conditions.
 """
 
 import numpy as np
@@ -432,7 +432,7 @@ class Strategy:
                     vol_spike_scale = 1.0 - (1.0 - VOL_SPIKE_SCALE) * spike_blend
                 # Calm regime boost: when short vol is close to or below long vol, boost size
                 vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
-                calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl)
+                calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
                 # Vol compression boost: when short vol drops well below long vol,
                 # a breakout is likely — boost size to capture the move
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
