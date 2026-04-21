@@ -1,8 +1,8 @@
 """
-Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
-trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
-fully transition, the strategy spends more time using the faster ret_med
-weighting that drove the last two composite wins.
+Exp223: Increase RSI_EXIT_VOL_HIGH 1.8->2.2 so the RSI exit interpolation
+range is wider.  At vol_ratio 1.8 (now mid-range rather than max), exits
+are less aggressive, letting trending positions in moderately volatile
+markets run longer before RSI triggers an exit.
 """
 
 import numpy as np
@@ -30,7 +30,7 @@ RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
 RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
 RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
-RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
+RSI_EXIT_VOL_HIGH = 2.2  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
