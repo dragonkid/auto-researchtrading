@@ -29,7 +29,7 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 5. **Commit**: `git commit -am "exp: <short description of what you changed>"`.
 6. **Backtest**: `uv run regime_test.py > run.log 2>&1`. This runs backtests across 4 non-overlapping market regimes (bull, bear crash, sideways, rally) and outputs a composite score.
 7. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`. The key metric is `composite_score` (= mean - 0.5*std across regimes). Also check individual regime scores for insights.
-8. **Record**: If `composite_score` improved vs the best in `results.tsv`, append a `keep` line. If worse or equal, run `git revert --no-edit HEAD` to fully undo the experiment commit (preserves all prior commits including harness files), then append a `discard` line. NEVER use `git reset --hard` — it destroys commits before the experiment.
+8. **Record**: If `composite_score` improved by **at least +0.01** vs the best in `results.tsv`, append a `keep` line. Improvements below +0.01 are noise — treat them as discard. If worse, equal, or below the +0.01 threshold, run `git revert --no-edit HEAD` to fully undo the experiment commit (preserves all prior commits including harness files), then append a `discard` line. NEVER use `git reset --hard` — it destroys commits before the experiment.
 9. **Exit**: You are done. The outer loop will invoke you again for the next experiment.
 
 ## Results TSV format
