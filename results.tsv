@@ -251,3 +251,4 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 
 -	23.444535	25.834810	4.780550	discard	vol-adaptive trend gate deadzone (wider in low-vol sideways, narrower in high-vol, all regimes worse, composite 23.475->23.445)
 43680a1	23.480260	25.866484	4.772449	keep	age-adaptive peak-profit giveback (tighten from 0.30 to 0.20 for positions held >8 bars to lock in aging winners, composite +0.005)
+-	23.336643	25.609687	4.546089	discard	raise MAX_COMBINED_MULT_LOW_VOL 6.5->7.5 (sideways +0.72 but crash -0.99 from higher DD 6.15%%, rally -0.64, composite 23.480->23.337)
