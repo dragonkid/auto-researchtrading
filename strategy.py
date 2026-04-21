@@ -1,10 +1,10 @@
 """
-Exp326: Add momentum acceleration voter (10th voter).
-Instead of just momentum level, detect momentum *change*: if the adaptive-window
-return 2 bars ago was weaker than now, momentum is accelerating. This catches
-trend births earlier than level-based voters. Uses adaptive_med lookback shifted
-by 2 bars. Particularly helpful in sideways (weakest regime at 19.2) where
-early trend detection matters most.
+Exp325: Reduce MIN_VOTES in sideways markets regardless of vol.
+Currently MIN_VOTES drops to 2 only when vol_ratio<0.9 or vol is compressed.
+In sideways markets (abs(ret_long)<0.04), vol can be normal, keeping MIN_VOTES=3.
+Since sideways DD is only 4.41% (lowest regime), there's headroom for more entries.
+Adding in_sideways to the MIN_VOTES_CALM condition allows more entries in trendless
+markets, potentially boosting the weakest regime score (19.2 vs 25+ others).
 """
 
 import numpy as np
@@ -149,7 +149,6 @@ MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
-MOM_ACCEL_LAG = 2  # bars ago to compare momentum for acceleration detection
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -385,18 +384,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            # Momentum acceleration voter: momentum is increasing (2nd derivative positive)
-            mom_accel_bull = False
-            mom_accel_bear = False
-            if len(closes) >= adaptive_med + MOM_ACCEL_LAG + 1:
-                ret_short_prev = (closes[-1 - MOM_ACCEL_LAG] - closes[-adaptive_med - MOM_ACCEL_LAG]) / closes[-adaptive_med - MOM_ACCEL_LAG]
-                if ret_short > 0 and ret_short > ret_short_prev:
-                    mom_accel_bull = True
-                elif ret_short < 0 and ret_short < ret_short_prev:
-                    mom_accel_bear = True
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, mom_accel_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, mom_accel_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             btc_confirm = True
             if symbol != "BTC":
