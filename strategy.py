@@ -1,9 +1,8 @@
 """
-Exp254: Add small-winner RSI exit widening. When a position is in
-small profit (0 to RSI_EXIT_PROFIT_THRESHOLD), widen OB/OS exits
-by up to RSI_SMALL_WIN_WIDEN pts to let small winners develop into
-bigger ones instead of cutting them prematurely. This should
-particularly help sideways regime where moves are smaller.
+Exp253: Increase VOL_COMPRESS_THRESHOLD 0.70->0.75 to widen the
+vol-compression detection window. This triggers the pre-breakout
+entry threshold reduction and sizing boost more frequently, catching
+more setups where short vol is compressed relative to long vol.
 """
 
 import numpy as np
@@ -111,8 +110,6 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
-RSI_SMALL_WIN_WIDEN = 3.0         # max RSI exit widening (pts) for small-profit positions
-RSI_SMALL_WIN_PROFIT_MAX = 0.01   # profit level at which small-winner widening fully decays
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
@@ -609,19 +606,13 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_os_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
-                # Profit-scaled adjustments to RSI exit thresholds
+                # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pos_pnl = -pos_pnl
-                    # Small-winner widening: widen RSI exit for small profits to let winners develop
-                    if 0 < pos_pnl <= RSI_SMALL_WIN_PROFIT_MAX:
-                        small_blend = 1.0 - pos_pnl / RSI_SMALL_WIN_PROFIT_MAX
-                        effective_ob += RSI_SMALL_WIN_WIDEN * small_blend
-                        effective_os -= RSI_SMALL_WIN_WIDEN * small_blend
-                    # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
-                    elif pos_pnl > RSI_EXIT_PROFIT_THRESHOLD:
+                    if pos_pnl > RSI_EXIT_PROFIT_THRESHOLD:
                         profit_excess = pos_pnl - RSI_EXIT_PROFIT_THRESHOLD
                         profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN, profit_excess * RSI_EXIT_PROFIT_SCALE)
                         # Tighten toward center (50): reduce OB, raise OS
