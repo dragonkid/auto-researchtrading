@@ -1,9 +1,9 @@
 """
-Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
-Previous experiments showed that faster MACD parameters help:
-MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
-Continuing this trend by making the slow EMA shorter, which makes the MACD
-line cross zero more quickly in response to momentum changes.
+Exp266: Reduce EMA_SLOW 21->17 for faster EMA crossover voter.
+Previous attempt (21->18) was discarded early at score ~17.3, but many
+improvements since then (MACD speed-ups, peak-profit exit, young grace, etc.)
+may make the faster crossover viable now. The MACD slow was successfully
+reduced 21->18->16, suggesting faster signals help across the board.
 """
 
 import numpy as np
@@ -19,7 +19,7 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
-EMA_SLOW = 21
+EMA_SLOW = 17
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
