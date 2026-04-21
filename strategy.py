@@ -1,9 +1,9 @@
 """
-Exp371: Increase MEANREV_TREND_THRESHOLD from 0.04 to 0.05 to widen the
-sideways detection zone. This threshold controls when mean-reversion entries
-and reduced MIN_VOTES activate. Widening it to 5% abs(ret_long) lets the
-strategy capture more trades in the weakly-trending zone (4-5%), which should
-particularly help the sideways regime (currently weakest at 19.23).
+Exp375: Remove 6 disabled features (dead code) whose extreme parameter values
+ensure they never activate. Behavior is provably identical. Earns simplicity
+bonus via reduced LOC. Removed: pyramiding (SIZE=0), BTC opposition gate
+(THRESHOLD=-99), high-correlation SOL reduction (THRESHOLD=99), DD reduction
+(THRESHOLD=99), take-profit (PCT=99), funding boost (BOOST=0).
 """
 
 import numpy as np
@@ -45,7 +45,6 @@ EMA_SLOPE_LOOKBACK = 3
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
-FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.30
@@ -59,17 +58,7 @@ ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
-TAKE_PROFIT_PCT = 99.0
 BASE_THRESHOLD = 0.005
-BTC_OPPOSE_THRESHOLD = -99.0
-
-PYRAMID_THRESHOLD = 0.015
-PYRAMID_SIZE = 0.0
-CORR_LOOKBACK = 72
-HIGH_CORR_THRESHOLD = 99.0
-
-DD_REDUCE_THRESHOLD = 99.0
-DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
@@ -177,8 +166,6 @@ class Strategy:
         self.peak_prices = {}
         self.atr_at_entry = {}
         self.btc_momentum = 0.0
-        self.pyramided = {}
-        self.peak_equity = 100000.0
         self.exit_bar = {}
         self.bar_count = 0
         self.peak_pnl = {}  # track peak unrealized PnL per symbol
@@ -199,20 +186,6 @@ class Strategy:
             return TARGET_VOL
         log_rets = np.diff(np.log(closes[-lookback:]))
         return max(np.std(log_rets), 1e-6)
-
-    def _calc_correlation(self, bar_data):
-        if "BTC" not in bar_data or "ETH" not in bar_data:
-            return 0.5
-        btc_h = bar_data["BTC"].history
-        eth_h = bar_data["ETH"].history
-        if len(btc_h) < CORR_LOOKBACK or len(eth_h) < CORR_LOOKBACK:
-            return 0.5
-        btc_rets = np.diff(np.log(btc_h["close"].values[-CORR_LOOKBACK:]))
-        eth_rets = np.diff(np.log(eth_h["close"].values[-CORR_LOOKBACK:]))
-        if len(btc_rets) < 10:
-            return 0.5
-        corr = np.corrcoef(btc_rets, eth_rets)[0, 1]
-        return corr if not np.isnan(corr) else 0.5
 
     def _calc_macd(self, closes):
         if len(closes) < MACD_SLOW + MACD_SIGNAL + 5:
@@ -250,18 +223,9 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        self.peak_equity = max(self.peak_equity, equity)
-        current_dd = (self.peak_equity - equity) / self.peak_equity
-        dd_scale = 1.0
-        if current_dd > DD_REDUCE_THRESHOLD:
-            dd_scale = max(DD_REDUCE_SCALE, 1.0 - (current_dd - DD_REDUCE_THRESHOLD) * 5)
-
         if "BTC" in bar_data and len(bar_data["BTC"].history) >= LONG_WINDOW + 1:
             btc_closes = bar_data["BTC"].history["close"].values
             self.btc_momentum = (btc_closes[-1] - btc_closes[-MED2_WINDOW]) / btc_closes[-MED2_WINDOW]
-
-        btc_eth_corr = self._calc_correlation(bar_data)
-        high_corr = btc_eth_corr > HIGH_CORR_THRESHOLD
 
         # Cross-asset momentum agreement: check if all symbols trend in same direction
         cross_asset_rets = []
@@ -390,13 +354,6 @@ class Strategy:
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
-            btc_confirm = True
-            if symbol != "BTC":
-                if bull_votes >= MIN_VOTES and self.btc_momentum < BTC_OPPOSE_THRESHOLD:
-                    btc_confirm = False
-                if bear_votes >= MIN_VOTES and self.btc_momentum > -BTC_OPPOSE_THRESHOLD:
-                    btc_confirm = False
-
             # Trend gate: weighted average of med and long returns must confirm direction
             # In sideways markets, shift weight toward faster ret_med for responsiveness
             trend_adapt_strength = min(abs(ret_long) / TREND_GATE_ADAPT_DECAY, 1.0) ** 0.85
@@ -410,8 +367,8 @@ class Strategy:
             in_sideways = abs(ret_long_raw) < MEANREV_TREND_THRESHOLD
             effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed or in_sideways) else MIN_VOTES
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_votes >= effective_min_votes and btc_confirm and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= effective_min_votes and btc_confirm and (trend_bear or trend_gate_bypassed)
+            bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= effective_min_votes and (trend_bear or trend_gate_bypassed)
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
@@ -475,8 +432,6 @@ class Strategy:
                 mtf_agree_mult = 1.0 + MTF_AGREE_BOOST * (1.0 - mtf_trend_str)
 
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
-            if high_corr and symbol == "SOL":
-                weight *= 0.5
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             # In sideways markets, raise the floor so weak momentum isn't double-penalized
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
@@ -502,50 +457,27 @@ class Strategy:
             trend_cap_boost = MAX_COMBINED_TREND_BOOST * (1.0 - trend_cap_strength)
             adaptive_cap += trend_cap_boost
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
+            size = equity * BASE_POSITION_PCT * weight * combined_mult
 
             funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
-            avg_funding = np.mean(funding_rates) if len(funding_rates) >= FUNDING_LOOKBACK else 0.0
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
             if current_pos == 0:
                 if not in_cooldown:
-                    funding_mult = 1.0
                     if bullish:
-                        if avg_funding < 0:
-                            funding_mult = 1.0 + FUNDING_BOOST
-                        target = size * funding_mult
-                        self.pyramided[symbol] = False
+                        target = size
                     elif bearish:
-                        if avg_funding > 0:
-                            funding_mult = 1.0 + FUNDING_BOOST
-                        target = -size * funding_mult
-                        self.pyramided[symbol] = False
+                        target = -size
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         mr_size = size * MEANREV_SIZE_SCALE
                         if rsi < MEANREV_RSI_OVERSOLD:
                             target = mr_size
-                            self.pyramided[symbol] = False
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
                             target = -mr_size
-                            self.pyramided[symbol] = False
             else:
-                if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
-                    entry = self.entry_prices[symbol]
-                    pnl = (mid - entry) / entry
-                    if current_pos < 0:
-                        pnl = -pnl
-                    if pnl > PYRAMID_THRESHOLD:
-                        if current_pos > 0 and bullish:
-                            target = current_pos + size * PYRAMID_SIZE
-                            self.pyramided[symbol] = True
-                        elif current_pos < 0 and bearish:
-                            target = current_pos - size * PYRAMID_SIZE
-                            self.pyramided[symbol] = True
-
                 atr = self._calc_atr(bd.history, ATR_LOOKBACK)
                 if atr is None:
                     atr = self.atr_at_entry.get(symbol, mid * 0.02)
@@ -589,8 +521,6 @@ class Strategy:
                     pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pnl = -pnl
-                    if pnl > TAKE_PROFIT_PCT:
-                        target = 0.0
                     # Momentum deceleration exit: if in profit and very-short-term
                     # momentum reverses, exit before trailing stop catches up
                     # Adaptive: wider threshold in trends (hold winners), tighter in sideways
@@ -681,8 +611,8 @@ class Strategy:
                             target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
-                flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
-                flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
@@ -700,7 +630,6 @@ class Strategy:
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
-                    self.pyramided.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
@@ -708,7 +637,6 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
-                    self.pyramided[symbol] = False
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
 
