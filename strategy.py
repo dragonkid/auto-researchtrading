@@ -1,8 +1,9 @@
 """
-Exp205: Remove EMA crossover voter (ema_bull/ema_bear) from the 8-voter ensemble.
-EMA 3/21 crossover is slow and laggy — the linreg slope and MACD already capture
-trend info with less lag. Reducing from 8 to 7 voters gives faster/responsive
-voters (mom, vshort, rsi) more relative weight. Simplification experiment.
+Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
+In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
+vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
+allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
+two weakest dimensions: sideways return and crash-regime DD.
 """
 
 import numpy as np
@@ -301,6 +302,11 @@ class Strategy:
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
+            ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
+            ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
+            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
+            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
+
             # Adaptive RSI: shorter period in sideways for faster signals
             rsi_trend_str = min(abs(ret_long_raw) / 0.10, 1.0)
             adaptive_rsi_period = int(round(RSI_PERIOD_SIDEWAYS + (RSI_PERIOD - RSI_PERIOD_SIDEWAYS) * rsi_trend_str))
@@ -346,8 +352,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
