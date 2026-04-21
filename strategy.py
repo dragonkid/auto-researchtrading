@@ -1,9 +1,10 @@
 """
-Exp370: Reduce RSI_TREND_BIAS from 2.0 to 1.5 for less aggressive RSI voter
-trend alignment. The current 2.0 bias shifts RSI thresholds by up to 2 points
-in the trend direction. Reducing to 1.5 makes the RSI voter more neutral,
-which may help in transition zones and reduce false signals when the long-term
-trend is about to reverse.
+Exp371: Increase PEAK_PROFIT_AGE_TIGHTEN from 0.10 to 0.15 for more aggressive
+profit-locking on aging positions. Positions held beyond PEAK_PROFIT_AGE_BARS(8)
+get progressively tighter giveback thresholds. This change increases the max
+additional tightening from 10% to 15%, which should help exit aging winners
+before they give back too much — especially beneficial in sideways regimes
+where reversals are more common.
 """
 
 import numpy as np
@@ -122,7 +123,7 @@ PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers 
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
-PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
+PEAK_PROFIT_AGE_TIGHTEN = 0.15    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
