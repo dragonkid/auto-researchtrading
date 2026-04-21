@@ -1,9 +1,10 @@
 """
-Exp258: Reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate
-cross-asset agreement sizing. Previously tested at 0.15 (too low)
-and 0.50 (too high). A moderate reduction should dampen correlated
-drawdowns during synchronized selloffs while still rewarding
-broad momentum agreement.
+Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
+with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
+uses a 48-bar baseline while vol regime detection uses 36 bars.
+Aligning them makes volume confirmation more responsive to regime
+changes, consistent with the pattern of faster lookbacks improving
+scores (VOL_LONG_LOOKBACK 48->36 was keep).
 """
 
 import numpy as np
@@ -99,7 +100,7 @@ VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol co
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
-VOL_CONFIRM_BASE = 48         # longer-term volume average window
+VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
