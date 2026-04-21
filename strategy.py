@@ -1,9 +1,8 @@
 """
-Exp363: Asymmetric long/short sizing. Crypto markets have a structural long bias —
-uptrends tend to be longer and stronger than downtrends. Size long positions at 1.05x
-and short positions at 0.95x to capture more upside in bull/rally regimes while
-reducing exposure during drawdowns in crash/bear regimes. Mild asymmetry to avoid
-overfitting.
+Exp362: Raise dyn_threshold floor 0.003->0.004. In very low-vol regimes, the entry
+threshold can drop to 0.003 (after base calc + trend reduction + vol compression
+reduction). This may cause too many low-quality entries on noise. Raising the floor
+to 0.004 ensures a minimum momentum signal is required even in the calmest conditions.
 """
 
 import numpy as np
@@ -98,8 +97,6 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
-LONG_SIZE_MULT = 1.05   # long positions sized slightly larger (crypto long bias)
-SHORT_SIZE_MULT = 0.95  # short positions sized slightly smaller
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
@@ -518,21 +515,21 @@ class Strategy:
                     if bullish:
                         if avg_funding < 0:
                             funding_mult = 1.0 + FUNDING_BOOST
-                        target = size * funding_mult * LONG_SIZE_MULT
+                        target = size * funding_mult
                         self.pyramided[symbol] = False
                     elif bearish:
                         if avg_funding > 0:
                             funding_mult = 1.0 + FUNDING_BOOST
-                        target = -size * funding_mult * SHORT_SIZE_MULT
+                        target = -size * funding_mult
                         self.pyramided[symbol] = False
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         mr_size = size * MEANREV_SIZE_SCALE
                         if rsi < MEANREV_RSI_OVERSOLD:
-                            target = mr_size * LONG_SIZE_MULT
+                            target = mr_size
                             self.pyramided[symbol] = False
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -mr_size * SHORT_SIZE_MULT
+                            target = -mr_size
                             self.pyramided[symbol] = False
             else:
                 if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
@@ -686,9 +683,9 @@ class Strategy:
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
-                    target = -size * SHORT_SIZE_MULT
+                    target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
-                    target = size * LONG_SIZE_MULT
+                    target = size
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
