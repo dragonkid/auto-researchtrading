@@ -1,9 +1,8 @@
 """
-Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
-factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
-the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
-(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
-consistency by compressing the spread of entry threshold across vol regimes.
+Exp351: Increase SIDEWAYS_BOOST_DECAY 0.10->0.12 to extend sideways sizing boost further
+into moderate-trend territory. Current boost decays to 1.0 at |ret_long|=10%; with 0.12 it
+extends to 12%. Sideways is the weakest regime (19.1 vs 25-33 for others). Moderate-trend
+periods within the sideways regime still get some boost, helping capture more return there.
 """
 
 import numpy as np
@@ -73,7 +72,7 @@ DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
-SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_DECAY = 0.12  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
