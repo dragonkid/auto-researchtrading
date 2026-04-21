@@ -1,9 +1,8 @@
 """
-Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
-factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
-the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
-(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
-consistency by compressing the spread of entry threshold across vol regimes.
+Exp352: Reduce TREND_THRESHOLD_SCALE 0.38->0.32 for less entry threshold reduction in sideways.
+Currently the entry threshold drops by up to 38% in flat markets, which may allow too-weak
+momentum entries that whipsaw. Reducing to 32% keeps a slightly higher entry barrier in sideways,
+potentially improving quality of sideways entries and reducing whipsaw losses.
 """
 
 import numpy as np
@@ -85,7 +84,7 @@ DECEL_MULT_BASE = 999.0         # DISABLED: decel exit hurts score (+0.430 when 
 DECEL_MULT_TREND = 999.0        # DISABLED: RSI exit + flip is better exit mechanism
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
-TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
+TREND_THRESHOLD_SCALE = 0.32  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
