@@ -1,9 +1,9 @@
 """
-Exp271: Reduce DONCHIAN_PERIOD 12->10 for faster breakout detection.
-The Donchian channel breakout voter fires when price hits a new N-bar high/low.
-Shorter period = more responsive breakout signals. 12->8 was too aggressive
-(discarded, rally/sideways hurt, std up). 12->10 is moderate — still filters
-noise but catches breakouts 2 bars earlier.
+Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
+Previous experiments showed that faster MACD parameters help:
+MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
+Continuing this trend by making the slow EMA shorter, which makes the MACD
+line cross zero more quickly in response to momentum changes.
 """
 
 import numpy as np
@@ -126,7 +126,7 @@ PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
-DONCHIAN_PERIOD = 10  # lookback for Donchian channel breakout voter
+DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
