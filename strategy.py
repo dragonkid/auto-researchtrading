@@ -1,8 +1,8 @@
 """
-Exp301: Trend-adaptive RSI voter thresholds.
-In trending markets, bias the RSI voter toward the trend: lower the bull threshold
-in uptrends (easier to vote bullish) and raise the bear threshold in downtrends.
-This gives a slight trend-following bias to the RSI signal, improving entry quality.
+Exp304: Widen trend gate deadzone 0.002->0.003.
+When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
+entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
+conditions where the trend gate was blocking valid vote-confirmed signals.
 """
 
 import numpy as np
@@ -146,7 +146,7 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
-TREND_GATE_DEADZONE = 0.002  # bypass trend gate when abs(trend_avg) < this AND in sideways
+TREND_GATE_DEADZONE = 0.003  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
