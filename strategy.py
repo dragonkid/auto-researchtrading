@@ -1,8 +1,9 @@
 """
-Exp341: Increase RSI_EXIT_PROFIT_SCALE 18->20 to continue the series.
-The progression 12->14 (+0.024), 14->16 (+0.032), 16->18 (+0.028) has been
-consistently positive. Original value was 20 but strategy has changed significantly
-since then (dozens of other parameter changes). Testing if 20 works in current context.
+Exp343: Increase RSI_EXIT_PROFIT_TIGHTEN 0.15->0.18 for higher ceiling on
+profit-scaled RSI exit tightening. With RSI_EXIT_PROFIT_SCALE now at 20
+(much higher than original 12), the tighten ceiling may be the binding
+constraint. Raising it allows bigger RSI exit tightening at high profit,
+locking in gains faster on big winners.
 """
 
 import numpy as np
@@ -110,7 +111,7 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
-RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
+RSI_EXIT_PROFIT_TIGHTEN = 0.18    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
