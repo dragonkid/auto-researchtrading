@@ -1,11 +1,11 @@
 """
-Exp318: Reduce CROSS_ASSET_TREND_DECAY 0.10->0.08.
-The cross-asset decay series has been productive:
-  0.14->0.10: +0.036 (exp87)
-  CROSS_ASSET_BOOST 0.30->0.20: +0.017 (exp148)
-Further reducing decay to 0.08 means cross-asset boost dampens even faster
-in trending markets, restricting it to only the most trendless (sideways) regimes
-where it helps without pushing DD higher.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -36,7 +36,7 @@ RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
 RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
-RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
+RSI_EXIT_TREND_DECAY = 0.08  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
 MACD_SLOW = 16
