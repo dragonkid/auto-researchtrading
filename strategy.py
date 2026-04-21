@@ -1,7 +1,9 @@
 """
-Exp296: Raise PEAK_PROFIT_MIN 0.02->0.025 to only trail-exit on larger peak profits.
-Small peaks (2%) are common in sideways — trailing exit cuts them prematurely.
-Raising the threshold lets moderate winners reach better RSI-based exits instead.
+Exp297: Add trend gate deadzone in sideways markets.
+When long-term trend is weak AND trend_avg is near zero, bypass the trend gate
+and rely solely on vote count. This prevents noise in ret_med/ret_long from
+randomly blocking entries in trendless regimes where the vote system already
+handles direction. Only activates when abs(ret_long) < MEANREV_TREND_THRESHOLD.
 """
 
 import numpy as np
@@ -143,6 +145,7 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
+TREND_GATE_DEADZONE = 0.001  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -386,8 +389,12 @@ class Strategy:
             trend_bear = trend_avg < 0
 
             effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed) else MIN_VOTES
-            bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull
-            bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
+            # In sideways markets, bypass trend gate when trend_avg is in the noise zone
+            # This prevents random ret_med/ret_long noise from blocking valid vote-confirmed entries
+            in_sideways = abs(ret_long_raw) < MEANREV_TREND_THRESHOLD
+            trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
+            bullish = bull_votes >= effective_min_votes and btc_confirm and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= effective_min_votes and btc_confirm and (trend_bear or trend_gate_bypassed)
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
