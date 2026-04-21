@@ -1,8 +1,10 @@
 """
-Exp226: Reduce VOL_LONG_LOOKBACK 48->36 for more responsive vol regime
-detection. This affects vol-spike protection, calm boost, and vol-compression
-boost/threshold reduction. A shorter lookback makes these indicators adapt
-faster to regime transitions, which should help cross-regime consistency (std).
+Exp227: Continuous vol-spike scaling instead of binary cutoff.
+Currently vol_spike_scale is 1.0 below threshold, jumps to 0.7 above.
+Replace with smooth linear interpolation: scale = max(0.7, 1 - 0.3*(ratio-1)/(threshold-1))
+where ratio = short_vol/long_vol. This gradually reduces position size as
+short-term vol rises above long-term, rather than waiting for a hard threshold.
+Should provide smoother risk management across all regimes.
 """
 
 import numpy as np
@@ -388,8 +390,12 @@ class Strategy:
             if len(closes) >= VOL_LONG_LOOKBACK + 1:
                 short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
                 long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
-                if short_vol > long_vol * VOL_SPIKE_THRESHOLD:
-                    vol_spike_scale = VOL_SPIKE_SCALE
+                # Continuous vol-spike scaling: gradually reduce size as short vol rises
+                vol_ratio_spike = short_vol / max(long_vol, 1e-10)
+                if vol_ratio_spike > 1.0:
+                    # Linear interpolation from 1.0 at ratio=1.0 to VOL_SPIKE_SCALE at ratio=VOL_SPIKE_THRESHOLD
+                    spike_blend = min(1.0, (vol_ratio_spike - 1.0) / (VOL_SPIKE_THRESHOLD - 1.0))
+                    vol_spike_scale = 1.0 - (1.0 - VOL_SPIKE_SCALE) * spike_blend
                 # Calm regime boost: when short vol is close to or below long vol, boost size
                 vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl)
