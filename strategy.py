@@ -1,10 +1,9 @@
 """
-Exp246: Tighten base peak-profit giveback 0.40->0.35.
-The peak-profit trailing exit was a major win. Reducing the base giveback
-threshold from 40% to 35% means we lock in more of peak profits on positions
-where peak is modest (near PEAK_PROFIT_MIN=2%). For larger peaks (>5%),
-PEAK_PROFIT_GIVEBACK_TIGHT=0.30 already applies. This tightens the middle
-range of peaks (2-5%) for earlier profit-locking exits.
+Exp247: Increase RSI young position widening 4->5pts.
+The RSI young grace period (4 bars) was a major win (+0.114). The OB/OS
+widening amount (4pts) controls how much room new positions get before RSI
+can exit them. Increasing to 5pts gives freshly-entered positions even more
+protection from premature RSI exits during the initial momentum phase.
 """
 
 import numpy as np
@@ -113,8 +112,8 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightenin
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
-RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
-RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_YOUNG_OB_WIDEN = 5.0          # max OB widening (added to effective_ob) at bar 1
+RSI_YOUNG_OS_WIDEN = 5.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
