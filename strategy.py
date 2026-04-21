@@ -1,8 +1,8 @@
 """
-Exp304: Widen trend gate deadzone 0.002->0.003.
-When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
-entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
-conditions where the trend gate was blocking valid vote-confirmed signals.
+Exp305: Vol-adaptive PEAK_PROFIT_MIN.
+Scale PEAK_PROFIT_MIN by vol_ratio so that in high-vol regimes the trailing
+exit requires a larger peak (noisy peaks), while in low-vol/sideways the
+threshold is slightly lower to capture smaller, more reliable swings earlier.
 """
 
 import numpy as np
@@ -116,7 +116,9 @@ RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is wi
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
-PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
+PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates (base at vol_ratio=1.0)
+PEAK_PROFIT_MIN_LOW_VOL = 0.020   # PEAK_PROFIT_MIN in low-vol regimes (smaller reliable swings)
+PEAK_PROFIT_MIN_HIGH_VOL = 0.030  # PEAK_PROFIT_MIN in high-vol regimes (noisy peaks)
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
@@ -661,10 +663,17 @@ class Strategy:
                     # Update peak PnL
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
+                    # Vol-adaptive PEAK_PROFIT_MIN: lower in calm markets (capture small swings),
+                    # higher in volatile markets (ignore noisy peaks)
+                    if vol_ratio < 1.0:
+                        pp_min = PEAK_PROFIT_MIN_LOW_VOL + (PEAK_PROFIT_MIN - PEAK_PROFIT_MIN_LOW_VOL) * vol_ratio
+                    else:
+                        vol_blend = min(1.0, (vol_ratio - 1.0) / 1.0)
+                        pp_min = PEAK_PROFIT_MIN + (PEAK_PROFIT_MIN_HIGH_VOL - PEAK_PROFIT_MIN) * vol_blend
                     # If peak profit was significant and we've given back too much, exit
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
+                    if self.peak_pnl[symbol] > pp_min:
                         # Scale giveback: tighter for larger profits
-                        profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (PEAK_PROFIT_TIGHT_AT - PEAK_PROFIT_MIN))
+                        profit_blend = min(1.0, (self.peak_pnl[symbol] - pp_min) / (PEAK_PROFIT_TIGHT_AT - pp_min))
                         effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
