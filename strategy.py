@@ -1,8 +1,8 @@
 """
-Exp377: Increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend elevated
-strength_scale floor into moderate-trend environments. Sideways regime
-has lowest DD (4.49%) with room for more risk. This widens the zone
-where the elevated strength floor (2.6) applies before decaying to 0.6.
+Exp378: Widen DONCHIAN_PERIOD 12->20. In sideways markets the narrow
+12-bar channel generates false breakout votes from range-bound price
+action. A wider channel (20) filters these, improving sideways Sharpe.
+Trending regimes have headroom (scores 25-34) to absorb slight entry delay.
 """
 
 import numpy as np
@@ -106,7 +106,7 @@ PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtract
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
-DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
+DONCHIAN_PERIOD = 20  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
