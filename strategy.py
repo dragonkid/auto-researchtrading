@@ -1,7 +1,7 @@
 """
-Exp290: Reduce RSI_EXIT_PROFIT_TIGHTEN 0.15->0.12 for gentler profit-scaled RSI exit.
-Less aggressive RSI tightening on profitable positions lets winners run longer,
-relying more on peak-profit trailing exit for protection instead.
+Exp289: Reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation.
+Allows peak-profit trailing exit to fire one bar earlier, potentially locking in
+more profit during fast reversals across all regimes.
 """
 
 import numpy as np
@@ -107,7 +107,7 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
-RSI_EXIT_PROFIT_TIGHTEN = 0.12    # max tightening blend toward center (50) at high profit
+RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
