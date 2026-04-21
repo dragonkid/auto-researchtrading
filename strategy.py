@@ -1,10 +1,10 @@
 """
-Exp209: Reduce MACD_FAST 8->6 for more responsive MACD voter.
-MACD voter is one of 8 entry voters. With MACD_FAST=8, MACD_SLOW=21 the
-histogram is relatively sluggish. A faster MACD_FAST=6 makes the MACD line
-more sensitive to recent price moves, which should help detect shorter-lived
-momentum in sideways markets (our weakest regime at 16.19 vs 28.34 bull).
-This parameter has not been tuned in any prior experiment.
+Exp210: Increase STOP_WITH_TREND_MULT 1.25->1.40 for wider with-trend stops.
+When our position aligns with the long-term trend (long in uptrend, short in
+downtrend), we widen the trailing stop to hold winners longer. Increasing from
+1.25x to 1.40x should improve crash_bear (hold shorts longer during declines)
+and rally (hold longs longer during rallies). Sideways is less affected since
+flat-trend boost already widens stops there. This parameter has never been tuned.
 """
 
 import numpy as np
@@ -74,7 +74,7 @@ CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
-STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
+STOP_WITH_TREND_MULT = 1.40     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
 
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
