@@ -1,8 +1,9 @@
 """
-Exp216: Reduce MACD_SLOW 21->18 for more responsive MACD voter.
-Shorter slow EMA makes MACD histogram react faster to trend changes,
-which should help in sideways regime where trends shift quickly.
-Only affects the MACD voter (not EMA crossover which uses separate EMA_SLOW).
+Exp217: Reduce MACD_SIGNAL 7->5 for faster MACD histogram response.
+With MACD_FAST=6 and MACD_SLOW=18 already responsive, the signal line
+at 7 is the remaining smoothing bottleneck. Reducing to 5 makes the
+histogram react faster to trend changes. Prior exp tried 7->9 (worse),
+but faster hasn't been tested.
 """
 
 import numpy as np
@@ -35,7 +36,7 @@ RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully de
 
 MACD_FAST = 6
 MACD_SLOW = 18
-MACD_SIGNAL = 7
+MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 28
 EMA_SLOPE_LOOKBACK = 4
