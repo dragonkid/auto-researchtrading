@@ -1,9 +1,9 @@
 """
-Exp240: Replace mean-reversion RSI entry with Bollinger Band mean-reversion.
-Current mean-rev uses RSI 49/51 (near-random threshold). Instead, enter
-long when price touches lower Bollinger Band (2-sigma) in sideways markets,
-short at upper band. BB provides a statistically grounded mean-reversion
-signal that should improve sideways regime quality.
+Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
+This makes threshold more responsive to vol: lower in calm markets (more
+entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
+higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
+Should help both sideways and crash_bear simultaneously.
 """
 
 import numpy as np
@@ -108,8 +108,6 @@ MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-revers
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
-BB_PERIOD = 20                  # Bollinger Band lookback period
-BB_NUM_STD = 2.0                # number of std deviations for BB bands
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
@@ -491,21 +489,15 @@ class Strategy:
                             funding_mult = 1.0 + FUNDING_BOOST
                         target = -size * funding_mult
                         self.pyramided[symbol] = False
-                    # Mean-reversion entries in sideways markets using Bollinger Bands
+                    # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         mr_size = size * MEANREV_SIZE_SCALE
-                        if len(closes) >= BB_PERIOD:
-                            bb_closes = closes[-BB_PERIOD:]
-                            bb_mean = np.mean(bb_closes)
-                            bb_std = np.std(bb_closes)
-                            bb_upper = bb_mean + BB_NUM_STD * bb_std
-                            bb_lower = bb_mean - BB_NUM_STD * bb_std
-                            if mid <= bb_lower:
-                                target = mr_size
-                                self.pyramided[symbol] = False
-                            elif mid >= bb_upper:
-                                target = -mr_size
-                                self.pyramided[symbol] = False
+                        if rsi < MEANREV_RSI_OVERSOLD:
+                            target = mr_size
+                            self.pyramided[symbol] = False
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                            target = -mr_size
+                            self.pyramided[symbol] = False
             else:
                 if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
                     entry = self.entry_prices[symbol]
