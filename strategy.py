@@ -1,8 +1,8 @@
 """
-Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
-The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
-governs mid-vol bars; tightening it should compress cross-regime variance by
-limiting position sizes in moderate-volatility conditions.
+Exp214: Increase MEANREV_SIZE_SCALE 1.0->1.4 to boost mean-reversion position
+sizes in sideways markets. Mean-reversion entries only fire when abs(ret_long)
+< 0.03, so this selectively boosts the weakest regime (sideways: 15.6 vs bull:
+29.5) without affecting trending regimes. Should compress cross-regime std.
 """
 
 import numpy as np
@@ -104,7 +104,7 @@ VOL_CONFIRM_FLOOR = 0.92      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
+MEANREV_SIZE_SCALE = 1.4        # mean-reversion entries use boosted size (sideways only)
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
