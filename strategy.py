@@ -1,9 +1,9 @@
 """
-Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
-Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
-Applying ^0.85 makes entry threshold reduction decay more gradually from
-sideways into moderate trends, keeping slightly lower thresholds active longer
-and allowing more entries in moderate-trend regimes.
+Exp370: Power-dampen rsi_trend_blend (^0.85) in RSI voter threshold bias.
+Currently linear: min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0).
+Applying ^0.85 makes the RSI voter trend bias activate more quickly at
+moderate trend strengths, aligning RSI votes with the prevailing trend sooner.
+This should improve signal quality in moderate-trend regimes.
 """
 
 import numpy as np
@@ -338,7 +338,7 @@ class Strategy:
             # Trend-adaptive RSI voter: bias toward long-term trend direction
             # In uptrend: lower bull threshold (easier to vote bullish)
             # In downtrend: raise bear threshold (easier to vote bearish)
-            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0)
+            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0) ** 0.85
             rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
             if ret_long_raw > 0:
                 rsi_bull_thresh = RSI_BULL - rsi_bias  # easier to vote bullish
