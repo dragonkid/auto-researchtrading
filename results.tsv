@@ -261,4 +261,3 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 67e5083	23.520618	26.030788	5.020341	keep	power-dampen trend_cap_strength (^0.85) for gradual sizing cap decay from sideways (mean +0.007, composite +0.003)
 -	23.520618	26.030788	5.020341	discard	remove dead decel exit code (identical score 23.521, pure simplification but no improvement)
 710a07f	23.526764	26.036267	5.019006	keep	power-dampen trend_strength in entry threshold reduction (^0.85) for gradual threshold decay from sideways (mean +0.005, std -0.001, composite +0.006)
-	-	23.515136	26.031679	5.033086	discard	power-dampen vol_confirm_mult (vol_ratio_raw^0.85) to compress volume sizing (mean flat, std up 5.02->5.03, composite 23.527->23.515)
