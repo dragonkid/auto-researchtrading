@@ -1,10 +1,11 @@
 """
-Exp321: Reduce VOL_BREAKOUT_LONG 20->16.
-The vol breakout voter compares short-term vol (3 bars) to long-term vol
-(currently 20 bars). Reducing to 16 makes the baseline more responsive,
-aligning with LINREG_PERIOD=16. A more recent baseline means vol compression
-is detected sooner, generating earlier breakout signals. The short window (3)
-stays unchanged — only the comparison baseline gets faster.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -127,7 +128,7 @@ PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
-VOL_BREAKOUT_LONG = 16   # long window for vol breakout baseline
+VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
