@@ -1,8 +1,8 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp283: Reduce EMA_SLOPE_LOOKBACK 3->2 for faster EMA slope voter response.
+The trend from 4->3 gained +0.025. Testing if further reduction helps the
+slope voter detect direction changes faster, especially in crash/rally regimes
+where speed of trend detection matters.
 """
 
 import numpy as np
@@ -38,7 +38,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 3
+EMA_SLOPE_LOOKBACK = 2
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
