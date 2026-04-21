@@ -1,8 +1,8 @@
 """
-Exp376: Remove dead decel exit block (DECEL_MULT=999 never triggers),
-dead MTF agree computation (MTF_AGREE_BOOST=0), and dead funding_rates
-assignment (only used in dead decel block). ~40 lines of provably dead
-computation removed. Behavior identical. Earns simplicity bonus.
+Exp377: Increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend elevated
+strength_scale floor into moderate-trend environments. Sideways regime
+has lowest DD (4.49%) with room for more risk. This widens the zone
+where the elevated strength floor (2.6) applies before decaying to 0.6.
 """
 
 import numpy as np
@@ -75,7 +75,7 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
-STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
+STRENGTH_FLOOR_DECAY = 0.12    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
