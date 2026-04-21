@@ -1,9 +1,8 @@
 """
-Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
-This makes threshold more responsive to vol: lower in calm markets (more
-entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
-higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
-Should help both sideways and crash_bear simultaneously.
+Exp240: Vol-ratio-adaptive cooldown extension.
+Currently cooldown only adapts to trend strength (0 in sideways, 3 in trending).
+Whipsaws also correlate with vol. Add up to 2 extra cooldown bars when vol_ratio
+exceeds 1.3, targeting crash/bear regimes where rapid re-entry hurts most.
 """
 
 import numpy as np
@@ -122,6 +121,8 @@ DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
+COOLDOWN_VOL_THRESHOLD = 1.3    # vol_ratio above which extra cooldown kicks in
+COOLDOWN_VOL_EXTRA = 2          # max extra cooldown bars in high-vol regimes
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
@@ -382,6 +383,10 @@ class Strategy:
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
             effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
+            # Vol-adaptive extension: add extra cooldown in high-vol regimes to reduce whipsaws
+            if vol_ratio > COOLDOWN_VOL_THRESHOLD:
+                vol_cooldown_blend = min(1.0, (vol_ratio - COOLDOWN_VOL_THRESHOLD) / 1.0)
+                effective_cooldown += COOLDOWN_VOL_EXTRA * vol_cooldown_blend
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = TARGET_VOL / realized_vol
