@@ -1,11 +1,9 @@
 """
-Exp259: Add fixed max-loss stop-loss per trade at 3.5% from entry.
-The ATR trailing stop trails from peak price and never triggers
-(decel/RSI exits fire first). But there's no hard floor on
-single-trade losses. A fixed max-loss stop prevents catastrophic
-losses on individual trades, improving the DD gate component of
-the scoring formula. Set at 3.5% — loose enough to not interfere
-with normal exits but tight enough to cap outlier losses.
+Exp258: Reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate
+cross-asset agreement sizing. Previously tested at 0.15 (too low)
+and 0.50 (too high). A moderate reduction should dampen correlated
+drawdowns during synchronized selloffs while still rewarding
+broad momentum agreement.
 """
 
 import numpy as np
@@ -60,7 +58,6 @@ ATR_STOP_MULT_BASE = 4.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
-MAX_LOSS_PCT = 0.035  # fixed max-loss stop: exit if trade loses > 3.5% from entry
 BASE_THRESHOLD = 0.005
 BTC_OPPOSE_THRESHOLD = -99.0
 
@@ -569,9 +566,6 @@ class Strategy:
                     if current_pos < 0:
                         pnl = -pnl
                     if pnl > TAKE_PROFIT_PCT:
-                        target = 0.0
-                    # Fixed max-loss stop: hard floor on single-trade losses
-                    elif pnl < -MAX_LOSS_PCT:
                         target = 0.0
                     # Momentum deceleration exit: if in profit and very-short-term
                     # momentum reverses, exit before trailing stop catches up
