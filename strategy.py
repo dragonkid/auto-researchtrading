@@ -1,9 +1,9 @@
 """
-Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
-factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
-the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
-(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
-consistency by compressing the spread of entry threshold across vol regimes.
+Exp354: Softer sideways_boost decay exponent 2.0->1.5. Currently sideways_boost decays as
+(ratio)^2 which creates a sharp cutoff — the boost disappears quickly as trend_strength grows.
+Using ^1.5 makes the transition more gradual, keeping partial sideways_boost active at moderate
+trend strengths. This should help the sideways and rally regimes (which have moderate trends)
+while not hurting crash/bull (which have strong trends where the boost decays to zero either way).
 """
 
 import numpy as np
@@ -442,7 +442,7 @@ class Strategy:
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-            sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
+            sideways_trend_strength = sideways_trend_ratio ** 1.5  # power 1.5 for more gradual decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
