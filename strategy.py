@@ -1,10 +1,9 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
+Previous experiments showed that faster MACD parameters help:
+MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
+Continuing this trend by making the slow EMA shorter, which makes the MACD
+line cross zero more quickly in response to momentum changes.
 """
 
 import numpy as np
@@ -36,7 +35,7 @@ RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
-MACD_SLOW = 18
+MACD_SLOW = 16
 MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
