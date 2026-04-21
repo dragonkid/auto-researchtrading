@@ -1,8 +1,7 @@
 """
-Exp290: Reduce VOL_BREAKOUT_LONG 20->16 for more responsive vol breakout baseline.
-The vol breakout voter compares short-term vol (3 bars) to long-term vol (20 bars).
-Reducing the baseline to 16 makes it more responsive to recent vol changes,
-potentially detecting breakouts earlier, aligned with other lookback reductions.
+Exp289: Reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation.
+Allows peak-profit trailing exit to fire one bar earlier, potentially locking in
+more profit during fast reversals across all regimes.
 """
 
 import numpy as np
@@ -123,7 +122,7 @@ PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
-VOL_BREAKOUT_LONG = 16   # long window for vol breakout baseline
+VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
