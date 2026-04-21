@@ -1,11 +1,13 @@
 """
-Exp314: Tighten PEAK_PROFIT_GIVEBACK 0.30->0.28.
-The giveback tightening series has been productive:
-  0.40->0.35: +0.002
-  0.35->0.30: +0.004 (from d4f8382)
-This continues the trend of locking in profits earlier.
-Tighter giveback exits profitable positions sooner when they start fading,
-which should improve consistency across regimes (lower std).
+Exp313: Widen TREND_GATE_DEADZONE 0.005->0.006.
+The deadzone widening series has been consistently productive:
+  0.001->0.002: +0.029
+  0.002->0.003: +0.048
+  0.003->0.004: +0.019
+  0.004->0.005: +0.083 (biggest gain yet!)
+The last step was the largest improvement, suggesting the optimal deadzone
+hasn't been reached. Try 0.006 to continue capturing more entries in sideways
+where abs(trend_avg) is noise rather than signal.
 """
 
 import numpy as np
@@ -120,7 +122,7 @@ RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at b
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.28       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
+PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
