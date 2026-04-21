@@ -168,4 +168,4 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 -	22.619683	24.744701	4.250036	discard	increase EMA_FAST 3->4 for slightly slower EMA crossover voter (mean dropped 24.90->24.74, std improved 4.28->4.25, composite 22.754->22.620)
 -	21.902329	24.261437	4.718216	discard	reduce MED2_WINDOW 10->8 for faster medium-term momentum (sideways hurt 17.09, mean dropped 24.90->24.26, composite 22.754->21.902)
 
--	22.685938	24.841741	4.311607	discard	reduce SIDEWAYS_BOOST_MAX 0.70->0.60 for less aggressive sizing in trendless (mean dropped 24.90->24.84, sideways hurt, composite 22.754->22.686)-	22.548055	24.708243	4.320376	discard	increase EMA_SLOW 21->24 for more selective crossover voter (all regimes worse, composite 22.754->22.548)
+-	22.685938	24.841741	4.311607	discard	reduce SIDEWAYS_BOOST_MAX 0.70->0.60 for less aggressive sizing in trendless (mean dropped 24.90->24.84, sideways hurt, composite 22.754->22.686)
