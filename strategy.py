@@ -1,9 +1,8 @@
 """
-Exp280: Increase EMA_SLOW 21->24 for more selective EMA crossover voter.
-A slower slow-EMA means the crossover only fires for more substantial trend shifts,
-potentially reducing false signals in choppy markets. The earlier experiment reducing
-EMA_SLOW (21->18) helped slightly, but that was speeding up. Going slower makes the
-voter more of a trend-confirmation signal and less of a momentum signal.
+Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
+on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
+tightening (exiting when 30% of peak profit is given back vs 35%) improves
+composite by protecting gains better across all regimes.
 """
 
 import numpy as np
@@ -19,7 +18,7 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
-EMA_SLOW = 24
+EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
