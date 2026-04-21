@@ -1,8 +1,8 @@
 """
-Exp252: Add high-vol vote requirement MIN_VOTES_HIGH_VOL=4 when
-vol_ratio > 1.3. In volatile markets, noise is high and signals are
-unreliable — requiring 4/9 votes instead of 3/9 should filter out
-false entries and reduce DD in crash/rally regimes.
+Exp251: Tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.30->0.25 for stronger
+profit protection on large winners. Currently the tightest giveback
+exits after 30% retracement. At 25%, we lock in big wins faster,
+especially in crash/rally regimes where sharp reversals happen.
 """
 
 import numpy as np
@@ -132,8 +132,6 @@ COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
-MIN_VOTES_HIGH_VOL = 4    # stricter vote requirement in high-vol regimes
-MIN_VOTES_HIGH_VOL_THRESHOLD = 1.3  # vol_ratio above which stricter votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
@@ -386,12 +384,7 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            if vol_ratio < MIN_VOTES_CALM_VOL:
-                effective_min_votes = MIN_VOTES_CALM
-            elif vol_ratio > MIN_VOTES_HIGH_VOL_THRESHOLD:
-                effective_min_votes = MIN_VOTES_HIGH_VOL
-            else:
-                effective_min_votes = MIN_VOTES
+            effective_min_votes = MIN_VOTES_CALM if vol_ratio < MIN_VOTES_CALM_VOL else MIN_VOTES
             bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull
             bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
