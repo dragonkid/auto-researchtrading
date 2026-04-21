@@ -1,9 +1,9 @@
 """
-Exp230: Gentler profit-scaled RSI exit tightening.
-Reduce RSI_EXIT_PROFIT_SCALE from 20.0 to 12.0 so that profit-triggered
-RSI exit tightening ramps more gradually. This lets positions develop
-longer before RSI exits fire, particularly helping in sideways markets
-where profits are smaller and premature exits hurt returns.
+Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
+In trendless markets, the strength_scale floor determines minimum sizing.
+Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
+size increase should improve returns without blowing DD. 2.8 was tried
+before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
 """
 
 import numpy as np
@@ -90,7 +90,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
