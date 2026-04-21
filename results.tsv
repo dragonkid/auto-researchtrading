@@ -247,3 +247,4 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 -	23.246822	25.481993	4.470343	discard	increase SIDEWAYS_BOOST_DECAY 0.10->0.12 to extend sideways boost into moderate trend (sideways +0.21 but bull -1.0 DD up 6.06%, mean dropped, composite 23.360->23.247)
 4b85f52	23.381452	25.721551	4.680199	keep	reduce TREND_THRESHOLD_SCALE 0.38->0.32 for less entry threshold reduction in sideways (bull +0.55, crash +0.49, sideways -0.08, composite +0.021)
 -	23.355399	25.714633	4.718469	discard	set VOL_CONFIRM_FLOOR 1.0 to fully disable low-volume sizing penalty (crash_bear -0.19, std up 4.68->4.72, composite 23.381->23.355)
+652e7f3	23.475413	25.864629	4.778431	keep	gradual cross-asset agreement boost (proportional to assets agreeing, not binary, all regimes up, mean +0.14, composite +0.094)
