@@ -1,9 +1,9 @@
 """
-Exp371: Increase MEANREV_TREND_THRESHOLD from 0.04 to 0.05 to widen the
-sideways detection zone. This threshold controls when mean-reversion entries
-and reduced MIN_VOTES activate. Widening it to 5% abs(ret_long) lets the
-strategy capture more trades in the weakly-trending zone (4-5%), which should
-particularly help the sideways regime (currently weakest at 19.23).
+Exp374: Remove adaptive momentum lookback. Currently ret_short uses a
+vol-adaptive window (MED_WINDOW_MIN=8 to MED_WINDOW_MAX=16) that varies
+with vol_ratio. Replace with fixed MED_WINDOW=12 for more consistent
+momentum signal. The vol-adaptive window adds complexity and potentially
+noise — the fixed midpoint should provide a more robust baseline.
 """
 
 import numpy as np
@@ -312,12 +312,8 @@ class Strategy:
                     compress_str = (VOL_COMPRESS_THRESHOLD - vc_ratio) / VOL_COMPRESS_THRESHOLD
                     dyn_threshold *= (1.0 - VOL_COMPRESS_THRESH_REDUCE * compress_str)
 
-            # Adaptive momentum lookback: shorter in high vol, longer in low vol
-            adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
-            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
-
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
+            ret_short = (closes[-1] - closes[-MED_WINDOW]) / closes[-MED_WINDOW]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
 
