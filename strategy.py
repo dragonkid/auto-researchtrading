@@ -1,8 +1,9 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
+In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
+vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
+allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
+two weakest dimensions: sideways return and crash-regime DD.
 """
 
 import numpy as np
@@ -379,7 +380,7 @@ class Strategy:
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = TARGET_VOL / realized_vol
-            vol_scale = max(0.4, min(2.0, vol_scale))
+            vol_scale = max(0.3, min(2.5, vol_scale))
 
             # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
             vol_spike_scale = 1.0
