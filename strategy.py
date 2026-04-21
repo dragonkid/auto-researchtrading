@@ -1,10 +1,9 @@
 """
-Exp243: Young position RSI exit grace period.
-Just-entered positions (1-3 bars old) get wider RSI exit thresholds to avoid
-premature exits from entry momentum. The widening decays linearly from
-RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN at bar 1 to zero at RSI_YOUNG_GRACE_BARS.
-This should reduce whipsaws in sideways markets where entries often hit
-RSI extremes right after opening.
+Exp244: Stale position RSI exit tightening.
+Positions held beyond RSI_STALE_BARS gradually tighten RSI exit thresholds
+toward center (50), encouraging exits on aging positions that haven't
+hit profit targets. This should help sideways performance where positions
+linger near breakeven.
 """
 
 import numpy as np
@@ -115,6 +114,9 @@ RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 3          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_STALE_START_BARS = 24         # bars after which stale position tightening begins
+RSI_STALE_MAX_BARS = 48           # bars at which tightening reaches maximum
+RSI_STALE_MAX_TIGHTEN = 0.20      # max blend toward center (50) for stale positions
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
@@ -626,6 +628,11 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                # Stale position tightening: gradually tighten RSI exits for aging positions
+                if bars_held > RSI_STALE_START_BARS:
+                    stale_blend = min(RSI_STALE_MAX_TIGHTEN, RSI_STALE_MAX_TIGHTEN * (bars_held - RSI_STALE_START_BARS) / (RSI_STALE_MAX_BARS - RSI_STALE_START_BARS))
+                    effective_ob = effective_ob - (effective_ob - 50.0) * stale_blend
+                    effective_os = effective_os + (50.0 - effective_os) * stale_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
