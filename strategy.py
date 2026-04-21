@@ -1,9 +1,9 @@
 """
-Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
-Previous experiments showed that faster MACD parameters help:
-MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
-Continuing this trend by making the slow EMA shorter, which makes the MACD
-line cross zero more quickly in response to momentum changes.
+Exp270: Increase VOL_COMPRESS_THRESH_REDUCE 0.25->0.35 for more aggressive entry
+threshold reduction during vol compression periods. When short vol drops well
+below long vol, a breakout is imminent. Lowering the entry threshold more
+aggressively should help catch these breakouts earlier with bigger positions.
+VOL_COMPRESS_THRESHOLD was widened 0.70->0.75 (keep), this tunes the other side.
 """
 
 import numpy as np
@@ -95,7 +95,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
-VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
+VOL_COMPRESS_THRESH_REDUCE = 0.35  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
