@@ -234,3 +234,4 @@ a3c0259	23.185129	25.387337	4.404417	keep	reduce HIGH_VOTE_THRESHOLD 4->3 for ea
 -	-999.000000	-247.600066	433.822929	discard	vote-based loss-cut exit when opposing votes>=3 and PnL<0 (catastrophic DD in all regimes, sideways 34.5%, composite 23.185->-999)
 b31497a	23.216856	25.428904	4.424095	keep	increase RSI_EXIT_PROFIT_SCALE 14->16 for faster profit-scaled RSI exit tightening (all regimes up, bull +0.08, crash +0.04, sideways +0.03, rally +0.01, composite +0.032)
 	-	23.041740	25.495588	4.907697	discard	reduce SIDEWAYS_BOOST_DECAY 0.10->0.08 (mean up 25.50 but std up 4.91, crash_bear -0.75, sideways -0.18, composite 23.217->23.042)
+f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 for faster profit-scaled RSI exit tightening (all regimes up, bull +0.08, crash +0.06, sideways +0.05, rally +0.07, composite +0.028)
