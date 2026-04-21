@@ -1,10 +1,9 @@
 """
-Exp325: Reduce MIN_VOTES in sideways markets regardless of vol.
-Currently MIN_VOTES drops to 2 only when vol_ratio<0.9 or vol is compressed.
-In sideways markets (abs(ret_long)<0.04), vol can be normal, keeping MIN_VOTES=3.
-Since sideways DD is only 4.41% (lowest regime), there's headroom for more entries.
-Adding in_sideways to the MIN_VOTES_CALM condition allows more entries in trendless
-markets, potentially boosting the weakest regime score (19.2 vs 25+ others).
+Exp329: Raise MAX_COMBINED_VOL_THRESHOLD 1.0->1.2 to delay high-vol cap activation.
+Currently the tighter sizing cap (2.5) kicks in when vol_ratio > 1.0. By raising
+to 1.2, moderate-vol regimes (like early crash/recovery) get more sizing headroom
+via the interpolation zone between low-vol and high-vol caps. This targets crash_bear
+where vol is often moderately elevated (1.0-1.5x target) but not extreme.
 """
 
 import numpy as np
@@ -142,7 +141,7 @@ FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_V
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
-MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
+MAX_COMBINED_VOL_THRESHOLD = 1.2  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
