@@ -1,9 +1,9 @@
 """
-Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
-In trendless markets, the strength_scale floor determines minimum sizing.
-Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
-size increase should improve returns without blowing DD. 2.8 was tried
-before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
+Exp233: Reduce RSI_PERIOD 8->7 for faster RSI in trending markets.
+Faster signal parameters have consistently improved score (MED2_WINDOW,
+MACD params, EMA_SLOPE params). RSI_PERIOD 8->10 failed badly, so trying
+the opposite direction. Sideways still uses RSI_PERIOD_SIDEWAYS=6 via
+adaptive logic, so this mainly affects trending regime RSI speed.
 """
 
 import numpy as np
@@ -20,7 +20,7 @@ MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
-RSI_PERIOD = 8
+RSI_PERIOD = 7
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
