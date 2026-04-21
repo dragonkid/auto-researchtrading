@@ -1,8 +1,9 @@
 """
-Exp304: Widen trend gate deadzone 0.002->0.003.
-When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
-entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
-conditions where the trend gate was blocking valid vote-confirmed signals.
+Exp307: Allow trend gate deadzone bypass for position flips in sideways markets.
+Previously, the deadzone bypass only applied to new entries. Flips required strict
+trend_bull/trend_bear, which blocked valid reversals in trendless markets where
+trend_avg is pure noise. Now flips also bypass the trend gate when in sideways +
+deadzone, allowing high-conviction (4+ vote) reversals in range-bound conditions.
 """
 
 import numpy as np
@@ -671,8 +672,9 @@ class Strategy:
                             target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
-                flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
-                flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
+                # Allow trend gate deadzone bypass for flips too (same as new entries)
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and (trend_bear or trend_gate_bypassed)
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and (trend_bull or trend_gate_bypassed)
                 if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
