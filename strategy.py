@@ -1,11 +1,12 @@
 """
-Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
-The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
-when abs(ret_long) is small. With decay=0.10, the widening persists until
-abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
-trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
-protecting profits. The reverse direction (0.10->0.13) was tried and failed
-because it widened exits too much. This goes the opposite way.
+Exp324: Reduce ATR_STOP_MULT_BASE 4.5->3.5.
+The ATR trailing stop has never triggered because the multiplier is so wide.
+With decel exits disabled and RSI/peak-profit exits as primary exit mechanisms,
+the ATR stop is a dead safety net. Tightening to 3.5 makes it occasionally
+trigger as a true worst-case backstop — cutting deep losers that slip past
+RSI exits (e.g., sudden gap moves where RSI lags). The asymmetric with/against
+trend multipliers (1.25/0.75) still apply, so counter-trend positions get
+an effective 2.625x ATR stop (tighter) and with-trend get 4.375x (still wide).
 """
 
 import numpy as np
@@ -58,7 +59,7 @@ VOL_SPIKE_THRESHOLD = 1.7
 VOL_SPIKE_SCALE = 0.95
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
-ATR_STOP_MULT_BASE = 4.5
+ATR_STOP_MULT_BASE = 3.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
