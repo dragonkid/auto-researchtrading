@@ -237,4 +237,4 @@ b31497a	23.216856	25.428904	4.424095	keep	increase RSI_EXIT_PROFIT_SCALE 14->16 
 f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 for faster profit-scaled RSI exit tightening (all regimes up, bull +0.08, crash +0.06, sideways +0.05, rally +0.07, composite +0.028)
 
 20d8ee5	23.274514	25.514155	4.479282	keep	increase RSI_EXIT_PROFIT_SCALE 18->20 to continue profitable series (all regimes up, composite +0.030)
--	23.272137	25.514500	4.484726	discard	increase RSI_EXIT_PROFIT_SCALE 20->22 (series plateaued, mean flat but std up 4.48->4.48, composite 23.274->23.272)-	23.207430	25.467045	4.519230	discard	increase RSI_EXIT_PROFIT_TIGHTEN 0.15->0.18 (mean up 25.47 but std up 4.52, sideways hurt 19.24, composite 23.274->23.207)
+-	23.272137	25.514500	4.484726	discard	increase RSI_EXIT_PROFIT_SCALE 20->22 (series plateaued, mean flat but std up 4.48->4.48, composite 23.274->23.272)

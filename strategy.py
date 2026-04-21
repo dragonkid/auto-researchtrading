@@ -1,8 +1,8 @@
 """
-Exp344: Reduce LINREG_PERIOD 16->14 for more responsive linear regression slope voter.
-The strategy has consistently benefited from faster signal components (MACD_FAST 8->6,
-MACD_SLOW 21->18->16, MED2_WINDOW 12->10, EMA_SLOPE_PERIOD 28->22). LINREG 16->12
-was tried early and was too aggressive, but 16->14 is more moderate.
+Exp341: Increase RSI_EXIT_PROFIT_SCALE 18->20 to continue the series.
+The progression 12->14 (+0.024), 14->16 (+0.032), 16->18 (+0.028) has been
+consistently positive. Original value was 20 but strategy has changed significantly
+since then (dozens of other parameter changes). Testing if 20 works in current context.
 """
 
 import numpy as np
@@ -41,7 +41,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 14  # rolling linear regression window for slope voter
+LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
