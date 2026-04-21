@@ -1,8 +1,8 @@
 """
-Exp380: Increase SIDEWAYS_BOOST_MAX 0.70->0.85 to extract more return
-from sideways regime (score 19.27, DD only 4.5% — headroom exists).
-Sideways is the weakest regime; boosting size there should raise mean
-and reduce std by narrowing the gap to bull/crash/rally.
+Exp377: Increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend elevated
+strength_scale floor into moderate-trend environments. Sideways regime
+has lowest DD (4.49%) with room for more risk. This widens the zone
+where the elevated strength floor (2.6) applies before decaying to 0.6.
 """
 
 import numpy as np
@@ -57,7 +57,7 @@ ATR_STOP_MULT_MAX = 6.0
 BASE_THRESHOLD = 0.005
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.85  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
