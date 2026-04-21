@@ -150,3 +150,4 @@ cf83764	22.082435	24.455509	4.746148	keep	add peak-profit trailing exit grace pe
 cd4b563	22.360749	24.775528	4.829559	keep	reduce VOL_CONFIRM_BASE 48->36 to align with VOL_LONG_LOOKBACK (crash_bear +0.45, rally +0.49, composite +0.233)
 -	19.558785	21.435409	3.753248	discard	reduce LONG_WINDOW 20->18 for faster long-term momentum (all regimes worse, sideways DD up 4.5->6.2%, composite 22.361->19.559)
 -	22.303541	24.799827	4.992572	discard	reduce HIGH_VOTE_BOOST 0.20->0.10 (mean up +0.02 but std up 4.83->4.99, bull dropped, composite 22.361->22.304)
+-	22.296892	24.655158	4.716531	discard	use actual high/low for Donchian voter (wider channel reduces breakout votes, mean down, composite 22.361->22.297)

@@ -1,10 +1,10 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp263: Partial profit-taking via position size reduction on large
+unrealized gains. When position profit exceeds PARTIAL_PROFIT_THRESHOLD
+(3%), scale position toward a reduced size (PARTIAL_PROFIT_TARGET = 0.6
+of current), linearly ramping with excess profit. This locks in gains
+while maintaining exposure, complementing RSI exit and peak-profit
+trailing. Different from full exits — keeps partial position running.
 """
 
 import numpy as np
@@ -128,6 +128,9 @@ VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
+PARTIAL_PROFIT_THRESHOLD = 0.03  # profit above which partial profit-taking begins
+PARTIAL_PROFIT_TARGET = 0.60     # reduce position to this fraction of current size
+PARTIAL_PROFIT_RAMP = 0.04       # additional profit above threshold for full reduction
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -651,6 +654,18 @@ class Strategy:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
+
+                # Partial profit-taking: scale down position when sitting on large gains
+                if target != 0 and symbol in self.entry_prices:
+                    entry = self.entry_prices[symbol]
+                    pos_pnl = (mid - entry) / entry
+                    if current_pos < 0:
+                        pos_pnl = -pos_pnl
+                    if pos_pnl > PARTIAL_PROFIT_THRESHOLD:
+                        excess = pos_pnl - PARTIAL_PROFIT_THRESHOLD
+                        reduce_blend = min(1.0, excess / PARTIAL_PROFIT_RAMP)
+                        target_frac = 1.0 - (1.0 - PARTIAL_PROFIT_TARGET) * reduce_blend
+                        target = current_pos * target_frac
 
                 # Require higher conviction to flip (more expensive than new entry)
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
