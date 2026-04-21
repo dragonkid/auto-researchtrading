@@ -1,10 +1,10 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp260: Reduce VOL_LOOKBACK 24->20 for more responsive realized_vol
+estimate. VOL_LOOKBACK drives vol_ratio which affects entry threshold,
+inverse-vol sizing, and many adaptive parameters. A shorter window
+makes vol estimation adapt faster to regime changes. Follows the
+pattern of faster lookbacks improving scores (VOL_LONG_LOOKBACK 48->36,
+EMA_SLOPE_PERIOD 28->22, VOL_BREAKOUT_SHORT 4->3 were all keeps).
 """
 
 import numpy as np
@@ -48,7 +48,7 @@ FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.30
-VOL_LOOKBACK = 24
+VOL_LOOKBACK = 20
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
