@@ -1,9 +1,10 @@
 """
-Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
-Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
-Applying ^0.85 makes entry threshold reduction decay more gradually from
-sideways into moderate trends, keeping slightly lower thresholds active longer
-and allowing more entries in moderate-trend regimes.
+Exp370: Reduce sideways_trend_strength exponent 1.7->1.5 for more gradual
+sideways boost decay into moderate trends. Currently sideways_boost decays
+sub-quadratically (^1.7) as trend strengthens. A lower exponent (1.5) makes
+the boost persist slightly longer into moderate-trend territory, giving more
+sizing headroom in transitional regimes between sideways and trending.
+Series: 2.0->1.7 (kept, +0.037), now trying 1.7->1.5.
 """
 
 import numpy as np
@@ -446,7 +447,7 @@ class Strategy:
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-            sideways_trend_strength = sideways_trend_ratio ** 1.7  # subquadratic for moderate decay
+            sideways_trend_strength = sideways_trend_ratio ** 1.5  # subquadratic for moderate decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
