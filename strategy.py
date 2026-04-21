@@ -1,8 +1,8 @@
 """
-Exp212: Reduce MAX_COMBINED_MULT_HIGH_VOL 3.0->2.5 to tighten sizing cap
-in high-vol regimes. The std across regimes is high (5.08) — the main
-drag on composite score. Tighter high-vol cap should reduce DD in crash/
-volatile periods while preserving returns in calm regimes, compressing std.
+Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
+The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
+governs mid-vol bars; tightening it should compress cross-regime variance by
+limiting position sizes in moderate-volatility conditions.
 """
 
 import numpy as np
@@ -124,7 +124,7 @@ MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
-MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
+MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
