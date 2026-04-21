@@ -152,3 +152,4 @@ cd4b563	22.360749	24.775528	4.829559	keep	reduce VOL_CONFIRM_BASE 48->36 to alig
 -	22.303541	24.799827	4.992572	discard	reduce HIGH_VOTE_BOOST 0.20->0.10 (mean up +0.02 but std up 4.83->4.99, bull dropped, composite 22.361->22.304)
 
 -	22.126674	24.013503	3.773659	discard	increase RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->5.0 (std improved 4.83->3.77 but mean dropped 24.78->24.01, composite 22.361->22.127)
+693832d	22.380876	24.780553	4.799355	keep	reduce MACD_SLOW 18->16 for more responsive MACD voter (mean +0.005, std -0.03, all regimes stable, composite +0.020)
