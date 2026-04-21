@@ -1,9 +1,11 @@
 """
-Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
-This makes threshold more responsive to vol: lower in calm markets (more
-entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
-higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
-Should help both sideways and crash_bear simultaneously.
+Exp240: Add EMA slope back as 9th voter.
+slope_bull/slope_bear are already computed from retuned EMA_SLOPE_PERIOD=22
+and EMA_SLOPE_LOOKBACK=3, but NOT included in vote count since baseline.
+With current 8 voters + MIN_VOTES=3/CALM=2, adding a 9th voter should
+increase high-conviction entries (4+ votes) for the sizing boost, while
+not lowering the bar for weak entries. The slope voter was removed when
+the strategy was very different; worth re-testing with current parameters.
 """
 
 import numpy as np
@@ -357,8 +359,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             btc_confirm = True
             if symbol != "BTC":
