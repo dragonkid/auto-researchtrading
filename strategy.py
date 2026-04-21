@@ -1,9 +1,8 @@
 """
-Exp364: Power-dampen combined sizing multiplier before capping (combined_mult^0.95).
-The product of ~10 sizing multipliers can produce large values that get hard-capped.
-Applying a soft compression (exponent 0.95) before the cap smoothly reduces extreme
-stacking while leaving moderate/small multipliers nearly unchanged. This should reduce
-DD risk across all regimes by compressing position sizes for high-conviction entries.
+Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
+sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
+consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
+strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
 """
 
 import numpy as np
@@ -486,9 +485,6 @@ class Strategy:
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
-            # Soft compression of multiplier stack before hard cap
-            # Compresses extreme stacking while leaving moderate values nearly unchanged
-            combined_mult = combined_mult ** 0.95
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
