@@ -1,9 +1,10 @@
 """
-Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
-Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
-decay more gradually from sideways into moderate trends, keeping the higher
-sizing cap active slightly longer. This is the same pattern that worked for
-trend_adapt_strength (line 403) which already uses ^0.85.
+Exp369: Reduce sideways_trend_strength exponent 1.7->1.5 for even faster
+sideways boost decay into moderate trends. The series 2.0->1.7 produced a
++0.037 gain. Lower exponent means sideways_boost decays faster as trend
+strengthens, preserving the boost in deeply trendless markets while reducing
+it sooner as any trend develops. This should reduce DD in moderate-trend
+periods while maintaining sideways performance.
 """
 
 import numpy as np
@@ -446,7 +447,7 @@ class Strategy:
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-            sideways_trend_strength = sideways_trend_ratio ** 1.7  # subquadratic for moderate decay
+            sideways_trend_strength = sideways_trend_ratio ** 1.5  # subquadratic for moderate decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
