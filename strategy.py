@@ -1,8 +1,8 @@
 """
-Exp387: Remove volume confirmation sizing multiplier.
-- Remove VOL_CONFIRM_LOOKBACK/BASE/BOOST/FLOOR constants and vol_confirm_mult logic
-- Volume-based sizing boost is noisy on hourly data and adds complexity without benefit
-- ~16 LOC removed for simplicity bonus
+Exp385: Remove dead code and deduplicate ret_long.
+- Remove self.btc_momentum (assigned but never read) — 4 LOC
+- Merge ret_long into ret_long (identical computation) — 1 LOC
+Zero behavior change, -5 LOC for simplicity bonus.
 """
 
 import numpy as np
@@ -81,6 +81,10 @@ VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.06  # abs(ret_long) at which cross-asset boost fully dampens
+VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
+VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
+VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
+VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
@@ -381,6 +385,19 @@ class Strategy:
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = 1.0 + HIGH_VOTE_BOOST if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
+            # Volume confirmation: boost size when recent volume is above longer-term average
+            vol_confirm_mult = 1.0
+            vol_ratio_raw = 1.0  # raw volume ratio for divergence detection
+            volumes = bd.history["volume"].values
+            if len(volumes) >= VOL_CONFIRM_BASE:
+                recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
+                base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
+                if base_vol > 0:
+                    vol_ratio_raw = recent_vol / base_vol
+                    # Above average: boost up to VOL_CONFIRM_BOOST
+                    # Below average: reduce down to VOL_CONFIRM_FLOOR
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
+
 
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
@@ -391,7 +408,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
