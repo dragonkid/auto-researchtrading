@@ -1,9 +1,9 @@
 """
-Exp351: Reduce TREND_GATE_ADAPT_DECAY 0.06->0.05 for faster transition to trending-mode
-weight in trend gate. The series 0.08->0.06 improved composite by +0.007. Going further
-to 0.05 means the trend gate switches from sideways-weighted (0.90 ret_med weight) to
-trend-weighted (0.70 ret_med weight) even faster as abs(ret_long) grows. This should
-improve responsiveness in the crash_bear and rally regimes where strong trends develop.
+Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
+factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
+the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
+(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
+consistency by compressing the spread of entry threshold across vol regimes.
 """
 
 import numpy as np
@@ -90,7 +90,7 @@ TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
-TREND_GATE_ADAPT_DECAY = 0.05       # abs(ret_long) at which adaptation fully decays
+TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
