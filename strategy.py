@@ -1,10 +1,9 @@
 """
-Exp205: Increase CROSS_ASSET_BOOST from 0.30 to 0.50.
-When all 3 assets agree on direction, it's a strong confirmation signal.
-The boost is already dampened in strong trends (via CROSS_ASSET_TREND_DECAY),
-so the increase mainly helps sideways/weak-trend regimes where individual
-signals are noisy but cross-asset agreement provides real information.
-Targets the weakest regime (sideways 16.0) without hurting crash protection.
+Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
+In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
+vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
+allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
+two weakest dimensions: sideways return and crash-regime DD.
 """
 
 import numpy as np
@@ -97,7 +96,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
-CROSS_ASSET_BOOST = 0.50  # max size boost when all assets agree on direction
+CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
