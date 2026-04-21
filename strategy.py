@@ -1,8 +1,9 @@
 """
-Exp253: Increase VOL_COMPRESS_THRESHOLD 0.70->0.75 to widen the
-vol-compression detection window. This triggers the pre-breakout
-entry threshold reduction and sizing boost more frequently, catching
-more setups where short vol is compressed relative to long vol.
+Exp256: Conditional young-position RSI grace — only apply the RSI exit
+widening for young positions when the position is at least break-even.
+If the position is already losing, skip the grace widening so the RSI
+exit can fire immediately. This preserves the whipsaw protection for
+winning entries while allowing faster exit from bad entries.
 """
 
 import numpy as np
@@ -619,12 +620,18 @@ class Strategy:
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 # Young position grace: widen RSI exit for recently-entered positions
-                # to avoid premature exit from entry momentum
+                # to avoid premature exit from entry momentum — but only when
+                # the position is not losing (skip grace for bad entries)
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS:
-                    grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
-                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
-                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                if bars_held < RSI_YOUNG_GRACE_BARS and symbol in self.entry_prices:
+                    young_entry = self.entry_prices[symbol]
+                    young_pnl = (mid - young_entry) / young_entry
+                    if current_pos < 0:
+                        young_pnl = -young_pnl
+                    if young_pnl >= 0:
+                        grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
+                        effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
+                        effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
