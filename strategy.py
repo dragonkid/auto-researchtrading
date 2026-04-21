@@ -1,9 +1,9 @@
 """
-Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
-The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
-volume confirmation more responsive to recent volume patterns. Shorter baseline
-means volume ratio reacts faster to regime changes, potentially improving entries
-during transitions between regimes.
+Exp337: Reduce HIGH_VOTE_THRESHOLD 4->3 for easier high-conviction sizing boost.
+Currently the +20% sizing boost requires 4+ voters agreeing. With MIN_VOTES
+effectively 2-3, many valid entries miss the boost. Lowering to 3 means most
+entries that pass the vote gate also get the sizing boost, increasing position
+sizes modestly across all regimes.
 """
 
 import numpy as np
@@ -135,7 +135,7 @@ COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
-HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
+HIGH_VOTE_THRESHOLD = 3  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
