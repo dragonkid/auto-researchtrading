@@ -1,8 +1,10 @@
 """
-Exp244: Widen mean-reversion entry window.
-Increase MEANREV_TREND_THRESHOLD 0.04->0.05 to allow mean-reversion entries
-in a broader range of low-trend conditions. This should generate more entries
-in sideways markets where ret_long is slightly above 0.04 but still trendless.
+Exp243: Young position RSI exit grace period.
+Just-entered positions (1-3 bars old) get wider RSI exit thresholds to avoid
+premature exits from entry momentum. The widening decays linearly from
+RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN at bar 1 to zero at RSI_YOUNG_GRACE_BARS.
+This should reduce whipsaws in sideways markets where entries often hit
+RSI extremes right after opening.
 """
 
 import numpy as np
@@ -103,7 +105,7 @@ VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
-MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
