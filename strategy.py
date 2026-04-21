@@ -1,10 +1,12 @@
 """
-Exp209: Reduce MACD_FAST 8->6 for more responsive MACD voter.
-MACD voter is one of 8 entry voters. With MACD_FAST=8, MACD_SLOW=21 the
-histogram is relatively sluggish. A faster MACD_FAST=6 makes the MACD line
-more sensitive to recent price moves, which should help detect shorter-lived
-momentum in sideways markets (our weakest regime at 16.19 vs 28.34 bull).
-This parameter has not been tuned in any prior experiment.
+Exp210: Widen RSI exit thresholds in sideways markets (76/24 -> 79/21).
+In sideways markets, RSI exits are widened from the standard 73/27 toward
+the RSI_OB_WIDE/RSI_OS_WIDE values. Currently 76/24 — widening to 79/21
+gives positions more room to run in trendless markets before RSI triggers
+an exit. This should improve sideways regime score (currently 16.13, the
+weakest at 12.3 pts below bull_2021 28.42) by holding winners longer.
+In trending markets, trend_exit_strength pushes toward standard 73/27 so
+the impact on bull/crash/rally should be minimal, reducing std (currently 4.55).
 """
 
 import numpy as np
@@ -29,8 +31,8 @@ RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 68     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 32     # tightest OS exit in extreme high-vol
-RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
-RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
+RSI_OB_WIDE = 79      # widest OB exit in sideways/trendless markets
+RSI_OS_WIDE = 21      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
