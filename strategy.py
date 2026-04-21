@@ -1,7 +1,8 @@
 """
-Exp384: Remove vol_breakout voter.
-It piggybacks on ret_vshort direction and is correlated with existing
-momentum voters. Removing it simplifies the ensemble and saves ~10 LOC.
+Exp381: Inline dead/no-op constants for simplicity bonus.
+Remove MED_WINDOW (unused), MEANREV_SIZE_SCALE (1.0 = no-op),
+COOLDOWN_SIDEWAYS_BARS (0 = no-op), PEAK_PROFIT_GRACE_BARS (inline 1).
+Zero behavior change, -5 LOC.
 """
 
 import numpy as np
@@ -99,6 +100,9 @@ PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
+VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
+VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
+VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -304,6 +308,19 @@ class Strategy:
             linreg_bull = linreg_slope > 0.0001
             linreg_bear = linreg_slope < -0.0001
 
+            # Volatility breakout voter: vol expanding signals directional move
+            vol_breakout_bull = False
+            vol_breakout_bear = False
+            if len(closes) >= VOL_BREAKOUT_LONG + 1:
+                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
+                if vb_short > vb_long * VOL_BREAKOUT_MULT:
+                    # Vol is expanding — vote with the short-term direction
+                    if ret_vshort > 0:
+                        vol_breakout_bull = True
+                    elif ret_vshort < 0:
+                        vol_breakout_bear = True
+
             # Donchian channel breakout voter: price at N-bar high = bullish, N-bar low = bearish
             donchian_bull = False
             donchian_bear = False
@@ -315,8 +332,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             # Trend gate: weighted average of med and long returns must confirm direction
             # In sideways markets, shift weight toward faster ret_med for responsiveness
