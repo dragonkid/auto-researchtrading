@@ -1,7 +1,10 @@
 """
-Exp366: Power-dampen trend_adapt_strength in trend gate. Apply ^0.85 to make
-the transition from sideways weight (0.90) to trending weight (0.70) happen
-faster, following the successful power-dampening pattern across other decays.
+Exp367: Change sideways_trend_strength decay exponent from 2.0 (quadratic) to
+1.7. The quadratic makes the sideways boost persist deep into moderate trends,
+potentially adding sizing risk. A softer exponent of 1.7 decays the boost
+slightly faster in moderate trends while preserving full boost in truly
+sideways markets. This is different from exp365 which power-dampened the
+final (1-strength) factor — this changes the decay *shape* itself.
 """
 
 import numpy as np
@@ -444,7 +447,7 @@ class Strategy:
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-            sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
+            sideways_trend_strength = sideways_trend_ratio ** 1.7  # subquadratic for moderate decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
