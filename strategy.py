@@ -1,10 +1,10 @@
 """
-Exp264: Increase RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->5.0
-for wider RSI exit grace on young positions. Increasing grace bars
-from 3->4 was a big win (+0.114), and this extends the same logic
-by widening the OB/OS adjustment itself. Young positions need more
-room to develop before RSI exit fires — especially in volatile entries
-where RSI can briefly overshoot.
+Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
+with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
+uses a 48-bar baseline while vol regime detection uses 36 bars.
+Aligning them makes volume confirmation more responsive to regime
+changes, consistent with the pattern of faster lookbacks improving
+scores (VOL_LONG_LOOKBACK 48->36 was keep).
 """
 
 import numpy as np
@@ -113,8 +113,8 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightenin
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
-RSI_YOUNG_OB_WIDEN = 5.0          # max OB widening (added to effective_ob) at bar 1
-RSI_YOUNG_OS_WIDEN = 5.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
+RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
