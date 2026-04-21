@@ -145,3 +145,4 @@ cf83764	22.082435	24.455509	4.746148	keep	add peak-profit trailing exit grace pe
 -	21.771278	24.353161	5.163765	discard	conditional young-position RSI grace, only widen when break-even+ (mean dropped 24.48->24.35, std up 4.74->5.16, composite 22.110->21.771)
 
 -	20.278711	21.875207	3.192992	discard	add momentum consistency filter 3/5 bars in trade direction (too restrictive, mean dropped 24.48->21.88, composite 22.110->20.279)
+738bf6f	22.127306	24.540587	4.826560	keep	reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate cross-asset sizing (all regimes up, mean +0.06, composite +0.017)
