@@ -1,8 +1,8 @@
 """
-Exp347: Power-dampened inverse-vol sizing. Instead of linear vol_scale = TARGET_VOL/vol,
-use vol_scale = (TARGET_VOL/vol)^0.85. This compresses extreme sizing ratios on both ends:
-less aggressive in very low vol (reduces DD risk), less conservative in very high vol
-(captures more opportunity). Should improve cross-regime consistency (lower std).
+Exp348: Increase power-dampened exponent from 0.85 to 0.80. More compression of
+inverse-vol sizing extremes: even less aggressive in low vol (protect DD in bull/rally),
+even less conservative in high vol (capture more in crash/sideways). Should improve
+cross-regime consistency (lower std) at the cost of slightly lower mean.
 """
 
 import numpy as np
@@ -413,7 +413,7 @@ class Strategy:
             effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
-            vol_scale = (TARGET_VOL / realized_vol) ** 0.85
+            vol_scale = (TARGET_VOL / realized_vol) ** 0.80
             vol_scale = max(0.3, min(2.5, vol_scale))
 
             # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
