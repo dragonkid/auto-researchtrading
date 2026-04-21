@@ -1,8 +1,9 @@
 """
-Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
-sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
-consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
-strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
+Exp364: Increase RSI_EXIT_PROFIT_TIGHTEN 0.15->0.18 for stronger profit-scaled RSI exit.
+The RSI_EXIT_PROFIT_SCALE series (12->20) ramped faster to the cap. A higher cap of 0.18
+(vs 0.15) allows more aggressive profit-locking on very profitable positions. Earlier test
+of 0.15->0.20 at scale=12 hurt rally; with scale=20 the tightening ramps faster so a
+modest cap increase to 0.18 may capture profit without over-tightening young winners.
 """
 
 import numpy as np
@@ -110,7 +111,7 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
-RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
+RSI_EXIT_PROFIT_TIGHTEN = 0.18    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
