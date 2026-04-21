@@ -1,9 +1,9 @@
 """
-Exp231: Increase RSI_EXIT_PROFIT_TIGHTEN cap from 0.15 to 0.20.
-At maximum profit levels, RSI OB/OS thresholds blend 20% toward center
-(50) instead of 15%. This locks in large gains more aggressively in
-trending regimes while barely affecting sideways (where profits are
-smaller and the profit-scaled ramp doesn't reach the cap).
+Exp230: Gentler profit-scaled RSI exit tightening.
+Reduce RSI_EXIT_PROFIT_SCALE from 20.0 to 12.0 so that profit-triggered
+RSI exit tightening ramps more gradually. This lets positions develop
+longer before RSI exits fire, particularly helping in sideways markets
+where profits are smaller and premature exits hurt returns.
 """
 
 import numpy as np
@@ -109,7 +109,7 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
-RSI_EXIT_PROFIT_TIGHTEN = 0.20    # max tightening blend toward center (50) at high profit
+RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
