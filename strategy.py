@@ -1,9 +1,9 @@
 """
-Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
-Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
-decay more gradually from sideways into moderate trends, keeping the higher
-sizing cap active slightly longer. This is the same pattern that worked for
-trend_adapt_strength (line 403) which already uses ^0.85.
+Exp369: Reduce CROSS_ASSET_TREND_DECAY 0.06->0.04 to further restrict the
+cross-asset agreement boost to only the most trendless regimes. The series
+0.14->0.10->0.08->0.06 was successful; continuing one step further. Narrowing
+the boost region should reduce DD in trending markets while preserving the
+benefit in sideways.
 """
 
 import numpy as np
@@ -99,7 +99,7 @@ VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
-CROSS_ASSET_TREND_DECAY = 0.06  # abs(ret_long) at which cross-asset boost fully dampens
+CROSS_ASSET_TREND_DECAY = 0.04  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
