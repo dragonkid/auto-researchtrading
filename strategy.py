@@ -1,10 +1,8 @@
 """
-Exp257: Add momentum consistency filter for entries. Require that
-at least 3 of the last 5 bars closed in the direction of the trade
-(up for longs, down for shorts). This filters out choppy entries
-where momentum signals fire on a single spike but recent bars are
-mixed. Only applied to new entries, not flips (which already require
-higher conviction).
+Exp253: Increase VOL_COMPRESS_THRESHOLD 0.70->0.75 to widen the
+vol-compression detection window. This triggers the pre-breakout
+entry threshold reduction and sizing boost more frequently, catching
+more setups where short vol is compressed relative to long vol.
 """
 
 import numpy as np
@@ -128,8 +126,6 @@ VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-MOM_CONSISTENCY_LOOKBACK = 5  # number of recent bars to check
-MOM_CONSISTENCY_MIN = 3       # minimum bars that must close in trade direction
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -388,19 +384,9 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            # Momentum consistency: count how many of last N bars closed up/down
-            mom_consistent_bull = True
-            mom_consistent_bear = True
-            if len(closes) >= MOM_CONSISTENCY_LOOKBACK + 1:
-                recent_closes = closes[-(MOM_CONSISTENCY_LOOKBACK + 1):]
-                up_bars = sum(1 for i in range(1, len(recent_closes)) if recent_closes[i] > recent_closes[i - 1])
-                down_bars = MOM_CONSISTENCY_LOOKBACK - up_bars
-                mom_consistent_bull = up_bars >= MOM_CONSISTENCY_MIN
-                mom_consistent_bear = down_bars >= MOM_CONSISTENCY_MIN
-
             effective_min_votes = MIN_VOTES_CALM if vol_ratio < MIN_VOTES_CALM_VOL else MIN_VOTES
-            bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull and mom_consistent_bull
-            bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear and mom_consistent_bear
+            bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull
+            bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
