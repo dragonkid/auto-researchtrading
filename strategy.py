@@ -1,9 +1,9 @@
 """
-Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
-Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
-Applying ^0.85 makes entry threshold reduction decay more gradually from
-sideways into moderate trends, keeping slightly lower thresholds active longer
-and allowing more entries in moderate-trend regimes.
+Exp370: Power-dampen sideways_strength in STRENGTH_FLOOR calculation.
+Currently linear: min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0).
+Applying ^0.85 makes the strength_scale floor decay more gradually from
+sideways into moderate trends, keeping a slightly higher floor active longer
+and allowing larger positions in moderate-trend regimes.
 """
 
 import numpy as np
@@ -479,7 +479,7 @@ class Strategy:
                 weight *= 0.5
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             # In sideways markets, raise the floor so weak momentum isn't double-penalized
-            sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
+            sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0) ** 0.85
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
