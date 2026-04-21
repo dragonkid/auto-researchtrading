@@ -1,10 +1,9 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp260: Reduce MEANREV_SIZE_SCALE 1.0->0.8 for smaller mean-reversion
+positions. Mean-reversion entries trade counter-trend by definition
+(abs(ret_long) < 0.04), so using 80% of normal size reduces DD risk
+when the entry is wrong in trending regimes, while maintaining the
+sideways benefit. Exp62 tried increasing to 1.4 (discard, bull DD up).
 """
 
 import numpy as np
@@ -106,7 +105,7 @@ VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
+MEANREV_SIZE_SCALE = 0.8        # mean-reversion entries use 80% normal size (counter-trend = smaller)
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
