@@ -1,9 +1,7 @@
 """
-Exp284: Vol-compression aware MIN_VOTES. During vol compression (short/long
-vol ratio < VOL_COMPRESS_THRESHOLD=0.75), reduce MIN_VOTES to 2 regardless
-of vol_ratio. Rationale: vol compression signals imminent breakout; we already
-boost size and reduce threshold, but still require 3 votes for entry. Allowing
-2-vote entries during compression should capture more breakout moves early.
+Exp287: Tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.25->0.22 for stronger
+large-win protection. Each tightening from 0.40->0.35->0.30->0.25 has
+improved composite. Continuing the trend to lock in more of large peaks.
 """
 
 import numpy as np
@@ -117,7 +115,7 @@ RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_o
 PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
-PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
+PEAK_PROFIT_GIVEBACK_TIGHT = 0.22 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
