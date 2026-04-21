@@ -1,9 +1,9 @@
 """
-Exp329: Raise MAX_COMBINED_VOL_THRESHOLD 1.0->1.2 to delay high-vol cap activation.
-Currently the tighter sizing cap (2.5) kicks in when vol_ratio > 1.0. By raising
-to 1.2, moderate-vol regimes (like early crash/recovery) get more sizing headroom
-via the interpolation zone between low-vol and high-vol caps. This targets crash_bear
-where vol is often moderately elevated (1.0-1.5x target) but not extreme.
+Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
+The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
+volume confirmation more responsive to recent volume patterns. Shorter baseline
+means volume ratio reacts faster to regime changes, potentially improving entries
+during transitions between regimes.
 """
 
 import numpy as np
@@ -101,7 +101,7 @@ VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol co
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
-VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
+VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
