@@ -1,9 +1,9 @@
 """
-Exp374: Increase PEAK_PROFIT_AGE_TIGHTEN 0.10->0.15 to lock in aging winners
-more aggressively. Positions held >8 bars that have peaked should exit faster
-when fading. The age-adaptive tightening feature was added in exp253 and kept,
-but the tightening amount itself was never tuned upward. This should help in
-crash/bear where holding too long is costly.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -122,7 +122,7 @@ PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers 
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
-PEAK_PROFIT_AGE_TIGHTEN = 0.15    # max additional tightening from age (subtracted from giveback)
+PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
