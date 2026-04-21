@@ -1,8 +1,9 @@
 """
-Exp304: Widen trend gate deadzone 0.002->0.003.
-When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
-entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
-conditions where the trend gate was blocking valid vote-confirmed signals.
+Exp305: Add momentum confirmation to RSI exits.
+Only trigger RSI overbought/oversold exit when short-term momentum (ret_vshort)
+confirms the reversal direction. For longs at RSI OB, also require ret_vshort < 0.
+For shorts at RSI OS, also require ret_vshort > 0. This holds winners longer when
+price is still running in the right direction despite extreme RSI.
 """
 
 import numpy as np
@@ -645,9 +646,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and rsi > effective_ob and ret_vshort < 0:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and rsi < effective_os and ret_vshort > 0:
                     target = 0.0
 
                 # Peak-profit trailing exit: lock in winners that are fading
