@@ -1,8 +1,9 @@
 """
-Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
-sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
-consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
-strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
+Exp364: Power-dampen the calm_boost factor. Apply ^0.85 to the calm component
+(max(0, 1-vol_ratio)) to compress extreme calm boosts while preserving moderate ones.
+This follows the successful power-dampening pattern applied to vol_scale, strength_scale,
+and dyn_threshold. Reduces max calm_boost from 1.80x to ~1.73x at extreme, with larger
+compression at the tail.
 """
 
 import numpy as np
@@ -435,7 +436,7 @@ class Strategy:
                     vol_spike_scale = 1.0 - (1.0 - VOL_SPIKE_SCALE) * spike_blend
                 # Calm regime boost: when short vol is close to or below long vol, boost size
                 vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
-                calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl)
+                calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
                 # Vol compression boost: when short vol drops well below long vol,
                 # a breakout is likely — boost size to capture the move
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
