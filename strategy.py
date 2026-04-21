@@ -1,8 +1,8 @@
 """
-Exp269: Increase VOL_SPIKE_SCALE 0.90->0.95 to nearly disable vol-spike
-position reduction. Exp266-268 showed consistent gains from each increase
-(0.7->0.8->0.85->0.90). At 0.95, max-spike positions are only reduced by 5%.
-If this works, 1.0 (full disable) is the next logical step.
+Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
+on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
+tightening (exiting when 30% of peak profit is given back vs 35%) improves
+composite by protecting gains better across all regimes.
 """
 
 import numpy as np
@@ -115,7 +115,7 @@ RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at b
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
+PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
