@@ -1,8 +1,8 @@
 """
-Exp362: Raise dyn_threshold floor 0.003->0.004. In very low-vol regimes, the entry
-threshold can drop to 0.003 (after base calc + trend reduction + vol compression
-reduction). This may cause too many low-quality entries on noise. Raising the floor
-to 0.004 ensures a minimum momentum signal is required even in the calmest conditions.
+Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
+sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
+consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
+strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
 """
 
 import numpy as np
@@ -98,7 +98,7 @@ VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
-CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
+CROSS_ASSET_TREND_DECAY = 0.06  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
