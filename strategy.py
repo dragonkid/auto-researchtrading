@@ -1,8 +1,9 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp279: Reduce SIDEWAYS_BOOST_MAX 0.70->0.60 for less aggressive sizing in
+trendless markets. The sideways boost raises position size when long-term trend
+is weak. Reducing it should lower cross-regime variance (std), especially
+helping crash_bear which may be hurt by oversizing during sideways-ish periods
+within a larger bear trend.
 """
 
 import numpy as np
@@ -69,7 +70,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.60  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
