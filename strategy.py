@@ -1,9 +1,10 @@
 """
-Exp207: Increase COOLDOWN_BARS from 2 to 3 to reduce whipsaw re-entries.
-After an exit, waiting one extra bar should filter out impulsive re-entries
-that reverse quickly.  The sideways adaptive cooldown (COOLDOWN_SIDEWAYS_BARS=0)
-still applies, so sideways gets faster re-entry.  This should mainly help
-crash_bear and rally where false re-entries are costly.
+Exp208: Reduce MED2_WINDOW from 12 to 10 for faster medium-term momentum.
+MED2_WINDOW drives BTC momentum, cross-asset agreement, and ret_med (trend gate).
+A shorter window should make these signals more responsive to trend changes,
+potentially catching reversals earlier in crash/rally while also improving
+sideways reactivity. This is distinct from adaptive_med (SHORT_WINDOW range)
+which was already tested.
 """
 
 import numpy as np
@@ -16,7 +17,7 @@ SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 12
+MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
