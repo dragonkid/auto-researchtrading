@@ -1,11 +1,10 @@
 """
-Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
-The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
-when abs(ret_long) is small. With decay=0.10, the widening persists until
-abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
-trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
-protecting profits. The reverse direction (0.10->0.13) was tried and failed
-because it widened exits too much. This goes the opposite way.
+Exp320: Increase LINREG_PERIOD 16->20.
+The linreg slope voter uses rolling OLS on log prices. At period=16, it can be
+noisy in volatile markets. Increasing to 20 smooths the regression, making the
+voter more robust — it should reduce false signals in choppy conditions while
+still capturing genuine trend direction. Period 16->12 was tried and failed
+(too noisy, sideways DD up). Going the other direction for more stability.
 """
 
 import numpy as np
@@ -44,7 +43,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 16  # rolling linear regression window for slope voter
+LINREG_PERIOD = 20  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0

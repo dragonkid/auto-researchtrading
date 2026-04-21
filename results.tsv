@@ -214,3 +214,5 @@ d6c3fdc	23.108009	25.259786	4.303553	keep	widen TREND_GATE_DEADZONE 0.005->0.006
 
 -	23.001002	25.161640	4.321278	discard	tighten RSI_OVERBOUGHT/RSI_OVERSOLD 73/27->72/28 (sideways +0.09 but bull/crash/rally all worse, mean dropped 25.32->25.16, composite 23.114->23.001)
 65b2bbe	23.119326	25.314015	4.389379	keep	reduce RSI_EXIT_TREND_DECAY 0.10->0.08 for faster sideways-widening decay (bull +0.14, crash +0.20, rally +0.32, std down 4.41->4.39, composite +0.006)
+
+-	23.066153	25.255638	4.378970	discard	reduce TREND_GATE_ADAPT_DECAY 0.06->0.05 (all regimes slightly worse, mean dropped 25.31->25.26, composite 23.119->23.066)
