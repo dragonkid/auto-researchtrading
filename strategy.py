@@ -1,10 +1,8 @@
 """
-Exp246: Tighten base peak-profit giveback 0.40->0.35.
-The peak-profit trailing exit was a major win. Reducing the base giveback
-threshold from 40% to 35% means we lock in more of peak profits on positions
-where peak is modest (near PEAK_PROFIT_MIN=2%). For larger peaks (>5%),
-PEAK_PROFIT_GIVEBACK_TIGHT=0.30 already applies. This tightens the middle
-range of peaks (2-5%) for earlier profit-locking exits.
+Exp249: Peak-profit trailing exit grace period (2 bars).
+4-bar grace was too long (-0.010). Try 2-bar grace: still protects against
+entry-bar spike exits but lets peak-profit trailing activate sooner on
+positions that genuinely peak early.
 """
 
 import numpy as np
@@ -115,6 +113,7 @@ RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
+PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
@@ -633,7 +632,8 @@ class Strategy:
 
                 # Peak-profit trailing exit: lock in winners that are fading
                 # Profit-scaled giveback: tighter for larger peaks to protect big wins
-                if target != 0 and symbol in self.entry_prices:
+                # Grace period: don't activate for very young positions
+                if target != 0 and symbol in self.entry_prices and bars_held >= PEAK_PROFIT_GRACE_BARS:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
