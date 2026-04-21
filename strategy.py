@@ -1,10 +1,10 @@
 """
-Exp222: Reduce TREND_THRESHOLD_DECAY 0.13->0.10 to extend entry threshold
-reduction into moderate-trend regimes. Currently the entry threshold reduction
-(TREND_THRESHOLD_SCALE) fully decays by abs(ret_long)=0.13. Reducing to 0.10
-means the threshold stays reduced even at moderate trend strength, allowing
-more entries in moderate-trend periods where the current threshold is too high.
-This continues the successful theme of making entries easier/more responsive.
+Exp220: Increase TREND_GATE_MED_WEIGHT_BASE 0.50->0.60 for faster trend gate.
+The trend gate combines ret_med and ret_long to confirm direction.
+In trending markets it currently weights ret_med at 0.50 — increasing
+to 0.60 gives more weight to the faster medium-term return, continuing
+the successful pattern of faster/more responsive signals (MACD, EMA slope).
+This makes the trend gate quicker to confirm new trends.
 """
 
 import numpy as np
@@ -85,7 +85,7 @@ DECEL_MULT_TREND = 999.0        # DISABLED: RSI exit + flip is better exit mecha
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
-TREND_THRESHOLD_DECAY = 0.10  # abs(ret_long) at which reduction fully decays
+TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.60   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
