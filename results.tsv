@@ -183,5 +183,3 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 -	22.754607	24.905055	4.300896	discard	tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.25->0.22 (mean flat, std flat, net -0.005, composite 22.760->22.755)
 -	22.733842	24.892320	4.316955	discard	trend-aligned peak-profit giveback widen+0.10/tighten-0.05 (bull hurt -0.13, net -0.026, composite 22.760->22.734)
 3043d16	22.760932	24.905227	4.288592	keep	reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation (std down 4.30->4.29, composite +0.001)
-
--	22.671876	24.614306	3.884860	discard	reduce RSI_EXIT_PROFIT_TIGHTEN 0.15->0.12 (std improved 4.29->3.88 but mean dropped 24.91->24.61, composite 22.761->22.672)

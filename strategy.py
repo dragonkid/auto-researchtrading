@@ -1,7 +1,7 @@
 """
-Exp290: Increase LINREG_PERIOD 16->20 for smoother linear regression slope voter.
-A longer window reduces noise in trend detection, potentially improving consistency
-(lower std) across regimes while maintaining mean performance.
+Exp289: Reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation.
+Allows peak-profit trailing exit to fire one bar earlier, potentially locking in
+more profit during fast reversals across all regimes.
 """
 
 import numpy as np
@@ -38,7 +38,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 20  # rolling linear regression window for slope voter
+LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
