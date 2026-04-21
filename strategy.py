@@ -1,9 +1,10 @@
 """
-Exp260: Reduce DONCHIAN_PERIOD 12->10 for faster Donchian channel
-breakout voter. Exp18 tried 12->20 (too slow, discard) and exp35
-tried 12->8 (too fast, std up 3.08->3.53, discard). 12->10 is a
-moderate reduction. Shorter Donchian channels detect breakouts
-earlier, which helps in sideways (the weakest regime at 18.67).
+Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
+with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
+uses a 48-bar baseline while vol regime detection uses 36 bars.
+Aligning them makes volume confirmation more responsive to regime
+changes, consistent with the pattern of faster lookbacks improving
+scores (VOL_LONG_LOOKBACK 48->36 was keep).
 """
 
 import numpy as np
@@ -126,7 +127,7 @@ PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
-DONCHIAN_PERIOD = 10  # lookback for Donchian channel breakout voter
+DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
