@@ -1,8 +1,8 @@
 """
-Exp339: Increase RSI_EXIT_PROFIT_SCALE 14->16 for faster profit-scaled RSI exit
-tightening on profitable positions. The progression 20->12 (+0.166) then 12->14
-(+0.024) suggests moderate tightening speed is better. Testing 16 to see if
-slightly faster profit-locking further improves the score.
+Exp340: Reduce SIDEWAYS_BOOST_DECAY 0.10->0.08 so sideways_boost stays active
+for slightly stronger trends. This extends the sizing boost into transitional
+regimes (weak trend), which should help the sideways regime (lowest at 19.38)
+without hurting strong-trend regimes where the boost fully decays anyway.
 """
 
 import numpy as np
@@ -72,7 +72,7 @@ DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
-SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
