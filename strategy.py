@@ -1,9 +1,9 @@
 """
-Exp228: Profit-scaled RSI exit thresholds.
-When a position has accumulated significant profit, tighten OB/OS thresholds
-to lock in gains before they evaporate. When profit is small/zero, keep
-standard thresholds to give trades room to develop.
-This is orthogonal to existing vol-adaptive and trend-adaptive RSI exits.
+Exp229: Trend-adaptive sizing cap.
+In sideways markets (weak trend), allow a higher combined sizing multiplier cap
+since DD risk is lower and we need more aggressive sizing to capture returns.
+In strong trends, tighten the cap to protect against DD.
+This is orthogonal to the existing vol-based cap interpolation.
 """
 
 import numpy as np
@@ -133,6 +133,8 @@ MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headro
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
+MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
+MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
 
@@ -460,6 +462,11 @@ class Strategy:
                 # Linear interpolation between low-vol and base caps
                 blend = (vol_ratio - MAX_COMBINED_LOW_VOL_THRESHOLD) / (MAX_COMBINED_VOL_THRESHOLD - MAX_COMBINED_LOW_VOL_THRESHOLD)
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL + (MAX_COMBINED_MULT - MAX_COMBINED_MULT_LOW_VOL) * blend
+            # Trend-adaptive cap boost: in sideways markets, raise the cap
+            # to allow more aggressive sizing (DD headroom exists when trend is weak)
+            trend_cap_strength = min(abs(ret_long) / MAX_COMBINED_TREND_DECAY, 1.0)
+            trend_cap_boost = MAX_COMBINED_TREND_BOOST * (1.0 - trend_cap_strength)
+            adaptive_cap += trend_cap_boost
             combined_mult = min(combined_mult, adaptive_cap)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
