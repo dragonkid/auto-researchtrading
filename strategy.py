@@ -1,10 +1,9 @@
 """
-Exp310: Increase RSI_EXIT_PROFIT_SCALE 12->14.
-This controls how fast the profit-scaled RSI exit tightening ramps up.
-Higher value = RSI exits tighten faster as profits grow, locking in gains
-earlier on winning trades. 20->12 was kept (+0.166), 12->10 was discarded.
-Try 14 as a middle ground that may better protect profits without cutting
-winners too early.
+Exp311: Widen TREND_GATE_DEADZONE 0.003->0.004.
+Widening deadzone has produced consistent gains: 0.001->0.002 (+0.029),
+0.002->0.003 (+0.048). This bypasses the trend gate when abs(trend_avg)
+is in the noise zone during sideways markets, allowing more entries that
+are already confirmed by voter consensus. Try pushing further to 0.004.
 """
 
 import numpy as np
@@ -148,7 +147,7 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
-TREND_GATE_DEADZONE = 0.003  # bypass trend gate when abs(trend_avg) < this AND in sideways
+TREND_GATE_DEADZONE = 0.004  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
