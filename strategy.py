@@ -1,9 +1,12 @@
 """
-Exp311: Widen TREND_GATE_DEADZONE 0.003->0.004.
-Widening deadzone has produced consistent gains: 0.001->0.002 (+0.029),
-0.002->0.003 (+0.048). This bypasses the trend gate when abs(trend_avg)
-is in the noise zone during sideways markets, allowing more entries that
-are already confirmed by voter consensus. Try pushing further to 0.004.
+Exp312: Widen TREND_GATE_DEADZONE 0.004->0.005.
+This series has consistently improved the score:
+  0.001->0.002: +0.029
+  0.002->0.003: +0.048
+  0.003->0.004: +0.019
+The gains are diminishing but still positive. Try one more step to 0.005
+to see if there's still improvement from allowing more noise-zone entries
+in sideways markets.
 """
 
 import numpy as np
@@ -147,7 +150,7 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
-TREND_GATE_DEADZONE = 0.004  # bypass trend gate when abs(trend_avg) < this AND in sideways
+TREND_GATE_DEADZONE = 0.005  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
