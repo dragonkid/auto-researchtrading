@@ -1,7 +1,7 @@
 """
-Exp366: Proportional vote boost. Instead of binary +20% when votes >= 3,
-scale the boost linearly with votes above threshold: boost = HIGH_VOTE_BOOST * (votes - MIN) / (9 - MIN).
-This rewards higher conviction more gradually and avoids the step discontinuity.
+Exp365: Power-dampen vol_compress_boost strength. Apply ^0.85 to compress_strength
+before computing vol_compress_boost, following the successful power-dampening pattern.
+This compresses the extreme end of vol compression sizing while preserving moderate boosts.
 """
 
 import numpy as np
@@ -447,13 +447,9 @@ class Strategy:
             sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
-            # High-conviction vote bonus: proportional boost based on votes above threshold
+            # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
             winning_votes = max(bull_votes, bear_votes)
-            if winning_votes >= HIGH_VOTE_THRESHOLD:
-                vote_frac = (winning_votes - HIGH_VOTE_THRESHOLD) / max(1.0, 9.0 - HIGH_VOTE_THRESHOLD)
-                vote_boost = 1.0 + HIGH_VOTE_BOOST * (0.5 + 0.5 * vote_frac)
-            else:
-                vote_boost = 1.0
+            vote_boost = 1.0 + HIGH_VOTE_BOOST if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
             # Volume confirmation: boost size when recent volume is above longer-term average
             vol_confirm_mult = 1.0
