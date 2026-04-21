@@ -147,3 +147,4 @@ cf83764	22.082435	24.455509	4.746148	keep	add peak-profit trailing exit grace pe
 -	20.278711	21.875207	3.192992	discard	add momentum consistency filter 3/5 bars in trade direction (too restrictive, mean dropped 24.48->21.88, composite 22.110->20.279)
 738bf6f	22.127306	24.540587	4.826560	keep	reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate cross-asset sizing (all regimes up, mean +0.06, composite +0.017)
 -	21.950234	24.329636	4.758805	discard	replace flat vote boost with continuous per-vote scaling 0.05 (mean dropped 24.54->24.33, composite 22.127->21.950)
+cd4b563	22.360749	24.775528	4.829559	keep	reduce VOL_CONFIRM_BASE 48->36 to align with VOL_LONG_LOOKBACK (crash_bear +0.45, rally +0.49, composite +0.233)
