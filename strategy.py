@@ -1,9 +1,10 @@
 """
-Exp364: Power-dampen the calm_boost factor. Apply ^0.85 to the calm component
-(max(0, 1-vol_ratio)) to compress extreme calm boosts while preserving moderate ones.
-This follows the successful power-dampening pattern applied to vol_scale, strength_scale,
-and dyn_threshold. Reduces max calm_boost from 1.80x to ~1.73x at extreme, with larger
-compression at the tail.
+Exp365: Power-dampen the sideways_boost factor. Apply ^0.85 to the sideways
+component (1.0 - sideways_trend_strength) to compress extreme sideways boosts
+while preserving moderate ones. This follows the successful power-dampening
+pattern applied to vol_scale, strength_scale, dyn_threshold, and calm_boost.
+Max sideways_boost drops from 1.70x to ~1.60x at extreme trendless, with
+larger compression at the tail.
 """
 
 import numpy as np
@@ -447,7 +448,7 @@ class Strategy:
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
             sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
-            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
+            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength) ** 0.85
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
             winning_votes = max(bull_votes, bear_votes)
