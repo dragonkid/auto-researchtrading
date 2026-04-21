@@ -138,3 +138,4 @@ b6e846e	22.076325	24.431773	4.710896	keep	increase RSI_YOUNG_GRACE_BARS 3->4 for
 cf83764	22.082435	24.455509	4.746148	keep	add peak-profit trailing exit grace period (2 bars, bull +2.9, crash +0.05, sideways +0.07, rally -0.07, composite +0.004)
 -	21.607780	23.581987	3.948414	discard	loss-adaptive cooldown 5 bars after loss (mean dropped 24.46->23.58, sideways DD up, composite 22.082->21.608)
 86c92a8	22.100435	24.476286	4.751703	keep	lower PEAK_PROFIT_TIGHT_AT 0.05->0.03 for faster giveback tightening on modest peaks (bull +0.01, rally +0.07, composite +0.018)
+7bba900	22.108560	24.478366	4.739613	keep	tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.30->0.25 for stronger large-win protection (std down 4.75->4.74, composite +0.008)
