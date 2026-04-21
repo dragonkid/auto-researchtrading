@@ -1,7 +1,8 @@
 """
-Exp290: Increase VOL_COMPRESS_BOOST 0.40->0.50 for stronger position sizing during
-vol compression breakouts. Vol compression signals impending breakout — larger
-positions should capture more of the move, especially in sideways markets.
+Exp292: Skip profit-scaled RSI exit tightening during young-position grace period.
+Currently the profit-tightening (lines 611-621) partially cancels the grace-period
+widening (lines 624-628) on quick winners. Skipping profit-tightening while in grace
+lets young positions develop without conflicting exit signals.
 """
 
 import numpy as np
@@ -607,8 +608,16 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_os_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
+                # Young position grace: widen RSI exit for recently-entered positions
+                # to avoid premature exit from entry momentum
+                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                if bars_held < RSI_YOUNG_GRACE_BARS:
+                    grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
+                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
+                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
                 # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
-                if symbol in self.entry_prices:
+                # Skip during young-position grace to avoid conflicting with grace widening
+                if bars_held >= RSI_YOUNG_GRACE_BARS and symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
@@ -619,13 +628,6 @@ class Strategy:
                         # Tighten toward center (50): reduce OB, raise OS
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
-                # Young position grace: widen RSI exit for recently-entered positions
-                # to avoid premature exit from entry momentum
-                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS:
-                    grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
-                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
-                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
