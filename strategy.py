@@ -1,9 +1,10 @@
 """
-Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
-factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
-the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
-(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
-consistency by compressing the spread of entry threshold across vol regimes.
+Exp351: Power-dampen overall combined_mult before cap. Apply combined_mult^0.95 to compress
+extreme stacking of sizing multipliers. When many boosts coincide (calm + sideways + vol_compress
++ cross_asset + vote), the product can be very large before the cap clips it. Power-dampening
+the aggregate compresses the upper tail without affecting mild values much:
+combined_mult=2.0 -> 1.93, 3.0 -> 2.86, 5.0 -> 4.66. This should reduce DD in trending
+regimes (where boosts stack high) while barely affecting sideways (where they're moderate).
 """
 
 import numpy as np
@@ -497,6 +498,8 @@ class Strategy:
             trend_cap_strength = min(abs(ret_long) / MAX_COMBINED_TREND_DECAY, 1.0)
             trend_cap_boost = MAX_COMBINED_TREND_BOOST * (1.0 - trend_cap_strength)
             adaptive_cap += trend_cap_boost
+            # Power-dampen aggregate to compress extreme multiplier stacking
+            combined_mult = combined_mult ** 0.95
             combined_mult = min(combined_mult, adaptive_cap)
             size = equity * BASE_POSITION_PCT * weight * combined_mult * dd_scale
 
