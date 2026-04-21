@@ -1,8 +1,8 @@
 """
-Exp300: Reduce dyn_threshold ceiling 0.020->0.015.
-In high-vol regimes, the threshold can reach 2% which blocks valid entries.
-Capping at 1.5% allows more entries in crash/rally while exits (RSI, peak-profit)
-protect against false entries.
+Exp301: Trend-adaptive RSI voter thresholds.
+In trending markets, bias the RSI voter toward the trend: lower the bull threshold
+in uptrends (easier to vote bullish) and raise the bear threshold in downtrends.
+This gives a slight trend-following bias to the RSI signal, improving entry quality.
 """
 
 import numpy as np
@@ -23,6 +23,8 @@ RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
+RSI_TREND_BIAS = 2.0           # max RSI voter threshold shift toward trend direction
+RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
@@ -328,8 +330,19 @@ class Strategy:
             rsi_trend_str = min(abs(ret_long_raw) / 0.10, 1.0)
             adaptive_rsi_period = int(round(RSI_PERIOD_SIDEWAYS + (RSI_PERIOD - RSI_PERIOD_SIDEWAYS) * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
-            rsi_bull = rsi > RSI_BULL
-            rsi_bear = rsi < RSI_BEAR
+            # Trend-adaptive RSI voter: bias toward long-term trend direction
+            # In uptrend: lower bull threshold (easier to vote bullish)
+            # In downtrend: raise bear threshold (easier to vote bearish)
+            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0)
+            rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
+            if ret_long_raw > 0:
+                rsi_bull_thresh = RSI_BULL - rsi_bias  # easier to vote bullish
+                rsi_bear_thresh = RSI_BEAR - rsi_bias  # harder to vote bearish
+            else:
+                rsi_bull_thresh = RSI_BULL + rsi_bias  # harder to vote bullish
+                rsi_bear_thresh = RSI_BEAR + rsi_bias  # easier to vote bearish
+            rsi_bull = rsi > rsi_bull_thresh
+            rsi_bear = rsi < rsi_bear_thresh
 
             macd_hist = self._calc_macd(closes)
             macd_bull = macd_hist > 0
