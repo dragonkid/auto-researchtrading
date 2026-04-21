@@ -1,8 +1,7 @@
 """
-Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
-regardless of position age. Older positions (>8 bars) have exhausted their momentum —
-tighten giveback to lock in profits earlier. Young positions keep the standard
-giveback. This targets aging winners that are just slowly bleeding away gains.
+Exp356: Stale-position exit. Positions held >16 bars that are underwater (PnL<0)
+get force-exited. Slow bleeders waste capital and rarely recover — cutting them
+frees up margin for fresh entries with better momentum alignment.
 """
 
 import numpy as np
@@ -122,6 +121,8 @@ PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
+STALE_EXIT_BARS = 16            # bars held after which underwater positions are force-exited
+STALE_EXIT_PNL = 0.0            # PnL threshold below which stale positions are cut
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -678,6 +679,15 @@ class Strategy:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
+
+                # Stale position exit: cut underwater positions held too long
+                if target != 0 and bars_held >= STALE_EXIT_BARS and symbol in self.entry_prices:
+                    entry = self.entry_prices[symbol]
+                    stale_pnl = (mid - entry) / entry
+                    if current_pos < 0:
+                        stale_pnl = -stale_pnl
+                    if stale_pnl < STALE_EXIT_PNL:
+                        target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
