@@ -1,11 +1,10 @@
 """
-Exp240: Add EMA slope back as 9th voter.
-slope_bull/slope_bear are already computed from retuned EMA_SLOPE_PERIOD=22
-and EMA_SLOPE_LOOKBACK=3, but NOT included in vote count since baseline.
-With current 8 voters + MIN_VOTES=3/CALM=2, adding a 9th voter should
-increase high-conviction entries (4+ votes) for the sizing boost, while
-not lowering the bar for weak entries. The slope voter was removed when
-the strategy was very different; worth re-testing with current parameters.
+Exp241: Add peak-profit trailing exit.
+Track peak unrealized PnL per position. When profit has reached a significant
+level (>PEAK_PROFIT_MIN) but then gives back more than PEAK_PROFIT_GIVEBACK
+fraction, exit the position. This locks in winners that are fading — especially
+valuable in sideways markets where moves reverse quickly. Should improve all
+regimes by reducing round-trip losses on winning trades.
 """
 
 import numpy as np
@@ -113,6 +112,8 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
+PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
+PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -170,6 +171,7 @@ class Strategy:
         self.peak_equity = 100000.0
         self.exit_bar = {}
         self.bar_count = 0
+        self.peak_pnl = {}  # track peak unrealized PnL per symbol
 
     def _calc_atr(self, history, lookback):
         if len(history) < lookback + 1:
@@ -616,6 +618,21 @@ class Strategy:
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
+                # Peak-profit trailing exit: lock in winners that are fading
+                if target != 0 and symbol in self.entry_prices:
+                    entry = self.entry_prices[symbol]
+                    pos_pnl = (mid - entry) / entry
+                    if current_pos < 0:
+                        pos_pnl = -pos_pnl
+                    # Update peak PnL
+                    prev_peak = self.peak_pnl.get(symbol, 0.0)
+                    self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
+                    # If peak profit was significant and we've given back too much, exit
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
+                        giveback = self.peak_pnl[symbol] - pos_pnl
+                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                            target = 0.0
+
                 # Require higher conviction to flip (more expensive than new entry)
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
@@ -630,16 +647,19 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
+                    self.peak_pnl[symbol] = 0.0
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
                     self.pyramided.pop(symbol, None)
+                    self.peak_pnl.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
                     self.pyramided[symbol] = False
+                    self.peak_pnl[symbol] = 0.0
 
         return signals
