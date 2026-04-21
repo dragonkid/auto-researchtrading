@@ -1,8 +1,8 @@
 """
-Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
-trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
-fully transition, the strategy spends more time using the faster ret_med
-weighting that drove the last two composite wins.
+Exp223: Reduce STRENGTH_FLOOR_DECAY 0.10->0.08 so the elevated sideways
+strength floor (2.4) persists into slightly stronger trends before decaying.
+This extends the stronger sizing into moderate-trend environments, similar
+to the TREND_GATE_ADAPT_DECAY reduction that improved composite score.
 """
 
 import numpy as np
@@ -90,7 +90,7 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
-STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
+STRENGTH_FLOOR_DECAY = 0.08    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
