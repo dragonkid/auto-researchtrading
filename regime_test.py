@@ -25,7 +25,7 @@ SEARCH_REGIMES = [
 # Holdout regime — NEVER used during autoresearch search.
 # Only run manually for final validation after a research round.
 HOLDOUT_REGIMES = [
-    ("recent", "2025-01-01", "2026-04-21", "Recent market (holdout)"),
+    ("recent", "2025-01-01", "2026-03-31", "Recent market (holdout)"),
 ]
 
 # Consistency penalty weight: higher k = stricter consistency requirement
