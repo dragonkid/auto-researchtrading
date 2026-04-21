@@ -219,3 +219,4 @@ d6c3fdc	23.108009	25.259786	4.303553	keep	widen TREND_GATE_DEADZONE 0.005->0.006
 -	22.623727	24.978203	4.708952	discard	reduce RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->3.0 (all regimes worse, mean dropped 25.31->24.98, std up 4.39->4.71, composite 23.119->22.624)
 
 -	23.112768	25.293389	4.361243	discard	increase RSI_TREND_BIAS 2.0->2.5 for stronger RSI voter trend alignment (mean flat, std up, composite 23.119->23.113)
+-	23.109707	25.304762	4.390109	discard	reduce ATR_STOP_MULT_BASE 4.5->3.5 to activate ATR trailing stop as backstop exit (mean dropped 25.31->25.30, composite 23.119->23.110)
