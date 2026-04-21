@@ -255,3 +255,4 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 	-	17.871322	19.696131	3.649619	discard	vol-adaptive RSI period shorter/longer by vol_ratio (all regimes worse, mean dropped 25.87->19.70, composite 23.480->17.871)
 	-	23.552998	25.998477	4.890959	discard	power-dampen spike_blend in vol-spike sizing ^0.85 (mean up 25.998 but std up 4.891, net -0.002, composite 23.555->23.553)
 	-	23.112163	25.646733	5.069138	discard	power-dampen cooldown_trend_strength ^0.85 (all regimes worse, mean dropped 25.87->25.65, std up 4.77->5.07, composite 23.480->23.112)
+3300b20	23.517276	26.023667	5.012782	keep	change sideways_trend_strength decay exponent 2.0->1.7 (mean +0.16, bull +sideways up, std up 4.77->5.01, composite +0.037)
