@@ -1,11 +1,9 @@
 """
-Exp206: Raise MAX_COMBINED_MULT from 4.0 to 4.5.  This is the base cap on
-the product of all sizing multipliers for moderate-vol regimes (vol_ratio
-between 0.6 and 1.0).  The weakest regimes (sideways=16.0, rally=16.9) have
-DD well below limits (5.7% and 7.5%), so there's headroom to allow more
-sizing.  The low-vol cap (6.5) and high-vol cap (3.0) are unchanged.  The
-interpolation between low-vol and base caps shifts upward, giving moderate-
-vol regimes slightly larger positions to boost returns.
+Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
+low-volume entries.  In sideways markets volume is typically below average,
+so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
+sideways entries keep closer to full size, boosting return in the weakest
+regime without meaningfully increasing DD in trending regimes.
 """
 
 import numpy as np
@@ -127,7 +125,7 @@ MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
-MAX_COMBINED_MULT = 4.5  # base cap on product of all sizing multipliers
+MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
