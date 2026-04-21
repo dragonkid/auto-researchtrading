@@ -1,9 +1,9 @@
 """
-Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
-low-volume entries.  In sideways markets volume is typically below average,
-so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
-sideways entries keep closer to full size, boosting return in the weakest
-regime without meaningfully increasing DD in trending regimes.
+Exp206: Widen RSI exit thresholds from 73/27 to 75/25.  The RSI overbought/
+oversold exits fire before trailing stops, cutting winners short in trending
+regimes.  Widening by 2 points gives profitable positions more room to run
+while the vol-adaptive blending (RSI_OB_TIGHT=68, RSI_EXIT_VOL_HIGH=1.8)
+still provides protection in high-vol crash periods.
 """
 
 import numpy as np
@@ -24,8 +24,8 @@ RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
-RSI_OVERBOUGHT = 73
-RSI_OVERSOLD = 27
+RSI_OVERBOUGHT = 75
+RSI_OVERSOLD = 25
 RSI_OB_TIGHT = 68     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 32     # tightest OS exit in extreme high-vol
 RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
