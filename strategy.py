@@ -1,11 +1,10 @@
 """
-Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
-The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
-when abs(ret_long) is small. With decay=0.10, the widening persists until
-abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
-trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
-protecting profits. The reverse direction (0.10->0.13) was tried and failed
-because it widened exits too much. This goes the opposite way.
+Exp320: Disable cross-asset boost (CROSS_ASSET_BOOST 0.20->0.0).
+The cross-asset agreement multiplier boosts sizing when all 3 symbols trend
+in the same direction. But it's already small (0.20) and dampened in trending
+markets. By the time all assets agree, the move is often late-stage and the
+sizing boost may increase drawdown risk. Removing it simplifies the sizing
+chain (one fewer multiplier) which should help out-of-sample generalization.
 """
 
 import numpy as np
@@ -100,7 +99,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
-CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
+CROSS_ASSET_BOOST = 0.0  # DISABLED: simplification — cross-asset boost removed
 CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
