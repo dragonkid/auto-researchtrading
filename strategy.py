@@ -1,7 +1,7 @@
 """
-Exp366: Power-dampen trend_adapt_strength in trend gate. Apply ^0.85 to make
-the transition from sideways weight (0.90) to trending weight (0.70) happen
-faster, following the successful power-dampening pattern across other decays.
+Exp367: Power-dampen rsi_trend_blend (^0.85) for faster RSI voter trend bias
+activation. Currently linear ramp; dampening makes bias kick in sooner in
+moderate trends, following the successful power-dampening pattern.
 """
 
 import numpy as np
@@ -336,7 +336,7 @@ class Strategy:
             # Trend-adaptive RSI voter: bias toward long-term trend direction
             # In uptrend: lower bull threshold (easier to vote bullish)
             # In downtrend: raise bear threshold (easier to vote bearish)
-            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0)
+            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0) ** 0.85
             rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
             if ret_long_raw > 0:
                 rsi_bull_thresh = RSI_BULL - rsi_bias  # easier to vote bullish
