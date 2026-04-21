@@ -1,9 +1,9 @@
 """
-Exp258: Reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate
-cross-asset agreement sizing. Previously tested at 0.15 (too low)
-and 0.50 (too high). A moderate reduction should dampen correlated
-drawdowns during synchronized selloffs while still rewarding
-broad momentum agreement.
+Exp259: Replace flat HIGH_VOTE_BOOST (4+ votes -> +0.20) with
+continuous vote-scaled sizing. Each vote above the minimum adds
++0.05x to sizing. This rewards higher conviction proportionally
+instead of a binary threshold: 3 votes=1.0x, 4=1.05x, 5=1.10x,
+6=1.15x, etc. Smoother than the current step function.
 """
 
 import numpy as np
@@ -134,7 +134,8 @@ MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
-HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
+HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries (flat, unused)
+VOTE_SCALE_BOOST = 0.05  # per-vote sizing boost above minimum votes
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
@@ -425,9 +426,9 @@ class Strategy:
             sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
-            # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
+            # Continuous vote-scaled sizing: each vote above minimum adds a small boost
             winning_votes = max(bull_votes, bear_votes)
-            vote_boost = 1.0 + HIGH_VOTE_BOOST if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
+            vote_boost = 1.0 + VOTE_SCALE_BOOST * max(0, winning_votes - effective_min_votes)
 
             # Volume confirmation: boost size when recent volume is above longer-term average
             vol_confirm_mult = 1.0
