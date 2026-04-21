@@ -1,8 +1,8 @@
 """
-Exp377: Increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend elevated
-strength_scale floor into moderate-trend environments. Sideways regime
-has lowest DD (4.49%) with room for more risk. This widens the zone
-where the elevated strength floor (2.6) applies before decaying to 0.6.
+Exp378: Lower PEAK_PROFIT_MIN 0.025->0.018 to activate trailing exit
+sooner. Sideways regime (19.26) lags other regimes by 6-14 points.
+Smaller moves in sideways mean 2.5% threshold is rarely reached, so
+gains are given back. Lower threshold should lock in more small wins.
 """
 
 import numpy as np
@@ -97,7 +97,7 @@ RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is wi
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
-PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
+PEAK_PROFIT_MIN = 0.018           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
