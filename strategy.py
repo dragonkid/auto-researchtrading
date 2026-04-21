@@ -1,8 +1,8 @@
 """
-Exp341: Increase RSI_EXIT_PROFIT_SCALE 18->20 to continue the series.
-The progression 12->14 (+0.024), 14->16 (+0.032), 16->18 (+0.028) has been
-consistently positive. Original value was 20 but strategy has changed significantly
-since then (dozens of other parameter changes). Testing if 20 works in current context.
+Exp347: Power-dampened inverse-vol sizing. Instead of linear vol_scale = TARGET_VOL/vol,
+use vol_scale = (TARGET_VOL/vol)^0.85. This compresses extreme sizing ratios on both ends:
+less aggressive in very low vol (reduces DD risk), less conservative in very high vol
+(captures more opportunity). Should improve cross-regime consistency (lower std).
 """
 
 import numpy as np
@@ -413,7 +413,7 @@ class Strategy:
             effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
-            vol_scale = TARGET_VOL / realized_vol
+            vol_scale = (TARGET_VOL / realized_vol) ** 0.85
             vol_scale = max(0.3, min(2.5, vol_scale))
 
             # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
