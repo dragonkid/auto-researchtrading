@@ -96,7 +96,8 @@ Per-regime = base × log(1 + annual_return% / 100)   # return gate
 Hard cutoffs: <10 trades, >20% DD, >25% capital loss → -999
 Soft DD penalty: mild exponential decay above 5% DD (8%→0.74x, 10%→0.61x)
 
-Composite = mean(regime_scores) - 0.5 * std(regime_scores)
+Composite = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
+Simplicity bonus = max(0, (500 - effective_LOC)) * 0.001
 ```
 
 The composite score is the key metric. Parse it from `grep "^composite_score:" run.log`.

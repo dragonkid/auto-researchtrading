@@ -59,8 +59,11 @@ Per-regime score = base_score × log(1 + annual_return% / 100)   # return gate
 
 Hard cutoffs: <10 trades → -999, >20% drawdown → -999, lost >25% → -999
 
-Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
+Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
+Simplicity bonus = max(0, (500 - effective_LOC)) * 0.001   # reward shorter strategy.py
 ```
+
+The simplicity bonus rewards removing dead code and unnecessary complexity. Effective LOC counts non-empty, non-comment lines in strategy.py. Each line removed below 500 adds +0.001 to composite.
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
 The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.74x, 10%→0.61x, 15%→0.37x.

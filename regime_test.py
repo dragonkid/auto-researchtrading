@@ -86,8 +86,25 @@ def _run_regime_worker(args: tuple) -> dict:
     }
 
 
+def _count_effective_loc(filepath: str = "strategy.py") -> int:
+    """Count non-empty, non-comment lines in strategy.py."""
+    try:
+        with open(filepath) as f:
+            return sum(
+                1 for line in f
+                if line.strip() and not line.strip().startswith("#")
+            )
+    except FileNotFoundError:
+        return 500  # neutral default
+
+
+# Baseline LOC for simplicity bonus (lines above this get no penalty, lines below get bonus)
+SIMPLICITY_BASELINE_LOC = 500
+SIMPLICITY_BONUS_PER_LINE = 0.001
+
+
 def compute_composite_score(results: list[dict]) -> float:
-    """Composite = mean(scores) - k * std(scores). Returns -999 if any regime failed."""
+    """Composite = mean(scores) - k * std(scores) + simplicity_bonus. Returns -999 if any regime failed."""
     scores = []
     for r in results:
         if "error" in r or r.get("score", -999) <= -999:
@@ -101,7 +118,11 @@ def compute_composite_score(results: list[dict]) -> float:
     variance = sum((s - mean_score) ** 2 for s in scores) / len(scores)
     std_score = math.sqrt(variance)
 
-    return mean_score - CONSISTENCY_K * std_score
+    # Simplicity bonus: reward shorter strategies (less overfitting surface)
+    loc = _count_effective_loc()
+    simplicity_bonus = max(0.0, (SIMPLICITY_BASELINE_LOC - loc)) * SIMPLICITY_BONUS_PER_LINE
+
+    return mean_score - CONSISTENCY_K * std_score + simplicity_bonus
 
 
 if __name__ == "__main__":
