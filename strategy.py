@@ -1,10 +1,8 @@
 """
-Exp214: Change sideways boost decay from quadratic to linear.
-Currently sideways_trend_strength = ratio**2 (quadratic), which keeps the boost
-active deep into mild-trend periods. Linear decay makes the boost more targeted:
-in truly flat markets (sideways) it's unchanged, but in mild trends (parts of
-bull/crash/rally) it decays faster. This should compress cross-regime std by
-reducing position sizes in trending regimes while preserving sideways sizing.
+Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
+The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
+governs mid-vol bars; tightening it should compress cross-regime variance by
+limiting position sizes in moderate-volatility conditions.
 """
 
 import numpy as np
@@ -404,7 +402,7 @@ class Strategy:
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-            sideways_trend_strength = sideways_trend_ratio  # linear decay (was quadratic)
+            sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
