@@ -205,3 +205,4 @@ b18d192	22.978664	25.123440	4.289553	keep	widen TREND_GATE_DEADZONE 0.002->0.003
 -	22.974437	25.120374	4.291874	discard	increase VOL_COMPRESS_THRESH_REDUCE 0.25->0.35 for more aggressive entry threshold reduction during vol compression (mean flat, sideways hurt, composite 22.979->22.974)
 1c3ff2b	23.002873	25.154567	4.303388	keep	increase RSI_EXIT_PROFIT_SCALE 12->14 for faster profit-scaled RSI exit tightening (bull +0.08, crash +0.06, rally +0.07, composite +0.024)
 af56188	23.021404	25.159686	4.276564	keep	widen TREND_GATE_DEADZONE 0.003->0.004 for more entries in near-trendless sideways regimes (sideways +0.09, std down, composite +0.019)
+1993b2e	23.103994	25.249875	4.291762	keep	widen TREND_GATE_DEADZONE 0.004->0.005 for more noise-zone entries in sideways (rally +0.34, mean +0.09, composite +0.083)
