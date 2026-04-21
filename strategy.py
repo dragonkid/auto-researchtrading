@@ -1,8 +1,8 @@
 """
-Exp381: Inline dead/no-op constants for simplicity bonus.
-Remove MED_WINDOW (unused), MEANREV_SIZE_SCALE (1.0 = no-op),
-COOLDOWN_SIDEWAYS_BARS (0 = no-op), PEAK_PROFIT_GRACE_BARS (inline 1).
-Zero behavior change, -5 LOC.
+Exp385: Remove dead code and deduplicate ret_long.
+- Remove self.btc_momentum (assigned but never read) — 4 LOC
+- Merge ret_long into ret_long (identical computation) — 1 LOC
+Zero behavior change, -5 LOC for simplicity bonus.
 """
 
 import numpy as np
@@ -146,7 +146,6 @@ class Strategy:
         self.entry_prices = {}
         self.peak_prices = {}
         self.atr_at_entry = {}
-        self.btc_momentum = 0.0
         self.exit_bar = {}
         self.bar_count = 0
         self.peak_pnl = {}  # track peak unrealized PnL per symbol
@@ -204,10 +203,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        if "BTC" in bar_data and len(bar_data["BTC"].history) >= LONG_WINDOW + 1:
-            btc_closes = bar_data["BTC"].history["close"].values
-            self.btc_momentum = (btc_closes[-1] - btc_closes[-MED2_WINDOW]) / btc_closes[-MED2_WINDOW]
-
         # Cross-asset momentum agreement: check if all symbols trend in same direction
         cross_asset_rets = []
         for s in ACTIVE_SYMBOLS:
@@ -240,8 +235,8 @@ class Strategy:
 
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
-            ret_long_raw = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            trend_strength = min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85
+            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            trend_strength = min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85
             trend_reduction = TREND_THRESHOLD_SCALE * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
 
@@ -264,7 +259,6 @@ class Strategy:
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
-            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
@@ -277,15 +271,15 @@ class Strategy:
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
             # Adaptive RSI: shorter period in sideways for faster signals
-            rsi_trend_str = min(abs(ret_long_raw) / 0.10, 1.0)
+            rsi_trend_str = min(abs(ret_long) / 0.10, 1.0)
             adaptive_rsi_period = int(round(RSI_PERIOD_SIDEWAYS + (RSI_PERIOD - RSI_PERIOD_SIDEWAYS) * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
             # Trend-adaptive RSI voter: bias toward long-term trend direction
             # In uptrend: lower bull threshold (easier to vote bullish)
             # In downtrend: raise bear threshold (easier to vote bearish)
-            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0)
+            rsi_trend_blend = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
-            if ret_long_raw > 0:
+            if ret_long > 0:
                 rsi_bull_thresh = RSI_BULL - rsi_bias  # easier to vote bullish
                 rsi_bear_thresh = RSI_BEAR - rsi_bias  # harder to vote bearish
             else:
@@ -345,7 +339,7 @@ class Strategy:
 
             # In sideways markets, bypass trend gate when trend_avg is in the noise zone
             # This prevents random ret_med/ret_long noise from blocking valid vote-confirmed entries
-            in_sideways = abs(ret_long_raw) < MEANREV_TREND_THRESHOLD
+            in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed or in_sideways) else MIN_VOTES
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed)
