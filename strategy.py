@@ -1,7 +1,7 @@
 """
-Exp367: Power-dampen spike_blend in vol-spike sizing. Apply ^0.85 to the
-linear spike blend so vol-spike scaling kicks in more aggressively at lower
-ratios but compresses at extremes, following successful power-dampening pattern.
+Exp366: Power-dampen trend_adapt_strength in trend gate. Apply ^0.85 to make
+the transition from sideways weight (0.90) to trending weight (0.70) happen
+faster, following the successful power-dampening pattern across other decays.
 """
 
 import numpy as np
@@ -430,7 +430,7 @@ class Strategy:
                 vol_ratio_spike = short_vol / max(long_vol, 1e-10)
                 if vol_ratio_spike > 1.0:
                     # Linear interpolation from 1.0 at ratio=1.0 to VOL_SPIKE_SCALE at ratio=VOL_SPIKE_THRESHOLD
-                    spike_blend = min(1.0, (vol_ratio_spike - 1.0) / (VOL_SPIKE_THRESHOLD - 1.0)) ** 0.85
+                    spike_blend = min(1.0, (vol_ratio_spike - 1.0) / (VOL_SPIKE_THRESHOLD - 1.0))
                     vol_spike_scale = 1.0 - (1.0 - VOL_SPIKE_SCALE) * spike_blend
                 # Calm regime boost: when short vol is close to or below long vol, boost size
                 vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
