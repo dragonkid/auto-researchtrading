@@ -1,7 +1,8 @@
 """
-Exp290: Increase VOL_COMPRESS_BOOST 0.40->0.50 for stronger position sizing during
-vol compression breakouts. Vol compression signals impending breakout — larger
-positions should capture more of the move, especially in sideways markets.
+Exp291: Reduce TREND_GATE_MED_WEIGHT_SIDEWAYS 0.90->0.85 for slightly more
+long-term influence in the sideways trend gate. In trendless markets, adding
+more ret_long weight helps filter false signals by requiring some long-term
+directional confirmation.
 """
 
 import numpy as np
@@ -85,7 +86,7 @@ TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
-TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
+TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
