@@ -1,8 +1,10 @@
 """
-Exp245: Extend young position RSI grace period.
-Increase RSI_YOUNG_GRACE_BARS 3->4 to give new positions more room before
-RSI exit activates. The grace period was a major win at 3 bars; extending
-to 4 should reduce premature exits especially in volatile sideways conditions.
+Exp246: Tighten base peak-profit giveback 0.40->0.35.
+The peak-profit trailing exit was a major win. Reducing the base giveback
+threshold from 40% to 35% means we lock in more of peak profits on positions
+where peak is modest (near PEAK_PROFIT_MIN=2%). For larger peaks (>5%),
+PEAK_PROFIT_GIVEBACK_TIGHT=0.30 already applies. This tightens the middle
+range of peaks (2-5%) for earlier profit-locking exits.
 """
 
 import numpy as np
@@ -114,7 +116,7 @@ RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is wi
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
+PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.05       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
