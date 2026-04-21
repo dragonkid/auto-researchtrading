@@ -1,9 +1,9 @@
 """
-Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
-Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
-Applying ^0.85 makes entry threshold reduction decay more gradually from
-sideways into moderate trends, keeping slightly lower thresholds active longer
-and allowing more entries in moderate-trend regimes.
+Exp370: Power-dampen vol_confirm_mult via vol_ratio_raw^0.85 before clipping.
+Currently the volume confirmation multiplier is a raw pass-through of
+recent_vol/base_vol, clipped to [FLOOR, 1+BOOST]. Applying ^0.85 compresses
+extreme volume spikes (1.5x -> 1.41x) while slightly boosting moderate
+below-average readings, reducing cross-regime sizing variance from volume.
 """
 
 import numpy as np
@@ -464,7 +464,8 @@ class Strategy:
                     vol_ratio_raw = recent_vol / base_vol
                     # Above average: boost up to VOL_CONFIRM_BOOST
                     # Below average: reduce down to VOL_CONFIRM_FLOOR
-                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
+                    # Power-dampen to compress extreme volume spikes
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw ** 0.85))
 
             # Multi-timeframe agreement: boost when vshort, short, and long all agree
             # Dampened by trend strength so it only helps in sideways (DD-safe) regimes
