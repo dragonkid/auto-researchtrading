@@ -1,10 +1,9 @@
 """
-Exp369: Dampen vol_compress_boost by trend strength. Currently vol compression
-boost applies uniformly regardless of trend. In trending markets, the trend-
-following voters already capture directional moves, so extra sizing from vol
-compression adds unnecessary sizing variance. Dampening by (1 - trend_strength)
-limits the boost to sideways/trendless regimes where it adds the most value,
-reducing cross-regime std while preserving mean.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -440,12 +439,9 @@ class Strategy:
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
                 # Vol compression boost: when short vol drops well below long vol,
                 # a breakout is likely — boost size to capture the move
-                # Dampen by trend strength: in trending markets, trend voters
-                # already capture direction, so extra compression sizing adds variance
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
                     compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
-                    compress_trend_damp = 1.0 - min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-                    vol_compress_boost = 1.0 + VOL_COMPRESS_BOOST * compress_strength ** 0.85 * compress_trend_damp
+                    vol_compress_boost = 1.0 + VOL_COMPRESS_BOOST * compress_strength ** 0.85
 
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
