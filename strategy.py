@@ -1,9 +1,10 @@
 """
-Exp218: Reduce EMA_SLOPE_PERIOD 28->22 for faster EMA slope voter.
-With MACD already sped up (6/18/5), the EMA slope voter at 28 periods
-is now the slowest trend indicator. Reducing to 22 should give more
-responsive trend detection while still being smooth (22-period EMA
-with 4-bar lookback). This parameter has never been tuned.
+Exp219: Reduce EMA_SLOPE_LOOKBACK 4->3 for faster EMA slope voter.
+The EMA slope voter measures the change in a 22-period EMA over the
+last N bars. Reducing the lookback from 4 to 3 makes slope detection
+more responsive to recent trend changes, continuing the pattern of
+successful speed-ups (MACD, EMA_SLOPE_PERIOD). This parameter has
+never been tuned.
 """
 
 import numpy as np
@@ -39,7 +40,7 @@ MACD_SLOW = 18
 MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 4
+EMA_SLOPE_LOOKBACK = 3
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
