@@ -1,9 +1,9 @@
 """
-Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
-In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
-vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
-allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
-two weakest dimensions: sideways return and crash-regime DD.
+Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
+low-volume entries.  In sideways markets volume is typically below average,
+so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
+sideways entries keep closer to full size, boosting return in the weakest
+regime without meaningfully increasing DD in trending regimes.
 """
 
 import numpy as np
@@ -101,7 +101,7 @@ CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
 VOL_CONFIRM_BOOST = 0.35      # max sizing boost when volume is above average
-VOL_CONFIRM_FLOOR = 0.85      # min sizing factor when volume is below average
+VOL_CONFIRM_FLOOR = 0.92      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
