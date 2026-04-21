@@ -1,8 +1,8 @@
 """
-Exp308: Reduce EMA_FAST 3->2 for faster EMA crossover voter.
-A 2-period EMA is more responsive, making the crossover voter trigger
-earlier on momentum shifts. EMA_FAST=5 was too slow (discard), 3 was
-the baseline — trying 2 to see if even faster helps.
+Exp304: Widen trend gate deadzone 0.002->0.003.
+When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
+entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
+conditions where the trend gate was blocking valid vote-confirmed signals.
 """
 
 import numpy as np
@@ -17,7 +17,7 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
-EMA_FAST = 2
+EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
