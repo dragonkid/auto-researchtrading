@@ -1,9 +1,8 @@
 """
-Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
-Previous experiments showed that faster MACD parameters help:
-MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
-Continuing this trend by making the slow EMA shorter, which makes the MACD
-line cross zero more quickly in response to momentum changes.
+Exp266: Increase VOL_SPIKE_SCALE 0.7->0.8 for less aggressive position reduction
+during vol spikes. In trending regimes (bull, rally), momentum often continues
+after a vol spike. The current 0.7 floor may be cutting positions too much
+and missing the continuation. 0.8 means at max spike, size is 80% instead of 70%.
 """
 
 import numpy as np
@@ -51,7 +50,7 @@ VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
-VOL_SPIKE_SCALE = 0.7
+VOL_SPIKE_SCALE = 0.8
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
