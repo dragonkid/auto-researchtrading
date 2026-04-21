@@ -1,10 +1,10 @@
 """
-Exp208: Reduce MED2_WINDOW from 12 to 10 for faster medium-term momentum.
-MED2_WINDOW drives BTC momentum, cross-asset agreement, and ret_med (trend gate).
-A shorter window should make these signals more responsive to trend changes,
-potentially catching reversals earlier in crash/rally while also improving
-sideways reactivity. This is distinct from adaptive_med (SHORT_WINDOW range)
-which was already tested.
+Exp209: Reduce MACD_FAST 8->6 for more responsive MACD voter.
+MACD voter is one of 8 entry voters. With MACD_FAST=8, MACD_SLOW=21 the
+histogram is relatively sluggish. A faster MACD_FAST=6 makes the MACD line
+more sensitive to recent price moves, which should help detect shorter-lived
+momentum in sideways markets (our weakest regime at 16.19 vs 28.34 bull).
+This parameter has not been tuned in any prior experiment.
 """
 
 import numpy as np
@@ -35,7 +35,7 @@ RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
-MACD_FAST = 8
+MACD_FAST = 6
 MACD_SLOW = 21
 MACD_SIGNAL = 7
 
