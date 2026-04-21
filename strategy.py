@@ -1,10 +1,10 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp260: Reduce dyn_threshold ceiling 0.020->0.015 for more entries
+in high-vol trending regimes. Currently the threshold caps at 0.020
+(4x BASE_THRESHOLD), which may be too restrictive during volatile
+trending periods like crash_bear and rally_2024. Reducing the ceiling
+allows more entries when vol_ratio is high, potentially improving
+scores in those regimes.
 """
 
 import numpy as np
@@ -285,7 +285,7 @@ class Strategy:
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90)
-            dyn_threshold = max(0.003, min(0.020, dyn_threshold))
+            dyn_threshold = max(0.003, min(0.015, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
