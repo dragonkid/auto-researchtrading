@@ -1,8 +1,9 @@
 """
-Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
-regardless of position age. Older positions (>8 bars) have exhausted their momentum —
-tighten giveback to lock in profits earlier. Young positions keep the standard
-giveback. This targets aging winners that are just slowly bleeding away gains.
+Exp360: Raise MAX_COMBINED_MULT_LOW_VOL 6.5->7.5 to allow larger positions in low-vol
+(calm/sideways) regimes. The current cap of 6.5 may clip positions when many sizing
+multipliers stack up (vol_scale, calm_boost, sideways_boost, strength_floor, etc.).
+Raising the cap lets the sizing logic fully express its intent in calm markets where DD
+headroom is available. Targets sideways regime returns improvement.
 """
 
 import numpy as np
@@ -140,7 +141,7 @@ HIGH_VOTE_THRESHOLD = 3  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
-MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
+MAX_COMBINED_MULT_LOW_VOL = 7.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.2  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
