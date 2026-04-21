@@ -1,10 +1,8 @@
 """
-Exp243: Young position RSI exit grace period.
-Just-entered positions (1-3 bars old) get wider RSI exit thresholds to avoid
-premature exits from entry momentum. The widening decays linearly from
-RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN at bar 1 to zero at RSI_YOUNG_GRACE_BARS.
-This should reduce whipsaws in sideways markets where entries often hit
-RSI extremes right after opening.
+Exp244: Faster vol-breakout detection.
+Reduce VOL_BREAKOUT_SHORT 4->3 for faster vol expansion detection.
+Should catch directional breakouts earlier, especially in sideways-to-trending
+transitions.
 """
 
 import numpy as np
@@ -123,7 +121,7 @@ PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
-VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
+VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
