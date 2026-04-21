@@ -1,8 +1,9 @@
 """
-Exp223: Expand MEANREV_TREND_THRESHOLD 0.03->0.04 so mean-reversion entries
-activate in a wider range of low-trend environments.  The sideways regime
-(15.67) is the weakest by far; broader mean-reversion coverage should add
-entries in range-bound conditions where these counter-trend trades work best.
+Exp224: Reduce FLIP_MIN_VOTES 4->3 to match MIN_VOTES for new entries.
+Currently, the strategy can open positions with 3 votes but requires 4 to
+flip — leaving it stuck in weakening positions (especially in sideways
+markets where vote counts are lower).  Matching flip/entry thresholds
+should enable faster reversal, disproportionately helping sideways (15.67).
 """
 
 import numpy as np
@@ -123,7 +124,7 @@ MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
-FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
+FLIP_MIN_VOTES = 3       # votes required to flip an existing position (match MIN_VOTES for faster reversal)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
