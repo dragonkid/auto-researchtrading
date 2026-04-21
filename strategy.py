@@ -1,9 +1,10 @@
 """
-Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
-The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
-volume confirmation more responsive to recent volume patterns. Shorter baseline
-means volume ratio reacts faster to regime changes, potentially improving entries
-during transitions between regimes.
+Exp332: Vol-dampen sideways_boost when vol_ratio > 1.0.
+Currently sideways_boost only keys on abs(ret_long) — flat 20-bar return gives
+full boost regardless of volatility. In choppy-but-flat markets (high vol, flat trend),
+this can cause oversizing and DD. Gate it: when vol_ratio > 1.0, linearly reduce
+the sideways_boost toward 1.0 so we only boost aggressively when both trend AND
+vol are low.
 """
 
 import numpy as np
@@ -74,6 +75,8 @@ DD_REDUCE_SCALE = 0.5
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_VOL_DAMPEN = 1.0  # vol_ratio above this dampens sideways boost
+SIDEWAYS_BOOST_VOL_ZERO = 1.8    # vol_ratio at which sideways boost is fully dampened
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
@@ -441,9 +444,14 @@ class Strategy:
 
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
+            # Dampen by vol_ratio: high vol + flat trend = choppy, don't boost
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
             sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
-            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
+            raw_sideways_boost = SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
+            if vol_ratio > SIDEWAYS_BOOST_VOL_DAMPEN:
+                vol_dampen = max(0.0, 1.0 - (vol_ratio - SIDEWAYS_BOOST_VOL_DAMPEN) / (SIDEWAYS_BOOST_VOL_ZERO - SIDEWAYS_BOOST_VOL_DAMPEN))
+                raw_sideways_boost *= vol_dampen
+            sideways_boost = 1.0 + raw_sideways_boost
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
             winning_votes = max(bull_votes, bear_votes)

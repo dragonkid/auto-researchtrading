@@ -227,3 +227,4 @@ f34061a	23.119803	25.309970	4.380334	keep	reduce MIN_VOTES to 2 in sideways mark
 b6aa7c6	23.123522	25.337707	4.428370	keep	raise MAX_COMBINED_VOL_THRESHOLD 1.0->1.2 to delay high-vol cap (bull +0.26, sideways +0.16, crash -0.32, composite +0.004)
 39472ec	23.176850	25.378993	4.404286	keep	reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline (all regimes up, std down, composite +0.053)
 -	22.930556	24.895505	3.929898	discard	reduce VOL_LOOKBACK 24->20 (std improved 4.40->3.93 but mean dropped 25.38->24.90, bull DD up 5.96->6.44%, composite 23.177->22.931)
+	-	23.031580	25.121621	4.180081	discard	increase SIDEWAYS_BOOST_DECAY 0.10->0.12 for faster sideways boost decay (std improved 4.40->4.18 but mean dropped 25.38->25.12, net -0.145)
