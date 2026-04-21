@@ -1,9 +1,7 @@
 """
-Exp297: Add trend gate deadzone in sideways markets.
-When long-term trend is weak AND trend_avg is near zero, bypass the trend gate
-and rely solely on vote count. This prevents noise in ret_med/ret_long from
-randomly blocking entries in trendless regimes where the vote system already
-handles direction. Only activates when abs(ret_long) < MEANREV_TREND_THRESHOLD.
+Exp298: Widen trend gate deadzone 0.001->0.002 in sideways markets.
+Exp297 showed deadzone concept works (+0.043). Widening it should capture
+more entries in near-trendless regimes where trend_avg noise blocks valid signals.
 """
 
 import numpy as np
@@ -145,7 +143,7 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
-TREND_GATE_DEADZONE = 0.001  # bypass trend gate when abs(trend_avg) < this AND in sideways
+TREND_GATE_DEADZONE = 0.002  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
