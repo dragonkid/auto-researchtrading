@@ -1,10 +1,9 @@
 """
-Exp355: Increase RSI_EXIT_PROFIT_TIGHTEN 0.15->0.18 for stronger profit-locking.
-This controls the max tightening blend toward RSI=50 at high profit levels.
-Higher value means RSI exits tighten more aggressively as profit grows,
-locking in larger gains faster. 0.20 was tried early and discarded; 0.12 was
-also discarded (std improved but mean dropped). 0.18 is a moderate increase
-at the current optimized baseline.
+Exp354: Gradual cross-asset agreement boost instead of binary all-or-nothing.
+Currently cross_asset_agree is 1.0+BOOST if ALL assets agree, 1.0 otherwise.
+With 3 assets, if 2/3 agree on direction, give 2/3 of the boost (proportional).
+This allows partial sizing boost when most assets confirm, capturing BTC/ETH
+agreement even when SOL diverges (lead-lag effect).
 """
 
 import numpy as np
@@ -112,7 +111,7 @@ MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
-RSI_EXIT_PROFIT_TIGHTEN = 0.18    # max tightening blend toward center (50) at high profit
+RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
