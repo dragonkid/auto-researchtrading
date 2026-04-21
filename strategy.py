@@ -1,9 +1,9 @@
 """
-Exp335: Raise PEAK_PROFIT_MIN 0.025->0.030 to relax trailing exit threshold.
-The 0.020->0.025 increase was a +0.010 win. Further raising the threshold means
-the trailing exit only activates on larger unrealized profits, giving moderate
-winners more room to develop before the giveback mechanism kicks in. This should
-reduce premature exits on positions that haven't yet reached their potential.
+Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
+The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
+volume confirmation more responsive to recent volume patterns. Shorter baseline
+means volume ratio reacts faster to regime changes, potentially improving entries
+during transitions between regimes.
 """
 
 import numpy as np
@@ -117,7 +117,7 @@ RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is wi
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
-PEAK_PROFIT_MIN = 0.030           # min peak profit before trailing exit activates
+PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
