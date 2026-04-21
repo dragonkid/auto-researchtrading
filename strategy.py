@@ -1,9 +1,9 @@
 """
-Exp269: Reduce SIDEWAYS_BOOST_DECAY 0.10->0.08 to extend sideways sizing boost
-into weakly-trending conditions. The sideways boost currently decays to zero when
-abs(ret_long) reaches 10%. By lowering the decay, it persists until abs(ret_long)
-reaches 8%, making positions slightly larger in mildly-trending markets where DD
-headroom still exists. This parameter has not been tuned previously.
+Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
+Previous experiments showed that faster MACD parameters help:
+MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
+Continuing this trend by making the slow EMA shorter, which makes the MACD
+line cross zero more quickly in response to momentum changes.
 """
 
 import numpy as np
@@ -71,7 +71,7 @@ DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
-SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
