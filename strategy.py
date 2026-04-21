@@ -1,9 +1,9 @@
 """
-Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
-Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
-Applying ^0.85 makes entry threshold reduction decay more gradually from
-sideways into moderate trends, keeping slightly lower thresholds active longer
-and allowing more entries in moderate-trend regimes.
+Exp370: Power-dampen trend_exit_strength in RSI exit threshold calculation.
+Currently linear: min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0).
+Applying ^0.85 makes the RSI exit widening decay more gradually from sideways
+into moderate trends, keeping wider OB/OS exits active longer and reducing
+premature exits in moderate-trend regimes.
 """
 
 import numpy as np
@@ -624,7 +624,7 @@ class Strategy:
                 # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 # Trend-adaptive widening: in sideways markets, widen OB/OS to hold winners longer
-                trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0)
+                trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0) ** 0.85
                 sideways_ob_widen = (RSI_OB_WIDE - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
                 sideways_os_widen = (RSI_OVERSOLD - RSI_OS_WIDE) * (1.0 - trend_exit_strength)
                 base_ob = RSI_OVERBOUGHT + sideways_ob_widen
