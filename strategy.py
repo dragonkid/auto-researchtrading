@@ -1,8 +1,9 @@
 """
-Exp288: Trend-aligned peak-profit giveback. When a position is aligned with
-the long-term trend (long in uptrend, short in downtrend), allow wider giveback
-(hold longer through pullbacks in trending moves). When against trend, use
-tighter giveback (protect profits on counter-trend positions more aggressively).
+Exp284: Vol-compression aware MIN_VOTES. During vol compression (short/long
+vol ratio < VOL_COMPRESS_THRESHOLD=0.75), reduce MIN_VOTES to 2 regardless
+of vol_ratio. Rationale: vol compression signals imminent breakout; we already
+boost size and reduce threshold, but still require 3 votes for entry. Allowing
+2-vote entries during compression should capture more breakout moves early.
 """
 
 import numpy as np
@@ -118,8 +119,6 @@ PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activat
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
-PEAK_PROFIT_WITH_TREND_WIDEN = 0.10   # widen giveback when position aligns with trend
-PEAK_PROFIT_AGAINST_TREND_TIGHTEN = 0.05  # tighten giveback when position opposes trend
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -636,7 +635,6 @@ class Strategy:
 
                 # Peak-profit trailing exit: lock in winners that are fading
                 # Profit-scaled giveback: tighter for larger peaks to protect big wins
-                # Trend-aligned: wider when position aligns with trend, tighter when opposing
                 # Grace period: don't activate for very young positions
                 if target != 0 and symbol in self.entry_prices and bars_held >= PEAK_PROFIT_GRACE_BARS:
                     entry = self.entry_prices[symbol]
@@ -651,14 +649,6 @@ class Strategy:
                         # Scale giveback: tighter for larger profits
                         profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (PEAK_PROFIT_TIGHT_AT - PEAK_PROFIT_MIN))
                         effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
-                        # Trend-aligned adjustment: widen when with trend, tighten when against
-                        with_trend = (current_pos > 0 and ret_long > 0) or (current_pos < 0 and ret_long < 0)
-                        against_trend = (current_pos > 0 and ret_long < 0) or (current_pos < 0 and ret_long > 0)
-                        if with_trend:
-                            effective_giveback += PEAK_PROFIT_WITH_TREND_WIDEN
-                        elif against_trend:
-                            effective_giveback -= PEAK_PROFIT_AGAINST_TREND_TIGHTEN
-                        effective_giveback = max(0.10, min(0.60, effective_giveback))
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
