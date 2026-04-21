@@ -1,9 +1,9 @@
 """
-Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
-In trendless markets, the strength_scale floor determines minimum sizing.
-Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
-size increase should improve returns without blowing DD. 2.8 was tried
-before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
+Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
+This makes threshold more responsive to vol: lower in calm markets (more
+entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
+higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
+Should help both sideways and crash_bear simultaneously.
 """
 
 import numpy as np
@@ -273,7 +273,7 @@ class Strategy:
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
-            dyn_threshold = BASE_THRESHOLD * (0.15 + vol_ratio * 0.85)
+            dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90)
             dyn_threshold = max(0.003, min(0.020, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
