@@ -1,9 +1,8 @@
 """
-Exp214: Reduce RSI_PERIOD_SIDEWAYS 6->4 for faster RSI in trendless markets.
-The adaptive RSI period interpolates between RSI_PERIOD_SIDEWAYS (sideways) and
-RSI_PERIOD (trending). Making the sideways period shorter makes RSI more responsive
-in low-trend environments, which should improve both entry timing and RSI exits
-for the sideways regime while leaving trending regimes mostly unchanged.
+Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
+The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
+governs mid-vol bars; tightening it should compress cross-regime variance by
+limiting position sizes in moderate-volatility conditions.
 """
 
 import numpy as np
@@ -21,7 +20,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
-RSI_PERIOD_SIDEWAYS = 4
+RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
 RSI_OVERBOUGHT = 73
