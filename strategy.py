@@ -1,8 +1,9 @@
 """
-Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
-The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
-governs mid-vol bars; tightening it should compress cross-regime variance by
-limiting position sizes in moderate-volatility conditions.
+Exp214: Asymmetric entry threshold — raise the bar for counter-trend entries.
+When entering against the long-term trend (short in bull, long in bear), multiply
+the entry threshold by a factor > 1. This makes it harder to take counter-trend
+positions, which should improve consistency in trending regimes (bull, crash_bear)
+without hurting sideways (where ret_long is near zero so no asymmetry applies).
 """
 
 import numpy as np
@@ -84,6 +85,7 @@ DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reache
 
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
+COUNTER_TREND_THRESH_MULT = 1.5  # entry threshold multiplier for counter-trend entries
 
 TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
@@ -296,10 +298,15 @@ class Strategy:
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
 
-            mom_bull = ret_short > dyn_threshold
-            mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            # Asymmetric threshold: counter-trend entries need stronger momentum
+            # ret_long > 0 means bull trend → bearish entries are counter-trend
+            # ret_long < 0 means bear trend → bullish entries are counter-trend
+            thresh_bull = dyn_threshold * COUNTER_TREND_THRESH_MULT if ret_long < -0.02 else dyn_threshold
+            thresh_bear = dyn_threshold * COUNTER_TREND_THRESH_MULT if ret_long > 0.02 else dyn_threshold
+            mom_bull = ret_short > thresh_bull
+            mom_bear = ret_short < -thresh_bear
+            vshort_bull = ret_vshort > thresh_bull * 0.5
+            vshort_bear = ret_vshort < -thresh_bear * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
