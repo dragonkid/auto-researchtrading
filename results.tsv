@@ -190,3 +190,4 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 -	22.742115	24.919288	4.354347	discard	reduce MACD_SIGNAL 5->4 for faster MACD histogram (mean +0.01 but std up 4.29->4.35, sideways +0.13 but crash -0.16, composite 22.763->22.742)
 88ff819	22.781918	24.942905	4.321975	keep	raise VOL_CONFIRM_FLOOR 0.95->0.98 to further reduce low-volume sizing penalty (crash +0.07, sideways +0.08, composite +0.019)
 -	22.780977	25.060436	4.558918	discard	reduce VOL_CONFIRM_BOOST 0.20->0.10 (mean up 25.06 but std up 4.56, net -0.001, composite 22.782->22.781)
+2dc46d6	22.792410	24.952425	4.320031	keep	raise PEAK_PROFIT_MIN 0.02->0.025 to relax trailing exit for moderate peaks (crash +0.10, sideways +0.10, std down, composite +0.010)
