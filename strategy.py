@@ -1,8 +1,8 @@
 """
-Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
-regardless of position age. Older positions (>8 bars) have exhausted their momentum —
-tighten giveback to lock in profits earlier. Young positions keep the standard
-giveback. This targets aging winners that are just slowly bleeding away gains.
+Exp362: Raise dyn_threshold floor 0.003->0.004. In very low-vol regimes, the entry
+threshold can drop to 0.003 (after base calc + trend reduction + vol compression
+reduction). This may cause too many low-quality entries on noise. Raising the floor
+to 0.004 ensures a minimum momentum signal is required even in the calmest conditions.
 """
 
 import numpy as np
@@ -290,7 +290,7 @@ class Strategy:
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
-            dyn_threshold = max(0.003, min(0.015, dyn_threshold))
+            dyn_threshold = max(0.004, min(0.015, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
