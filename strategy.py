@@ -1,9 +1,9 @@
 """
-Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
-Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
-decay more gradually from sideways into moderate trends, keeping the higher
-sizing cap active slightly longer. This is the same pattern that worked for
-trend_adapt_strength (line 403) which already uses ^0.85.
+Exp371: Power-dampen trend_exit_strength in RSI exit sideways-widening.
+Currently linear: min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0). Applying ^0.85
+makes the transition from sideways-widened to standard RSI exits more gradual,
+keeping wider RSI exits slightly longer as trend develops. This reduces
+premature RSI exits in moderate-trend regimes.
 """
 
 import numpy as np
@@ -624,7 +624,7 @@ class Strategy:
                 # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 # Trend-adaptive widening: in sideways markets, widen OB/OS to hold winners longer
-                trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0)
+                trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0) ** 0.85
                 sideways_ob_widen = (RSI_OB_WIDE - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
                 sideways_os_widen = (RSI_OVERSOLD - RSI_OS_WIDE) * (1.0 - trend_exit_strength)
                 base_ob = RSI_OVERBOUGHT + sideways_ob_widen
