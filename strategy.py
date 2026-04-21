@@ -1,9 +1,8 @@
 """
-Exp210: Tighten RSI exit thresholds in high-vol regimes (68/32 -> 65/35).
-RSI_OB_TIGHT and RSI_OS_TIGHT are the tightest RSI exit thresholds, used
-when vol_ratio is high (>1.8). Making them closer to 50 (65/35 vs 68/32)
-exits positions faster in volatile conditions, reducing DD risk in crash_bear
-and rally regimes. These parameters have never been tuned.
+Exp211: Reduce BASE_POSITION_PCT 0.33->0.30 for smaller positions globally.
+All regimes have DD above 5% where the exponential DD penalty applies.
+A ~9% size reduction should improve DD gates disproportionately vs the
+return reduction, and compress regime score variance (reduce std).
 """
 
 import numpy as np
@@ -46,7 +45,7 @@ FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
-BASE_POSITION_PCT = 0.33
+BASE_POSITION_PCT = 0.30
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
