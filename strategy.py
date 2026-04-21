@@ -1,9 +1,9 @@
 """
-Exp206: Reduce STRENGTH_FLOOR_SIDEWAYS from 2.4 to 1.8.  The 2.4x floor
-in trendless markets is very generous and may lead to oversized positions
-that increase DD without proportionally improving returns.  Lowering to 1.8
-still gives sideways entries larger sizing than trending markets (0.6 floor)
-but should reduce position-size variance and improve DD in sideways/rally.
+Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
+low-volume entries.  In sideways markets volume is typically below average,
+so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
+sideways entries keep closer to full size, boosting return in the weakest
+regime without meaningfully increasing DD in trending regimes.
 """
 
 import numpy as np
@@ -90,7 +90,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 1.8  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
