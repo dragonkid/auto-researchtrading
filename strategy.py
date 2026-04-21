@@ -1,10 +1,13 @@
 """
-Exp317: Reduce EMA_SLOPE_PERIOD 22->20.
-The EMA slope voter uses a long EMA whose slope indicates trend direction.
-EMA_SLOPE_PERIOD was reduced from 28->22 and kept (+0.018). The slope
-lookback was reduced from 4->3 and kept (+0.025). Both moves made the
-voter more responsive. Try reducing the EMA period further to 20 for
-even faster trend detection in the slope voter.
+Exp313: Widen TREND_GATE_DEADZONE 0.005->0.006.
+The deadzone widening series has been consistently productive:
+  0.001->0.002: +0.029
+  0.002->0.003: +0.048
+  0.003->0.004: +0.019
+  0.004->0.005: +0.083 (biggest gain yet!)
+The last step was the largest improvement, suggesting the optimal deadzone
+hasn't been reached. Try 0.006 to continue capturing more entries in sideways
+where abs(trend_avg) is noise rather than signal.
 """
 
 import numpy as np
@@ -41,7 +44,7 @@ MACD_FAST = 6
 MACD_SLOW = 16
 MACD_SIGNAL = 5
 
-EMA_SLOPE_PERIOD = 20
+EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
