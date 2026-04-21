@@ -1,8 +1,9 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp277: Increase EMA_FAST 3->4 for slightly slower EMA crossover voter.
+The fast EMA at 3 may be too noisy. EMA_FAST=5 was tried and discarded
+(crash_bear hurt -0.83), but 4 is a moderate middle ground that may reduce
+whipsaw crosses while preserving responsiveness. Only the crossover voter
+is affected (not MACD which has its own fast parameter).
 """
 
 import numpy as np
@@ -17,7 +18,7 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
-EMA_FAST = 3
+EMA_FAST = 4
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
