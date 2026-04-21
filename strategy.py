@@ -1,8 +1,8 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp280: Increase VOL_CONFIRM_LOOKBACK 12->16 for smoother volume confirmation.
+Longer volume average window reduces noise from single-bar volume spikes,
+giving a more reliable signal for the sizing boost. Reducing to 8 hurt (exp 113).
+Going the other direction should smooth out false volume signals.
 """
 
 import numpy as np
@@ -97,7 +97,7 @@ VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
-VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
+VOL_CONFIRM_LOOKBACK = 16     # short-term volume average window
 VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
