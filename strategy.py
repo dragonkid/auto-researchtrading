@@ -1,8 +1,8 @@
 """
-Exp226: Reduce VOL_LONG_LOOKBACK 48->36 for more responsive vol regime
-detection. This affects vol-spike protection, calm boost, and vol-compression
-boost/threshold reduction. A shorter lookback makes these indicators adapt
-faster to regime transitions, which should help cross-regime consistency (std).
+Exp227: Reduce VOL_COMPRESS_BOOST 0.40->0.25 for more conservative sizing
+during vol compression phases. Full compression boost was validated as helpful
+(disabling it hurt), but 0.40 may be too aggressive - a milder boost should
+reduce variance while still capturing compression breakouts.
 """
 
 import numpy as np
@@ -93,7 +93,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
-VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
+VOL_COMPRESS_BOOST = 0.25     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
