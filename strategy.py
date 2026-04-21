@@ -1,7 +1,7 @@
 """
-Exp294: Raise VOL_CONFIRM_FLOOR 0.95->0.98 to further reduce low-volume sizing penalty.
-Historical trend: 0.85->0.92->0.95 each improved composite. Low-volume penalty drags
-returns without meaningful DD improvement — nearly eliminating it should help.
+Exp296: Raise PEAK_PROFIT_MIN 0.02->0.025 to only trail-exit on larger peak profits.
+Small peaks (2%) are common in sideways — trailing exit cuts them prematurely.
+Raising the threshold lets moderate winners reach better RSI-based exits instead.
 """
 
 import numpy as np
@@ -113,7 +113,7 @@ RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is wi
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
-PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
+PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
