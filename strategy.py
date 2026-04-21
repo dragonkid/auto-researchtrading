@@ -1,8 +1,10 @@
 """
-Exp304: Widen trend gate deadzone 0.002->0.003.
-When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
-entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
-conditions where the trend gate was blocking valid vote-confirmed signals.
+Exp306: Trend-aligned position sizing.
+Scale position size up when entering with the long-term trend direction, and
+down when entering against it. This leverages the existing ret_long trend signal
+to allocate more capital to higher-probability trend-following trades while
+reducing exposure on counter-trend entries. Uses smooth blending via trend
+strength to avoid binary jumps.
 """
 
 import numpy as np
@@ -147,6 +149,9 @@ MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
 TREND_GATE_DEADZONE = 0.003  # bypass trend gate when abs(trend_avg) < this AND in sideways
+TREND_ALIGN_BOOST = 0.15     # max sizing boost when entry aligns with long-term trend
+TREND_ALIGN_PENALTY = 0.10   # max sizing reduction when entry opposes long-term trend
+TREND_ALIGN_DECAY = 0.08     # abs(ret_long) at which trend alignment effect fully engages
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -469,6 +474,22 @@ class Strategy:
                 mtf_trend_str = min(abs(ret_long) / MTF_AGREE_TREND_DECAY, 1.0)
                 mtf_agree_mult = 1.0 + MTF_AGREE_BOOST * (1.0 - mtf_trend_str)
 
+            # Trend-aligned sizing: boost when entering with trend, reduce when against
+            trend_align_mult = 1.0
+            trend_align_strength = min(abs(ret_long) / TREND_ALIGN_DECAY, 1.0)
+            if bullish and ret_long > 0:
+                # Long entry with uptrend: boost
+                trend_align_mult = 1.0 + TREND_ALIGN_BOOST * trend_align_strength
+            elif bearish and ret_long < 0:
+                # Short entry with downtrend: boost
+                trend_align_mult = 1.0 + TREND_ALIGN_BOOST * trend_align_strength
+            elif bullish and ret_long < 0:
+                # Long entry against downtrend: penalize
+                trend_align_mult = 1.0 - TREND_ALIGN_PENALTY * trend_align_strength
+            elif bearish and ret_long > 0:
+                # Short entry against uptrend: penalize
+                trend_align_mult = 1.0 - TREND_ALIGN_PENALTY * trend_align_strength
+
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
@@ -480,7 +501,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult * trend_align_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
