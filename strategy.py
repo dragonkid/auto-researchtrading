@@ -1,7 +1,8 @@
 """
-Exp346: Tighten PEAK_PROFIT_GIVEBACK 0.30->0.28 for earlier profit-locking.
-The series 0.40->0.35 (+0.004), 0.35->0.30 (+0.0003) has been consistently positive.
-Testing if 0.28 continues the improvement by protecting more of peak profits.
+Exp341: Increase RSI_EXIT_PROFIT_SCALE 18->20 to continue the series.
+The progression 12->14 (+0.024), 14->16 (+0.032), 16->18 (+0.028) has been
+consistently positive. Original value was 20 but strategy has changed significantly
+since then (dozens of other parameter changes). Testing if 20 works in current context.
 """
 
 import numpy as np
@@ -116,7 +117,7 @@ RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at b
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.28       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
+PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
