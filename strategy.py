@@ -1,11 +1,10 @@
 """
-Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
-The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
-when abs(ret_long) is small. With decay=0.10, the widening persists until
-abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
-trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
-protecting profits. The reverse direction (0.10->0.13) was tried and failed
-because it widened exits too much. This goes the opposite way.
+Exp325: Reduce MIN_VOTES in sideways markets regardless of vol.
+Currently MIN_VOTES drops to 2 only when vol_ratio<0.9 or vol is compressed.
+In sideways markets (abs(ret_long)<0.04), vol can be normal, keeping MIN_VOTES=3.
+Since sideways DD is only 4.41% (lowest regime), there's headroom for more entries.
+Adding in_sideways to the MIN_VOTES_CALM condition allows more entries in trendless
+markets, potentially boosting the weakest regime score (19.2 vs 25+ others).
 """
 
 import numpy as np
@@ -403,10 +402,10 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed) else MIN_VOTES
             # In sideways markets, bypass trend gate when trend_avg is in the noise zone
             # This prevents random ret_med/ret_long noise from blocking valid vote-confirmed entries
             in_sideways = abs(ret_long_raw) < MEANREV_TREND_THRESHOLD
+            effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed or in_sideways) else MIN_VOTES
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= effective_min_votes and btc_confirm and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= effective_min_votes and btc_confirm and (trend_bear or trend_gate_bypassed)
