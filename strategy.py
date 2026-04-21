@@ -1,8 +1,8 @@
 """
-Exp251: Tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.30->0.25 for stronger
-profit protection on large winners. Currently the tightest giveback
-exits after 30% retracement. At 25%, we lock in big wins faster,
-especially in crash/rally regimes where sharp reversals happen.
+Exp253: Increase VOL_COMPRESS_THRESHOLD 0.70->0.75 to widen the
+vol-compression detection window. This triggers the pre-breakout
+entry threshold reduction and sizing boost more frequently, catching
+more setups where short vol is compressed relative to long vol.
 """
 
 import numpy as np
@@ -92,7 +92,7 @@ TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully de
 STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
-VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
+VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
