@@ -1,8 +1,9 @@
 """
-Exp211: Reduce BASE_POSITION_PCT 0.33->0.30 for smaller positions globally.
-All regimes have DD above 5% where the exponential DD penalty applies.
-A ~9% size reduction should improve DD gates disproportionately vs the
-return reduction, and compress regime score variance (reduce std).
+Exp212: Raise VOL_CONFIRM_BOOST 0.35->0.50 for stronger volume-confirmed sizing.
+High-volume moves are more likely to follow through. Rewarding them more
+should improve returns without hurting DD (volume confirms conviction).
+Sideways regime (weakest at 15.8) may benefit most since volume breakouts
+from ranges are the highest-quality signals there.
 """
 
 import numpy as np
@@ -99,7 +100,7 @@ CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
-VOL_CONFIRM_BOOST = 0.35      # max sizing boost when volume is above average
+VOL_CONFIRM_BOOST = 0.50      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.92      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
