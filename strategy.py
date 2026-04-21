@@ -1,8 +1,8 @@
 """
-Exp280: Raise STRENGTH_FLOOR_SIDEWAYS 2.6->2.8 to increase minimum sizing
-in trendless markets. Sideways regime (18.88) is the weakest regime by 6pts.
-The sizing caps (MAX_COMBINED_MULT 3.5, high-vol 2.5) should prevent DD blowup
-in trending markets that killed the earlier attempt at 2.8 (when caps were looser).
+Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
+on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
+tightening (exiting when 30% of peak profit is given back vs 35%) improves
+composite by protecting gains better across all regimes.
 """
 
 import numpy as np
@@ -89,7 +89,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 2.8  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
