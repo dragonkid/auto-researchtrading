@@ -1,7 +1,8 @@
 """
-Exp215: Reduce VOL_CONFIRM_BOOST 0.35->0.20 to compress cross-regime sizing
-variance. High-volume boosts fire more in trending regimes (bull/rally),
-amplifying inter-regime spread. Smaller boost should reduce std.
+Exp216: Reduce MACD_SLOW 21->18 for more responsive MACD voter.
+Shorter slow EMA makes MACD histogram react faster to trend changes,
+which should help in sideways regime where trends shift quickly.
+Only affects the MACD voter (not EMA crossover which uses separate EMA_SLOW).
 """
 
 import numpy as np
@@ -33,7 +34,7 @@ RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
-MACD_SLOW = 21
+MACD_SLOW = 18
 MACD_SIGNAL = 7
 
 EMA_SLOPE_PERIOD = 28
