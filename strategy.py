@@ -1,10 +1,10 @@
 """
-Exp367: Change sideways_trend_strength decay exponent from 2.0 (quadratic) to
-1.7. The quadratic makes the sideways boost persist deep into moderate trends,
-potentially adding sizing risk. A softer exponent of 1.7 decays the boost
-slightly faster in moderate trends while preserving full boost in truly
-sideways markets. This is different from exp365 which power-dampened the
-final (1-strength) factor — this changes the decay *shape* itself.
+Exp368: Power-dampen vol_exit_blend in RSI exit calculation (^0.85). Currently
+the vol-adaptive RSI exit uses a linear blend from RSI_EXIT_VOL_LOW to
+RSI_EXIT_VOL_HIGH. A power-dampened blend makes the tightening less aggressive
+in moderate volatility regimes — only truly high vol triggers strong RSI exit
+tightening. This should reduce premature RSI exits in moderate-vol conditions,
+especially in sideways where vol can fluctuate around the low/high thresholds.
 """
 
 import numpy as np
@@ -623,7 +623,7 @@ class Strategy:
                             target = 0.0
 
                 # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
-                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
+                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW))) ** 0.85
                 # Trend-adaptive widening: in sideways markets, widen OB/OS to hold winners longer
                 trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0)
                 sideways_ob_widen = (RSI_OB_WIDE - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
