@@ -1,11 +1,10 @@
 """
-Exp242: Profit-scaled peak-profit giveback.
-Tighter giveback threshold when peak profit is larger. A 2% peak profit uses
-the base 40% giveback (0.8% absolute), but a 5%+ peak profit uses 30% giveback
-(1.5% absolute) — protecting more of the larger gains. Linear interpolation
-between PEAK_PROFIT_GIVEBACK (at PEAK_PROFIT_MIN) and PEAK_PROFIT_GIVEBACK_TIGHT
-(at PEAK_PROFIT_TIGHT_AT). Should improve crash_bear/rally where big winners
-sometimes give back too much before exit.
+Exp243: Young position RSI exit grace period.
+Just-entered positions (1-3 bars old) get wider RSI exit thresholds to avoid
+premature exits from entry momentum. The widening decays linearly from
+RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN at bar 1 to zero at RSI_YOUNG_GRACE_BARS.
+This should reduce whipsaws in sideways markets where entries often hit
+RSI extremes right after opening.
 """
 
 import numpy as np
@@ -113,6 +112,9 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
+RSI_YOUNG_GRACE_BARS = 3          # bars after entry during which RSI exit is widened
+RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
+RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
@@ -175,6 +177,7 @@ class Strategy:
         self.exit_bar = {}
         self.bar_count = 0
         self.peak_pnl = {}  # track peak unrealized PnL per symbol
+        self.entry_bar = {}  # track bar count at entry for young position grace
 
     def _calc_atr(self, history, lookback):
         if len(history) < lookback + 1:
@@ -616,6 +619,13 @@ class Strategy:
                         # Tighten toward center (50): reduce OB, raise OS
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
+                # Young position grace: widen RSI exit for recently-entered positions
+                # to avoid premature exit from entry momentum
+                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                if bars_held < RSI_YOUNG_GRACE_BARS:
+                    grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
+                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
+                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
@@ -655,12 +665,14 @@ class Strategy:
                     self.peak_prices[symbol] = mid
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
                     self.peak_pnl[symbol] = 0.0
+                    self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
                     self.pyramided.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
+                    self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
@@ -668,5 +680,6 @@ class Strategy:
                     self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
                     self.pyramided[symbol] = False
                     self.peak_pnl[symbol] = 0.0
+                    self.entry_bar[symbol] = self.bar_count
 
         return signals
