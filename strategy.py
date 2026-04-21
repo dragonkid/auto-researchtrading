@@ -1,10 +1,11 @@
 """
-Exp320: Raise MIN_VOTES_CALM_VOL 0.9->1.0.
-The reduced vote requirement (MIN_VOTES_CALM=2 vs MIN_VOTES=3) currently only
-applies when vol_ratio < 0.9. Raising to 1.0 extends this to all "normal"
-volatility regimes (vol at or below target). This should generate more entries
-in moderate-vol conditions where DD headroom still exists, without affecting
-high-vol regimes where stricter entry is needed.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -135,7 +136,7 @@ COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
-MIN_VOTES_CALM_VOL = 1.0  # vol_ratio below which reduced votes apply
+MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
