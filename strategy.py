@@ -1,7 +1,8 @@
 """
-Exp255: Reduce VOL_SPIKE_SCALE 0.70->0.60 for more aggressive position
-size reduction during vol spikes. When short-term vol exceeds long-term
-vol, reduce size more aggressively to protect DD in crash/volatile regimes.
+Exp253: Increase VOL_COMPRESS_THRESHOLD 0.70->0.75 to widen the
+vol-compression detection window. This triggers the pre-breakout
+entry threshold reduction and sizing boost more frequently, catching
+more setups where short vol is compressed relative to long vol.
 """
 
 import numpy as np
@@ -49,7 +50,7 @@ VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
-VOL_SPIKE_SCALE = 0.6
+VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
