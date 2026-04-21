@@ -1,11 +1,11 @@
 """
-Exp323: Increase RSI_TREND_BIAS 2.0->2.5.
-RSI voter threshold bias toward the long-term trend direction. In uptrends,
-bullish RSI threshold is lowered (easier to vote bullish); in downtrends,
-bearish threshold is lowered (easier to vote bearish). The bias was introduced
-at 2.0 (exp198, +0.066). RSI_TREND_BIAS=3.0 was tried (exp199, -0.007 — too
-aggressive). Testing 2.5 as an untried middle ground for stronger but not
-excessive trend alignment of the RSI voter.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -26,7 +26,7 @@ RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
-RSI_TREND_BIAS = 2.5           # max RSI voter threshold shift toward trend direction
+RSI_TREND_BIAS = 2.0           # max RSI voter threshold shift toward trend direction
 RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
