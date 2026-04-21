@@ -194,3 +194,4 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 99e450e	22.835127	24.986327	4.302400	keep	add trend gate deadzone in sideways (bypass when abs(trend_avg)<0.001 and trendless, sideways +0.10, std down, composite +0.043)
 45f630b	22.864442	25.013795	4.298707	keep	widen trend gate deadzone 0.001->0.002 for more entries in near-trendless regimes (mean +0.03, std -0.003, composite +0.029)
 -	22.641894	24.619703	3.955618	discard	raise RSI_EXIT_VOL_LOW 0.7->0.85 for wider low-vol RSI exits (mean dropped 25.01->24.62, sideways hurt 19.08, composite 22.864->22.642)
+20d0111	22.864742	25.014250	4.299016	keep	reduce dyn_threshold ceiling 0.020->0.015 for more entries in high-vol regimes (marginal +0.0003)
