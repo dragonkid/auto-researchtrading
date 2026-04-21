@@ -1,9 +1,10 @@
 """
-Exp262: Use actual high/low prices for Donchian channel breakout
-voter instead of close-only. Standard Donchian channels use the
-highest high and lowest low, not closes. This should provide more
-accurate breakout detection since true price extremes are more
-meaningful support/resistance than closing prices.
+Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
+with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
+uses a 48-bar baseline while vol regime detection uses 36 bars.
+Aligning them makes volume confirmation more responsive to regime
+changes, consistent with the pattern of faster lookbacks improving
+scores (VOL_LONG_LOOKBACK 48->36 was keep).
 """
 
 import numpy as np
@@ -357,14 +358,11 @@ class Strategy:
                         vol_breakout_bear = True
 
             # Donchian channel breakout voter: price at N-bar high = bullish, N-bar low = bearish
-            # Uses actual high/low prices for true Donchian channel (not close-only)
             donchian_bull = False
             donchian_bear = False
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            if len(highs) >= DONCHIAN_PERIOD + 1:
-                donchian_high = np.max(highs[-(DONCHIAN_PERIOD+1):-1])
-                donchian_low = np.min(lows[-(DONCHIAN_PERIOD+1):-1])
+            if len(closes) >= DONCHIAN_PERIOD + 1:
+                donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
+                donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
                 if mid >= donchian_high:
                     donchian_bull = True
                 elif mid <= donchian_low:
