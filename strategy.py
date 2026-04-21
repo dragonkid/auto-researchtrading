@@ -1,8 +1,9 @@
 """
-Exp240: Raise vshort voter threshold multiplier 0.5->0.7 for more selective
-very-short-term momentum voter. Lower mult (0.3) was tried and failed due
-to std increase. Higher mult should improve signal quality by requiring
-stronger short-term moves, filtering out noise especially in sideways.
+Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
+This makes threshold more responsive to vol: lower in calm markets (more
+entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
+higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
+Should help both sideways and crash_bear simultaneously.
 """
 
 import numpy as np
@@ -303,8 +304,8 @@ class Strategy:
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.7
-            vshort_bear = ret_vshort < -dyn_threshold * 0.7
+            vshort_bull = ret_vshort > dyn_threshold * 0.5
+            vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
