@@ -1,9 +1,9 @@
 """
-Exp334: Disable CROSS_ASSET_BOOST (0.20->0.0) to remove cross-asset agreement
-sizing multiplier. Simplification experiment: the boost was reduced from 0.30->0.20
-as a keep (+0.017). The cross-asset agreement logic adds complexity and sizing
-variance. If score holds or improves without it, the simpler version is better
-for out-of-sample generalization.
+Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
+The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
+volume confirmation more responsive to recent volume patterns. Shorter baseline
+means volume ratio reacts faster to regime changes, potentially improving entries
+during transitions between regimes.
 """
 
 import numpy as np
@@ -98,7 +98,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
-CROSS_ASSET_BOOST = 0.0  # DISABLED: simplification, was 0.20
+CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
