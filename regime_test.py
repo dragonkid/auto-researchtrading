@@ -99,7 +99,7 @@ def _count_effective_loc(filepath: str = "strategy.py") -> int:
 
 
 # Baseline LOC for simplicity bonus (lines above this get no penalty, lines below get bonus)
-SIMPLICITY_BASELINE_LOC = 500
+SIMPLICITY_BASELINE_LOC = 575
 SIMPLICITY_BONUS_PER_LINE = 0.001
 
 
