@@ -224,3 +224,4 @@ d6c3fdc	23.108009	25.259786	4.303553	keep	widen TREND_GATE_DEADZONE 0.005->0.006
 f34061a	23.119803	25.309970	4.380334	keep	reduce MIN_VOTES to 2 in sideways markets via in_sideways condition (marginal +0.0005, std down 4.39->4.38)
 
 -	21.144993	23.731847	5.173708	discard	add momentum acceleration voter as 10th voter (2nd derivative, too noisy, sideways DD up 4.41->5.73%, rally DD up, composite 23.120->21.145)-	22.864152	25.152007	4.575711	discard	reduce SHORT_WINDOW 8->7 for faster vshort voter (crash_bear -0.81, sideways -0.28, std up 4.38->4.58, composite 23.120->22.864)
+b6aa7c6	23.123522	25.337707	4.428370	keep	raise MAX_COMBINED_VOL_THRESHOLD 1.0->1.2 to delay high-vol cap (bull +0.26, sideways +0.16, crash -0.32, composite +0.004)
