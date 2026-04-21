@@ -1,8 +1,8 @@
 """
-Exp379: Tighten MEANREV_RSI thresholds 49/51->42/58 for higher-quality
-mean-reversion entries. At 49/51 virtually every bar triggers MR entry
-in sideways — too noisy. Requiring more extreme RSI should filter out
-low-quality entries and improve sideways sharpe.
+Exp377: Increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend elevated
+strength_scale floor into moderate-trend environments. Sideways regime
+has lowest DD (4.49%) with room for more risk. This widens the zone
+where the elevated strength floor (2.6) applies before decaying to 0.6.
 """
 
 import numpy as np
@@ -88,8 +88,8 @@ VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 42       # RSI threshold for mean-reversion long entries
-MEANREV_RSI_OVERBOUGHT = 58     # RSI threshold for mean-reversion short entries
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
