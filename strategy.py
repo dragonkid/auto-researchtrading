@@ -1,10 +1,9 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp260: Reduce LINREG_PERIOD 16->14 for a faster linear regression
+slope voter. Exp68 tried 16->12 (too fast, sideways DD up). 16->14
+is a moderate reduction that follows the pattern of faster lookbacks
+improving scores (VOL_LONG_LOOKBACK 48->36, EMA_SLOPE_PERIOD 28->22,
+EMA_SLOPE_LOOKBACK 4->3 were all keeps).
 """
 
 import numpy as np
@@ -41,7 +40,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 16  # rolling linear regression window for slope voter
+LINREG_PERIOD = 14  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
