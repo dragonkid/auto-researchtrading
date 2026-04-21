@@ -1,8 +1,8 @@
 """
-Exp273: Reduce VOL_LOOKBACK 24->18 for more responsive realized_vol calculation.
-This affects vol_ratio (the base vol scaling that drives position sizing, threshold
-adaptation, and many other decisions). A shorter lookback makes the strategy react
-faster to vol regime changes — potentially catching transitions earlier.
+Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
+on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
+tightening (exiting when 30% of peak profit is given back vs 35%) improves
+composite by protecting gains better across all regimes.
 """
 
 import numpy as np
@@ -46,7 +46,7 @@ FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.30
-VOL_LOOKBACK = 18
+VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
