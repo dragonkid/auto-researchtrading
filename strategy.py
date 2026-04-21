@@ -1,8 +1,8 @@
 """
-Exp363: Increase PEAK_PROFIT_AGE_TIGHTEN 0.10->0.15 for more aggressive profit-locking
-on aging positions. Positions held >8 bars get their giveback tightened by up to 15%
-(from 10%) of the giveback fraction. This protects more profit on stale winning positions
-that are slowly fading, reducing giveback especially for positions held 12-16+ bars.
+Exp362: Raise dyn_threshold floor 0.003->0.004. In very low-vol regimes, the entry
+threshold can drop to 0.003 (after base calc + trend reduction + vol compression
+reduction). This may cause too many low-quality entries on noise. Raising the floor
+to 0.004 ensures a minimum momentum signal is required even in the calmest conditions.
 """
 
 import numpy as np
@@ -121,7 +121,7 @@ PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers 
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
-PEAK_PROFIT_AGE_TIGHTEN = 0.15    # max additional tightening from age (subtracted from giveback)
+PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
