@@ -217,3 +217,5 @@ d6c3fdc	23.108009	25.259786	4.303553	keep	widen TREND_GATE_DEADZONE 0.005->0.006
 -	22.853756	25.085021	4.462531	discard	increase LINREG_PERIOD 16->20 for smoother linreg slope voter (mean dropped 25.31->25.09, std up 4.39->4.46, composite 23.119->22.854)
 	-	23.082278	25.284013	4.403471	discard	reduce VOL_BREAKOUT_LONG 20->16 for more responsive vol breakout baseline (mean flat, std up 4.39->4.40, sideways hurt, composite 23.119->23.082)
 -	22.623727	24.978203	4.708952	discard	reduce RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->3.0 (all regimes worse, mean dropped 25.31->24.98, std up 4.39->4.71, composite 23.119->22.624)
+
+-	23.112768	25.293389	4.361243	discard	increase RSI_TREND_BIAS 2.0->2.5 for stronger RSI voter trend alignment (mean flat, std up, composite 23.119->23.113)
