@@ -1,8 +1,8 @@
 """
-Exp385: Remove dead code and deduplicate ret_long.
-- Remove self.btc_momentum (assigned but never read) — 4 LOC
-- Merge ret_long into ret_long (identical computation) — 1 LOC
-Zero behavior change, -5 LOC for simplicity bonus.
+Exp386: Asymmetric RSI exit widening by trend alignment.
+When position aligns with long-term trend, widen OB/OS exit by up to 3pts
+to let trend-aligned winners run longer. When against trend, tighten by
+up to 2pts for faster loss-cutting. Strength scales with abs(ret_long).
 """
 
 import numpy as np
@@ -88,6 +88,8 @@ VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
+RSI_EXIT_WITH_TREND_WIDEN = 3.0   # max OB/OS widening when position aligns with trend
+RSI_EXIT_AGAINST_TREND_TIGHTEN = 2.0  # max OB/OS tightening when position opposes trend
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
@@ -491,6 +493,14 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_os_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
+                # Trend-aligned asymmetric exit: widen when with trend, tighten when against
+                trend_align_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0)
+                if (current_pos > 0 and ret_long > 0) or (current_pos < 0 and ret_long < 0):
+                    effective_ob += RSI_EXIT_WITH_TREND_WIDEN * trend_align_strength
+                    effective_os -= RSI_EXIT_WITH_TREND_WIDEN * trend_align_strength
+                elif (current_pos > 0 and ret_long < 0) or (current_pos < 0 and ret_long > 0):
+                    effective_ob -= RSI_EXIT_AGAINST_TREND_TIGHTEN * trend_align_strength
+                    effective_os += RSI_EXIT_AGAINST_TREND_TIGHTEN * trend_align_strength
                 # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
