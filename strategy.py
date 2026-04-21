@@ -1,8 +1,9 @@
 """
-Exp253: Increase VOL_COMPRESS_THRESHOLD 0.70->0.75 to widen the
-vol-compression detection window. This triggers the pre-breakout
-entry threshold reduction and sizing boost more frequently, catching
-more setups where short vol is compressed relative to long vol.
+Exp258: Reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate
+cross-asset agreement sizing. Previously tested at 0.15 (too low)
+and 0.50 (too high). A moderate reduction should dampen correlated
+drawdowns during synchronized selloffs while still rewarding
+broad momentum agreement.
 """
 
 import numpy as np
@@ -95,7 +96,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
-CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
+CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window

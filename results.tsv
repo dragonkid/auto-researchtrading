@@ -143,3 +143,5 @@ cf83764	22.082435	24.455509	4.746148	keep	add peak-profit trailing exit grace pe
 7c2aad7	22.109769	24.481135	4.742732	keep	increase VOL_COMPRESS_THRESHOLD 0.70->0.75 for wider vol-compression detection (all regimes marginally up, composite +0.001)
 -	21.888761	24.350057	4.922592	discard	reduce VOL_SPIKE_SCALE 0.70->0.60 (mean dropped 24.48->24.35, std up 4.74->4.92, all regimes slightly worse, composite 22.110->21.889)
 -	21.771278	24.353161	5.163765	discard	conditional young-position RSI grace, only widen when break-even+ (mean dropped 24.48->24.35, std up 4.74->5.16, composite 22.110->21.771)
+
+-	20.278711	21.875207	3.192992	discard	add momentum consistency filter 3/5 bars in trade direction (too restrictive, mean dropped 24.48->21.88, composite 22.110->20.279)
