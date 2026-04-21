@@ -222,3 +222,5 @@ d6c3fdc	23.108009	25.259786	4.303553	keep	widen TREND_GATE_DEADZONE 0.005->0.006
 -	23.109707	25.304762	4.390109	discard	reduce ATR_STOP_MULT_BASE 4.5->3.5 to activate ATR trailing stop as backstop exit (mean dropped 25.31->25.30, composite 23.119->23.110)
 
 f34061a	23.119803	25.309970	4.380334	keep	reduce MIN_VOTES to 2 in sideways markets via in_sideways condition (marginal +0.0005, std down 4.39->4.38)
+
+-	21.144993	23.731847	5.173708	discard	add momentum acceleration voter as 10th voter (2nd derivative, too noisy, sideways DD up 4.41->5.73%, rally DD up, composite 23.120->21.145)
