@@ -1,7 +1,7 @@
 """
-Exp365: Power-dampen vol_compress_boost strength. Apply ^0.85 to compress_strength
-before computing vol_compress_boost, following the successful power-dampening pattern.
-This compresses the extreme end of vol compression sizing while preserving moderate boosts.
+Exp366: Power-dampen trend_adapt_strength in trend gate. Apply ^0.85 to make
+the transition from sideways weight (0.90) to trending weight (0.70) happen
+faster, following the successful power-dampening pattern across other decays.
 """
 
 import numpy as np
@@ -397,7 +397,7 @@ class Strategy:
 
             # Trend gate: weighted average of med and long returns must confirm direction
             # In sideways markets, shift weight toward faster ret_med for responsiveness
-            trend_adapt_strength = min(abs(ret_long) / TREND_GATE_ADAPT_DECAY, 1.0)
+            trend_adapt_strength = min(abs(ret_long) / TREND_GATE_ADAPT_DECAY, 1.0) ** 0.85
             trend_med_weight = TREND_GATE_MED_WEIGHT_SIDEWAYS + (TREND_GATE_MED_WEIGHT_BASE - TREND_GATE_MED_WEIGHT_SIDEWAYS) * trend_adapt_strength
             trend_avg = trend_med_weight * ret_med + (1.0 - trend_med_weight) * ret_long
             trend_bull = trend_avg > 0
