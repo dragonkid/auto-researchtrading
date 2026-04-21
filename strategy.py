@@ -1,8 +1,8 @@
 """
-Exp221: Increase TREND_GATE_MED_WEIGHT_BASE 0.60->0.70 for even faster trend gate.
-The 0.50->0.60 bump was the biggest single win recently (+0.166 composite).
-Pushing further toward ret_med in trending markets should make the trend
-gate even more responsive to direction changes, continuing the same pattern.
+Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
+trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
+fully transition, the strategy spends more time using the faster ret_med
+weighting that drove the last two composite wins.
 """
 
 import numpy as np
@@ -87,7 +87,7 @@ TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
-TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
+TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
