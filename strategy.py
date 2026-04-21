@@ -1,7 +1,7 @@
 """
-Exp290: Reduce RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->3.0.
-Less aggressive young-position RSI exit widening allows profitable positions
-to exit via RSI earlier, reducing giveback during first 4 bars.
+Exp289: Reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation.
+Allows peak-profit trailing exit to fire one bar earlier, potentially locking in
+more profit during fast reversals across all regimes.
 """
 
 import numpy as np
@@ -110,8 +110,8 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightenin
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
-RSI_YOUNG_OB_WIDEN = 3.0          # max OB widening (added to effective_ob) at bar 1
-RSI_YOUNG_OS_WIDEN = 3.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
+RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
