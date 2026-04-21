@@ -1,9 +1,9 @@
 """
-Exp210: Tighten RSI exit thresholds in high-vol regimes (68/32 -> 65/35).
-RSI_OB_TIGHT and RSI_OS_TIGHT are the tightest RSI exit thresholds, used
-when vol_ratio is high (>1.8). Making them closer to 50 (65/35 vs 68/32)
-exits positions faster in volatile conditions, reducing DD risk in crash_bear
-and rally regimes. These parameters have never been tuned.
+Exp211: Reduce MAX_COMBINED_MULT_LOW_VOL 6.5->5.5 to cap sizing in calm markets.
+Bull regime scores 29.2 vs sideways 16.1 — the gap drives std up to 4.87.
+Reducing the low-vol sizing cap moderates bull returns, bringing regimes
+closer together and reducing std. composite = mean - 0.5*std, so std
+reduction of 1 point is worth 0.5 to composite even if mean drops slightly.
 """
 
 import numpy as np
@@ -126,7 +126,7 @@ HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
-MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
+MAX_COMBINED_MULT_LOW_VOL = 5.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
