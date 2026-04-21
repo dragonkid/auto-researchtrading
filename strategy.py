@@ -1,8 +1,8 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp280: Reduce RSI_EXIT_PROFIT_SCALE 12->10 for even gentler profit-scaled RSI
+exit tightening. The 20->12 reduction was a +0.166 win — less tightening lets
+winners run longer (peak-profit trailing exit handles the protection). Testing
+if further reduction to 10 continues the trend.
 """
 
 import numpy as np
@@ -109,7 +109,7 @@ MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion 
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
-RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
+RSI_EXIT_PROFIT_SCALE = 10.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
