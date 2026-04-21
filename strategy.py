@@ -1,7 +1,7 @@
 """
-Exp289: Reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation.
-Allows peak-profit trailing exit to fire one bar earlier, potentially locking in
-more profit during fast reversals across all regimes.
+Exp290: Tighten PEAK_PROFIT_GIVEBACK 0.30->0.28 for earlier exit on fading winners.
+The trend from 0.40->0.35->0.30 has been consistently positive. A tighter giveback
+means we exit sooner when peak profit starts fading, protecting more gains.
 """
 
 import numpy as np
@@ -114,7 +114,7 @@ RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at b
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
+PEAK_PROFIT_GIVEBACK = 0.28       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
