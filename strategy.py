@@ -1,9 +1,11 @@
 """
-Exp230: Gentler profit-scaled RSI exit tightening.
-Reduce RSI_EXIT_PROFIT_SCALE from 20.0 to 12.0 so that profit-triggered
-RSI exit tightening ramps more gradually. This lets positions develop
-longer before RSI exits fire, particularly helping in sideways markets
-where profits are smaller and premature exits hurt returns.
+Exp231: Increase entry threshold reduction in sideways markets.
+Raise TREND_THRESHOLD_SCALE from 0.38 to 0.45 so that the dynamic
+entry threshold drops by up to 45% (vs 38%) when abs(ret_long) is near
+zero.  This specifically targets the weakest regime (sideways at 17.45)
+by making it easier to enter on weaker momentum when no clear trend
+exists, while having minimal effect on trending regimes where the
+reduction already decays away.
 """
 
 import numpy as np
@@ -83,7 +85,7 @@ DECEL_MULT_BASE = 999.0         # DISABLED: decel exit hurts score (+0.430 when 
 DECEL_MULT_TREND = 999.0        # DISABLED: RSI exit + flip is better exit mechanism
 DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
-TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
+TREND_THRESHOLD_SCALE = 0.45  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
