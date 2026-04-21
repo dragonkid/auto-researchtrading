@@ -1,9 +1,10 @@
 """
-Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
-In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
-vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
-allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
-two weakest dimensions: sideways return and crash-regime DD.
+Exp205: Disable vol-compression sizing boost and threshold reduction.
+VOL_COMPRESS_BOOST and VOL_COMPRESS_THRESH_REDUCE add size and lower entry
+threshold when short-term vol drops below long-term vol, betting on a breakout.
+This is speculative and adds two interacting features.  Removing them simplifies
+sizing logic (9 -> 8 active multipliers) and may reduce DD in sideways/rally
+regimes where these triggers fire most often.
 """
 
 import numpy as np
@@ -94,8 +95,8 @@ STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
-VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
-VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
+VOL_COMPRESS_BOOST = 0.0      # DISABLED: speculative breakout bet adds complexity without clear benefit
+VOL_COMPRESS_THRESH_REDUCE = 0.0   # DISABLED: vol-compression threshold reduction removed with boost
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
