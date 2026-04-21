@@ -1,10 +1,10 @@
 """
-Exp219: Reduce EMA_SLOPE_LOOKBACK 4->3 for faster EMA slope voter.
-The EMA slope voter measures the change in a 22-period EMA over the
-last N bars. Reducing the lookback from 4 to 3 makes slope detection
-more responsive to recent trend changes, continuing the pattern of
-successful speed-ups (MACD, EMA_SLOPE_PERIOD). This parameter has
-never been tuned.
+Exp220: Increase TREND_GATE_MED_WEIGHT_BASE 0.50->0.60 for faster trend gate.
+The trend gate combines ret_med and ret_long to confirm direction.
+In trending markets it currently weights ret_med at 0.50 — increasing
+to 0.60 gives more weight to the faster medium-term return, continuing
+the successful pattern of faster/more responsive signals (MACD, EMA slope).
+This makes the trend gate quicker to confirm new trends.
 """
 
 import numpy as np
@@ -87,7 +87,7 @@ DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reache
 TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
-TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
+TREND_GATE_MED_WEIGHT_BASE = 0.60   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
