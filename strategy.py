@@ -1,8 +1,9 @@
 """
-Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
-regardless of position age. Older positions (>8 bars) have exhausted their momentum —
-tighten giveback to lock in profits earlier. Young positions keep the standard
-giveback. This targets aging winners that are just slowly bleeding away gains.
+Exp357: Momentum-confirmed RSI exit. Currently RSI overbought/oversold exits trigger
+purely on RSI level, which can cause premature exits during strong momentum moves
+where RSI briefly spikes then reverts. Add a vshort momentum confirmation: only exit
+on RSI OB/OS if the very-short-term return also confirms price reversal (ret_vshort
+opposing the position direction). This lets positions survive transient RSI spikes.
 """
 
 import numpy as np
@@ -115,6 +116,7 @@ RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_EXIT_MOM_CONFIRM = True       # require vshort momentum to confirm RSI exit direction
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
@@ -649,10 +651,19 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                # Momentum-confirmed RSI exit: only exit on OB/OS if vshort momentum
+                # also opposes the position (avoids premature exit during strong moves)
+                rsi_mom_ok = not RSI_EXIT_MOM_CONFIRM
                 if current_pos > 0 and rsi > effective_ob:
-                    target = 0.0
+                    if RSI_EXIT_MOM_CONFIRM:
+                        rsi_mom_ok = ret_vshort < 0  # price declining confirms OB exit
+                    if rsi_mom_ok or rsi > effective_ob + 5:  # hard ceiling bypass
+                        target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
-                    target = 0.0
+                    if RSI_EXIT_MOM_CONFIRM:
+                        rsi_mom_ok = ret_vshort > 0  # price rising confirms OS exit
+                    if rsi_mom_ok or rsi < effective_os - 5:  # hard ceiling bypass
+                        target = 0.0
 
                 # Peak-profit trailing exit: lock in winners that are fading
                 # Profit-scaled giveback: tighter for larger peaks to protect big wins
