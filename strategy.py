@@ -1,8 +1,8 @@
 """
-Exp286: Increase LINREG_PERIOD 16->20 for smoother linear regression slope voter.
-A longer regression window should produce a more stable trend signal, reducing
-noise-driven false votes especially in volatile/choppy regimes. Period 12 was
-tried before and hurt (too fast), so testing the opposite direction (slower/smoother).
+Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
+on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
+tightening (exiting when 30% of peak profit is given back vs 35%) improves
+composite by protecting gains better across all regimes.
 """
 
 import numpy as np
@@ -39,7 +39,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 20  # rolling linear regression window for slope voter
+LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
