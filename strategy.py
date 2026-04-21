@@ -1,9 +1,10 @@
 """
-Exp327: Reduce MACD_FAST 6->5 for a more responsive MACD fast EMA.
-MACD_FAST 8->6 was a keep (+0.002). MACD_SLOW has been reduced 21->18->16.
-MACD_SIGNAL 7->5. Continuing the pattern of faster MACD parameters.
-A smaller fast EMA makes the MACD line more reactive to recent price changes,
-potentially catching trend starts earlier in all regimes.
+Exp325: Reduce MIN_VOTES in sideways markets regardless of vol.
+Currently MIN_VOTES drops to 2 only when vol_ratio<0.9 or vol is compressed.
+In sideways markets (abs(ret_long)<0.04), vol can be normal, keeping MIN_VOTES=3.
+Since sideways DD is only 4.41% (lowest regime), there's headroom for more entries.
+Adding in_sideways to the MIN_VOTES_CALM condition allows more entries in trendless
+markets, potentially boosting the weakest regime score (19.2 vs 25+ others).
 """
 
 import numpy as np
@@ -36,7 +37,7 @@ RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.08  # abs(ret_long) at which sideways widening fully decays
 
-MACD_FAST = 5
+MACD_FAST = 6
 MACD_SLOW = 16
 MACD_SIGNAL = 5
 
