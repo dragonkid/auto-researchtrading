@@ -1,9 +1,8 @@
 """
-Exp214: Tighten STOP_AGAINST_TREND_MULT 0.75->0.65 for faster exit of
-counter-trend positions. When a position opposes the long-term trend, tighter
-stops should reduce DD in trending regimes (bull/crash/rally) while having
-minimal impact on sideways where trends are weak. Should compress std across
-regimes by protecting more in strong-trend conditions.
+Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
+The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
+governs mid-vol bars; tightening it should compress cross-regime variance by
+limiting position sizes in moderate-volatility conditions.
 """
 
 import numpy as np
@@ -74,7 +73,7 @@ SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) re
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
-STOP_AGAINST_TREND_MULT = 0.65  # tighter stop when position opposes long-term trend
+STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
 
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
