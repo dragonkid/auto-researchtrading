@@ -1,8 +1,8 @@
 """
-Exp364: Reduce PEAK_PROFIT_AGE_BARS 8->6 to start tightening peak-profit giveback earlier
-on aging positions. Positions held longer than 6 bars (instead of 8) will begin having their
-giveback threshold reduced, locking in profits sooner on aging trades. This should help in
-sideways regimes where extended holds are riskier and reduce std across regimes.
+Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
+sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
+consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
+strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
 """
 
 import numpy as np
@@ -120,7 +120,7 @@ PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activat
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
-PEAK_PROFIT_AGE_BARS = 6          # bars held beyond which giveback starts tightening
+PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
