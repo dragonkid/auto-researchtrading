@@ -1,10 +1,9 @@
 """
-Exp232: Increase MAX_COMBINED_TREND_BOOST 1.5->2.0.
-This parameter raises the sizing cap specifically in sideways (weak-trend)
-markets. Sideways has the lowest score (17.49) with DD of only 4.73% —
-plenty of headroom before the 5% soft penalty. A higher cap allows the
-existing sizing multipliers to stack more aggressively in sideways while
-not affecting trending regimes where the boost decays to zero.
+Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
+In trendless markets, the strength_scale floor determines minimum sizing.
+Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
+size increase should improve returns without blowing DD. 2.8 was tried
+before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
 """
 
 import numpy as np
@@ -134,7 +133,7 @@ MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headro
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
-MAX_COMBINED_TREND_BOOST = 2.0    # max cap increase in sideways (weak trend) markets
+MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
