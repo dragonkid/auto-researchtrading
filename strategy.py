@@ -1,8 +1,8 @@
 """
-Exp211: Reduce BASE_POSITION_PCT 0.33->0.30 for smaller positions globally.
-All regimes have DD above 5% where the exponential DD penalty applies.
-A ~9% size reduction should improve DD gates disproportionately vs the
-return reduction, and compress regime score variance (reduce std).
+Exp212: Reduce MAX_COMBINED_MULT_HIGH_VOL 3.0->2.5 to tighten sizing cap
+in high-vol regimes. The std across regimes is high (5.08) — the main
+drag on composite score. Tighter high-vol cap should reduce DD in crash/
+volatile periods while preserving returns in calm regimes, compressing std.
 """
 
 import numpy as np
@@ -126,7 +126,7 @@ HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
-MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
+MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
