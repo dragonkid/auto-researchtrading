@@ -1,9 +1,9 @@
 """
-Exp217: Reduce MACD_SIGNAL 7->5 for faster MACD histogram response.
-With MACD_FAST=6 and MACD_SLOW=18 already responsive, the signal line
-at 7 is the remaining smoothing bottleneck. Reducing to 5 makes the
-histogram react faster to trend changes. Prior exp tried 7->9 (worse),
-but faster hasn't been tested.
+Exp218: Reduce EMA_SLOPE_PERIOD 28->22 for faster EMA slope voter.
+With MACD already sped up (6/18/5), the EMA slope voter at 28 periods
+is now the slowest trend indicator. Reducing to 22 should give more
+responsive trend detection while still being smooth (22-period EMA
+with 4-bar lookback). This parameter has never been tuned.
 """
 
 import numpy as np
@@ -38,7 +38,7 @@ MACD_FAST = 6
 MACD_SLOW = 18
 MACD_SIGNAL = 5
 
-EMA_SLOPE_PERIOD = 28
+EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 4
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
