@@ -1,7 +1,7 @@
 """
-Exp366: Power-dampen trend_adapt_strength in trend gate. Apply ^0.85 to make
-the transition from sideways weight (0.90) to trending weight (0.70) happen
-faster, following the successful power-dampening pattern across other decays.
+Exp367: Power-dampen cooldown_trend_strength (^0.85) so the transition from
+sideways cooldown (0 bars) to trending cooldown (3 bars) happens faster in
+moderate trends, reducing whipsaws in transitional regimes.
 """
 
 import numpy as np
@@ -412,7 +412,7 @@ class Strategy:
             bearish = bear_votes >= effective_min_votes and btc_confirm and (trend_bear or trend_gate_bypassed)
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
-            cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
+            cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0) ** 0.85
             effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
