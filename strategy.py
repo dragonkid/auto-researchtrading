@@ -1,10 +1,8 @@
 """
-Exp223: Reduce COOLDOWN_SIDEWAYS_DECAY 0.06->0.04 so the full 3-bar cooldown
-stays active in more market conditions.  Only truly trendless markets
-(abs(ret_long)<0.04) get reduced cooldown.  The COOLDOWN_BARS 2->3 jump was
-the biggest single improvement (+0.75); preserving it in moderate-trend
-environments should reduce whipsaw re-entries and improve cross-regime
-consistency (lower std).
+Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
+trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
+fully transition, the strategy spends more time using the faster ret_med
+weighting that drove the last two composite wins.
 """
 
 import numpy as np
@@ -119,7 +117,7 @@ VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
-COOLDOWN_SIDEWAYS_DECAY = 0.04  # abs(ret_long) below which cooldown is reduced
+COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
