@@ -1,7 +1,9 @@
 """
-Exp289: Increase VOL_COMPRESS_THRESH_REDUCE 0.25->0.35 for more aggressive
-entry threshold reduction during vol compression. Should allow more entries
-during pre-breakout compression periods, particularly helping sideways regime.
+Exp284: Vol-compression aware MIN_VOTES. During vol compression (short/long
+vol ratio < VOL_COMPRESS_THRESHOLD=0.75), reduce MIN_VOTES to 2 regardless
+of vol_ratio. Rationale: vol compression signals imminent breakout; we already
+boost size and reduce threshold, but still require 3 votes for entry. Allowing
+2-vote entries during compression should capture more breakout moves early.
 """
 
 import numpy as np
@@ -93,7 +95,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
-VOL_COMPRESS_THRESH_REDUCE = 0.35  # max entry threshold reduction during vol compression
+VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
