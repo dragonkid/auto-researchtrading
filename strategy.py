@@ -1,9 +1,8 @@
 """
-Exp271: Increase CALM_BOOST_MAX 0.8->1.0 for larger positions in calm regimes.
-The strategy consistently benefits from more aggressive sizing when vol is low
-(VOL_SPIKE_SCALE increased from 0.7 to 0.95 over 4 experiments). CALM_BOOST
-adds up to 80% extra size when short_vol <= long_vol. Pushing to 100% should
-improve returns without hurting DD since conditions are inherently low-risk.
+Exp269: Increase VOL_SPIKE_SCALE 0.90->0.95 to nearly disable vol-spike
+position reduction. Exp266-268 showed consistent gains from each increase
+(0.7->0.8->0.85->0.90). At 0.95, max-spike positions are only reduced by 5%.
+If this works, 1.0 (full disable) is the next logical step.
 """
 
 import numpy as np
@@ -69,7 +68,7 @@ HIGH_CORR_THRESHOLD = 99.0
 DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
-CALM_BOOST_MAX = 1.0  # max position size boost in calm regimes
+CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
