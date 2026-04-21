@@ -1,8 +1,8 @@
 """
-Exp268: Increase VOL_SPIKE_SCALE 0.85->0.90 for minimal position reduction
-during vol spikes. Exp266-267 showed consistent gains from 0.7->0.8->0.85.
-In trending regimes, momentum often continues after a vol spike, so a 90%
-floor at max spike retains even more exposure to continuations.
+Exp269: Increase VOL_SPIKE_SCALE 0.90->0.95 to nearly disable vol-spike
+position reduction. Exp266-268 showed consistent gains from each increase
+(0.7->0.8->0.85->0.90). At 0.95, max-spike positions are only reduced by 5%.
+If this works, 1.0 (full disable) is the next logical step.
 """
 
 import numpy as np
@@ -50,7 +50,7 @@ VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
-VOL_SPIKE_SCALE = 0.90
+VOL_SPIKE_SCALE = 0.95
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
