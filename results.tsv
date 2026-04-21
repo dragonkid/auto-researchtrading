@@ -160,3 +160,4 @@ cd4b563	22.360749	24.775528	4.829559	keep	reduce VOL_CONFIRM_BASE 48->36 to alig
 cb40db0	22.663125	24.890766	4.455283	keep	increase VOL_SPIKE_SCALE 0.8->0.85 for even less aggressive vol-spike sizing reduction (std down 4.55->4.46, all regimes up, composite +0.079)
 fb6d306	22.733228	24.917400	4.368343	keep	increase VOL_SPIKE_SCALE 0.85->0.90 for minimal vol-spike position reduction
 e24703d	22.753480	24.900133	4.293307	keep	increase VOL_SPIKE_SCALE 0.90->0.95 for near-zero vol-spike position reduction (std down 4.37->4.29, composite +0.020)
+-	22.724135	24.834971	4.221673	discard	set VOL_SPIKE_SCALE 1.0 to fully disable vol-spike reduction (mean up 24.83 but std up 4.22 vs 4.29, net -0.029, composite 22.753->22.724)
