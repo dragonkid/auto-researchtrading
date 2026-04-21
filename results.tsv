@@ -15,3 +15,4 @@ dde844e	23.695235	26.108796	5.067122	keep	inline 4 dead/no-op constants (-5 LOC)
 -	23.484530	25.661554	4.594049	discard	increase SIDEWAYS_BOOST_DECAY 0.10->0.14 to extend sizing boost into moderate trends-	19.780049	21.381604	3.443112	discard	reduce COOLDOWN_BARS 3->2 for faster re-entry
 -	23.595230	25.936676	4.950893	discard	remove vol_breakout voter from 9-voter ensemble
 057263d	23.700235	26.108796	5.067122	keep	remove dead btc_momentum + deduplicate ret_long/ret_long_raw (-5 LOC) for simplicity bonus (+0.005)
+-	21.871896	23.592046	3.672300	discard	asymmetric RSI exit by trend alignment (widen with-trend, tighten against-trend)
