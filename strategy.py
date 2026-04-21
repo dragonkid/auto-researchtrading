@@ -1,10 +1,9 @@
 """
-Exp367: Change sideways_trend_strength decay exponent from 2.0 (quadratic) to
-1.7. The quadratic makes the sideways boost persist deep into moderate trends,
-potentially adding sizing risk. A softer exponent of 1.7 decays the boost
-slightly faster in moderate trends while preserving full boost in truly
-sideways markets. This is different from exp365 which power-dampened the
-final (1-strength) factor — this changes the decay *shape* itself.
+Exp368: Reduce PEAK_PROFIT_AGE_BARS from 8 to 6 to start age-tightening the
+peak-profit trailing exit earlier. Positions held >6 bars (vs >8) begin
+getting tighter giveback thresholds, which should help lock in gains on
+aging positions that are plateauing. The age-tightening mechanism was added
+in exp254 but PEAK_PROFIT_AGE_BARS was never tuned from its initial 8.
 """
 
 import numpy as np
@@ -122,7 +121,7 @@ PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activat
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
-PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
+PEAK_PROFIT_AGE_BARS = 6          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
