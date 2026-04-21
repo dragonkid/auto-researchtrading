@@ -1,9 +1,9 @@
 """
-Exp218: Reduce LINREG_PERIOD 16->12 for faster linear regression slope voter.
-Sideways regime is the weakest (15.6 vs 29.5 bull). A shorter regression
-window makes the linreg voter more responsive to short-term directional
-moves, improving signal quality in range-bound markets. Linreg period
-has never been tuned. Should help sideways without hurting trending regimes.
+Exp217: Reduce MACD_SIGNAL 7->5 for faster MACD histogram response.
+With MACD_FAST=6 and MACD_SLOW=18 already responsive, the signal line
+at 7 is the remaining smoothing bottleneck. Reducing to 5 makes the
+histogram react faster to trend changes. Prior exp tried 7->9 (worse),
+but faster hasn't been tested.
 """
 
 import numpy as np
@@ -40,7 +40,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 28
 EMA_SLOPE_LOOKBACK = 4
-LINREG_PERIOD = 12  # rolling linear regression window for slope voter
+LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
