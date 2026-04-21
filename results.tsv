@@ -213,3 +213,4 @@ d6c3fdc	23.108009	25.259786	4.303553	keep	widen TREND_GATE_DEADZONE 0.005->0.006
 7545d0c	23.113683	25.320796	4.414224	keep	reduce CROSS_ASSET_TREND_DECAY 0.10->0.08 to restrict cross-asset boost to more trendless regimes (mean +0.06, composite +0.006)
 
 -	23.001002	25.161640	4.321278	discard	tighten RSI_OVERBOUGHT/RSI_OVERSOLD 73/27->72/28 (sideways +0.09 but bull/crash/rally all worse, mean dropped 25.32->25.16, composite 23.114->23.001)
+65b2bbe	23.119326	25.314015	4.389379	keep	reduce RSI_EXIT_TREND_DECAY 0.10->0.08 for faster sideways-widening decay (bull +0.14, crash +0.20, rally +0.32, std down 4.41->4.39, composite +0.006)
