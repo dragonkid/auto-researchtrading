@@ -1,8 +1,7 @@
 """
-Exp299: Raise RSI_EXIT_VOL_LOW 0.7->0.85 for wider RSI exits in low-to-moderate vol.
-The vol_exit_blend interpolation starts tightening at vol_ratio=0.7. Raising to 0.85
-keeps RSI exits fully wide (hold winners longer) in a broader low-vol range,
-benefiting sideways and calm rally regimes without affecting high-vol crash regime.
+Exp298: Widen trend gate deadzone 0.001->0.002 in sideways markets.
+Exp297 showed deadzone concept works (+0.043). Widening it should capture
+more entries in near-trendless regimes where trend_avg noise blocks valid signals.
 """
 
 import numpy as np
@@ -29,7 +28,7 @@ RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
 RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
 RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
-RSI_EXIT_VOL_LOW = 0.85   # vol_ratio below this: use standard thresholds
+RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
