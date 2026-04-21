@@ -1,8 +1,9 @@
 """
-Exp224: Reduce CROSS_ASSET_TREND_DECAY 0.14->0.10 so the cross-asset
-agreement sizing boost decays to zero at weaker trend levels.  This makes
-the boost effectively a "sideways/weak-trend only" feature, avoiding
-multiplicative sizing inflation in strong trends where DD headroom is tight.
+Exp225: Tighten RSI_OB_WIDE 76->74 and RSI_OS_WIDE 24->26 so the widest
+RSI exit thresholds (used in sideways/trendless markets) are slightly
+tighter, locking in profits a bit earlier in range-bound conditions.
+Previous exp widened these (76/24->79/21) and failed badly; this goes the
+opposite direction for tighter exits in low-trend regimes.
 """
 
 import numpy as np
@@ -27,8 +28,8 @@ RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
-RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
-RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
+RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
+RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
