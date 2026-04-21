@@ -141,3 +141,4 @@ cf83764	22.082435	24.455509	4.746148	keep	add peak-profit trailing exit grace pe
 7bba900	22.108560	24.478366	4.739613	keep	tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.30->0.25 for stronger large-win protection (std down 4.75->4.74, composite +0.008)
 -	22.100544	24.469068	4.737048	discard	add MIN_VOTES_HIGH_VOL=4 when vol_ratio>1.3 for stricter high-vol entries (bull hurt -0.11, mean dropped 24.48->24.47, composite 22.109->22.101)
 7c2aad7	22.109769	24.481135	4.742732	keep	increase VOL_COMPRESS_THRESHOLD 0.70->0.75 for wider vol-compression detection (all regimes marginally up, composite +0.001)
+-	21.125208	23.788327	5.326237	discard	add small-winner RSI exit widening 3pts (sideways DD spiked 4.5->5.7%, held losers too long, composite 22.110->21.125)
