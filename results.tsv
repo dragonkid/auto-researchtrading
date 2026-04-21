@@ -169,3 +169,8 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 -	21.902329	24.261437	4.718216	discard	reduce MED2_WINDOW 10->8 for faster medium-term momentum (sideways hurt 17.09, mean dropped 24.90->24.26, composite 22.754->21.902)
 
 -	22.685938	24.841741	4.311607	discard	reduce SIDEWAYS_BOOST_MAX 0.70->0.60 for less aggressive sizing in trendless (mean dropped 24.90->24.84, sideways hurt, composite 22.754->22.686)
+-	22.706048	24.873011	4.333926	discard	raise STRENGTH_FLOOR_SIDEWAYS 2.6->2.8 for bigger trendless positions (rally hurt -0.32, std up, composite 22.754->22.706)
+-	22.548055	24.708243	4.320376	discard	increase EMA_SLOW 21->24 for more selective crossover voter (all regimes worse, composite 22.754->22.548)
+-	22.591235	24.419297	3.656123	discard	reduce RSI_EXIT_PROFIT_SCALE 12->10 (std improved 4.28->3.66 but mean dropped 24.90->24.42, bull hurt -1.9, composite 22.754->22.591)
+-	22.737659	24.883059	4.290799	discard	increase VOL_CONFIRM_LOOKBACK 12->16 (crash_bear -0.34, rally +0.29, net -0.016, composite 22.754->22.738)
+-	22.750183	24.882006	4.263647	discard	raise PEAK_PROFIT_TIGHT_AT 0.03->0.04 (near flat, std improved 4.28->4.26 but mean -0.014, net -0.004, composite 22.754->22.750)
