@@ -1,10 +1,9 @@
 """
-Exp372: Remove EMA slope voter (slope_bull/slope_bear). It is redundant with
-the linreg slope voter — both measure trend direction via slope, but linreg
-uses direct OLS which is more robust. Removing this correlated voter reduces
-noise in the voting ensemble (8 voters instead of 9), which should improve
-signal quality especially in sideways markets where both slope voters flip
-randomly. Also removes ~10 lines of dead code.
+Exp371: Increase MEANREV_TREND_THRESHOLD from 0.04 to 0.05 to widen the
+sideways detection zone. This threshold controls when mean-reversion entries
+and reduced MIN_VOTES activate. Widening it to 5% abs(ret_long) lets the
+strategy capture more trades in the weakly-trending zone (4-5%), which should
+particularly help the sideways regime (currently weakest at 19.23).
 """
 
 import numpy as np
@@ -41,6 +40,8 @@ MACD_FAST = 6
 MACD_SLOW = 16
 MACD_SIGNAL = 5
 
+EMA_SLOPE_PERIOD = 22
+EMA_SLOPE_LOOKBACK = 3
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
@@ -222,6 +223,15 @@ class Strategy:
         signal_line = ema(macd_line, MACD_SIGNAL)
         return macd_line[-1] - signal_line[-1]
 
+    def _calc_ema_slope(self, closes):
+        """Calculate slope of a long EMA over recent bars. Positive = uptrend."""
+        if len(closes) < EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5:
+            return 0.0
+        ema_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+        # Slope = change in EMA over lookback period, normalized by price
+        slope = (ema_arr[-1] - ema_arr[-EMA_SLOPE_LOOKBACK]) / ema_arr[-EMA_SLOPE_LOOKBACK]
+        return slope
+
     def _calc_linreg_slope(self, closes):
         """Rolling OLS linear regression slope of log prices. Per-bar change rate."""
         if len(closes) < LINREG_PERIOD:
@@ -272,7 +282,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -343,6 +353,11 @@ class Strategy:
             macd_bull = macd_hist > 0
             macd_bear = macd_hist < 0
 
+            # EMA slope: rising long EMA = bullish, falling = bearish
+            ema_slope = self._calc_ema_slope(closes)
+            slope_bull = ema_slope > 0.0005
+            slope_bear = ema_slope < -0.0005
+
             # Linear regression slope voter: more robust trend detection
             linreg_slope = self._calc_linreg_slope(closes)
             linreg_bull = linreg_slope > 0.0001
@@ -372,8 +387,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             btc_confirm = True
             if symbol != "BTC":
