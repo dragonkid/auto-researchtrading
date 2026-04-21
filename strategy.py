@@ -1,8 +1,9 @@
 """
-Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
-regardless of position age. Older positions (>8 bars) have exhausted their momentum —
-tighten giveback to lock in profits earlier. Young positions keep the standard
-giveback. This targets aging winners that are just slowly bleeding away gains.
+Exp359: Reduce TREND_GATE_ADAPT_DECAY 0.06->0.05. This controls how quickly the trend
+gate weighting transitions from sideways-mode (0.90 ret_med weight) to trending-mode
+(0.70 ret_med weight). A smaller decay means the transition starts at weaker trend
+strengths — more signals use the trending-mode weighting. This was reduced from 0.08
+to 0.06 previously with +0.007; continuing the direction.
 """
 
 import numpy as np
@@ -89,7 +90,7 @@ TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
-TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
+TREND_GATE_ADAPT_DECAY = 0.05       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
