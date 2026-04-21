@@ -1,9 +1,10 @@
 """
-Exp242: Trend-adaptive peak-profit giveback.
-In sideways markets, moves reverse quickly so we should lock in profits with
-tighter giveback (30%). In trending markets, let winners run with wider giveback
-(40%). Interpolate by abs(ret_long) / decay. This should specifically help
-sideways regime (currently weakest at 17.43) without hurting trending regimes.
+Exp241: Add peak-profit trailing exit.
+Track peak unrealized PnL per position. When profit has reached a significant
+level (>PEAK_PROFIT_MIN) but then gives back more than PEAK_PROFIT_GIVEBACK
+fraction, exit the position. This locks in winners that are fading — especially
+valuable in sideways markets where moves reverse quickly. Should improve all
+regimes by reducing round-trip losses on winning trades.
 """
 
 import numpy as np
@@ -112,9 +113,7 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightenin
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit (trending)
-PEAK_PROFIT_GIVEBACK_SIDEWAYS = 0.30  # tighter giveback in sideways markets (moves reverse faster)
-PEAK_PROFIT_GIVEBACK_DECAY = 0.10     # abs(ret_long) at which giveback transitions from sideways to trending
+PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -620,7 +619,6 @@ class Strategy:
                     target = 0.0
 
                 # Peak-profit trailing exit: lock in winners that are fading
-                # Adaptive giveback: tighter in sideways (moves reverse), wider in trends (let winners run)
                 if target != 0 and symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
@@ -629,13 +627,10 @@ class Strategy:
                     # Update peak PnL
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
-                    # Trend-adaptive giveback: interpolate between sideways (tight) and trending (wide)
-                    peak_trend_str = min(abs(ret_long) / PEAK_PROFIT_GIVEBACK_DECAY, 1.0)
-                    effective_giveback = PEAK_PROFIT_GIVEBACK_SIDEWAYS + (PEAK_PROFIT_GIVEBACK - PEAK_PROFIT_GIVEBACK_SIDEWAYS) * peak_trend_str
                     # If peak profit was significant and we've given back too much, exit
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
                         giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * effective_giveback:
+                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
