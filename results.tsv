@@ -176,3 +176,4 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 -	22.750183	24.882006	4.263647	discard	raise PEAK_PROFIT_TIGHT_AT 0.03->0.04 (near flat, std improved 4.28->4.26 but mean -0.014, net -0.004, composite 22.754->22.750)
 -	21.501653	23.754711	4.506116	discard	reduce EMA_SLOPE_LOOKBACK 3->2 for faster slope voter (mean dropped 24.90->23.75, sideways/rally hurt, composite 22.754->21.502)
 23a1dce	22.759691	24.907735	4.296087	keep	vol-compression aware MIN_VOTES (reduce to 2 during vol compression for early breakout entries, mean +0.012, composite +0.006)
+-	22.745896	24.917664	4.343537	discard	reduce MACD_SLOW 16->14 for more responsive MACD voter (mean +0.01 but std up 4.30->4.34, sideways -0.06, composite 22.760->22.746)
