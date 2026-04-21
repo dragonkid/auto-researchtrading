@@ -1,7 +1,8 @@
 """
-Exp302: Increase RSI trend bias strength 2.0->3.0.
-Stronger trend-following bias in the RSI voter should improve entry quality in
-trending regimes by making it easier for RSI to vote with the trend direction.
+Exp301: Trend-adaptive RSI voter thresholds.
+In trending markets, bias the RSI voter toward the trend: lower the bull threshold
+in uptrends (easier to vote bullish) and raise the bear threshold in downtrends.
+This gives a slight trend-following bias to the RSI signal, improving entry quality.
 """
 
 import numpy as np
@@ -22,7 +23,7 @@ RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
-RSI_TREND_BIAS = 3.0           # max RSI voter threshold shift toward trend direction
+RSI_TREND_BIAS = 2.0           # max RSI voter threshold shift toward trend direction
 RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
