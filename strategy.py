@@ -1,9 +1,9 @@
 """
-Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
-The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
-volume confirmation more responsive to recent volume patterns. Shorter baseline
-means volume ratio reacts faster to regime changes, potentially improving entries
-during transitions between regimes.
+Exp331: Reduce VOL_LOOKBACK 24->20 for more responsive realized vol calculation.
+The realized_vol feeds vol_ratio which drives dyn_threshold, vol_scale sizing,
+vol_spike detection, and adaptive caps. A shorter window means faster adaptation
+to changing vol regimes, which should help at regime transitions. Similar to
+VOL_LONG_LOOKBACK 48->36 (win) and VOL_CONFIRM_BASE 36->24 (win).
 """
 
 import numpy as np
@@ -49,7 +49,7 @@ FUNDING_BOOST = 0.0
 FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.30
-VOL_LOOKBACK = 24
+VOL_LOOKBACK = 20
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
