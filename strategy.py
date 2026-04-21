@@ -1,9 +1,9 @@
 """
-Exp369: Power-dampen cross_trend_strength in the cross-asset boost dampening.
-Currently linear: min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0).
-Applying ^0.85 keeps the cross-asset agreement boost active slightly longer
-as trends develop, instead of dampening linearly. Same pattern that improved
-trend_adapt_strength, trend_cap_strength, and others.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -483,7 +483,7 @@ class Strategy:
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
-            cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0) ** 0.85
+            cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
             combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
