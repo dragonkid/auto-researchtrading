@@ -244,3 +244,4 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 -	23.308478	25.727881	4.838807	discard	increase power-dampened vol exponent 0.85->0.80 (mean up 25.73 but std up 4.84, composite 23.315->23.308)
 2aafcd7	23.345944	25.691037	4.690186	keep	power-dampened strength_scale (mom_strength^0.85) for compressed extreme momentum signals (all regimes up, composite +0.031)
 76fcd95	23.360011	25.703222	4.686422	keep	power-dampened dyn_threshold vol sensitivity (0.10+vol*0.90)^0.85 for compressed entry threshold across vol regimes
+-	23.246822	25.481993	4.470343	discard	increase SIDEWAYS_BOOST_DECAY 0.10->0.12 to extend sideways boost into moderate trend (sideways +0.21 but bull -1.0 DD up 6.06%, mean dropped, composite 23.360->23.247)
