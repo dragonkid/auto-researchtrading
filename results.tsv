@@ -163,3 +163,4 @@ e24703d	22.753480	24.900133	4.293307	keep	increase VOL_SPIKE_SCALE 0.90->0.95 fo
 -	22.724135	24.834971	4.221673	discard	set VOL_SPIKE_SCALE 1.0 to fully disable vol-spike reduction (mean up 24.83 but std up 4.22 vs 4.29, net -0.029, composite 22.753->22.724)
 -	22.627380	24.785383	4.316007	discard	increase CALM_BOOST_MAX 0.8->1.0 for larger calm positions (mean dropped 24.90->24.79, DD up in bull, composite 22.753->22.627)
 d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking on modest peaks (marginal +0.0003, std down 4.29->4.28)
+-	22.311440	24.448105	4.273330	discard	reduce VOL_LOOKBACK 24->18 for more responsive realized_vol (mean dropped 24.90->24.45, sideways/rally hurt, composite 22.754->22.311)
