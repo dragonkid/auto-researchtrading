@@ -230,4 +230,4 @@ b6aa7c6	23.123522	25.337707	4.428370	keep	raise MAX_COMBINED_VOL_THRESHOLD 1.0->
 -	22.391575	24.589597	4.396044	discard	vol-dampen sideways_boost when vol_ratio>1.0 (mean dropped 25.38->24.59, all regimes worse, composite 23.177->22.392)
 	-	22.694862	24.318453	3.247182	discard	raise RSI_EXIT_PROFIT_THRESHOLD 0.01->0.015 (std improved 4.40->3.25 but mean dropped 25.38->24.32, composite 23.177->22.695)
 
-a3c0259	23.185129	25.387337	4.404417	keep	reduce HIGH_VOTE_THRESHOLD 4->3 for easier high-conviction sizing boost (all regimes stable/up, composite +0.008)
+a3c0259	23.185129	25.387337	4.404417	keep	reduce HIGH_VOTE_THRESHOLD 4->3 for easier high-conviction sizing boost (all regimes stable/up, composite +0.008)-	23.173746	25.371552	4.395612	discard	skip cross-asset boost for BTC only (BTC leads market, mean dropped 25.39->25.37, composite 23.185->23.174)

@@ -1,9 +1,9 @@
 """
-Exp337: Reduce HIGH_VOTE_THRESHOLD 4->3 for easier high-conviction sizing boost.
-Currently the +20% sizing boost requires 4+ voters agreeing. With MIN_VOTES
-effectively 2-3, many valid entries miss the boost. Lowering to 3 means most
-entries that pass the vote gate also get the sizing boost, increasing position
-sizes modestly across all regimes.
+Exp338: Vote-based loss-cut exit for underwater positions.
+When holding a losing position and opposing votes reach LOSS_CUT_MIN_VOTES (3),
+exit to cash immediately. This cuts losses faster when signal deteriorates,
+without requiring a full flip (which needs 4 votes + trend confirmation).
+Only activates on negative PnL to avoid cutting winners short.
 """
 
 import numpy as np
@@ -138,6 +138,7 @@ MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 3  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
+LOSS_CUT_MIN_VOTES = 3   # opposing votes required to exit a losing position (go to cash)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
@@ -669,6 +670,18 @@ class Strategy:
                         effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
+                            target = 0.0
+
+                # Vote-based loss-cut: exit losing positions when opposing votes are strong
+                if target != 0 and symbol in self.entry_prices:
+                    entry = self.entry_prices[symbol]
+                    pos_pnl = (mid - entry) / entry
+                    if current_pos < 0:
+                        pos_pnl = -pos_pnl
+                    if pos_pnl < 0:
+                        if current_pos > 0 and bear_votes >= LOSS_CUT_MIN_VOTES:
+                            target = 0.0
+                        elif current_pos < 0 and bull_votes >= LOSS_CUT_MIN_VOTES:
                             target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
