@@ -1,10 +1,10 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp260: Reduce LONG_WINDOW 20->18 for faster long-term momentum
+signal. LONG_WINDOW drives ret_long which is used in trend gate,
+trend-adaptive parameters, and the general momentum framework.
+Exp25 tried 20->24 (too slow, mean collapsed). 20->18 makes the
+long-term trend more responsive, potentially helping sideways
+(the weakest regime at 18.67) where trends are shorter-lived.
 """
 
 import numpy as np
@@ -18,7 +18,7 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
-LONG_WINDOW = 20
+LONG_WINDOW = 18
 EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
