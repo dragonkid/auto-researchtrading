@@ -4,3 +4,4 @@ d44c17a	23.530326	26.036818	5.016983	baseline	LOC baseline 575 for immediate sim
 -	23.402175	25.911952	5.045554	discard	remove EMA slope voter (slope_bull/slope_bear)
 -	23.455003	26.045143	5.182281	discard	switch momentum returns from simple to log returns
 -	22.169499	24.888130	5.445262	discard	remove vol-adaptive momentum lookback (fix to MED_WINDOW=12)
+c745446	23.595613	26.037103	5.016979	keep	remove 6 disabled features (dead code) for simplicity bonus (+0.065)
