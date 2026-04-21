@@ -1,8 +1,9 @@
 """
-Exp205: Reduce SHORT_WINDOW from 8 to 6.
-Shorter vshort momentum lookback (6h vs 8h) makes the vshort_bull/vshort_bear
-voter more responsive to recent price moves.  Helps catch trend reversals and
-entry signals faster, especially in sideways markets where quick turns dominate.
+Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
+In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
+vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
+allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
+two weakest dimensions: sideways return and crash-regime DD.
 """
 
 import numpy as np
@@ -11,7 +12,7 @@ from prepare import Signal, PortfolioState, BarData
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
-SHORT_WINDOW = 6
+SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
