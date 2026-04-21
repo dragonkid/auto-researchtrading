@@ -253,6 +253,3 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 43680a1	23.480260	25.866484	4.772449	keep	age-adaptive peak-profit giveback (tighten from 0.30 to 0.20 for positions held >8 bars to lock in aging winners, composite +0.005)
 -	23.481515	25.869839	4.776649	discard	increase TREND_THRESHOLD_DECAY 0.13->0.16 (within noise, mean +0.003 but std +0.004, composite 23.480->23.482)
 	-	17.871322	19.696131	3.649619	discard	vol-adaptive RSI period shorter/longer by vol_ratio (all regimes worse, mean dropped 25.87->19.70, composite 23.480->17.871)
-
-6471141	23.538600	25.967370	4.857541	keep	reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to restrict cross-asset boost to most trendless regimes (mean +0.10, composite +0.058)
-	-	23.496109	25.993118	4.994018	discard	reduce sideways boost decay exponent 2.0->1.7 (mean up +0.03 but std up 4.86->4.99, bull hurt, composite 23.539->23.496)
