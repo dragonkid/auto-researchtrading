@@ -1,8 +1,8 @@
 """
-Exp362: Raise dyn_threshold floor 0.003->0.004. In very low-vol regimes, the entry
-threshold can drop to 0.003 (after base calc + trend reduction + vol compression
-reduction). This may cause too many low-quality entries on noise. Raising the floor
-to 0.004 ensures a minimum momentum signal is required even in the calmest conditions.
+Exp363: Vol-adaptive RSI period. Currently RSI adapts by trend strength (6 in sideways,
+8 in trending). Add vol-ratio adaptation: in high vol (>1.5), use shorter period (faster
+exits protect profits); in low vol (<0.7), use longer period (smoother, fewer whipsaws).
+Interpolate between RSI_PERIOD_LOW_VOL=10 and RSI_PERIOD_HIGH_VOL=6.
 """
 
 import numpy as np
@@ -21,6 +21,10 @@ EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
+RSI_PERIOD_LOW_VOL = 10   # longer RSI in calm markets to reduce whipsaws
+RSI_PERIOD_HIGH_VOL = 6   # shorter RSI in volatile markets for faster exits
+RSI_VOL_ADAPT_LOW = 0.7   # vol_ratio below this: use RSI_PERIOD_LOW_VOL
+RSI_VOL_ADAPT_HIGH = 1.5  # vol_ratio above this: use RSI_PERIOD_HIGH_VOL
 RSI_BULL = 50
 RSI_BEAR = 50
 RSI_TREND_BIAS = 2.0           # max RSI voter threshold shift toward trend direction
@@ -332,7 +336,12 @@ class Strategy:
 
             # Adaptive RSI: shorter period in sideways for faster signals
             rsi_trend_str = min(abs(ret_long_raw) / 0.10, 1.0)
-            adaptive_rsi_period = int(round(RSI_PERIOD_SIDEWAYS + (RSI_PERIOD - RSI_PERIOD_SIDEWAYS) * rsi_trend_str))
+            trend_rsi_period = RSI_PERIOD_SIDEWAYS + (RSI_PERIOD - RSI_PERIOD_SIDEWAYS) * rsi_trend_str
+            # Vol-adaptive RSI period: shorter in high vol (faster exits), longer in low vol (fewer whipsaws)
+            vol_rsi_blend = max(0.0, min(1.0, (vol_ratio - RSI_VOL_ADAPT_LOW) / (RSI_VOL_ADAPT_HIGH - RSI_VOL_ADAPT_LOW)))
+            vol_rsi_period = RSI_PERIOD_LOW_VOL + (RSI_PERIOD_HIGH_VOL - RSI_PERIOD_LOW_VOL) * vol_rsi_blend
+            # Average trend-based and vol-based periods
+            adaptive_rsi_period = int(round((trend_rsi_period + vol_rsi_period) / 2.0))
             rsi = calc_rsi(closes, adaptive_rsi_period)
             # Trend-adaptive RSI voter: bias toward long-term trend direction
             # In uptrend: lower bull threshold (easier to vote bullish)
