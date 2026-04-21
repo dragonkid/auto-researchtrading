@@ -1,8 +1,8 @@
 """
-Exp223: Increase TREND_GATE_MED_WEIGHT_SIDEWAYS 0.90->0.95 so the trend gate
-in sideways markets relies almost entirely on ret_med. Recent wins from
-faster trend gate (MED_WEIGHT_BASE 0.70, ADAPT_DECAY 0.06) suggest the
-strategy benefits from more responsive trend detection across the board.
+Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
+trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
+fully transition, the strategy spends more time using the faster ret_med
+weighting that drove the last two composite wins.
 """
 
 import numpy as np
@@ -86,7 +86,7 @@ TREND_THRESHOLD_SCALE = 0.38  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
-TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.95  # ret_med weight in trendless markets
+TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
