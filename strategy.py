@@ -1,13 +1,11 @@
 """
-Exp313: Widen TREND_GATE_DEADZONE 0.005->0.006.
-The deadzone widening series has been consistently productive:
-  0.001->0.002: +0.029
-  0.002->0.003: +0.048
-  0.003->0.004: +0.019
-  0.004->0.005: +0.083 (biggest gain yet!)
-The last step was the largest improvement, suggesting the optimal deadzone
-hasn't been reached. Try 0.006 to continue capturing more entries in sideways
-where abs(trend_avg) is noise rather than signal.
+Exp318: Reduce CROSS_ASSET_TREND_DECAY 0.10->0.08.
+The cross-asset decay series has been productive:
+  0.14->0.10: +0.036 (exp87)
+  CROSS_ASSET_BOOST 0.30->0.20: +0.017 (exp148)
+Further reducing decay to 0.08 means cross-asset boost dampens even faster
+in trending markets, restricting it to only the most trendless (sideways) regimes
+where it helps without pushing DD higher.
 """
 
 import numpy as np
@@ -103,7 +101,7 @@ VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
-CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
+CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
