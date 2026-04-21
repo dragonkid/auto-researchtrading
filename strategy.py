@@ -1,8 +1,8 @@
 """
-Exp278: Reduce MED2_WINDOW 10->8 for faster medium-term momentum signal.
-MED2_WINDOW was reduced from 12->10 (exp +0.511, biggest single gain).
-Going further to 8 provides even faster ret_med which feeds into the trend
-gate and cross-asset calculations. Risk: may be too noisy.
+Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
+on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
+tightening (exiting when 30% of peak profit is given back vs 35%) improves
+composite by protecting gains better across all regimes.
 """
 
 import numpy as np
@@ -15,7 +15,7 @@ SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 8
+MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
