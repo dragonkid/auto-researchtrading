@@ -259,4 +259,3 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 	-	23.508019	26.028370	5.040702	discard	power-dampen vol_exit_blend in RSI exit (^0.85) for less aggressive tightening in moderate vol (mean flat but std up 5.01->5.04, composite 23.517->23.508)
 	-	23.516732	26.021578	5.009692	discard	reduce PEAK_PROFIT_AGE_BARS 8->6 for earlier age-tightening (near no effect, mean -0.002, std -0.003, composite 23.517->23.517)
 67e5083	23.520618	26.030788	5.020341	keep	power-dampen trend_cap_strength (^0.85) for gradual sizing cap decay from sideways (mean +0.007, composite +0.003)
-	-	23.406633	25.922660	5.032054	discard	reduce CROSS_ASSET_TREND_DECAY 0.06->0.04 (mean dropped 26.03->25.92, std up 5.02->5.03, all regimes worse, composite 23.521->23.407)

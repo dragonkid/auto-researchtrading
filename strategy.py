@@ -1,9 +1,9 @@
 """
-Exp376: Tighten mean-reversion RSI thresholds 49/51->47/53 for more
-selective sideways entries. The current near-center thresholds trigger
-too frequently in sideways markets, including on random noise. Requiring
-RSI to move further from 50 should improve entry quality. Previous
-experiment tried 45/55 (too aggressive); this is a smaller step.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -108,8 +108,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 47       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 53     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
