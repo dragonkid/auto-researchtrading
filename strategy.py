@@ -1,9 +1,9 @@
 """
-Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
-low-volume entries.  In sideways markets volume is typically below average,
-so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
-sideways entries keep closer to full size, boosting return in the weakest
-regime without meaningfully increasing DD in trending regimes.
+Exp206: Increase RSI_PERIOD from 8 to 10 for slower RSI in trending markets.
+The adaptive RSI blends between RSI_PERIOD_SIDEWAYS (6) in flat markets and
+RSI_PERIOD in trending ones.  A longer period produces smoother RSI that is
+less likely to trigger premature OB/OS exits in trending regimes (bull, bear,
+rally), letting winners run.  The sideways period stays at 6 for fast signals.
 """
 
 import numpy as np
@@ -20,7 +20,7 @@ MED2_WINDOW = 12
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
-RSI_PERIOD = 8
+RSI_PERIOD = 10
 RSI_PERIOD_SIDEWAYS = 6
 RSI_BULL = 50
 RSI_BEAR = 50
