@@ -1,9 +1,8 @@
 """
-Exp337: Reduce HIGH_VOTE_THRESHOLD 4->3 for easier high-conviction sizing boost.
-Currently the +20% sizing boost requires 4+ voters agreeing. With MIN_VOTES
-effectively 2-3, many valid entries miss the boost. Lowering to 3 means most
-entries that pass the vote gate also get the sizing boost, increasing position
-sizes modestly across all regimes.
+Exp339: Increase RSI_EXIT_PROFIT_SCALE 14->16 for faster profit-scaled RSI exit
+tightening on profitable positions. The progression 20->12 (+0.166) then 12->14
+(+0.024) suggests moderate tightening speed is better. Testing 16 to see if
+slightly faster profit-locking further improves the score.
 """
 
 import numpy as np
@@ -112,7 +111,7 @@ MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion 
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
-RSI_EXIT_PROFIT_SCALE = 14.0      # how fast tightening ramps with excess profit
+RSI_EXIT_PROFIT_SCALE = 16.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
