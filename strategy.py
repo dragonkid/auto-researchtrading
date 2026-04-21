@@ -1,13 +1,10 @@
 """
-Exp313: Widen TREND_GATE_DEADZONE 0.005->0.006.
-The deadzone widening series has been consistently productive:
-  0.001->0.002: +0.029
-  0.002->0.003: +0.048
-  0.003->0.004: +0.019
-  0.004->0.005: +0.083 (biggest gain yet!)
-The last step was the largest improvement, suggesting the optimal deadzone
-hasn't been reached. Try 0.006 to continue capturing more entries in sideways
-where abs(trend_avg) is noise rather than signal.
+Exp315: Increase MED_WINDOW_MAX 16->20 for wider adaptive momentum lookback.
+The adaptive_med window ranges from MED_WINDOW_MIN (8) in high-vol to
+MED_WINDOW_MAX (16) in low-vol. In calm markets, a longer lookback (20)
+should produce smoother, more reliable momentum signals — fewer false entries.
+Note: narrowing the range (MAX 16->12) was tried and failed badly.
+Widening hasn't been tested. This only affects low-vol regimes.
 """
 
 import numpy as np
@@ -19,7 +16,7 @@ SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 SHORT_WINDOW = 8
 MED_WINDOW = 12
 MED_WINDOW_MIN = 8
-MED_WINDOW_MAX = 16
+MED_WINDOW_MAX = 20
 MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
