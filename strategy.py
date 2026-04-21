@@ -1,7 +1,9 @@
 """
-Exp289: Raise MIN_VOTES_CALM_VOL 0.9->1.0 to extend reduced vote requirement
-(MIN_VOTES_CALM=2) to all vol_ratio<=1.0 markets. Previous raise 0.7->0.9 helped.
-This should allow more entries in moderate-vol conditions across all regimes.
+Exp284: Vol-compression aware MIN_VOTES. During vol compression (short/long
+vol ratio < VOL_COMPRESS_THRESHOLD=0.75), reduce MIN_VOTES to 2 regardless
+of vol_ratio. Rationale: vol compression signals imminent breakout; we already
+boost size and reduce threshold, but still require 3 votes for entry. Allowing
+2-vote entries during compression should capture more breakout moves early.
 """
 
 import numpy as np
@@ -130,7 +132,7 @@ COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
-MIN_VOTES_CALM_VOL = 1.0  # vol_ratio below which reduced votes apply
+MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
