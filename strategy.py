@@ -1,9 +1,9 @@
 """
-Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
-Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
-decay more gradually from sideways into moderate trends, keeping the higher
-sizing cap active slightly longer. This is the same pattern that worked for
-trend_adapt_strength (line 403) which already uses ^0.85.
+Exp369: Power-dampen sideways_strength in the strength_floor calculation.
+Currently linear: min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0). Applying ^0.85
+makes it decay more gradually from sideways into moderate trends, keeping the
+higher strength floor (2.6) active slightly longer in near-sideways markets.
+Same ^0.85 pattern that worked for trend_adapt_strength, trend_cap_strength, etc.
 """
 
 import numpy as np
@@ -479,7 +479,7 @@ class Strategy:
                 weight *= 0.5
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             # In sideways markets, raise the floor so weak momentum isn't double-penalized
-            sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
+            sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0) ** 0.85
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
