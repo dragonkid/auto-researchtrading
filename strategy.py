@@ -1,8 +1,9 @@
 """
-Exp212: Reduce MAX_COMBINED_MULT_HIGH_VOL 3.0->2.5 to tighten sizing cap
-in high-vol regimes. The std across regimes is high (5.08) — the main
-drag on composite score. Tighter high-vol cap should reduce DD in crash/
-volatile periods while preserving returns in calm regimes, compressing std.
+Exp213: Adaptive MED2_WINDOW based on vol_ratio. MED2=10 boosted mean
+hugely (+1.49) but exploded std (2.56->4.51). Hypothesis: shorter window
+helps in calm/sideways but hurts in crash/high-vol. Make MED2 adaptive:
+10 in low-vol, 12 in high-vol, interpolated between. Should compress std
+while preserving most of the mean gain.
 """
 
 import numpy as np
@@ -16,6 +17,8 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
+MED2_WINDOW_MAX = 14  # longer window in high-vol for smoother signals
+MED2_VOL_THRESHOLD = 1.2  # vol_ratio above this uses the longer window
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
@@ -291,9 +294,17 @@ class Strategy:
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
+            # Adaptive MED2: longer window in high-vol for smoother signals
+            if vol_ratio > MED2_VOL_THRESHOLD:
+                adaptive_med2 = MED2_WINDOW_MAX
+            else:
+                blend_med2 = max(0.0, min(1.0, vol_ratio / MED2_VOL_THRESHOLD))
+                adaptive_med2 = int(round(MED2_WINDOW + (MED2_WINDOW_MAX - MED2_WINDOW) * blend_med2))
+            adaptive_med2 = max(MED2_WINDOW, min(MED2_WINDOW_MAX, adaptive_med2))
+
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
-            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
+            ret_med = (closes[-1] - closes[-adaptive_med2]) / closes[-adaptive_med2]
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
