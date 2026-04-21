@@ -1,9 +1,9 @@
 """
-Exp226: Raise MED_WINDOW_MIN 8->10 so the adaptive momentum lookback range
-narrows from [8,16] to [10,16]. In high-vol regimes (where vol_ratio is high),
-the adaptive_med formula pushes toward MED_WINDOW_MIN — using 10 instead of 8
-means slightly longer lookback in volatile markets, smoothing momentum signals
-and reducing whipsaw entries during crash periods.
+Exp225: Tighten RSI_OB_WIDE 76->74 and RSI_OS_WIDE 24->26 so the widest
+RSI exit thresholds (used in sideways/trendless markets) are slightly
+tighter, locking in profits a bit earlier in range-bound conditions.
+Previous exp widened these (76/24->79/21) and failed badly; this goes the
+opposite direction for tighter exits in low-trend regimes.
 """
 
 import numpy as np
@@ -14,7 +14,7 @@ SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
 SHORT_WINDOW = 8
 MED_WINDOW = 12
-MED_WINDOW_MIN = 10
+MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
