@@ -1,15 +1,15 @@
 """
-Exp213: Asymmetric symbol weights — BTC 0.40, ETH 0.33, SOL 0.27.
-BTC is the most stable across regimes; SOL is the most volatile.
-Shifting weight from SOL to BTC should reduce cross-regime std (5.05)
-which is the main drag on composite score (= mean - 0.5*std).
+Exp212: Reduce MAX_COMBINED_MULT_HIGH_VOL 3.0->2.5 to tighten sizing cap
+in high-vol regimes. The std across regimes is high (5.08) — the main
+drag on composite score. Tighter high-vol cap should reduce DD in crash/
+volatile periods while preserving returns in calm regimes, compressing std.
 """
 
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
-SYMBOL_WEIGHTS = {"BTC": 0.40, "ETH": 0.33, "SOL": 0.27}
+SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
 SHORT_WINDOW = 8
 MED_WINDOW = 12
