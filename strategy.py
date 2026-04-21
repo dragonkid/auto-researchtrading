@@ -1,9 +1,10 @@
 """
-Exp258: Reduce CROSS_ASSET_BOOST 0.30->0.20 for more moderate
-cross-asset agreement sizing. Previously tested at 0.15 (too low)
-and 0.50 (too high). A moderate reduction should dampen correlated
-drawdowns during synchronized selloffs while still rewarding
-broad momentum agreement.
+Exp259: Tighten mean-reversion RSI thresholds 49/51->42/58 for
+more selective sideways entries. Current thresholds fire on nearly
+any RSI reading (49/51 are essentially center), creating noise
+entries. 42/58 requires genuine oversold/overbought before entering
+mean-reversion trades. Previous tests at 38/62 (too tight) and
+45/55 (marginal loss) were done at much lower baselines (~17/21).
 """
 
 import numpy as np
@@ -106,8 +107,8 @@ VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
-MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERSOLD = 42       # more selective RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 58     # more selective RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
