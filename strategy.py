@@ -1,8 +1,11 @@
 """
-Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
-short, long all same sign) is redundant with the trend gate and high-vote
-boost already capturing momentum alignment.  Removing it simplifies sizing
-and may reduce overfitting — one fewer stacking multiplier in the chain.
+Exp204: Reduce CALM_BOOST_MAX from 0.8 to 0.5.  The calm-regime boost is
+the most aggressive single sizing multiplier — up to 1.8x when short vol is
+low relative to long vol.  This stacks with sideways_boost, vol_compress_boost,
+etc. and can over-size positions.  A more moderate 0.5 still rewards calm
+periods but reduces the risk of DD spikes from over-leveraging, which should
+help the weaker regimes (sideways, rally) and potentially reduce cross-regime
+std for a better composite score.
 """
 
 import numpy as np
@@ -68,7 +71,7 @@ HIGH_CORR_THRESHOLD = 99.0
 DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
-CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
+CALM_BOOST_MAX = 0.5  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
