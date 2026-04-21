@@ -1,9 +1,9 @@
 """
-Exp211: Raise MAX_COMBINED_LOW_VOL_THRESHOLD from 0.6 to 0.8.
-This means bars with vol_ratio between 0.6-0.8 (common in sideways/moderate
-regimes) now get the full low-vol sizing cap (6.5) instead of a blended
-value between 4.0 and 6.5. Should specifically boost sideways regime returns
-(currently 16.1, weakest of 4 regimes) without affecting high-vol regimes.
+Exp210: Tighten RSI exit thresholds in high-vol regimes (68/32 -> 65/35).
+RSI_OB_TIGHT and RSI_OS_TIGHT are the tightest RSI exit thresholds, used
+when vol_ratio is high (>1.8). Making them closer to 50 (65/35 vs 68/32)
+exits positions faster in volatile conditions, reducing DD risk in crash_bear
+and rally regimes. These parameters have never been tuned.
 """
 
 import numpy as np
@@ -129,7 +129,7 @@ MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 3.0  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
-MAX_COMBINED_LOW_VOL_THRESHOLD = 0.8  # vol_ratio below this gets the full low-vol cap
+MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
 MTF_AGREE_TREND_DECAY = 0.10
 
