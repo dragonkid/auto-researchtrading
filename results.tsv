@@ -164,4 +164,3 @@ e24703d	22.753480	24.900133	4.293307	keep	increase VOL_SPIKE_SCALE 0.90->0.95 fo
 -	22.627380	24.785383	4.316007	discard	increase CALM_BOOST_MAX 0.8->1.0 for larger calm positions (mean dropped 24.90->24.79, DD up in bull, composite 22.753->22.627)
 d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking on modest peaks (marginal +0.0003, std down 4.29->4.28)
 -	22.587724	24.458440	3.741432	discard	increase RSI_YOUNG_GRACE_BARS 4->5 (std improved 4.28->3.74 but mean dropped 24.90->24.46, bull hurt -1.7, composite 22.754->22.588)
--	21.904675	24.177930	4.546510	discard	increase LINREG_PERIOD 16->20 for more stable linreg slope (all regimes worse, composite 22.754->21.905)
