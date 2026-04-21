@@ -1,11 +1,11 @@
 """
-Exp320: Reduce TREND_GATE_ADAPT_DECAY 0.06->0.05.
-The trend gate blends between sideways-mode (0.90*ret_med) and trending-mode
-(0.70*ret_med) based on abs(ret_long)/TREND_GATE_ADAPT_DECAY. With decay=0.06,
-full trending-mode requires abs(ret_long)>=6%. Reducing to 0.05 means the
-strategy transitions to trending-mode weighting at smaller trend magnitudes.
-This helps in moderate trends by making the trend gate more responsive. The
-previous 0.08->0.06 change kept with +0.007; continuing the same direction.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -92,7 +92,7 @@ TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
 
 TREND_GATE_MED_WEIGHT_BASE = 0.70   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
-TREND_GATE_ADAPT_DECAY = 0.05       # abs(ret_long) at which adaptation fully decays
+TREND_GATE_ADAPT_DECAY = 0.06       # abs(ret_long) at which adaptation fully decays
 
 STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
