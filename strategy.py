@@ -1,10 +1,11 @@
 """
-Exp322: Reduce RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->3.0.
-Young position RSI grace widens OB/OS exits for the first few bars to avoid
-whipsaw exits. At 4.0, this allows significant room. Reducing to 3.0 provides
-some grace but exits can trigger sooner on overbought/oversold signals, which
-should tighten risk on entries that immediately go against us. 5.0 was tried
-and failed (mean dropped sharply), so 3.0 tests the opposite direction.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -115,8 +116,8 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightenin
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 14.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
-RSI_YOUNG_OB_WIDEN = 3.0          # max OB widening (added to effective_ob) at bar 1
-RSI_YOUNG_OS_WIDEN = 3.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
+RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
