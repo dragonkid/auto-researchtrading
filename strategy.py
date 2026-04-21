@@ -1,8 +1,9 @@
 """
-Exp205: Increase HIGH_VOTE_BOOST from 0.20 to 0.35 for stronger sizing on
-high-conviction entries (4+ voter agreement).  More size when signals are
-strongest should improve returns across all regimes without hurting DD much
-(high-conviction entries have better win rates).
+Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
+In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
+vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
+allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
+two weakest dimensions: sideways return and crash-regime DD.
 """
 
 import numpy as np
@@ -122,7 +123,7 @@ MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
-HIGH_VOTE_BOOST = 0.35   # max position size boost for high-conviction entries
+HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 4.0  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
