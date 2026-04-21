@@ -1,10 +1,10 @@
 """
-Exp210: Raise MIN_VOTES 3->4 (simple majority of 8 voters).
-With 8 voters and MIN_VOTES=3 (37.5%), too many weak signals pass.
-Requiring 4/8 (50%) should filter noisy entries in sideways/crash
-where fewer voters agree, while barely affecting bull/rally where
-strong momentum gets 6-8 votes. This should reduce std across regimes.
-MIN_VOTES_CALM stays at 2 (for calm low-vol regimes).
+Exp209: Reduce MACD_FAST 8->6 for more responsive MACD voter.
+MACD voter is one of 8 entry voters. With MACD_FAST=8, MACD_SLOW=21 the
+histogram is relatively sluggish. A faster MACD_FAST=6 makes the MACD line
+more sensitive to recent price moves, which should help detect shorter-lived
+momentum in sideways markets (our weakest regime at 16.19 vs 28.34 bull).
+This parameter has not been tuned in any prior experiment.
 """
 
 import numpy as np
@@ -120,7 +120,7 @@ DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
-MIN_VOTES = 4  # out of 8 — simple majority for higher-quality entries
+MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
