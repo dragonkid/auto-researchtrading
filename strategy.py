@@ -1,9 +1,9 @@
 """
-Exp375: Power-dampen rsi_trend_blend in the RSI voter threshold bias.
-Currently linear: min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0).
-Applying ^0.85 makes the RSI trend bias activate slightly faster in
-moderate trends, consistent with the pattern that worked for
-trend_adapt_strength and trend_cap_strength.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -338,7 +338,7 @@ class Strategy:
             # Trend-adaptive RSI voter: bias toward long-term trend direction
             # In uptrend: lower bull threshold (easier to vote bullish)
             # In downtrend: raise bear threshold (easier to vote bearish)
-            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0) ** 0.85
+            rsi_trend_blend = min(abs(ret_long_raw) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
             if ret_long_raw > 0:
                 rsi_bull_thresh = RSI_BULL - rsi_bias  # easier to vote bullish
