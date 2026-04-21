@@ -1,7 +1,7 @@
 """
-Exp289: Reduce PEAK_PROFIT_GRACE_BARS 2->1 for faster trailing exit activation.
-Allows peak-profit trailing exit to fire one bar earlier, potentially locking in
-more profit during fast reversals across all regimes.
+Exp290: Increase VOL_COMPRESS_BOOST 0.40->0.50 for stronger position sizing during
+vol compression breakouts. Vol compression signals impending breakout — larger
+positions should capture more of the move, especially in sideways markets.
 """
 
 import numpy as np
@@ -92,7 +92,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
-VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
+VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
