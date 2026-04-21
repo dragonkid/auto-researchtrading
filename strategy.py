@@ -1,8 +1,8 @@
 """
-Exp364: Disable vol_compress_boost (set to 0.0) while keeping vol-compression threshold
-reduction. The threshold reduction captures breakout entries; the sizing boost is redundant
-and may add DD risk. Previously both were disabled together and it hurt — this isolates
-the boost removal to test if the threshold reduction alone is sufficient.
+Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
+sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
+consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
+strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
 """
 
 import numpy as np
@@ -95,7 +95,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.6  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
-VOL_COMPRESS_BOOST = 0.0      # DISABLED: threshold reduction alone captures breakouts
+VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.06  # abs(ret_long) at which cross-asset boost fully dampens
