@@ -1,11 +1,11 @@
 """
-Exp320: Reduce SIDEWAYS_BOOST_DECAY 0.10->0.08.
-The sideways position sizing boost currently applies when abs(ret_long) < 0.10.
-Multiple decay parameters have been successfully tightened to 0.08 (RSI_EXIT_TREND_DECAY,
-CROSS_ASSET_TREND_DECAY, STOP_FLAT_TREND_DECAY). SIDEWAYS_BOOST_DECAY has been at 0.10
-since the beginning. Tightening to 0.08 restricts the sideways boost to truly trendless
-markets — in moderate trends, sizing reverts to normal faster, reducing DD risk from
-oversized positions that think it's sideways when a trend is forming.
+Exp319: Reduce RSI_EXIT_TREND_DECAY 0.10->0.08.
+The sideways-widening of RSI exits (RSI_OB_WIDE/RSI_OS_WIDE) currently applies
+when abs(ret_long) is small. With decay=0.10, the widening persists until
+abs(ret_long)=0.10. Reducing to 0.08 makes widening decay faster — only truly
+trendless markets get wide RSI exits. In moderate trends, exits tighten sooner,
+protecting profits. The reverse direction (0.10->0.13) was tried and failed
+because it widened exits too much. This goes the opposite way.
 """
 
 import numpy as np
@@ -75,7 +75,7 @@ DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
-SIDEWAYS_BOOST_DECAY = 0.08  # abs(ret_long) at which sideways boost fully decays
+SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
 STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term trend
