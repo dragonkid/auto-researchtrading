@@ -1,8 +1,9 @@
 """
-Exp352: Reduce TREND_THRESHOLD_SCALE 0.38->0.32 for less entry threshold reduction in sideways.
-Currently the entry threshold drops by up to 38% in flat markets, which may allow too-weak
-momentum entries that whipsaw. Reducing to 32% keeps a slightly higher entry barrier in sideways,
-potentially improving quality of sideways entries and reducing whipsaw losses.
+Exp353: Set VOL_CONFIRM_FLOOR to 1.0 to fully disable low-volume sizing penalty.
+The series 0.85->0.92->0.95->0.98 each improved score by removing the low-volume
+sizing reduction. Setting to 1.0 completes the series by eliminating the penalty
+entirely (keeping only the above-average volume boost). This means low-volume bars
+get neutral sizing (1.0) instead of a slight penalty (0.98).
 """
 
 import numpy as np
@@ -102,7 +103,7 @@ CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
-VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
+VOL_CONFIRM_FLOOR = 1.0       # min sizing factor when volume is below average (penalty fully disabled)
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
