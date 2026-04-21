@@ -1,9 +1,9 @@
 """
-Exp266: Reduce EMA_FAST 3->2 for more reactive EMA crossover voter.
-The EMA crossover voter (EMA_FAST vs EMA_SLOW) benefits from faster response.
-Previous experiments show faster signals consistently help (MACD_FAST 8->6 keep,
-MACD_SLOW 21->18->16 keep, EMA_SLOPE_PERIOD 28->22 keep, etc.).
-EMA(2) is essentially a weighted latest price, making the crossover flip sooner.
+Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
+Previous experiments showed that faster MACD parameters help:
+MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
+Continuing this trend by making the slow EMA shorter, which makes the MACD
+line cross zero more quickly in response to momentum changes.
 """
 
 import numpy as np
@@ -18,7 +18,7 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
-EMA_FAST = 2
+EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
