@@ -1,8 +1,9 @@
 """
-Exp335: Raise RSI_EXIT_PROFIT_THRESHOLD 0.01->0.015 to delay profit-scaled RSI
-exit tightening until positions reach 1.5% profit instead of 1%. This gives small
-winners more room to develop before RSI exits start tightening toward center,
-potentially improving mean return while keeping large-profit protection intact.
+Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
+The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
+volume confirmation more responsive to recent volume patterns. Shorter baseline
+means volume ratio reacts faster to regime changes, potentially improving entries
+during transitions between regimes.
 """
 
 import numpy as np
@@ -109,7 +110,7 @@ MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-revers
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
 MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
-RSI_EXIT_PROFIT_THRESHOLD = 0.015  # profit above which RSI exit starts tightening
+RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 14.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened

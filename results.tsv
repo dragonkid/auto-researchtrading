@@ -228,4 +228,3 @@ b6aa7c6	23.123522	25.337707	4.428370	keep	raise MAX_COMBINED_VOL_THRESHOLD 1.0->
 39472ec	23.176850	25.378993	4.404286	keep	reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline (all regimes up, std down, composite +0.053)
 -	22.930556	24.895505	3.929898	discard	reduce VOL_LOOKBACK 24->20 (std improved 4.40->3.93 but mean dropped 25.38->24.90, bull DD up 5.96->6.44%, composite 23.177->22.931)
 -	22.391575	24.589597	4.396044	discard	vol-dampen sideways_boost when vol_ratio>1.0 (mean dropped 25.38->24.59, all regimes worse, composite 23.177->22.392)
-	-	23.152481	25.366432	4.427902	discard	disable CROSS_ASSET_BOOST 0.20->0.0 (mean flat, std up 4.40->4.43, bull hurt, composite 23.177->23.152)
