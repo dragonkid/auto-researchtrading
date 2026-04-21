@@ -155,3 +155,5 @@ cd4b563	22.360749	24.775528	4.829559	keep	reduce VOL_CONFIRM_BASE 48->36 to alig
 693832d	22.380876	24.780553	4.799355	keep	reduce MACD_SLOW 18->16 for more responsive MACD voter (mean +0.005, std -0.03, all regimes stable, composite +0.020)
 
 -	20.995861	23.578554	5.165385	discard	reduce DONCHIAN_PERIOD 12->10 for faster breakout detection (sideways -0.96, rally -0.26, std up 4.80->5.17, composite 22.381->20.996)
+
+1395e9f	22.583903	24.859145	4.550485	keep	increase VOL_SPIKE_SCALE 0.7->0.8 for less aggressive vol-spike sizing reduction (std down 4.80->4.55, all regimes up, composite +0.203)
