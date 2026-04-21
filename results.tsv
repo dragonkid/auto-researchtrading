@@ -133,3 +133,4 @@ bc5aeb6	21.418858	23.784775	4.731834	keep	add peak-profit trailing exit (exit wh
 -	21.920532	24.259556	4.678049	discard	widen MEANREV_TREND_THRESHOLD 0.04->0.05 (bull/crash slightly worse, sideways unchanged, composite 21.928->21.921)
 b3d17a2	21.961850	24.335237	4.746775	keep	reduce VOL_BREAKOUT_SHORT 4->3 for faster vol-breakout detection (bull +0.17, rally +0.18, composite +0.034)
 b6e846e	22.076325	24.431773	4.710896	keep	increase RSI_YOUNG_GRACE_BARS 3->4 for longer young position RSI grace (all regimes up, sideways +0.14, rally +0.15, std down, composite +0.114)
+1d09810	22.078707	24.441002	4.724589	keep	tighten PEAK_PROFIT_GIVEBACK 0.40->0.35 for earlier profit-locking on modest peaks (mean +0.009, marginal +0.002)
