@@ -1,8 +1,9 @@
 """
-Exp236: Reduce VOL_CONFIRM_LOOKBACK 12->8 for more responsive volume
-confirmation. Shorter lookback detects volume spikes earlier at entry,
-potentially improving timing especially in sideways where breakouts
-from ranges start with a volume surge in the most recent bars.
+Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
+In trendless markets, the strength_scale floor determines minimum sizing.
+Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
+size increase should improve returns without blowing DD. 2.8 was tried
+before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
 """
 
 import numpy as np
@@ -97,7 +98,7 @@ VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
-VOL_CONFIRM_LOOKBACK = 8      # short-term volume average window
+VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
