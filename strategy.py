@@ -1,9 +1,9 @@
 """
-Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
-In trendless markets, the strength_scale floor determines minimum sizing.
-Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
-size increase should improve returns without blowing DD. 2.8 was tried
-before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
+Exp237: Increase VOL_BREAKOUT_MULT 1.0->1.2 for more selective vol breakout
+voter. Currently fires whenever short_vol > long_vol (trivially true often),
+causing false signals. Requiring 20% vol expansion makes the voter more
+meaningful, reducing noise especially in sideways without affecting strong
+breakouts in trending regimes.
 """
 
 import numpy as np
@@ -117,7 +117,7 @@ PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small
 PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
-VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
+VOL_BREAKOUT_MULT = 1.2  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
