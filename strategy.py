@@ -1,8 +1,9 @@
 """
-Exp349: Power-dampened strength_scale. Apply same compression philosophy as vol sizing:
-mom_strength = (abs(ret_short) / dyn_threshold) ^ 0.85 instead of linear. This compresses
-extreme momentum signals: very strong momentum (which may be noise/overextension) gets
-less weight, while moderate momentum is preserved. Should improve cross-regime consistency.
+Exp350: Power-dampened dyn_threshold vol sensitivity. Apply compression to the vol_ratio
+factor in dyn_threshold: (0.10 + vol_ratio * 0.90) ^ 0.85 instead of linear. This compresses
+the threshold in extreme vol regimes: very high vol gets slightly less threshold inflation
+(more entries), very low vol gets slightly more (fewer entries). Should improve cross-regime
+consistency by compressing the spread of entry threshold across vol regimes.
 """
 
 import numpy as np
@@ -285,7 +286,7 @@ class Strategy:
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
-            dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90)
+            dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(0.003, min(0.015, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
