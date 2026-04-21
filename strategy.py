@@ -1,9 +1,7 @@
 """
-Exp364: Power-dampen the calm_boost factor. Apply ^0.85 to the calm component
-(max(0, 1-vol_ratio)) to compress extreme calm boosts while preserving moderate ones.
-This follows the successful power-dampening pattern applied to vol_scale, strength_scale,
-and dyn_threshold. Reduces max calm_boost from 1.80x to ~1.73x at extreme, with larger
-compression at the tail.
+Exp365: Power-dampen vol_compress_boost strength. Apply ^0.85 to compress_strength
+before computing vol_compress_boost, following the successful power-dampening pattern.
+This compresses the extreme end of vol compression sizing while preserving moderate boosts.
 """
 
 import numpy as np
@@ -441,7 +439,7 @@ class Strategy:
                 # a breakout is likely — boost size to capture the move
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
                     compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
-                    vol_compress_boost = 1.0 + VOL_COMPRESS_BOOST * compress_strength
+                    vol_compress_boost = 1.0 + VOL_COMPRESS_BOOST * compress_strength ** 0.85
 
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
