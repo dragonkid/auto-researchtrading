@@ -187,3 +187,4 @@ d4f8382	22.753731	24.895603	4.283745	keep	tighten PEAK_PROFIT_GIVEBACK 0.35->0.3
 
 -	22.708619	24.853432	4.289625	discard	reduce TREND_GATE_MED_WEIGHT_SIDEWAYS 0.90->0.85 for more long-term in sideways trend gate (mean dropped 24.91->24.85, sideways hurt, composite 22.763->22.709)
 -	22.343876	24.215838	3.743924	discard	skip profit-scaled RSI exit tightening during young-position grace (std improved 4.29->3.74 but mean dropped 24.91->24.22, net -0.419)
+-	22.742115	24.919288	4.354347	discard	reduce MACD_SIGNAL 5->4 for faster MACD histogram (mean +0.01 but std up 4.29->4.35, sideways +0.13 but crash -0.16, composite 22.763->22.742)
