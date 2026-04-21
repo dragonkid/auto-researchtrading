@@ -1,10 +1,9 @@
 """
-Exp259: Reduce VOL_CONFIRM_BASE 48->36 to align volume baseline
-with VOL_LONG_LOOKBACK (also 36). The volume confirmation currently
-uses a 48-bar baseline while vol regime detection uses 36 bars.
-Aligning them makes volume confirmation more responsive to regime
-changes, consistent with the pattern of faster lookbacks improving
-scores (VOL_LONG_LOOKBACK 48->36 was keep).
+Exp261: Reduce HIGH_VOTE_BOOST 0.20->0.10 for more moderate
+high-conviction sizing bonus. The 20% boost when 4+ voters agree
+may cause oversizing in trending regimes where most voters naturally
+align, contributing to DD and cross-regime variance. A smaller
+10% bonus still rewards conviction but with less DD risk.
 """
 
 import numpy as np
@@ -135,7 +134,7 @@ MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
-HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
+HIGH_VOTE_BOOST = 0.10   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
