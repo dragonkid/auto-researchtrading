@@ -1,8 +1,7 @@
 """
-Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
-The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
-governs mid-vol bars; tightening it should compress cross-regime variance by
-limiting position sizes in moderate-volatility conditions.
+Exp214: Raise VOL_CONFIRM_FLOOR 0.92->0.95 to further reduce sizing penalty
+when recent volume is below average. Previous raise 0.85->0.92 improved
+composite by +0.021. This is a smaller step in the same direction.
 """
 
 import numpy as np
@@ -100,7 +99,7 @@ CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
 VOL_CONFIRM_BOOST = 0.35      # max sizing boost when volume is above average
-VOL_CONFIRM_FLOOR = 0.92      # min sizing factor when volume is below average
+VOL_CONFIRM_FLOOR = 0.95      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.03  # abs(ret_long) below this activates mean-reversion entries
