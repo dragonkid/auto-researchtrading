@@ -1,9 +1,10 @@
 """
-Exp230: Gentler profit-scaled RSI exit tightening.
-Reduce RSI_EXIT_PROFIT_SCALE from 20.0 to 12.0 so that profit-triggered
-RSI exit tightening ramps more gradually. This lets positions develop
-longer before RSI exits fire, particularly helping in sideways markets
-where profits are smaller and premature exits hurt returns.
+Exp231: Trend-aligned RSI exit asymmetry.
+When a position is aligned with the long-term trend (long in uptrend /
+short in downtrend), widen RSI exit thresholds to let winners run.
+When opposing the trend, tighten thresholds to take profits sooner.
+This mirrors the asymmetric stop logic but for the RSI exit that
+actually fires.
 """
 
 import numpy as np
@@ -111,6 +112,9 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
+RSI_EXIT_WITH_TREND_WIDEN = 3.0   # OB/OS widening when position aligns with long-term trend
+RSI_EXIT_AGAINST_TREND_TIGHTEN = 2.0  # OB/OS tightening when position opposes long-term trend
+RSI_EXIT_TREND_BLEND_DECAY = 0.08  # abs(ret_long) at which trend alignment effect is fully active
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -597,6 +601,20 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_os_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
+                # Trend-aligned asymmetry: widen exits when with trend, tighten when against
+                trend_align_strength = min(abs(ret_long) / RSI_EXIT_TREND_BLEND_DECAY, 1.0)
+                if current_pos > 0 and ret_long > 0:
+                    # Long in uptrend: widen OB to let winners run
+                    effective_ob += RSI_EXIT_WITH_TREND_WIDEN * trend_align_strength
+                elif current_pos > 0 and ret_long < 0:
+                    # Long in downtrend: tighten OB to exit sooner
+                    effective_ob -= RSI_EXIT_AGAINST_TREND_TIGHTEN * trend_align_strength
+                elif current_pos < 0 and ret_long < 0:
+                    # Short in downtrend: widen OS to let winners run
+                    effective_os -= RSI_EXIT_WITH_TREND_WIDEN * trend_align_strength
+                elif current_pos < 0 and ret_long > 0:
+                    # Short in uptrend: tighten OS to exit sooner
+                    effective_os += RSI_EXIT_AGAINST_TREND_TIGHTEN * trend_align_strength
                 # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
