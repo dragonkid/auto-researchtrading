@@ -1,9 +1,10 @@
 """
-Exp330: Reduce VOL_CONFIRM_BASE 36->24 for shorter volume baseline window.
-The 48->36 reduction was a +0.233 win. Continuing in the same direction to make
-volume confirmation more responsive to recent volume patterns. Shorter baseline
-means volume ratio reacts faster to regime changes, potentially improving entries
-during transitions between regimes.
+Exp333: Profit-adaptive cooldown — re-enter faster after profitable exits.
+Currently all exits get COOLDOWN_BARS=3 uniform cooldown. After a profitable
+exit the signal was correct, so we can re-enter faster (1 bar). After a losing
+exit the signal was wrong, so keep full cooldown (3 bars). This should improve
+trade frequency in trending/rally regimes where consecutive correct signals are
+common, without increasing whipsaw in crash/sideways.
 """
 
 import numpy as np
@@ -130,6 +131,7 @@ VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
+COOLDOWN_BARS_AFTER_WIN = 1  # faster re-entry after profitable exit
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -181,6 +183,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}  # track peak unrealized PnL per symbol
         self.entry_bar = {}  # track bar count at entry for young position grace
+        self.last_exit_profitable = {}  # track whether last exit was profitable per symbol
 
     def _calc_atr(self, history, lookback):
         if len(history) < lookback + 1:
@@ -409,9 +412,10 @@ class Strategy:
             bullish = bull_votes >= effective_min_votes and btc_confirm and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= effective_min_votes and btc_confirm and (trend_bear or trend_gate_bypassed)
 
-            # Adaptive cooldown: shorter in sideways markets for faster re-entry
+            # Adaptive cooldown: shorter in sideways markets and after profitable exits
+            base_cooldown = COOLDOWN_BARS_AFTER_WIN if self.last_exit_profitable.get(symbol, False) else COOLDOWN_BARS
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
-            effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
+            effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (base_cooldown - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = TARGET_VOL / realized_vol
@@ -688,6 +692,13 @@ class Strategy:
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
+                    # Track whether this exit was profitable for adaptive cooldown
+                    exit_entry = self.entry_prices.get(symbol)
+                    if exit_entry is not None:
+                        exit_pnl = (mid - exit_entry) / exit_entry
+                        if current_pos < 0:
+                            exit_pnl = -exit_pnl
+                        self.last_exit_profitable[symbol] = exit_pnl > 0
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
