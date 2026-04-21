@@ -1,10 +1,9 @@
 """
-Exp209: Reduce MACD_FAST 8->6 for more responsive MACD voter.
-MACD voter is one of 8 entry voters. With MACD_FAST=8, MACD_SLOW=21 the
-histogram is relatively sluggish. A faster MACD_FAST=6 makes the MACD line
-more sensitive to recent price moves, which should help detect shorter-lived
-momentum in sideways markets (our weakest regime at 16.19 vs 28.34 bull).
-This parameter has not been tuned in any prior experiment.
+Exp210: Tighten RSI exit thresholds in high-vol regimes (68/32 -> 65/35).
+RSI_OB_TIGHT and RSI_OS_TIGHT are the tightest RSI exit thresholds, used
+when vol_ratio is high (>1.8). Making them closer to 50 (65/35 vs 68/32)
+exits positions faster in volatile conditions, reducing DD risk in crash_bear
+and rally regimes. These parameters have never been tuned.
 """
 
 import numpy as np
@@ -27,8 +26,8 @@ RSI_BULL = 50
 RSI_BEAR = 50
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
-RSI_OB_TIGHT = 68     # tightest OB exit in extreme high-vol
-RSI_OS_TIGHT = 32     # tightest OS exit in extreme high-vol
+RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
+RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
 RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
 RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
