@@ -1,8 +1,9 @@
 """
-Exp232: Reduce MAX_COMBINED_MULT_HIGH_VOL 2.5->2.0.
-Tighter sizing cap in high-vol regimes to reduce DD in crash_bear (currently
-6.5%, costing exp(-1.5/10)=0.861 penalty). Reduction from 3.0->2.5 already
-helped (+0.069), so going further may yield additional DD improvement.
+Exp231: Modest STRENGTH_FLOOR_SIDEWAYS increase 2.4->2.6.
+In trendless markets, the strength_scale floor determines minimum sizing.
+Sideways regime has lowest DD (4.73%) and lowest score (17.41), so modest
+size increase should improve returns without blowing DD. 2.8 was tried
+before and failed (bull DD 8.6%), so 2.6 is a conservative middle ground.
 """
 
 import numpy as np
@@ -129,7 +130,7 @@ HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
-MAX_COMBINED_MULT_HIGH_VOL = 2.0  # tighter cap in high-vol regimes (protect DD)
+MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
 MAX_COMBINED_VOL_THRESHOLD = 1.0  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
