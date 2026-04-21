@@ -1,8 +1,8 @@
 """
-Exp223: Increase RSI_EXIT_TREND_DECAY 0.10->0.13 to extend sideways RSI exit
-widening into moderate-trend environments.  The wider OB/OS thresholds let
-winners run longer before RSI exits trigger, which should boost mean return
-while the broader applicability adds consistency across regimes.
+Exp222: Reduce TREND_GATE_ADAPT_DECAY 0.08->0.06 so the trend gate reaches
+trending-mode weight (0.70) sooner.  With less abs(ret_long) needed to
+fully transition, the strategy spends more time using the faster ret_med
+weighting that drove the last two composite wins.
 """
 
 import numpy as np
@@ -31,7 +31,7 @@ RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
 RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
-RSI_EXIT_TREND_DECAY = 0.13  # abs(ret_long) at which sideways widening fully decays
+RSI_EXIT_TREND_DECAY = 0.10  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
 MACD_SLOW = 18
