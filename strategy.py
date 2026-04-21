@@ -1,8 +1,8 @@
 """
-Exp204: BTC lead-lag voter for ETH/SOL.  BTC often leads alt moves by
-1-8 hours.  Add BTC short-term momentum (4-bar return) as an additional
-voter for ETH and SOL only.  This exploits a well-known market
-microstructure effect without changing BTC's own signal set.
+Exp203: Remove mtf_agree_mult sizing multiplier.  MTF agreement (vshort,
+short, long all same sign) is redundant with the trend gate and high-vote
+boost already capturing momentum alignment.  Removing it simplifies sizing
+and may reduce overfitting — one fewer stacking multiplier in the chain.
 """
 
 import numpy as np
@@ -115,8 +115,6 @@ VOL_BREAKOUT_SHORT = 4   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-BTC_LEAD_LOOKBACK = 4  # short lookback for BTC lead-lag voter on alts
-BTC_LEAD_THRESHOLD = 0.003  # min BTC return to trigger lead-lag vote
 COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -353,19 +351,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            # BTC lead-lag voter: BTC short-term momentum as voter for ETH/SOL only
-            btc_lead_bull = False
-            btc_lead_bear = False
-            if symbol != "BTC" and "BTC" in bar_data:
-                btc_h = bar_data["BTC"].history
-                if len(btc_h) >= BTC_LEAD_LOOKBACK + 1:
-                    btc_c = btc_h["close"].values
-                    btc_ret = (btc_c[-1] - btc_c[-BTC_LEAD_LOOKBACK]) / btc_c[-BTC_LEAD_LOOKBACK]
-                    btc_lead_bull = btc_ret > BTC_LEAD_THRESHOLD
-                    btc_lead_bear = btc_ret < -BTC_LEAD_THRESHOLD
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, btc_lead_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, btc_lead_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear])
 
             btc_confirm = True
             if symbol != "BTC":
