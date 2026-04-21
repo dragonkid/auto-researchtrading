@@ -1,10 +1,9 @@
 """
-Exp220: Increase TREND_GATE_MED_WEIGHT_BASE 0.50->0.60 for faster trend gate.
-The trend gate combines ret_med and ret_long to confirm direction.
-In trending markets it currently weights ret_med at 0.50 — increasing
-to 0.60 gives more weight to the faster medium-term return, continuing
-the successful pattern of faster/more responsive signals (MACD, EMA slope).
-This makes the trend gate quicker to confirm new trends.
+Exp221: Reduce EMA slope voter threshold 0.0005->0.0003 for more sensitive trend detection.
+The EMA slope voter checks if the long EMA is rising (bull) or falling (bear).
+The current 0.0005 threshold filters out weak EMA slopes. Reducing to 0.0003
+makes the voter more sensitive, generating more votes in weak-trend regimes.
+This follows the successful pattern of faster/more responsive signals.
 """
 
 import numpy as np
@@ -321,8 +320,8 @@ class Strategy:
 
             # EMA slope: rising long EMA = bullish, falling = bearish
             ema_slope = self._calc_ema_slope(closes)
-            slope_bull = ema_slope > 0.0005
-            slope_bear = ema_slope < -0.0005
+            slope_bull = ema_slope > 0.0003
+            slope_bear = ema_slope < -0.0003
 
             # Linear regression slope voter: more robust trend detection
             linreg_slope = self._calc_linreg_slope(closes)
