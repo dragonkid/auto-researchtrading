@@ -1,10 +1,11 @@
 """
-Exp241: Add peak-profit trailing exit.
-Track peak unrealized PnL per position. When profit has reached a significant
-level (>PEAK_PROFIT_MIN) but then gives back more than PEAK_PROFIT_GIVEBACK
-fraction, exit the position. This locks in winners that are fading — especially
-valuable in sideways markets where moves reverse quickly. Should improve all
-regimes by reducing round-trip losses on winning trades.
+Exp242: Profit-scaled peak-profit giveback.
+Tighter giveback threshold when peak profit is larger. A 2% peak profit uses
+the base 40% giveback (0.8% absolute), but a 5%+ peak profit uses 30% giveback
+(1.5% absolute) — protecting more of the larger gains. Linear interpolation
+between PEAK_PROFIT_GIVEBACK (at PEAK_PROFIT_MIN) and PEAK_PROFIT_GIVEBACK_TIGHT
+(at PEAK_PROFIT_TIGHT_AT). Should improve crash_bear/rally where big winners
+sometimes give back too much before exit.
 """
 
 import numpy as np
@@ -113,7 +114,9 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightenin
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
-PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit
+PEAK_PROFIT_GIVEBACK = 0.40       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
+PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
+PEAK_PROFIT_TIGHT_AT = 0.05       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
@@ -619,6 +622,7 @@ class Strategy:
                     target = 0.0
 
                 # Peak-profit trailing exit: lock in winners that are fading
+                # Profit-scaled giveback: tighter for larger peaks to protect big wins
                 if target != 0 and symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
@@ -629,8 +633,11 @@ class Strategy:
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
                     # If peak profit was significant and we've given back too much, exit
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
+                        # Scale giveback: tighter for larger profits
+                        profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (PEAK_PROFIT_TIGHT_AT - PEAK_PROFIT_MIN))
+                        effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
                         giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
