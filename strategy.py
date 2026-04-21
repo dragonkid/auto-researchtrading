@@ -1,8 +1,8 @@
 """
-Exp226: Reduce VOL_LONG_LOOKBACK 48->36 for more responsive vol regime
-detection. This affects vol-spike protection, calm boost, and vol-compression
-boost/threshold reduction. A shorter lookback makes these indicators adapt
-faster to regime transitions, which should help cross-regime consistency (std).
+Exp227: Reduce VOL_SHORT_LOOKBACK 12->8 for more responsive short-term vol
+measurement. This affects vol-spike detection, calm boost, and vol-compression
+calculations. With VOL_LONG_LOOKBACK already reduced to 36, a shorter
+short-term window should improve regime-transition responsiveness.
 """
 
 import numpy as np
@@ -47,7 +47,7 @@ FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
 FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.30
 VOL_LOOKBACK = 24
-VOL_SHORT_LOOKBACK = 12
+VOL_SHORT_LOOKBACK = 8
 VOL_LONG_LOOKBACK = 36
 VOL_SPIKE_THRESHOLD = 1.7
 VOL_SPIKE_SCALE = 0.7
