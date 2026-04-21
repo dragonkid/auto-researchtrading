@@ -1,9 +1,8 @@
 """
-Exp214: Increase COOLDOWN_SIDEWAYS_DECAY 0.06->0.10 to allow more re-entries
-in moderate-trend regimes. Currently the cooldown ramps from 0 to 3 bars very
-quickly (abs(ret_long) > 0.06). Raising to 0.10 means moderate trends still get
-reduced cooldown, which should help sideways and rally regimes where we want
-more entries without the whipsaw risk of full trending markets.
+Exp213: Reduce MAX_COMBINED_MULT 4.0->3.5 to tighten the mid-vol sizing cap.
+The cross-regime std is 5.05 — the main drag on composite. The base cap of 4.0
+governs mid-vol bars; tightening it should compress cross-regime variance by
+limiting position sizes in moderate-volatility conditions.
 """
 
 import numpy as np
@@ -118,7 +117,7 @@ VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
-COOLDOWN_SIDEWAYS_DECAY = 0.10  # abs(ret_long) below which cooldown is reduced
+COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
