@@ -1,10 +1,9 @@
 """
-Exp205: Increase LONG_WINDOW from 20 to 24 for smoother trend estimation.
-The ret_long signal drives ~10 downstream mechanisms (trend gate, threshold
-reduction, sideways boost, stop asymmetry, etc.).  A longer window should
-make trend detection more consistent across regimes, reducing composite std.
-In sideways markets, the signal stays near zero longer, activating sideways
-adaptations more reliably.
+Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
+In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
+vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
+allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
+two weakest dimensions: sideways return and crash-regime DD.
 """
 
 import numpy as np
@@ -18,7 +17,7 @@ MED_WINDOW = 12
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 12
-LONG_WINDOW = 24
+LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
