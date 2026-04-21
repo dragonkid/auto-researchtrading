@@ -1,8 +1,9 @@
 """
-Exp369: Remove mean-reversion entry logic. With trend gate deadzone bypass,
-reduced MIN_VOTES in sideways, and vol-compression aware entries, the
-mean-reversion path (RSI 49/51 thresholds) is likely redundant and may
-cause conflicting entries. Simplify by removing it entirely.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -105,7 +106,10 @@ VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
 VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
-MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this = sideways (used for MIN_VOTES, trend gate)
+MEANREV_TREND_THRESHOLD = 0.04  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
@@ -519,6 +523,15 @@ class Strategy:
                             funding_mult = 1.0 + FUNDING_BOOST
                         target = -size * funding_mult
                         self.pyramided[symbol] = False
+                    # Mean-reversion entries in sideways markets
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                        mr_size = size * MEANREV_SIZE_SCALE
+                        if rsi < MEANREV_RSI_OVERSOLD:
+                            target = mr_size
+                            self.pyramided[symbol] = False
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                            target = -mr_size
+                            self.pyramided[symbol] = False
             else:
                 if symbol in self.entry_prices and not self.pyramided.get(symbol, True):
                     entry = self.entry_prices[symbol]
