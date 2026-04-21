@@ -1,8 +1,8 @@
 """
-Exp358: Earlier age-adaptive giveback activation. Currently age tightening starts at
-8 bars. Reduce to 6 bars so the trailing exit starts protecting aging positions sooner.
-Most momentum moves play out within 6 hours; positions held longer are increasingly
-likely to be in late-stage or mean-reverting territory.
+Exp355: Age-adaptive peak-profit giveback. Currently giveback is fixed 0.30/0.25
+regardless of position age. Older positions (>8 bars) have exhausted their momentum —
+tighten giveback to lock in profits earlier. Young positions keep the standard
+giveback. This targets aging winners that are just slowly bleeding away gains.
 """
 
 import numpy as np
@@ -120,7 +120,7 @@ PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activat
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
-PEAK_PROFIT_AGE_BARS = 6          # bars held beyond which giveback starts tightening
+PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
