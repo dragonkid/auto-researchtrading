@@ -261,3 +261,5 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 67e5083	23.520618	26.030788	5.020341	keep	power-dampen trend_cap_strength (^0.85) for gradual sizing cap decay from sideways (mean +0.007, composite +0.003)
 -	23.520618	26.030788	5.020341	discard	remove dead decel exit code (identical score 23.521, pure simplification but no improvement)
 710a07f	23.526764	26.036267	5.019006	keep	power-dampen trend_strength in entry threshold reduction (^0.85) for gradual threshold decay from sideways (mean +0.005, std -0.001, composite +0.006)
+	-	23.461622	25.949535	4.975827	discard	power-dampen sideways_strength in strength_floor (^0.85) for gradual floor decay (mean dropped 26.04->25.95, all regimes worse, composite 23.527->23.462)
+2396772	23.528326	26.036818	5.016983	keep	reduce RSI_TREND_BIAS 2.0->1.5 for less aggressive RSI voter trend alignment (bull +0.10, crash +0.13, sideways -0.11, rally -0.11, composite +0.002)
