@@ -1,7 +1,8 @@
 """
-Exp298: Widen trend gate deadzone 0.001->0.002 in sideways markets.
-Exp297 showed deadzone concept works (+0.043). Widening it should capture
-more entries in near-trendless regimes where trend_avg noise blocks valid signals.
+Exp300: Reduce dyn_threshold ceiling 0.020->0.015.
+In high-vol regimes, the threshold can reach 2% which blocks valid entries.
+Capping at 1.5% allows more entries in crash/rally while exits (RSI, peak-profit)
+protect against false entries.
 """
 
 import numpy as np
@@ -283,7 +284,7 @@ class Strategy:
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90)
-            dyn_threshold = max(0.003, min(0.020, dyn_threshold))
+            dyn_threshold = max(0.003, min(0.015, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
