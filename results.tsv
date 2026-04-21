@@ -251,4 +251,3 @@ f3bd4fd	23.244557	25.465953	4.442792	keep	increase RSI_EXIT_PROFIT_SCALE 16->18 
 
 -	23.444535	25.834810	4.780550	discard	vol-adaptive trend gate deadzone (wider in low-vol sideways, narrower in high-vol, all regimes worse, composite 23.475->23.445)
 43680a1	23.480260	25.866484	4.772449	keep	age-adaptive peak-profit giveback (tighten from 0.30 to 0.20 for positions held >8 bars to lock in aging winners, composite +0.005)
--	23.435657	25.837291	4.803268	discard	add stale-position exit for underwater positions held >16 bars (sideways -0.09, mean dropped, composite 23.480->23.436)
