@@ -1,9 +1,8 @@
 """
-Exp239: Shift dyn_threshold vol sensitivity (0.15+0.85*v -> 0.10+0.90*v).
-This makes threshold more responsive to vol: lower in calm markets (more
-entries in sideways, +4.3% at vol_ratio=0.5), identical at normal vol,
-higher in volatile markets (fewer false entries, +2.7% at vol_ratio=2.0).
-Should help both sideways and crash_bear simultaneously.
+Exp240: Reduce flip position size to 80% of normal entry size.
+Flips are inherently riskier (you just had a losing directional call),
+so be more conservative with flip sizing. This reduces DD from
+whipsaw flips in volatile regimes while preserving signal quality.
 """
 
 import numpy as np
@@ -128,6 +127,7 @@ MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 4  # votes at or above this count get a sizing bonus
 HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
+FLIP_SIZE_SCALE = 0.80   # flip entries use smaller size (riskier — just had wrong direction)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
 MAX_COMBINED_MULT_HIGH_VOL = 2.5  # tighter cap in high-vol regimes (protect DD)
@@ -618,9 +618,9 @@ class Strategy:
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and btc_confirm and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
-                    target = -size
+                    target = -size * FLIP_SIZE_SCALE
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
-                    target = size
+                    target = size * FLIP_SIZE_SCALE
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
