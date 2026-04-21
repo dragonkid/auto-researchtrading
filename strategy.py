@@ -1,9 +1,8 @@
 """
-Exp250: Lower PEAK_PROFIT_TIGHT_AT 0.05->0.03 for faster giveback tightening.
-Currently the tightest giveback (0.30) only fully activates at 5%+ peak profit.
-In sideways markets, peaks are modest (2-4%), so positions linger with the
-looser 0.35 giveback. Lowering to 3% makes tighter trailing kick in sooner,
-helping lock in smaller wins — disproportionately benefiting sideways.
+Exp251: Tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.30->0.25 for stronger
+profit protection on large winners. Currently the tightest giveback
+exits after 30% retracement. At 25%, we lock in big wins faster,
+especially in crash/rally regimes where sharp reversals happen.
 """
 
 import numpy as np
@@ -117,7 +116,7 @@ RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_o
 PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
-PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
+PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
