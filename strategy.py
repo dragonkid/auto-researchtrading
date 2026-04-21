@@ -1,10 +1,9 @@
 """
-Exp373: Switch momentum return calculations from simple returns to log returns.
-Log returns are additive over time, symmetric (a +50% and -50% move cancel),
-and more statistically well-behaved. For small returns (<5%), log and simple
-returns are nearly identical, so calibrated thresholds remain valid. For larger
-moves (crash/bull), log returns compress extremes which should reduce sizing
-variance across regimes. Also unifies ret_long_raw and ret_long (same calc).
+Exp371: Increase MEANREV_TREND_THRESHOLD from 0.04 to 0.05 to widen the
+sideways detection zone. This threshold controls when mean-reversion entries
+and reduced MIN_VOTES activate. Widening it to 5% abs(ret_long) lets the
+strategy capture more trades in the weakly-trending zone (4-5%), which should
+particularly help the sideways regime (currently weakest at 19.23).
 """
 
 import numpy as np
@@ -296,7 +295,7 @@ class Strategy:
 
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
-            ret_long_raw = np.log(closes[-1] / closes[-LONG_WINDOW])
+            ret_long_raw = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             trend_strength = min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85
             trend_reduction = TREND_THRESHOLD_SCALE * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
@@ -317,10 +316,10 @@ class Strategy:
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
-            ret_vshort = np.log(closes[-1] / closes[-SHORT_WINDOW])
-            ret_short = np.log(closes[-1] / closes[-adaptive_med])
-            ret_med = np.log(closes[-1] / closes[-MED2_WINDOW])
-            ret_long = ret_long_raw  # same LONG_WINDOW, already computed as log return
+            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
+            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
+            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
