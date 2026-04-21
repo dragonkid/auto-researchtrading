@@ -1,10 +1,9 @@
 """
-Exp355: Vol-adaptive trend gate deadzone.
-Currently TREND_GATE_DEADZONE is fixed at 0.006. In low-vol (sideways) regimes,
-the trend_avg noise floor is lower, so we can afford a wider deadzone to allow
-more entries. In high-vol regimes, noise is higher but we want the trend gate
-to be stricter. Scale deadzone by (TARGET_VOL/realized_vol)^0.5 with bounds.
-This specifically targets sideways regime improvement (currently weakest at 19.35).
+Exp354: Gradual cross-asset agreement boost instead of binary all-or-nothing.
+Currently cross_asset_agree is 1.0+BOOST if ALL assets agree, 1.0 otherwise.
+With 3 assets, if 2/3 agree on direction, give 2/3 of the boost (proportional).
+This allows partial sizing boost when most assets confirm, capturing BTC/ETH
+agreement even when SOL diverges (lead-lag effect).
 """
 
 import numpy as np
@@ -408,10 +407,7 @@ class Strategy:
             # This prevents random ret_med/ret_long noise from blocking valid vote-confirmed entries
             in_sideways = abs(ret_long_raw) < MEANREV_TREND_THRESHOLD
             effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed or in_sideways) else MIN_VOTES
-            # Vol-adaptive deadzone: wider in low-vol (sideways), narrower in high-vol
-            adaptive_deadzone = TREND_GATE_DEADZONE * (TARGET_VOL / max(realized_vol, 1e-6)) ** 0.5
-            adaptive_deadzone = max(0.003, min(0.012, adaptive_deadzone))
-            trend_gate_bypassed = in_sideways and abs(trend_avg) < adaptive_deadzone
+            trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= effective_min_votes and btc_confirm and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= effective_min_votes and btc_confirm and (trend_bear or trend_gate_bypassed)
 
