@@ -1,10 +1,9 @@
 """
-Exp207: Lower vshort voter threshold multiplier from 0.5 to 0.3.
-The vshort voter uses dyn_threshold * 0.5 as its entry bar. Reducing
-to 0.3 makes the vshort voter easier to trigger, adding more votes
-especially in sideways/low-momentum regimes. This increases the chance
-of reaching MIN_VOTES without changing signal quality (trend gate
-and other voters still filter). Never tuned before.
+Exp206: Reduce BASE_THRESHOLD from 0.006 to 0.005 to allow entries on
+weaker momentum signals.  The dynamic threshold still scales with vol, so
+high-vol regimes stay protected.  Lower base threshold should increase
+trade count (improving trade_factor in scoring) and help sideways regime
+where momentum is inherently weaker.
 """
 
 import numpy as np
@@ -300,8 +299,8 @@ class Strategy:
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.3
-            vshort_bear = ret_vshort < -dyn_threshold * 0.3
+            vshort_bull = ret_vshort > dyn_threshold * 0.5
+            vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
