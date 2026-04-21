@@ -1,9 +1,9 @@
 """
-Exp207: Increase COOLDOWN_BARS from 2 to 3 to reduce whipsaw re-entries.
-After an exit, waiting one extra bar should filter out impulsive re-entries
-that reverse quickly.  The sideways adaptive cooldown (COOLDOWN_SIDEWAYS_BARS=0)
-still applies, so sideways gets faster re-entry.  This should mainly help
-crash_bear and rally where false re-entries are costly.
+Exp208: Raise STRENGTH_FLOOR_SIDEWAYS from 2.4 to 2.8 to boost position sizing
+in trendless/sideways markets.  Sideways is the weakest regime (16.6 vs 18-23
+for others) with low DD (5.3%).  A higher strength floor means bigger positions
+in sideways, which should boost returns without hitting DD limits.
+Previous exp reducing 2.4->1.8 hurt score; going up should help.
 """
 
 import numpy as np
@@ -90,7 +90,7 @@ TREND_GATE_MED_WEIGHT_BASE = 0.50   # ret_med weight in trending markets
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90  # ret_med weight in trendless markets
 TREND_GATE_ADAPT_DECAY = 0.08       # abs(ret_long) at which adaptation fully decays
 
-STRENGTH_FLOOR_SIDEWAYS = 2.4  # strength_scale floor in fully trendless markets
+STRENGTH_FLOOR_SIDEWAYS = 2.8  # strength_scale floor in fully trendless markets
 STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
