@@ -1,8 +1,9 @@
 """
-Exp206: Raise SIDEWAYS_BOOST_MAX from 0.70 to 0.85 to increase position
-sizing in trendless markets.  Sideways is the weakest regime (16.03 vs
-23.95 bull) with low DD (5.72%), so there's headroom to boost size.
-The squared decay curve ensures trending regimes see minimal change.
+Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
+low-volume entries.  In sideways markets volume is typically below average,
+so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
+sideways entries keep closer to full size, boosting return in the weakest
+regime without meaningfully increasing DD in trending regimes.
 """
 
 import numpy as np
@@ -69,7 +70,7 @@ DD_REDUCE_THRESHOLD = 99.0
 DD_REDUCE_SCALE = 0.5
 
 CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
-SIDEWAYS_BOOST_MAX = 0.85  # max position size boost in weak-trend (sideways) regimes
+SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
 STOP_WITH_TREND_MULT = 1.25     # wider stop when position aligns with long-term trend
