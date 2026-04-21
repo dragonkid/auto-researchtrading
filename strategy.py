@@ -1,8 +1,8 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp280: Raise PEAK_PROFIT_TIGHT_AT 0.03->0.04 so tightest giveback (25%) only
+fully applies at 4% peak profit instead of 3%. Between 2-4% peak profit, the
+giveback interpolates more gradually from 30%->25%, giving moderate winners
+more room to develop before the tight trailing exit activates.
 """
 
 import numpy as np
@@ -117,7 +117,7 @@ PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
-PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
+PEAK_PROFIT_TIGHT_AT = 0.04       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
