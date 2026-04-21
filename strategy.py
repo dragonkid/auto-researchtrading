@@ -1,10 +1,10 @@
 """
-Exp325: Reduce MIN_VOTES in sideways markets regardless of vol.
-Currently MIN_VOTES drops to 2 only when vol_ratio<0.9 or vol is compressed.
-In sideways markets (abs(ret_long)<0.04), vol can be normal, keeping MIN_VOTES=3.
-Since sideways DD is only 4.41% (lowest regime), there's headroom for more entries.
-Adding in_sideways to the MIN_VOTES_CALM condition allows more entries in trendless
-markets, potentially boosting the weakest regime score (19.2 vs 25+ others).
+Exp327: Stale position RSI exit tightening for long-held positions.
+After RSI_STALE_BARS (20 bars), gradually tighten RSI OB/OS thresholds toward
+center (50) by up to RSI_STALE_TIGHTEN (6pts). This cuts stale positions that
+haven't been exited by peak-profit or regular RSI thresholds. Targets sideways
+regime where positions can drift without clear direction, consuming capital.
+Separate from young-position grace (bars 1-4 widen) — this covers the opposite end.
 """
 
 import numpy as np
@@ -117,6 +117,9 @@ RSI_EXIT_PROFIT_SCALE = 14.0      # how fast tightening ramps with excess profit
 RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
+RSI_STALE_BARS = 20               # bars after which RSI exit starts tightening for stale positions
+RSI_STALE_TIGHTEN = 6.0           # max OB/OS tightening toward center (50) for very stale positions
+RSI_STALE_RAMP = 20               # additional bars over which tightening fully ramps up
 PEAK_PROFIT_GRACE_BARS = 1        # bars after entry before peak-profit trailing exit can trigger
 PEAK_PROFIT_MIN = 0.025           # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.30       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
@@ -647,6 +650,11 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                # Stale position tightening: gradually tighten RSI exit for long-held positions
+                if bars_held > RSI_STALE_BARS:
+                    stale_blend = min(1.0, (bars_held - RSI_STALE_BARS) / RSI_STALE_RAMP)
+                    effective_ob -= RSI_STALE_TIGHTEN * stale_blend
+                    effective_os += RSI_STALE_TIGHTEN * stale_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
