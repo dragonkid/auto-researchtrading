@@ -200,3 +200,4 @@ b6d3e09	22.930465	25.065480	4.270030	keep	trend-adaptive RSI voter thresholds (b
 -	22.920866	25.037958	4.234184	discard	reduce RSI_TREND_BIAS_DECAY 0.10->0.06 for faster trend bias activation (mean dropped 25.07->25.04, std improved 4.27->4.23 but net -0.010)
 b18d192	22.978664	25.123440	4.289553	keep	widen TREND_GATE_DEADZONE 0.002->0.003 for more entries in near-trendless sideways regimes (bull +0.15, crash +0.07, rally +0.08, composite +0.048)
 -	22.871720	24.861533	3.979627	discard	trend-aligned position sizing +15%/-10% with/against trend (std improved 4.27->3.98 but mean dropped 25.07->24.86, net -0.059)
+-	22.096040	24.143765	4.095450	discard	allow trend gate deadzone bypass for flips in sideways (rally hurt badly 25.4->22.5, more whipsaw flips, composite 22.979->22.096)
