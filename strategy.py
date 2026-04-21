@@ -1,10 +1,11 @@
 """
-Exp209: Reduce MACD_FAST 8->6 for more responsive MACD voter.
-MACD voter is one of 8 entry voters. With MACD_FAST=8, MACD_SLOW=21 the
-histogram is relatively sluggish. A faster MACD_FAST=6 makes the MACD line
-more sensitive to recent price moves, which should help detect shorter-lived
-momentum in sideways markets (our weakest regime at 16.19 vs 28.34 bull).
-This parameter has not been tuned in any prior experiment.
+Exp210: Increase EMA_FAST 3->5 for more distinct EMA crossover voter.
+EMA_FAST=3 is extremely responsive (close to price), making the EMA crossover
+voter highly correlated with the momentum/vshort voters. A slightly slower
+EMA_FAST=5 gives the crossover voter a more distinct signal, improving the
+quality of the voting ensemble. This should reduce false entries in sideways
+(where voter diversity matters most) while maintaining trend-detection in
+bull/bear regimes.
 """
 
 import numpy as np
@@ -19,7 +20,7 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
-EMA_FAST = 3
+EMA_FAST = 5
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
