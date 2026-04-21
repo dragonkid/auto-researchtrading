@@ -1,10 +1,9 @@
 """
-Exp367: Change sideways_trend_strength decay exponent from 2.0 (quadratic) to
-1.7. The quadratic makes the sideways boost persist deep into moderate trends,
-potentially adding sizing risk. A softer exponent of 1.7 decays the boost
-slightly faster in moderate trends while preserving full boost in truly
-sideways markets. This is different from exp365 which power-dampened the
-final (1-strength) factor — this changes the decay *shape* itself.
+Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
+Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
+decay more gradually from sideways into moderate trends, keeping the higher
+sizing cap active slightly longer. This is the same pattern that worked for
+trend_adapt_strength (line 403) which already uses ^0.85.
 """
 
 import numpy as np
@@ -499,7 +498,7 @@ class Strategy:
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL + (MAX_COMBINED_MULT - MAX_COMBINED_MULT_LOW_VOL) * blend
             # Trend-adaptive cap boost: in sideways markets, raise the cap
             # to allow more aggressive sizing (DD headroom exists when trend is weak)
-            trend_cap_strength = min(abs(ret_long) / MAX_COMBINED_TREND_DECAY, 1.0)
+            trend_cap_strength = min(abs(ret_long) / MAX_COMBINED_TREND_DECAY, 1.0) ** 0.85
             trend_cap_boost = MAX_COMBINED_TREND_BOOST * (1.0 - trend_cap_strength)
             adaptive_cap += trend_cap_boost
             combined_mult = min(combined_mult, adaptive_cap)
