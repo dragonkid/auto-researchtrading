@@ -1,8 +1,9 @@
 """
-Exp304: Widen trend gate deadzone 0.002->0.003.
-When abs(trend_avg) is very small and in sideways regime, bypass the trend gate
-entirely. Widening from 0.002 to 0.003 allows more entries in near-trendless
-conditions where the trend gate was blocking valid vote-confirmed signals.
+Exp309: Increase VOL_COMPRESS_THRESH_REDUCE 0.25->0.35.
+During volatility compression (short vol << long vol), reduce entry threshold
+more aggressively to catch breakouts earlier. Combined with the recent boost
+to VOL_COMPRESS_THRESHOLD (0.75) and VOL_COMPRESS_BOOST (0.50), this should
+help enter breakout moves sooner in compressed-vol regimes.
 """
 
 import numpy as np
@@ -96,7 +97,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 
 VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
-VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
+VOL_COMPRESS_THRESH_REDUCE = 0.35  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
