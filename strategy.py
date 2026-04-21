@@ -1,9 +1,9 @@
 """
-Exp205: Raise VOL_CONFIRM_FLOOR from 0.85 to 0.92 to reduce penalty for
-low-volume entries.  In sideways markets volume is typically below average,
-so the 0.85x floor shrinks positions unnecessarily.  Raising to 0.92 lets
-sideways entries keep closer to full size, boosting return in the weakest
-regime without meaningfully increasing DD in trending regimes.
+Exp206: Reduce BASE_THRESHOLD from 0.006 to 0.005 to allow entries on
+weaker momentum signals.  The dynamic threshold still scales with vol, so
+high-vol regimes stay protected.  Lower base threshold should increase
+trade count (improving trade_factor in scoring) and help sideways regime
+where momentum is inherently weaker.
 """
 
 import numpy as np
@@ -58,7 +58,7 @@ ATR_STOP_MULT_BASE = 4.5
 ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 TAKE_PROFIT_PCT = 99.0
-BASE_THRESHOLD = 0.006
+BASE_THRESHOLD = 0.005
 BTC_OPPOSE_THRESHOLD = -99.0
 
 PYRAMID_THRESHOLD = 0.015
