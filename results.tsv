@@ -153,4 +153,3 @@ cd4b563	22.360749	24.775528	4.829559	keep	reduce VOL_CONFIRM_BASE 48->36 to alig
 
 -	22.126674	24.013503	3.773659	discard	increase RSI_YOUNG_OB_WIDEN/RSI_YOUNG_OS_WIDEN 4.0->5.0 (std improved 4.83->3.77 but mean dropped 24.78->24.01, composite 22.361->22.127)
 693832d	22.380876	24.780553	4.799355	keep	reduce MACD_SLOW 18->16 for more responsive MACD voter (mean +0.005, std -0.03, all regimes stable, composite +0.020)
--	22.360314	24.781782	4.842937	discard	reduce CROSS_ASSET_TREND_DECAY 0.10->0.08 (mean flat, std up 4.80->4.84, composite 22.381->22.360)
