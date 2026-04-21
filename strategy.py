@@ -1,9 +1,10 @@
 """
-Exp206: Reduce BASE_THRESHOLD from 0.006 to 0.005 to allow entries on
-weaker momentum signals.  The dynamic threshold still scales with vol, so
-high-vol regimes stay protected.  Lower base threshold should increase
-trade count (improving trade_factor in scoring) and help sideways regime
-where momentum is inherently weaker.
+Exp207: Lower VOL_SPIKE_THRESHOLD from 1.7 to 1.5 so vol-spike sizing
+reduction (0.7x) triggers earlier.  Hypothesis: catching vol spikes
+sooner reduces drawdown in crash_bear and rally regimes, improving DD
+gate scores.  The trade-off is slightly smaller positions during moderate
+vol expansion, but the multiplicative DD penalty in scoring should favor
+the protection.
 """
 
 import numpy as np
@@ -50,7 +51,7 @@ BASE_POSITION_PCT = 0.33
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 48
-VOL_SPIKE_THRESHOLD = 1.7
+VOL_SPIKE_THRESHOLD = 1.5
 VOL_SPIKE_SCALE = 0.7
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
