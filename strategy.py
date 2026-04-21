@@ -1,10 +1,9 @@
 """
-Exp266: Reduce CROSS_ASSET_TREND_DECAY 0.10->0.08.
-The cross-asset boost adds sizing when all 3 assets agree on direction.
-Currently it's fully dampened when abs(ret_long) >= 0.10. By reducing to 0.08,
-we restrict the boost to more clearly sideways conditions, reducing risk from
-over-sizing in moderate trends where DD headroom is tighter.
-Previous: 0.14->0.10 was kept (+0.036). Continuing the reduction.
+Exp265: Reduce MACD_SLOW 18->16 for even more responsive MACD voter.
+Previous experiments showed that faster MACD parameters help:
+MACD_FAST 8->6 was keep, MACD_SLOW 21->18 was keep, MACD_SIGNAL 7->5 was keep.
+Continuing this trend by making the slow EMA shorter, which makes the MACD
+line cross zero more quickly in response to momentum changes.
 """
 
 import numpy as np
@@ -98,7 +97,7 @@ VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
-CROSS_ASSET_TREND_DECAY = 0.08  # abs(ret_long) at which cross-asset boost fully dampens
+CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 36         # longer-term volume average window (aligned with VOL_LONG_LOOKBACK)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
