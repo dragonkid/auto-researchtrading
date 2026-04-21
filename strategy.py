@@ -1,8 +1,8 @@
 """
-Exp250: Loss-adaptive cooldown.
-After a losing trade exit, extend cooldown to 5 bars (vs base 3) to reduce
-whipsaw re-entries in choppy markets. After a winning trade, keep standard
-cooldown. This targets the common failure mode of repeated losing re-entries.
+Exp249: Peak-profit trailing exit grace period (2 bars).
+4-bar grace was too long (-0.010). Try 2-bar grace: still protects against
+entry-bar spike exits but lets peak-profit trailing activate sooner on
+positions that genuinely peak early.
 """
 
 import numpy as np
@@ -127,7 +127,6 @@ VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
-COOLDOWN_LOSS_BARS = 5  # longer cooldown after a losing trade
 COOLDOWN_SIDEWAYS_BARS = 0  # faster re-entry in trendless markets
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -178,7 +177,6 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}  # track peak unrealized PnL per symbol
         self.entry_bar = {}  # track bar count at entry for young position grace
-        self.last_exit_loss = {}  # track whether last exit was a loss per symbol
 
     def _calc_atr(self, history, lookback):
         if len(history) < lookback + 1:
@@ -391,10 +389,8 @@ class Strategy:
             bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
-            # Longer after losing trades to reduce whipsaw re-entries
-            base_cooldown = COOLDOWN_LOSS_BARS if self.last_exit_loss.get(symbol, False) else COOLDOWN_BARS
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
-            effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (base_cooldown - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
+            effective_cooldown = COOLDOWN_SIDEWAYS_BARS + (COOLDOWN_BARS - COOLDOWN_SIDEWAYS_BARS) * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = TARGET_VOL / realized_vol
@@ -671,12 +667,6 @@ class Strategy:
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
-                    # Track whether exit was a loss for adaptive cooldown
-                    if symbol in self.entry_prices:
-                        exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            exit_pnl = -exit_pnl
-                        self.last_exit_loss[symbol] = exit_pnl < 0
                     self.entry_prices.pop(symbol, None)
                     self.peak_prices.pop(symbol, None)
                     self.atr_at_entry.pop(symbol, None)
