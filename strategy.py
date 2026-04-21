@@ -1,9 +1,8 @@
 """
-Exp375: Remove 6 disabled features (dead code) whose extreme parameter values
-ensure they never activate. Behavior is provably identical. Earns simplicity
-bonus via reduced LOC. Removed: pyramiding (SIZE=0), BTC opposition gate
-(THRESHOLD=-99), high-correlation SOL reduction (THRESHOLD=99), DD reduction
-(THRESHOLD=99), take-profit (PCT=99), funding boost (BOOST=0).
+Exp376: Remove dead decel exit block (DECEL_MULT=999 never triggers),
+dead MTF agree computation (MTF_AGREE_BOOST=0), and dead funding_rates
+assignment (only used in dead decel block). ~40 lines of provably dead
+computation removed. Behavior identical. Earns simplicity bonus.
 """
 
 import numpy as np
@@ -44,9 +43,6 @@ EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
-FUNDING_LOOKBACK = 24
-FUNDING_EXTREME_PERCENTILE = 0.80  # funding above this percentile = crowded
-FUNDING_EXTREME_DECEL_MULT = 0.5   # tighten decel by this factor when crowded
 BASE_POSITION_PCT = 0.30
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
@@ -70,9 +66,6 @@ STOP_AGAINST_TREND_MULT = 0.75  # tighter stop when position opposes long-term t
 STOP_FLAT_TREND_BOOST = 0.35    # max stop widening when trend is near zero
 STOP_FLAT_TREND_DECAY = 0.08    # abs(ret_long) at which flat-trend boost fully decays
 
-DECEL_MULT_BASE = 999.0         # DISABLED: decel exit hurts score (+0.430 when removed)
-DECEL_MULT_TREND = 999.0        # DISABLED: RSI exit + flip is better exit mechanism
-DECEL_TREND_DECAY = 0.10        # abs(ret_long) at which multiplier fully reaches trend value
 
 TREND_THRESHOLD_SCALE = 0.32  # max threshold reduction when trend is flat
 TREND_THRESHOLD_DECAY = 0.13  # abs(ret_long) at which reduction fully decays
@@ -93,8 +86,6 @@ VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
-VOL_DIVERGENCE_THRESHOLD = 0.70  # vol ratio below this triggers tighter exit
-VOL_DIVERGENCE_DECEL_MULT = 0.5  # decel multiplier when vol divergence detected
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
 MEANREV_SIZE_SCALE = 1.0        # mean-reversion entries use full normal size
 MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
@@ -112,10 +103,6 @@ PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
-PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
-PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
-PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
-PROFIT_SMALL_DECEL_WIDEN = 1.5  # decel multiplier widening for small winners
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
@@ -136,8 +123,6 @@ MAX_COMBINED_VOL_THRESHOLD = 1.2  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
-MTF_AGREE_BOOST = 0.0  # DISABLED: redundant with trend gate + high-vote boost
-MTF_AGREE_TREND_DECAY = 0.10
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
@@ -423,13 +408,6 @@ class Strategy:
                     # Below average: reduce down to VOL_CONFIRM_FLOOR
                     vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
 
-            # Multi-timeframe agreement: boost when vshort, short, and long all agree
-            # Dampened by trend strength so it only helps in sideways (DD-safe) regimes
-            mtf_agree_mult = 1.0
-            if (ret_vshort > 0 and ret_short > 0 and ret_long > 0) or \
-               (ret_vshort < 0 and ret_short < 0 and ret_long < 0):
-                mtf_trend_str = min(abs(ret_long) / MTF_AGREE_TREND_DECAY, 1.0)
-                mtf_agree_mult = 1.0 + MTF_AGREE_BOOST * (1.0 - mtf_trend_str)
 
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
@@ -440,7 +418,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * mtf_agree_mult
+            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
@@ -458,8 +436,6 @@ class Strategy:
             adaptive_cap += trend_cap_boost
             combined_mult = min(combined_mult, adaptive_cap)
             size = equity * BASE_POSITION_PCT * weight * combined_mult
-
-            funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -515,41 +491,6 @@ class Strategy:
                     stop = self.peak_prices[symbol] + atr_stop_mult * atr
                     if mid > stop:
                         target = 0.0
-
-                if symbol in self.entry_prices:
-                    entry = self.entry_prices[symbol]
-                    pnl = (mid - entry) / entry
-                    if current_pos < 0:
-                        pnl = -pnl
-                    # Momentum deceleration exit: if in profit and very-short-term
-                    # momentum reverses, exit before trailing stop catches up
-                    # Adaptive: wider threshold in trends (hold winners), tighter in sideways
-                    elif pnl > 0:
-                        decel_trend_str = min(abs(ret_long) / DECEL_TREND_DECAY, 1.0)
-                        decel_mult = DECEL_MULT_BASE + (DECEL_MULT_TREND - DECEL_MULT_BASE) * decel_trend_str
-                        # Volume-price divergence: tighten decel when volume is fading
-                        if vol_ratio_raw < VOL_DIVERGENCE_THRESHOLD:
-                            decel_mult *= VOL_DIVERGENCE_DECEL_MULT
-                        # Small-winner widening: give marginal winners room to develop
-                        if pnl < PROFIT_SMALL_THRESHOLD:
-                            decel_mult *= PROFIT_SMALL_DECEL_WIDEN
-                        # Profit-scaled tightening: lock in larger profits earlier
-                        elif pnl > PROFIT_DECEL_THRESHOLD:
-                            profit_excess = pnl - PROFIT_DECEL_THRESHOLD
-                            decel_mult /= (1.0 + profit_excess * PROFIT_DECEL_SCALE)
-                        # Funding crowding: tighten decel when position is on crowded side
-                        if len(funding_rates) >= FUNDING_LOOKBACK:
-                            current_funding = funding_rates[-1]
-                            funding_pctile = np.mean(funding_rates <= current_funding)
-                            if current_pos > 0 and funding_pctile > FUNDING_EXTREME_PERCENTILE:
-                                decel_mult *= FUNDING_EXTREME_DECEL_MULT
-                            elif current_pos < 0 and funding_pctile < (1.0 - FUNDING_EXTREME_PERCENTILE):
-                                decel_mult *= FUNDING_EXTREME_DECEL_MULT
-                        decel_threshold = dyn_threshold * decel_mult
-                        if current_pos > 0 and ret_vshort < -decel_threshold:
-                            target = 0.0
-                        elif current_pos < 0 and ret_vshort > decel_threshold:
-                            target = 0.0
 
                 # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
