@@ -1,8 +1,9 @@
 """
-Exp352: Reduce TREND_THRESHOLD_SCALE 0.38->0.32 for less entry threshold reduction in sideways.
-Currently the entry threshold drops by up to 38% in flat markets, which may allow too-weak
-momentum entries that whipsaw. Reducing to 32% keeps a slightly higher entry barrier in sideways,
-potentially improving quality of sideways entries and reducing whipsaw losses.
+Exp354: Gradual cross-asset agreement boost instead of binary all-or-nothing.
+Currently cross_asset_agree is 1.0+BOOST if ALL assets agree, 1.0 otherwise.
+With 3 assets, if 2/3 agree on direction, give 2/3 of the boost (proportional).
+This allows partial sizing boost when most assets confirm, capturing BTC/ETH
+agreement even when SOL diverges (lead-lag effect).
 """
 
 import numpy as np
@@ -267,9 +268,11 @@ class Strategy:
                 c = bar_data[s].history["close"].values
                 cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
         if len(cross_asset_rets) >= 2:
-            all_positive = all(r > 0 for r in cross_asset_rets)
-            all_negative = all(r < 0 for r in cross_asset_rets)
-            cross_asset_agree = 1.0 + CROSS_ASSET_BOOST if (all_positive or all_negative) else 1.0
+            n_pos = sum(1 for r in cross_asset_rets if r > 0)
+            n_neg = sum(1 for r in cross_asset_rets if r < 0)
+            n_total = len(cross_asset_rets)
+            agree_frac = max(n_pos, n_neg) / n_total  # 1.0 if all agree, 0.67 if 2/3
+            cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
 
