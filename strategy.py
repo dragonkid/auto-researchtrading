@@ -1,8 +1,8 @@
 """
-Exp381: Inline dead/no-op constants for simplicity bonus.
-Remove MED_WINDOW (unused), MEANREV_SIZE_SCALE (1.0 = no-op),
-COOLDOWN_SIDEWAYS_BARS (0 = no-op), PEAK_PROFIT_GRACE_BARS (inline 1).
-Zero behavior change, -5 LOC.
+Exp383: Reduce COOLDOWN_BARS 3->2 for faster re-entry.
+In sideways (effective cooldown ~1 bar already), this barely changes.
+In trending regimes, cooldown drops from 3 to 2 bars, allowing
+faster re-entry after exits — capturing more of trending moves.
 """
 
 import numpy as np
@@ -104,7 +104,7 @@ VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-COOLDOWN_BARS = 3
+COOLDOWN_BARS = 2
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
