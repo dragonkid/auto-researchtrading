@@ -1,8 +1,8 @@
 """
-Exp364: Reduce sideways boost squared exponent 2.0->1.7 for faster decay of sideways
-sizing boost into moderate-trend territory. The current quadratic decay extends the boost
-too deep into moderate trends where DD headroom is tighter. At 1.7, the boost decays
-faster away from truly trendless markets while retaining most benefit in sideways.
+Exp363: Reduce CROSS_ASSET_TREND_DECAY 0.08->0.06 to further restrict the cross-asset
+sizing boost to only the most trendless regimes. The decay series 0.14->0.10->0.08 was
+consistently positive. At 0.06, the cross-asset boost decays to zero faster as trend
+strengthens, preventing oversizing in moderate-trend periods where DD is already near limit.
 """
 
 import numpy as np
@@ -445,7 +445,7 @@ class Strategy:
             # Sideways regime boost: when long-term trend is weak, boost size
             # to capture more return in range-bound markets where risk is low
             sideways_trend_ratio = min(abs(ret_long) / SIDEWAYS_BOOST_DECAY, 1.0)
-            sideways_trend_strength = sideways_trend_ratio ** 1.7  # sub-quadratic for moderate decay
+            sideways_trend_strength = sideways_trend_ratio ** 2  # squared for slower decay
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - sideways_trend_strength)
 
             # High-conviction vote bonus: boost sizing when 5+ out of 6 signals agree
