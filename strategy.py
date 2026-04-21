@@ -1,13 +1,12 @@
 """
-Exp313: Widen TREND_GATE_DEADZONE 0.005->0.006.
-The deadzone widening series has been consistently productive:
-  0.001->0.002: +0.029
-  0.002->0.003: +0.048
-  0.003->0.004: +0.019
-  0.004->0.005: +0.083 (biggest gain yet!)
-The last step was the largest improvement, suggesting the optimal deadzone
-hasn't been reached. Try 0.006 to continue capturing more entries in sideways
-where abs(trend_avg) is noise rather than signal.
+Exp314: Increase LINREG_PERIOD 16->20 for smoother linear regression slope voter.
+The linreg slope voter detects trend direction via OLS regression on log prices.
+At 16 bars, the slope can be noisy in choppy markets, causing false votes.
+A longer 20-bar window smooths the slope estimate, potentially reducing whipsaw
+votes while still being responsive enough to catch real trends.
+Reducing to 12 was tried and failed badly (sideways -2.2, DD up). Increasing
+to 20 hasn't been tested — the longer window should reduce noise without
+significantly lagging, since the voter's threshold is already very low (0.0001).
 """
 
 import numpy as np
@@ -46,7 +45,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 16  # rolling linear regression window for slope voter
+LINREG_PERIOD = 20  # rolling linear regression window for slope voter
 
 FUNDING_LOOKBACK = 24
 FUNDING_BOOST = 0.0
