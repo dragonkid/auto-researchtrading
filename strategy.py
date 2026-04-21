@@ -1,9 +1,9 @@
 """
-Exp368: Power-dampen trend_cap_strength in the adaptive sizing cap calculation.
-Currently linear: min(abs(ret_long) / DECAY, 1.0). Applying ^0.85 makes it
-decay more gradually from sideways into moderate trends, keeping the higher
-sizing cap active slightly longer. This is the same pattern that worked for
-trend_adapt_strength (line 403) which already uses ^0.85.
+Exp369: Power-dampen trend_strength in entry threshold reduction calculation.
+Currently linear: min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0).
+Applying ^0.85 makes entry threshold reduction decay more gradually from
+sideways into moderate trends, keeping slightly lower thresholds active longer
+and allowing more entries in moderate-trend regimes.
 """
 
 import numpy as np
@@ -296,7 +296,7 @@ class Strategy:
             # Reduce threshold in trendless markets (sideways)
             # When abs(ret_long) is near zero, trend is weak → lower the bar for entries
             ret_long_raw = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            trend_strength = min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0)
+            trend_strength = min(abs(ret_long_raw) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85
             trend_reduction = TREND_THRESHOLD_SCALE * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
 
