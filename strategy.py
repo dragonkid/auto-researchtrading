@@ -1,9 +1,10 @@
 """
-Exp204: Widen inverse-vol position sizing range from [0.4, 2.0] to [0.3, 2.5].
-In calm/sideways regimes (vol << target), allows larger positions (up to 2.5x
-vs 2.0x) to capture more return.  In volatile/crash regimes (vol >> target),
-allows smaller positions (down to 0.3x vs 0.4x) to protect DD.  Targets the
-two weakest dimensions: sideways return and crash-regime DD.
+Exp205: Dynamic inverse-volatility symbol weighting.
+Replace equal 0.33/0.33/0.33 weights with weights proportional to 1/vol
+for each symbol, rebalanced every bar.  SOL is more volatile than BTC/ETH,
+so it gets over-weighted in calm periods and under-weighted in volatile ones.
+This should reduce DD in crash/bear (SOL shrinks) and improve Sharpe in
+sideways (BTC gets larger weight, more stable).
 """
 
 import numpy as np
@@ -236,6 +237,18 @@ class Strategy:
         if current_dd > DD_REDUCE_THRESHOLD:
             dd_scale = max(DD_REDUCE_SCALE, 1.0 - (current_dd - DD_REDUCE_THRESHOLD) * 5)
 
+        # Dynamic inverse-volatility symbol weighting
+        inv_vols = {}
+        for s in ACTIVE_SYMBOLS:
+            if s in bar_data and len(bar_data[s].history) >= VOL_LOOKBACK:
+                sv = self._calc_vol(bar_data[s].history["close"].values, VOL_LOOKBACK)
+                inv_vols[s] = 1.0 / max(sv, 1e-6)
+        if len(inv_vols) >= 2:
+            total_inv = sum(inv_vols.values())
+            dynamic_weights = {s: v / total_inv for s, v in inv_vols.items()}
+        else:
+            dynamic_weights = SYMBOL_WEIGHTS
+
         if "BTC" in bar_data and len(bar_data["BTC"].history) >= LONG_WINDOW + 1:
             btc_closes = bar_data["BTC"].history["close"].values
             self.btc_momentum = (btc_closes[-1] - btc_closes[-MED2_WINDOW]) / btc_closes[-MED2_WINDOW]
@@ -431,7 +444,7 @@ class Strategy:
                 mtf_trend_str = min(abs(ret_long) / MTF_AGREE_TREND_DECAY, 1.0)
                 mtf_agree_mult = 1.0 + MTF_AGREE_BOOST * (1.0 - mtf_trend_str)
 
-            weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
+            weight = dynamic_weights.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
             mom_strength = abs(ret_short) / dyn_threshold
