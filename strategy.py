@@ -1,8 +1,9 @@
 """
-Exp249: Peak-profit trailing exit grace period (2 bars).
-4-bar grace was too long (-0.010). Try 2-bar grace: still protects against
-entry-bar spike exits but lets peak-profit trailing activate sooner on
-positions that genuinely peak early.
+Exp250: Lower PEAK_PROFIT_TIGHT_AT 0.05->0.03 for faster giveback tightening.
+Currently the tightest giveback (0.30) only fully activates at 5%+ peak profit.
+In sideways markets, peaks are modest (2-4%), so positions linger with the
+looser 0.35 giveback. Lowering to 3% makes tighter trailing kick in sooner,
+helping lock in smaller wins — disproportionately benefiting sideways.
 """
 
 import numpy as np
@@ -117,7 +118,7 @@ PEAK_PROFIT_GRACE_BARS = 2        # bars after entry before peak-profit trailing
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
 PEAK_PROFIT_GIVEBACK = 0.35       # fraction of peak profit given back triggers exit (at PEAK_PROFIT_MIN)
 PEAK_PROFIT_GIVEBACK_TIGHT = 0.30 # tighter giveback for larger profits
-PEAK_PROFIT_TIGHT_AT = 0.05       # peak profit at which tightest giveback applies
+PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PROFIT_DECEL_THRESHOLD = 0.02   # profit pct above which decel exit tightens
 PROFIT_DECEL_SCALE = 10.0       # how fast decel tightens with excess profit
 PROFIT_SMALL_THRESHOLD = 0.01   # profit below this gets wider decel (hold small winners)
