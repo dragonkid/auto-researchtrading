@@ -1,8 +1,9 @@
 """
-Exp272: Tighten PEAK_PROFIT_GIVEBACK 0.35->0.30 for earlier profit-locking
-on modest peaks. The trend from 0.40->0.35 gained +0.002. Testing if further
-tightening (exiting when 30% of peak profit is given back vs 35%) improves
-composite by protecting gains better across all regimes.
+Exp284: Vol-compression aware MIN_VOTES. During vol compression (short/long
+vol ratio < VOL_COMPRESS_THRESHOLD=0.75), reduce MIN_VOTES to 2 regardless
+of vol_ratio. Rationale: vol compression signals imminent breakout; we already
+boost size and reduce threshold, but still require 3 votes for entry. Allowing
+2-vote entries during compression should capture more breakout moves early.
 """
 
 import numpy as np
@@ -294,11 +295,13 @@ class Strategy:
 
             # Vol-compression threshold reduction: when short vol << long vol,
             # a breakout is brewing — lower entry threshold to catch it early
+            vol_compressed = False
             if len(closes) >= VOL_LONG_LOOKBACK + 1:
                 vc_short = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
                 vc_long = self._calc_vol(closes, VOL_LONG_LOOKBACK)
                 vc_ratio = max(0.3, min(1.5, vc_short / max(vc_long, 1e-10)))
                 if vc_ratio < VOL_COMPRESS_THRESHOLD:
+                    vol_compressed = True
                     compress_str = (VOL_COMPRESS_THRESHOLD - vc_ratio) / VOL_COMPRESS_THRESHOLD
                     dyn_threshold *= (1.0 - VOL_COMPRESS_THRESH_REDUCE * compress_str)
 
@@ -384,7 +387,7 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            effective_min_votes = MIN_VOTES_CALM if vol_ratio < MIN_VOTES_CALM_VOL else MIN_VOTES
+            effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed) else MIN_VOTES
             bullish = bull_votes >= effective_min_votes and btc_confirm and trend_bull
             bearish = bear_votes >= effective_min_votes and btc_confirm and trend_bear
 
