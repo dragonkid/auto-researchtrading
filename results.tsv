@@ -6,3 +6,4 @@ d44c17a	23.530326	26.036818	5.016983	baseline	LOC baseline 575 for immediate sim
 -	22.169499	24.888130	5.445262	discard	remove vol-adaptive momentum lookback (fix to MED_WINDOW=12)
 c745446	23.595613	26.037103	5.016979	keep	remove 6 disabled features (dead code) for simplicity bonus (+0.065)
 4f51e76	23.643613	26.037103	5.016979	keep	remove dead decel exit, MTF agree, funding_rates (~60 lines) for simplicity bonus (+0.048)
+51728d9	23.690235	26.108796	5.067122	keep	increase STRENGTH_FLOOR_DECAY 0.10->0.12 to extend strength floor into moderate trends
