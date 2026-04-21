@@ -1,9 +1,9 @@
 """
-Exp207: Increase COOLDOWN_BARS from 2 to 3 to reduce whipsaw re-entries.
-After an exit, waiting one extra bar should filter out impulsive re-entries
-that reverse quickly.  The sideways adaptive cooldown (COOLDOWN_SIDEWAYS_BARS=0)
-still applies, so sideways gets faster re-entry.  This should mainly help
-crash_bear and rally where false re-entries are costly.
+Exp208: Reduce CROSS_ASSET_BOOST from 0.30 to 0.15.
+When all 3 assets agree on direction, we boost sizing by 30%.  This consensus
+often coincides with strong momentum (including crash reversals), which makes
+crash_bear positions too large.  Halving the boost should reduce DD in crash_bear
+while preserving most of the signal in calmer regimes.
 """
 
 import numpy as np
@@ -96,7 +96,7 @@ STRENGTH_FLOOR_DECAY = 0.10    # abs(ret_long) at which floor decays back to 0.6
 VOL_COMPRESS_THRESHOLD = 0.70  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.40     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
-CROSS_ASSET_BOOST = 0.30  # max size boost when all assets agree on direction
+CROSS_ASSET_BOOST = 0.15  # max size boost when all assets agree on direction
 CROSS_ASSET_TREND_DECAY = 0.14  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 48         # longer-term volume average window
