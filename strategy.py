@@ -1,8 +1,8 @@
 """
-Exp347: Power-dampened inverse-vol sizing. Instead of linear vol_scale = TARGET_VOL/vol,
-use vol_scale = (TARGET_VOL/vol)^0.85. This compresses extreme sizing ratios on both ends:
-less aggressive in very low vol (reduces DD risk), less conservative in very high vol
-(captures more opportunity). Should improve cross-regime consistency (lower std).
+Exp349: Power-dampened strength_scale. Apply same compression philosophy as vol sizing:
+mom_strength = (abs(ret_short) / dyn_threshold) ^ 0.85 instead of linear. This compresses
+extreme momentum signals: very strong momentum (which may be noise/overextension) gets
+less weight, while moderate momentum is preserved. Should improve cross-regime consistency.
 """
 
 import numpy as np
@@ -472,7 +472,7 @@ class Strategy:
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
             if high_corr and symbol == "SOL":
                 weight *= 0.5
-            mom_strength = abs(ret_short) / dyn_threshold
+            mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             # In sideways markets, raise the floor so weak momentum isn't double-penalized
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
