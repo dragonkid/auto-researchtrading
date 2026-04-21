@@ -1,8 +1,8 @@
 """
-Exp244: Faster vol-breakout detection.
-Reduce VOL_BREAKOUT_SHORT 4->3 for faster vol expansion detection.
-Should catch directional breakouts earlier, especially in sideways-to-trending
-transitions.
+Exp245: Extend young position RSI grace period.
+Increase RSI_YOUNG_GRACE_BARS 3->4 to give new positions more room before
+RSI exit activates. The grace period was a major win at 3 bars; extending
+to 4 should reduce premature exits especially in volatile sideways conditions.
 """
 
 import numpy as np
@@ -110,7 +110,7 @@ MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion 
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 12.0      # how fast tightening ramps with excess profit
-RSI_YOUNG_GRACE_BARS = 3          # bars after entry during which RSI exit is widened
+RSI_YOUNG_GRACE_BARS = 4          # bars after entry during which RSI exit is widened
 RSI_YOUNG_OB_WIDEN = 4.0          # max OB widening (added to effective_ob) at bar 1
 RSI_YOUNG_OS_WIDEN = 4.0          # max OS widening (subtracted from effective_os) at bar 1
 PEAK_PROFIT_MIN = 0.02            # min peak profit before trailing exit activates
