@@ -35,7 +35,9 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
    The body is for **post-hoc human audit only**. It is NOT input for future agents (see overfitting hygiene section below).
 6. **Backtest**: `uv run regime_test.py > run.log 2>&1`. This runs backtests across 4 non-overlapping market regimes (bull, bear crash, sideways, rally) and outputs a composite score.
 7. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`. The key metric is `composite_score` (= mean - 0.5*std across regimes). Also check individual regime scores for insights.
-8. **Record**: Keep the experiment ONLY IF BOTH conditions hold:
+8. **Record** (mandatory — do NOT skip): Every experiment, regardless of outcome, MUST produce exactly one new row appended to `results.tsv` before you exit. This is not optional. On run1, only ~9% of ~700 attempted experiments were logged — the missing 91% silently inflated selection bias (the true N was hidden, so multiple-testing math was under-estimated, and kept experiments looked more significant than they were). Do not repeat that failure mode on run2.
+
+   Keep the experiment ONLY IF BOTH conditions hold:
    - `composite_score` improved by **at least +0.01** vs the best `keep` in `results.tsv` (improvements below +0.01 are noise at score ~24 — treat as discard).
    - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs the baseline, where `composite_gain = new_composite - baseline_composite`. Baseline = the most recent `keep` line in `results.tsv` that has per-regime columns (10-column schema, see below). If no such line exists yet (first run after schema adoption), skip the regime-regression check.
 
