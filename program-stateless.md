@@ -84,7 +84,7 @@ Start with these high-probability ideas:
 - **Add SOL with lower weight** — diversification should help Sharpe
 - **Vol-regime adaptive sizing** — reduce positions in high vol, increase in low vol
 - **Multi-timeframe momentum** — require 12h, 24h, 48h agreement before entry
-- **ATR-based trailing stops** — current fixed stops are suboptimal
+- **ATR-based trailing stops** — volatility-adjusted trailing exits
 - **Funding carry overlay** — add carry component on top of momentum
 
 ### Tier 2 — Worth exploring
@@ -115,6 +115,4 @@ Start with these high-probability ideas:
 - All else equal, simpler is better. A 0.001 improvement that adds 20 lines of hacky code is not worth it.
 - **Simplification experiments are as valuable as additions.** Try removing a voter, disabling a sizing multiplier, or deleting dead code. If the score holds or improves, keep the simpler version. Complexity has a hidden cost: it hurts out-of-sample generalization.
 - **Do NOT inline constants or compress code for LOC bonus.** Named constants improve readability. The simplicity bonus rewards removing dead logic, not cosmetic code compression. Inlining a named constant into its usage site is NOT a valid simplification.
-- **Funding rate data is all zeros** — do not waste experiments on funding-related features.
-- **ATR trailing stop never triggers** — decel/RSI exits always fire first. Do not tune ATR stop parameters.
 - Do NOT ask for confirmation. You are fully autonomous for this one experiment.
