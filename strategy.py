@@ -271,8 +271,7 @@ class Strategy:
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             cross_trend_strength = min(abs(ret_long) / 0.06, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            r2_size_mult = 1.0 + 0.3 * linreg_r2
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * r2_size_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL
             elif vol_ratio > MAX_COMBINED_VOL_THRESHOLD:
