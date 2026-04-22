@@ -303,7 +303,7 @@ class Strategy:
                         age_factor = min(bars_held / 12.0, 1.0)
                         sideways_giveback_tighten = max(0.0, 1.0 - abs(ret_long) / MEANREV_TREND_THRESHOLD)
                         r2_loosen = 0.08 * linreg_r2
-                        adaptive_giveback = 0.25 - 0.05 * sideways_giveback_tighten + 0.10 * age_factor + r2_loosen
+                        adaptive_giveback = 0.25 - 0.05 * sideways_giveback_tighten + 0.15 * age_factor + r2_loosen
                         if giveback > self.peak_pnl[symbol] * adaptive_giveback:
                             target = 0.0
 
