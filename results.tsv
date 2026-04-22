@@ -39,3 +39,7 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.818729	26.079966	4.924473	discard	reduce MIN_VOTES by 1 when linreg R2 > 0.50 (no effect, +2 LOC cost)
 -	23.818729	26.079966	4.924473	discard	R2-scaled peak profit giveback (no effect on regime scores, +1 LOC cost)
 4eb9fbb	23.868845	26.090230	4.942769	keep	remove ATR trailing stop (never triggers, -48 LOC, bull +0.050, +0.108 total)
+
+-	22.010326	23.612388	3.686124	discard	add momentum acceleration voter (enter when momentum accelerating vs 4 bars ago)
+
+-	20.131105	21.130933	2.499655	discard	widen RSI exit thresholds (73/27 -> 75/25) to hold positions longer in trends
