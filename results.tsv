@@ -35,7 +35,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.749082	26.062798	4.925432	discard	increase dyn_threshold vol exponent 0.85->0.95 for more vol-responsive entry threshold
 -	21.973933	24.096308	4.570749	discard	remove MACD voter (redundant with EMA crossover, correlated noise in 9-voter ensemble)
 9e2c37e	23.760729	26.079966	4.924473	keep	use linreg R-squared to scale entry threshold (lower in clean trends, +0.043)
-
--	21.263484	23.393444	4.545922	discard	increase RSI_PERIOD 8->10 for smoother trending-market RSI (fewer false exits)
-
--	20.806482	23.618827	5.910691	discard	widen RSI exit in sideways (RSI_OB_WIDE 74->76, RSI_OS_WIDE 26->24) to hold winners longer
