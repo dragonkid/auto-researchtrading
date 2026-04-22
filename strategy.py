@@ -57,9 +57,10 @@ RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
 
-# Peak-profit trailing exit
-PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
+# ATR trailing exit
+ATR_TRAIL_PERIOD = 14
+ATR_TRAIL_MULT = 2.5
+ATR_TRAIL_MIN_PROFIT = 0.015        # minimum PnL before trailing activates
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
@@ -127,7 +128,7 @@ class Strategy:
         self.entry_prices = {}
         self.exit_bar = {}
         self.bar_count = 0
-        self.peak_pnl = {}
+        self.peak_price = {}
         self.entry_bar = {}
 
     def _calc_vol(self, closes, lookback):
@@ -135,6 +136,18 @@ class Strategy:
             return TARGET_VOL
         log_rets = np.diff(np.log(closes[-lookback:]))
         return max(np.std(log_rets), 1e-6)
+
+    def _calc_atr(self, highs, lows, closes, period):
+        if len(closes) < period + 1:
+            return closes[-1] * TARGET_VOL
+        trs = np.empty(period)
+        for i in range(period):
+            idx = -(period - i)
+            h = highs[idx]
+            l = lows[idx]
+            prev_c = closes[idx - 1]
+            trs[i] = max(h - l, abs(h - prev_c), abs(l - prev_c))
+        return np.mean(trs)
 
     def _calc_macd(self, closes):
         if len(closes) < MACD_SLOW + MACD_SIGNAL + 5:
@@ -359,13 +372,21 @@ class Strategy:
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pos_pnl = -pos_pnl
-                    prev_peak = self.peak_pnl.get(symbol, 0.0)
-                    self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
-                    adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                    if self.peak_pnl[symbol] > adaptive_peak_min:
-                        giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                            target = 0.0
+                    highs = bd.history["high"].values
+                    lows = bd.history["low"].values
+                    atr = self._calc_atr(highs, lows, closes, ATR_TRAIL_PERIOD)
+                    if current_pos > 0:
+                        self.peak_price[symbol] = max(self.peak_price.get(symbol, mid), mid)
+                        if pos_pnl > ATR_TRAIL_MIN_PROFIT:
+                            trail_stop = self.peak_price[symbol] - ATR_TRAIL_MULT * atr
+                            if mid < trail_stop:
+                                target = 0.0
+                    elif current_pos < 0:
+                        self.peak_price[symbol] = min(self.peak_price.get(symbol, mid), mid)
+                        if pos_pnl > ATR_TRAIL_MIN_PROFIT:
+                            trail_stop = self.peak_price[symbol] + ATR_TRAIL_MULT * atr
+                            if mid > trail_stop:
+                                target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
@@ -378,16 +399,16 @@ class Strategy:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target != 0 and current_pos == 0:
                     self.entry_prices[symbol] = mid
-                    self.peak_pnl[symbol] = 0.0
+                    self.peak_price[symbol] = mid
                     self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
-                    self.peak_pnl.pop(symbol, None)
+                    self.peak_price.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
-                    self.peak_pnl[symbol] = 0.0
+                    self.peak_price[symbol] = mid
                     self.entry_bar[symbol] = self.bar_count
 
         return signals
