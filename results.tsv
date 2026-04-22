@@ -52,5 +52,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
 
 -	22.818838	24.899599	4.695522	discard	add R2-based position sizing boost (1.0+0.3*R2) to size up in clean trends (hurt sideways)
--	21.932429	24.346188	5.359517	discard	reduce LINREG_PERIOD 16->12 for more responsive trend detection (hurt sideways badly)
-120e0c6	23.980071	26.227604	5.025067	keep	tighter peak-profit giveback in sideways markets (0.25->0.20, sideways_giveback_tighten)
