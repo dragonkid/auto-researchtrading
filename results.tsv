@@ -1,1 +1,2 @@
 8be6b90	23.98	25.89	4.33	32.45	24.91	20.32	25.90	keep	baseline: run2 start — inherited from run1 final state (after hardened prompt rules applied)
+a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate contrarian voter (avg funding >0.0003 votes against crowd) — zero impact, threshold rarely triggered
