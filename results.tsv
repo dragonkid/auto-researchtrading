@@ -47,3 +47,8 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 3508b32	23.910653	26.130700	4.970092	keep	deduplicate trend strength computations (reuse rsi_trend_str and cooldown_trend_strength, -2 LOC)
 -	23.337682	24.879378	3.607392	discard	dampen profit-based RSI exit tightening by trend strength (let winners run in trends)
 -	23.890166	26.124089	4.993846	discard	increase vshort momentum threshold multiplier 0.5->0.65 for more selective short-term voter
+5d7afe2	23.928907	26.142643	4.967471	keep	consolidate 5 redundant trend-strength vars and inline exit threshold widening (-5 LOC) for simplicity bonus (+0.005)
+-	19.498429	20.742655	3.018451	discard	widen RSI exit thresholds 73/27->76/24 to let winning positions run longer
+-	23.543163	25.630052	4.703778	discard	increase vote_boost 1.20->1.35 for stronger sizing on high-conviction entries
+-	23.891346	26.127584	5.002477	discard	reduce trend_reduction max 0.32->0.25 for higher entry threshold in sideways markets
+-	22.910555	25.074998	4.856887	discard	R2-scaled position sizing (reduce 15% in noisy markets, boost 15% in clean trends)
