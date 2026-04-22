@@ -57,3 +57,5 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.743017	25.863268	4.826502	discard	graduated vote boost (0.05 per vote above 2) instead of flat 1.20 threshold
 98a6bfe	23.996154	26.248142	5.089976	keep	reduce MACD_SIGNAL 5->4 for faster MACD histogram response (+0.086)
 -	21.901732	23.619200	4.030936	discard	reduce cooldown in high-R2 environments (clean trends allow faster re-entry)
+-	20.061399	22.763898	6.000997	discard	reduce DONCHIAN_PERIOD 12->8 for more responsive breakout voter (hurt all regimes, esp sideways)
+3539a95	24.005238	25.867384	4.318291	keep	R2-adaptive giveback (loosen trailing stop in clean trends, lower std)
