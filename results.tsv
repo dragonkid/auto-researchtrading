@@ -47,3 +47,9 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 3508b32	23.910653	26.130700	4.970092	keep	deduplicate trend strength computations (reuse rsi_trend_str and cooldown_trend_strength, -2 LOC)
 -	23.337682	24.879378	3.607392	discard	dampen profit-based RSI exit tightening by trend strength (let winners run in trends)
 -	23.890166	26.124089	4.993846	discard	increase vshort momentum threshold multiplier 0.5->0.65 for more selective short-term voter
+
+2b65463	23.923907	26.142643	4.967471	keep	increase LINREG_R2_THRESH_REDUCE 0.28->0.38 for more aggressive entries in clean trends
+
+-	23.887161	26.110233	4.974142	discard	reduce mean-reversion position size to 50% (lower conviction entries get half sizing)
+-	23.607845	25.979148	5.272605	discard	increase RSI_YOUNG_GRACE_BARS 4->5 to give young positions more time before RSI exit
+-	23.835652	25.855692	4.568080	discard	vol-adaptive peak profit giveback (tighter in low vol, wider in high vol)
