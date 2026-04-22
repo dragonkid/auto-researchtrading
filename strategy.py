@@ -1,4 +1,4 @@
-# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
+# Exp: Remove MACD voter (redundant with EMA crossover, reduces correlated noise).
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -26,10 +26,6 @@ RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.08  # abs(ret_long) at which sideways widening fully decays
-
-MACD_FAST = 6
-MACD_SLOW = 16
-MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
@@ -157,15 +153,6 @@ class Strategy:
         log_rets = np.diff(np.log(closes[-lookback:]))
         return max(np.std(log_rets), 1e-6)
 
-    def _calc_macd(self, closes):
-        if len(closes) < MACD_SLOW + MACD_SIGNAL + 5:
-            return 0.0
-        fast_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST)
-        slow_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-        macd_line = fast_ema - slow_ema
-        signal_line = ema(macd_line, MACD_SIGNAL)
-        return macd_line[-1] - signal_line[-1]
-
     def _calc_ema_slope(self, closes):
         if len(closes) < EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5:
             return 0.0
@@ -210,7 +197,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -272,10 +259,6 @@ class Strategy:
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
 
-            macd_hist = self._calc_macd(closes)
-            macd_bull = macd_hist > 0
-            macd_bear = macd_hist < 0
-
             # EMA slope: rising long EMA = bullish, falling = bearish
             ema_slope = self._calc_ema_slope(closes)
             slope_bull = ema_slope > 0.0005
@@ -310,8 +293,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             # Trend gate: weighted average of med and long returns must confirm direction
             # In sideways markets, shift weight toward faster ret_med for responsiveness
