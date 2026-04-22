@@ -1,4 +1,4 @@
-# Exp: Reduce CALM_BOOST_MAX 0.8->0.5 for more consistent sizing across regimes.
+# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -46,7 +46,7 @@ ATR_STOP_MULT_MIN = 3.0
 ATR_STOP_MULT_MAX = 6.0
 BASE_THRESHOLD = 0.005
 
-CALM_BOOST_MAX = 0.5  # max position size boost in calm regimes
+CALM_BOOST_MAX = 0.8  # max position size boost in calm regimes
 SIDEWAYS_BOOST_MAX = 0.70  # max position size boost in weak-trend (sideways) regimes
 SIDEWAYS_BOOST_DECAY = 0.10  # abs(ret_long) at which sideways boost fully decays
 
