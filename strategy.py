@@ -1,4 +1,4 @@
-# Exp: Increase LINREG_PERIOD 16->20 for more stable R² and slope estimates.
+# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -33,7 +33,7 @@ MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-LINREG_PERIOD = 20  # rolling linear regression window for slope voter
+LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 BASE_POSITION_PCT = 0.30
 VOL_LOOKBACK = 24
