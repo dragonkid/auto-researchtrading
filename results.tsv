@@ -50,10 +50,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.840125	25.865007	4.587765	discard	increase PEAK_PROFIT_GIVEBACK 0.30->0.38 to let profitable positions run longer
 
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
-
-979d012	23.930123	26.153112	4.983977	keep	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1, +0.019)
--	23.886216	26.127656	5.012880	discard	add Bollinger Band proximity filter to mean-reversion entries in sideways markets
--	23.910313	26.133303	4.979980	discard	scale mean-reversion position size by RSI extremity (higher conviction = larger size)
--	22.964228	24.993598	4.596739	discard	scale vote_boost by excess votes (0.10 per vote above 3 instead of flat 1.20 at 3+)
-7a29897	23.936364	26.158023	4.981318	keep	increase LINREG_R2_THRESH_REDUCE 0.38->0.45 for more aggressive threshold reduction in clean trends (+0.006)
-f270a22	23.990668	26.251693	5.058050	keep	adaptive peak profit minimum scaled by vol_ratio (lower in calm, higher in volatile, +0.054)
