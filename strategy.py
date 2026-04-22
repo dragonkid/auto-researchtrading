@@ -9,6 +9,7 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 SHORT_WINDOW = 8
 LONG_WINDOW = 20
+MACRO_WINDOW = 48
 
 # EMA parameters
 EMA_FAST = 3
@@ -183,7 +184,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
+            if len(bd.history) < max(LONG_WINDOW, MACRO_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -195,6 +196,7 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            ret_macro = (closes[-1] - closes[-MACRO_WINDOW]) / closes[-MACRO_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = 1.0
@@ -275,8 +277,13 @@ class Strategy:
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
+            # Require more votes when trading against 48-bar macro trend
+            macro_against_bull = ret_macro < -0.01
+            macro_against_bear = ret_macro > 0.01
+            eff_min_bull = MIN_VOTES + 1 if macro_against_bull else MIN_VOTES
+            eff_min_bear = MIN_VOTES + 1 if macro_against_bear else MIN_VOTES
+            bullish = bull_votes >= eff_min_bull and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= eff_min_bear and (trend_bear or trend_gate_bypassed)
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
