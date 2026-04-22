@@ -52,5 +52,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
 
 -	22.818838	24.899599	4.695522	discard	add R2-based position sizing boost (1.0+0.3*R2) to size up in clean trends (hurt sideways)
-
-6fc1d6e	23.969098	26.210613	5.015030	keep	age-scaled peak profit giveback (0.25->0.40 over 12 bars, let older positions breathe)
