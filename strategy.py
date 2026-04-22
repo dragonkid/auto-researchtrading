@@ -1,9 +1,9 @@
-# Exp: Tilt symbol weights toward BTC (0.40) and away from SOL (0.27) for cleaner trends + lower vol.
+# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
-SYMBOL_WEIGHTS = {"BTC": 0.40, "ETH": 0.33, "SOL": 0.27}
+SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
 SHORT_WINDOW = 8
 MED_WINDOW_MIN = 8
