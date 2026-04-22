@@ -226,7 +226,7 @@ class Strategy:
             sideways_boost = 1.0 + 0.70 * (1.0 - rsi_trend_str ** 1.7)
 
             winning_votes = max(bull_votes, bear_votes)
-            vote_boost = 1.0 + 0.05 * max(0, winning_votes - eff_min_votes)
+            vote_boost = 1.20 if winning_votes >= 3 else 1.0
 
             vol_confirm_mult = 1.0
             volumes = bd.history["volume"].values
