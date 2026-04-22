@@ -28,8 +28,8 @@ RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.08  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
-MACD_SLOW = 19
-MACD_SIGNAL = 7
+MACD_SLOW = 16
+MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
