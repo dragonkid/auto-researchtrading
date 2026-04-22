@@ -1,4 +1,4 @@
-# Exp: Add BTC lead-lag signal for ETH/SOL entries.
+# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -112,8 +112,6 @@ MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-v
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
-BTC_LEAD_LAG_WINDOW = 6  # BTC short-term return lookback for lead-lag signal
-BTC_LEAD_LAG_THRESHOLD = 0.003  # min BTC return to trigger lead-lag vote
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -209,15 +207,6 @@ class Strategy:
             cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
-
-        # BTC lead-lag: compute BTC short-term return as leading signal for ETH/SOL
-        btc_lead_bull = False
-        btc_lead_bear = False
-        if "BTC" in bar_data and len(bar_data["BTC"].history) >= BTC_LEAD_LAG_WINDOW + 1:
-            btc_c = bar_data["BTC"].history["close"].values
-            btc_ret = (btc_c[-1] - btc_c[-BTC_LEAD_LAG_WINDOW]) / btc_c[-BTC_LEAD_LAG_WINDOW]
-            btc_lead_bull = btc_ret > BTC_LEAD_LAG_THRESHOLD
-            btc_lead_bear = btc_ret < -BTC_LEAD_LAG_THRESHOLD
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -323,12 +312,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            # BTC lead-lag voter for ETH/SOL only
-            lead_lag_bull = btc_lead_bull if symbol != "BTC" else False
-            lead_lag_bear = btc_lead_bear if symbol != "BTC" else False
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, lead_lag_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, lead_lag_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             # Trend gate: weighted average of med and long returns must confirm direction
             # In sideways markets, shift weight toward faster ret_med for responsiveness
