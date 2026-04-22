@@ -1,4 +1,4 @@
-# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
+# Exp: Raise vshort threshold multiplier 0.50->0.65 for more selective short-term momentum voter.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -259,8 +259,8 @@ class Strategy:
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            vshort_bull = ret_vshort > dyn_threshold * 0.65
+            vshort_bear = ret_vshort < -dyn_threshold * 0.65
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
