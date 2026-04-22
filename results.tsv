@@ -32,3 +32,5 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.710156	26.108925	5.065539	discard	add stale position exit (close after 24 bars if PnL < 1%)
 
 -	20.585825	22.043542	3.201434	discard	reduce FLIP_MIN_VOTES 4->3 for faster position flips in sideways markets-	23.693042	26.106527	5.112971	discard	slow MACD parameters (16/5->19/7) for fewer false signals in choppy markets
+-	23.749082	26.062798	4.925432	discard	increase dyn_threshold vol exponent 0.85->0.95 for more vol-responsive entry threshold
+-	21.973933	24.096308	4.570749	discard	remove MACD voter (redundant with EMA crossover, correlated noise in 9-voter ensemble)

@@ -1,4 +1,4 @@
-# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
+# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -110,6 +110,7 @@ MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-v
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
+LINREG_R2_THRESH_REDUCE = 0.20  # max entry threshold reduction when linreg R² is high (clean trend)
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -174,17 +175,20 @@ class Strategy:
         slope = (ema_arr[-1] - ema_arr[-EMA_SLOPE_LOOKBACK]) / ema_arr[-EMA_SLOPE_LOOKBACK]
         return slope
 
-    def _calc_linreg_slope(self, closes):
+    def _calc_linreg(self, closes):
         if len(closes) < LINREG_PERIOD:
-            return 0.0
+            return 0.0, 0.0
         y = np.log(closes[-LINREG_PERIOD:])
         n = LINREG_PERIOD
         x = np.arange(n, dtype=float)
         x_mean = (n - 1) / 2.0
         y_mean = y.mean()
-        # OLS slope = sum((x-xbar)(y-ybar)) / sum((x-xbar)^2)
-        slope = np.sum((x - x_mean) * (y - y_mean)) / np.sum((x - x_mean) ** 2)
-        return slope
+        ss_xy = np.sum((x - x_mean) * (y - y_mean))
+        ss_xx = np.sum((x - x_mean) ** 2)
+        slope = ss_xy / ss_xx
+        ss_yy = np.sum((y - y_mean) ** 2)
+        r_sq = (ss_xy ** 2) / (ss_xx * ss_yy) if ss_yy > 1e-20 else 0.0
+        return slope, r_sq
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -241,6 +245,10 @@ class Strategy:
                     compress_str = (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
                     dyn_threshold *= (1.0 - VOL_COMPRESS_THRESH_REDUCE * compress_str)
 
+            # R²-based threshold: lower threshold when linreg fit is clean (high R²)
+            linreg_slope, linreg_r2 = self._calc_linreg(closes)
+            dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
+
             # Adaptive momentum lookback: shorter in high vol, longer in low vol
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
@@ -282,7 +290,6 @@ class Strategy:
             slope_bear = ema_slope < -0.0005
 
             # Linear regression slope voter: more robust trend detection
-            linreg_slope = self._calc_linreg_slope(closes)
             linreg_bull = linreg_slope > 0.0001
             linreg_bear = linreg_slope < -0.0001
 
