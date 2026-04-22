@@ -40,4 +40,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.818729	26.079966	4.924473	discard	R2-scaled peak profit giveback (no effect on regime scores, +1 LOC cost)
 4eb9fbb	23.868845	26.090230	4.942769	keep	remove ATR trailing stop (never triggers, -48 LOC, bull +0.050, +0.108 total)
 -	21.321283	23.661246	5.179925	discard	invert vol_exit_blend direction (widen RSI exits in high vol to let trends run)
--	20.822525	23.466168	5.793285	discard	inverse-vol risk parity weighting per symbol instead of fixed 0.33
