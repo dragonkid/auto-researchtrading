@@ -140,7 +140,7 @@ class Strategy:
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             trend_strength = min(abs(ret_long) / 0.13, 1.0) ** 0.85
-            trend_reduction = 0.25 * (1.0 - trend_strength)
+            trend_reduction = 0.32 * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
 
             short_vol = long_vol = None
