@@ -7,7 +7,6 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
-MTF_WINDOW = 48
 EMA_SLOW = 21
 
 MACD_SLOW = 16
@@ -198,15 +197,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            mtf_bull = False
-            mtf_bear = False
-            if len(closes) >= MTF_WINDOW + 1:
-                ret_mtf = (closes[-1] - closes[-MTF_WINDOW]) / closes[-MTF_WINDOW]
-                mtf_bull = ret_mtf > dyn_threshold * 1.5
-                mtf_bear = ret_mtf < -dyn_threshold * 1.5
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, mtf_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, mtf_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / 0.06, 1.0)
             trend_avg = (0.90 - 0.20 * cooldown_trend_strength ** 0.85) * ret_med + (0.10 + 0.20 * cooldown_trend_strength ** 0.85) * ret_long
