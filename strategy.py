@@ -203,7 +203,7 @@ class Strategy:
             bullish = bull_votes >= eff_min_votes and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= eff_min_votes and (trend_bear or trend_gate_bypassed)
 
-            effective_cooldown = 3 * cooldown_trend_strength
+            effective_cooldown = 3 * cooldown_trend_strength * (1.0 - 0.4 * linreg_r2)
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
