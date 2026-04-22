@@ -32,10 +32,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.710156	26.108925	5.065539	discard	add stale position exit (close after 24 bars if PnL < 1%)
 
 -	20.585825	22.043542	3.201434	discard	reduce FLIP_MIN_VOTES 4->3 for faster position flips in sideways markets-	23.693042	26.106527	5.112971	discard	slow MACD parameters (16/5->19/7) for fewer false signals in choppy markets
-
--	23.525187	25.959733	5.167091	discard	reduce HIGH_VOTE_BOOST 0.20->0.10 for lower variance across regimes
-
--	23.163724	25.622381	5.215314	discard	increase BTC weight 0.33->0.38, reduce ETH/SOL 0.33->0.31 for cross-regime stability
--	21.824664	24.217151	5.082974	discard	tighten RSI exit thresholds 73/27->70/30 for earlier profit-taking (hurt mean_score badly)
-745b714	23.750769	26.065786	4.928036	keep	reduce PEAK_PROFIT_AGE_BARS 8->6 for earlier giveback tightening on held positions
--	23.213670	25.070234	4.011128	discard	tighten PEAK_PROFIT_GIVEBACK_TIGHT 0.25->0.20 for stronger profit protection (hurt mean_score)
