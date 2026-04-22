@@ -76,3 +76,5 @@ c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.
 -	23.990498	25.837262	4.273527	discard	require 2+ votes to confirm mean-reversion RSI entries in sideways (marginal, below threshold)
 -	24.020299	25.857727	4.254856	discard	reduce giveback age loosening 0.15->0.10 (no effect, below threshold)
 -	23.474439	25.186939	4.005001	discard	halve cross-asset agreement dampening in trends (boosted DD too much)
+-	23.992398	25.829298	4.245799	discard	require extra vote in high-vol regime (vol_ratio>1.3) for noise reduction
+-	24.020527	25.860851	4.258648	discard	add vol-adaptive giveback (loosen in high vol, tighten in low vol) - no effect (+0.000063)
