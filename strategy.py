@@ -258,17 +258,7 @@ class Strategy:
                 if base_vol > 0:
                     vol_confirm_mult = max(0.98, min(1.20, recent_vol / base_vol))
 
-            inv_vols = {}
-            for s in ACTIVE_SYMBOLS:
-                if s in bar_data and len(bar_data[s].history) >= 24:
-                    c = bar_data[s].history["close"].values
-                    iv = 1.0 / max(self._calc_vol(c, 24), 1e-6)
-                    inv_vols[s] = iv
-            if inv_vols and symbol in inv_vols:
-                total_iv = sum(inv_vols.values())
-                weight = inv_vols[symbol] / total_iv
-            else:
-                weight = 1.0 / len(ACTIVE_SYMBOLS)
+            weight = 0.33
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / 0.12, 1.0)
             strength_floor = 0.6 + (2.6 - 0.6) * (1.0 - sideways_strength)
