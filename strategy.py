@@ -1,4 +1,4 @@
-# Exp: Reduce RSI_PERIOD_SIDEWAYS 6->4 for faster RSI in trendless markets.
+# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -13,7 +13,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
-RSI_PERIOD_SIDEWAYS = 4
+RSI_PERIOD_SIDEWAYS = 6
 RSI_MID = 50
 RSI_TREND_BIAS = 1.5           # max RSI voter threshold shift toward trend direction
 RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
