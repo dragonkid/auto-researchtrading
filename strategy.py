@@ -117,7 +117,7 @@ class Strategy:
             dyn_threshold = max(0.004, min(0.012, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            dyn_threshold *= 1.0 - 0.32 * (1.0 - min(abs(ret_long) / 0.13, 1.0) ** 0.85)
+            dyn_threshold *= 1.0 - 0.32 * (1.0 - min(abs(ret_long) / 0.10, 1.0) ** 0.85)
 
             short_vol = long_vol = None
             sl_ratio_raw = 1.0
