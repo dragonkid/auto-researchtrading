@@ -39,3 +39,6 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.818729	26.079966	4.924473	discard	reduce MIN_VOTES by 1 when linreg R2 > 0.50 (no effect, +2 LOC cost)
 -	23.818729	26.079966	4.924473	discard	R2-scaled peak profit giveback (no effect on regime scores, +1 LOC cost)
 4eb9fbb	23.868845	26.090230	4.942769	keep	remove ATR trailing stop (never triggers, -48 LOC, bull +0.050, +0.108 total)
+-	23.856175	26.102390	4.982430	discard	replace RSI 49/51 mean-reversion with Donchian+RSI filter (no improvement)
+3811dd6	23.887193	26.125483	4.976580	keep	increase MIN_VOTES_CALM 2->3 for higher-quality entries in low-vol/sideways (+0.018)
+-	23.759841	25.999641	5.009600	discard	remove cross-asset momentum agreement (dampened sizing boost, hurt sideways -0.127)
