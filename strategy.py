@@ -23,6 +23,8 @@ MEANREV_TREND_THRESHOLD = 0.05
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
+DD_DAMPENING_START = 0.03
+DD_DAMPENING_SCALE = 0.40
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -51,6 +53,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
+        self.equity_peak = 0.0
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -86,6 +89,11 @@ class Strategy:
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
+
+        self.equity_peak = max(self.equity_peak, equity)
+        dd_frac = (self.equity_peak - equity) / self.equity_peak if self.equity_peak > 0 else 0.0
+        dd_dampen = 1.0 - DD_DAMPENING_SCALE * max(0.0, dd_frac - DD_DAMPENING_START) / (1.0 - DD_DAMPENING_START) if dd_frac > DD_DAMPENING_START else 1.0
+        dd_dampen = max(0.3, dd_dampen)
 
         # Cross-asset momentum agreement
         cross_asset_rets = []
@@ -239,7 +247,7 @@ class Strategy:
             adaptive_cap = 2.5 if vol_ratio > 1.2 else 6.5 - 3.0 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.6))
             adaptive_cap += 1.5 * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * 0.115 * combined_mult
+            size = equity * 0.115 * combined_mult * dd_dampen
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
