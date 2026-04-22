@@ -501,12 +501,10 @@ class Strategy:
                     # Update peak PnL
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
-                    # Vol-adaptive peak profit min: lower in high vol (lock gains faster)
-                    effective_peak_min = PEAK_PROFIT_MIN / max(0.5, min(2.0, vol_ratio))
                     # If peak profit was significant and we've given back too much, exit
-                    if self.peak_pnl[symbol] > effective_peak_min:
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
                         # Scale giveback: tighter for larger profits
-                        profit_blend = min(1.0, (self.peak_pnl[symbol] - effective_peak_min) / (PEAK_PROFIT_TIGHT_AT - effective_peak_min))
+                        profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (PEAK_PROFIT_TIGHT_AT - PEAK_PROFIT_MIN))
                         effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
                         # Age-adaptive tightening: older positions get tighter giveback
                         if bars_held > PEAK_PROFIT_AGE_BARS:
