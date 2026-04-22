@@ -1,4 +1,4 @@
-# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
+# Exp: Widen RSI exit in sideways (RSI_OB_WIDE 74->76, RSI_OS_WIDE 26->24) to hold winners longer.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -21,8 +21,8 @@ RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
 RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
-RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
-RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
+RSI_OB_WIDE = 76      # widest OB exit in sideways/trendless markets
+RSI_OS_WIDE = 24      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
 RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
 RSI_EXIT_TREND_DECAY = 0.08  # abs(ret_long) at which sideways widening fully decays
