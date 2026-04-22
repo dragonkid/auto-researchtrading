@@ -29,18 +29,28 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 5. **Commit**: `git commit -am "exp: <short description of what you changed>"`.
 6. **Backtest**: `uv run regime_test.py > run.log 2>&1`. This runs backtests across 4 non-overlapping market regimes (bull, bear crash, sideways, rally) and outputs a composite score.
 7. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`. The key metric is `composite_score` (= mean - 0.5*std across regimes). Also check individual regime scores for insights.
-8. **Record**: If `composite_score` improved by **at least +0.005** vs the best in `results.tsv`, append a `keep` line. Improvements below +0.005 are noise — treat them as discard. If worse, equal, or below the +0.005 threshold, run `git revert --no-edit HEAD` to fully undo the experiment commit (preserves all prior commits including harness files), then append a `discard` line. NEVER use `git reset --hard` — it destroys commits before the experiment.
+8. **Record**: Keep the experiment ONLY IF BOTH conditions hold:
+   - `composite_score` improved by **at least +0.01** vs the best `keep` in `results.tsv` (improvements below +0.01 are noise at score ~24 — treat as discard).
+   - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs the baseline, where `composite_gain = new_composite - baseline_composite`. Baseline = the most recent `keep` line in `results.tsv` that has per-regime columns (10-column schema, see below). If no such line exists yet (first run after schema adoption), skip the regime-regression check.
+
+   Rationale for the regime gate: prevents regime-fit experiments that trade one regime for another. The proportional cap auto-scales: at the minimum keep threshold (composite_gain=+0.01) the cap is 0.2 — any meaningful regime loss is rejected because the gain is too small to justify it. At larger gains (e.g. composite_gain=+0.1 → cap 0.5) a modest regime rebalancing is tolerated because real alpha is likely. Example of what the gate catches: composite improvement of +0.02 driven by +0.5 in one regime and -0.4 in another — the 0.4 regression exceeds the cap of 0.2, so the experiment is rejected even though the net is positive.
+
+   If both conditions hold, append a `keep` line with all per-regime scores. Otherwise run `git revert --no-edit HEAD` to fully undo the experiment commit (preserves all prior commits including harness files), then append a `discard` line. NEVER use `git reset --hard` — it destroys commits before the experiment.
 9. **Exit**: You are done. The outer loop will invoke you again for the next experiment.
 
 ## Results TSV format
 
+New schema (10 columns, tab-separated):
 ```
-commit	score	mean_score	std_score	status	description
+commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
 ```
+
+Legacy rows (6 columns) may remain in the file for historical reference but are ignored when computing the per-regime baseline. Always append new rows using the 10-column schema.
 
 - `score` = composite_score (mean - 0.5*std)
 - `mean_score` = average across 4 regimes
 - `std_score` = std across regimes (lower = more consistent)
+- `bull_2021 / crash_bear / sideways / rally_2024` = per-regime scores extracted from lines matching `^regime_<name>_score:` in run.log (e.g., `regime_bull_2021_score: 27.123456` → store `27.12`)
 - Append one line per experiment. Use the short commit hash, or `-` for discarded.
 
 ## Scoring formula
