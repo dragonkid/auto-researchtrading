@@ -1,4 +1,4 @@
-# Exp393: Remove mean-reversion entries (RSI 49/51 thresholds = nearly random).
+# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -78,7 +78,9 @@ VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
-MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this = sideways detection
+MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
+MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
+MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
@@ -408,6 +410,12 @@ class Strategy:
                         target = size
                     elif bearish:
                         target = -size
+                    # Mean-reversion entries in sideways markets
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                        if rsi < MEANREV_RSI_OVERSOLD:
+                            target = size
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                            target = -size
             else:
                 atr = self._calc_atr(bd.history, ATR_LOOKBACK)
                 if atr is None:
