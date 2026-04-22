@@ -136,7 +136,7 @@ class Strategy:
                     dyn_threshold *= 1.0 - 0.25 * (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
-            dyn_threshold *= (1.0 - 0.55 * linreg_r2)
+            dyn_threshold *= (1.0 - 0.45 * linreg_r2)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
