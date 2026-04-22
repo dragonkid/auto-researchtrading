@@ -295,11 +295,10 @@ class Strategy:
                     elif bearish:
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        mr_size = size * 1.35
                         if rsi < 49:
-                            target = mr_size
+                            target = size
                         elif rsi > 51:
-                            target = -mr_size
+                            target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
                 trend_exit_strength = min(abs(ret_long) / 0.08, 1.0)
