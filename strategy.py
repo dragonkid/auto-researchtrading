@@ -92,6 +92,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
+# Wide-range bar filter
+RANGE_LOOKBACK = 20
+RANGE_SPIKE_MULT = 2.0
+
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
 VOL_BREAKOUT_LONG = 20
@@ -187,7 +191,18 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
+            highs = bd.history["high"].values
+            lows = bd.history["low"].values
             mid = bd.close
+
+            # Wide-range bar filter: skip entries on abnormally wide bars
+            range_spike = False
+            if len(highs) >= RANGE_LOOKBACK + 1:
+                ranges = highs[-RANGE_LOOKBACK-1:] - lows[-RANGE_LOOKBACK-1:]
+                current_range = ranges[-1]
+                avg_range = np.mean(ranges[:-1])
+                if avg_range > 0 and current_range > RANGE_SPIKE_MULT * avg_range:
+                    range_spike = True
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
@@ -317,7 +332,7 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0:
-                if not in_cooldown:
+                if not in_cooldown and not range_spike:
                     if bullish:
                         target = size
                     elif bearish:
@@ -369,9 +384,9 @@ class Strategy:
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
-                if current_pos > 0 and flip_bearish and not in_cooldown:
+                if current_pos > 0 and flip_bearish and not in_cooldown and not range_spike:
                     target = -size
-                elif current_pos < 0 and flip_bullish and not in_cooldown:
+                elif current_pos < 0 and flip_bullish and not in_cooldown and not range_spike:
                     target = size
 
             if abs(target - current_pos) > 1.0:
