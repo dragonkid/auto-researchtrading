@@ -23,11 +23,6 @@ VOL_LONG_LOOKBACK = 36
 TARGET_VOL = 0.015
 VOL_COMPRESS_THRESHOLD = 0.75
 MEANREV_TREND_THRESHOLD = 0.05
-RSI_EXIT_PROFIT_THRESHOLD = 0.01
-RSI_YOUNG_GRACE_BARS = 4
-PEAK_PROFIT_MIN = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
-VOL_BREAKOUT_LONG = 20
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
@@ -35,7 +30,6 @@ MAX_COMBINED_MULT = 3.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
 MAX_COMBINED_VOL_THRESHOLD = 1.2
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6
-VOL_CONFIRM_BASE = 24
 LINREG_R2_THRESH_REDUCE = 0.45
 
 def ema(values, span):
@@ -193,9 +187,9 @@ class Strategy:
 
             vol_breakout_bull = False
             vol_breakout_bear = False
-            if len(closes) >= VOL_BREAKOUT_LONG + 1:
+            if len(closes) >= 20 + 1:
                 vb_short = self._calc_vol(closes, 3)
-                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
+                vb_long = self._calc_vol(closes, 20)
                 if vb_short > vb_long:
                     if ret_vshort > 0:
                         vol_breakout_bull = True
@@ -250,9 +244,9 @@ class Strategy:
 
             vol_confirm_mult = 1.0
             volumes = bd.history["volume"].values
-            if len(volumes) >= VOL_CONFIRM_BASE:
+            if len(volumes) >= 24:
                 recent_vol = np.mean(volumes[-12:])
-                base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
+                base_vol = np.mean(volumes[-24:])
                 if base_vol > 0:
                     vol_confirm_mult = max(0.98, min(1.20, recent_vol / base_vol))
 
@@ -301,14 +295,14 @@ class Strategy:
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pos_pnl = -pos_pnl
-                    if pos_pnl > RSI_EXIT_PROFIT_THRESHOLD:
-                        profit_excess = pos_pnl - RSI_EXIT_PROFIT_THRESHOLD
+                    if pos_pnl > 0.01:
+                        profit_excess = pos_pnl - 0.01
                         profit_blend = min(0.15, profit_excess * 20.0)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS:
-                    grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
+                if bars_held < 4:
+                    grace_blend = 1.0 - bars_held / 4
                     effective_ob += 4.0 * grace_blend
                     effective_os -= 4.0 * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
@@ -323,12 +317,12 @@ class Strategy:
                         pos_pnl = -pos_pnl
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
-                    adaptive_peak_min = PEAK_PROFIT_MIN * max(0.6, min(2.0, vol_ratio ** 0.5))
+                    adaptive_peak_min = 0.025 * max(0.6, min(2.0, vol_ratio ** 0.5))
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         age_factor = min(bars_held / 12.0, 1.0)
                         sideways_giveback_tighten = max(0.0, 1.0 - abs(ret_long) / MEANREV_TREND_THRESHOLD)
-                        adaptive_giveback = PEAK_PROFIT_GIVEBACK - 0.05 * sideways_giveback_tighten + 0.15 * age_factor
+                        adaptive_giveback = 0.25 - 0.05 * sideways_giveback_tighten + 0.15 * age_factor
                         if giveback > self.peak_pnl[symbol] * adaptive_giveback:
                             target = 0.0
 
