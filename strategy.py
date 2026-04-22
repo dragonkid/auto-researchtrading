@@ -117,8 +117,7 @@ class Strategy:
         if len(cross_asset_rets) >= 2:
             n_pos = sum(1 for r in cross_asset_rets if r > 0)
             n_neg = sum(1 for r in cross_asset_rets if r < 0)
-            n_total = len(cross_asset_rets)
-            agree_frac = max(n_pos, n_neg) / n_total
+            agree_frac = max(n_pos, n_neg) / len(cross_asset_rets)
             cross_asset_agree = 1.0 + 0.20 * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
@@ -216,8 +215,8 @@ class Strategy:
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
-            trend_adapt_strength = min(abs(ret_long) / 0.06, 1.0) ** 0.85
-            trend_med_weight = 0.90 + (0.70 - 0.90) * trend_adapt_strength
+            cooldown_trend_strength = min(abs(ret_long) / 0.06, 1.0)
+            trend_med_weight = 0.90 + (0.70 - 0.90) * cooldown_trend_strength ** 0.85
             trend_avg = trend_med_weight * ret_med + (1.0 - trend_med_weight) * ret_long
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
@@ -227,7 +226,6 @@ class Strategy:
             bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
-            cooldown_trend_strength = min(abs(ret_long) / 0.06, 1.0)
             effective_cooldown = 3 * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
@@ -271,8 +269,7 @@ class Strategy:
             else:
                 blend = (vol_ratio - MAX_COMBINED_LOW_VOL_THRESHOLD) / (MAX_COMBINED_VOL_THRESHOLD - MAX_COMBINED_LOW_VOL_THRESHOLD)
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL + (MAX_COMBINED_MULT - MAX_COMBINED_MULT_LOW_VOL) * blend
-            trend_cap_strength = min(abs(ret_long) / 0.10, 1.0) ** 0.85
-            trend_cap_boost = 1.5 * (1.0 - trend_cap_strength)
+            trend_cap_boost = 1.5 * (1.0 - rsi_trend_str ** 0.85)
             adaptive_cap += trend_cap_boost
             combined_mult = min(combined_mult, adaptive_cap)
             size = equity * 0.30 * weight * combined_mult
@@ -293,11 +290,9 @@ class Strategy:
                             target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
-                trend_exit_strength = min(abs(ret_long) / 0.08, 1.0)
-                sideways_ob_widen = (74 - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
-                sideways_os_widen = (RSI_OVERSOLD - 26) * (1.0 - trend_exit_strength)
-                base_ob = RSI_OVERBOUGHT + sideways_ob_widen
-                base_os = RSI_OVERSOLD + sideways_os_widen
+                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / 0.08)
+                base_ob = RSI_OVERBOUGHT + sideways_exit_widen
+                base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - 65) * vol_exit_blend
                 effective_os = base_os + (35 - base_os) * vol_exit_blend
                 if symbol in self.entry_prices:
