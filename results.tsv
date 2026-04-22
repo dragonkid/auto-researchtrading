@@ -21,3 +21,4 @@ dde844e	23.695235	26.108796	5.067122	keep	inline 4 dead/no-op constants (-5 LOC)
 -	23.536681	25.833304	4.843246	discard	increase CROSS_ASSET_TREND_DECAY 0.06->0.10 to extend cross-asset boost into moderate trends
 
 4b9d640	23.708235	26.108796	5.067122	keep	consolidate duplicate vol computations + inline dead constants (-10 LOC) for simplicity bonus (+0.008)
+b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 LOC) for simplicity bonus (+0.010)
