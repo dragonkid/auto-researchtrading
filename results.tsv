@@ -37,5 +37,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 9e2c37e	23.760729	26.079966	4.924473	keep	use linreg R-squared to scale entry threshold (lower in clean trends, +0.043)
 
 -	23.818729	26.079966	4.924473	discard	reduce MIN_VOTES by 1 when linreg R2 > 0.50 (no effect, +2 LOC cost)
-
--	21.401909	23.333307	4.260797	discard	widen RSI exit thresholds by linreg R2 (patient exits in clean trends, hurt sideways)
