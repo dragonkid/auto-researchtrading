@@ -25,4 +25,8 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.132699	25.305045	4.630693	discard	tune EMA crossover periods EMA_FAST 3->5 EMA_SLOW 21->26 for smoother signals
 -	23.154254	25.527853	5.033199	discard	increase DONCHIAN_PERIOD 12->16 for more selective breakout signals
 
--	23.702412	26.106476	5.108128	discard	remove mean-reversion entry logic (RSI 49/51 near-random thresholds)
+-	23.702412	26.106476	5.108128	discard	remove mean-reversion entry logic (RSI 49/51 near-random thresholds)-	23.674593	26.065221	5.067256	discard	widen TREND_GATE_DEADZONE 0.006->0.010 for more sideways entries
+
+-	23.661996	26.109581	5.181170	discard	reduce vol-targeting exponent 0.85->0.70 for more aggressive inverse-vol sizing
+-	22.335328	24.090945	3.775235	discard	add BTC lead-lag voter for ETH/SOL entries (cross-asset leading indicator)
+-	23.710156	26.108925	5.065539	discard	add stale position exit (close after 24 bars if PnL < 1%)
