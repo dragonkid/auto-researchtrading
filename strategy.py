@@ -280,8 +280,9 @@ class Strategy:
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / 0.08)
-                base_ob = RSI_OVERBOUGHT + sideways_exit_widen
-                base_os = RSI_OVERSOLD + sideways_exit_widen
+                r2_widen = linreg_r2 * 3.0
+                base_ob = RSI_OVERBOUGHT + sideways_exit_widen + r2_widen
+                base_os = RSI_OVERSOLD - r2_widen + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - 65) * vol_exit_blend
                 effective_os = base_os + (35 - base_os) * vol_exit_blend
                 if symbol in self.entry_prices:
