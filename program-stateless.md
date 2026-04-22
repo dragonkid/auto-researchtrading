@@ -22,11 +22,17 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 
 ## Your single experiment
 
-1. **Read context**: Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline` to see what has been tried on this branch.
-2. **Analyze**: What worked? What failed? What hasn't been tried yet?
-3. **Propose one change**: Pick one specific, testable idea. Prefer ideas that are different from recent experiments.
+1. **Read context**: Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30` to see recent activity on this branch. `results.tsv` is the canonical experiment log — use it for historical context. Expand the git log range only if you need to verify a specific older experiment that `results.tsv` references.
+2. **Analyze**: What worked? What failed? What hasn't been tried yet? **Saturation check**: grep `results.tsv` descriptions for the direction you're considering (e.g., "sideways", "peak_profit", "cooldown"). If that direction has 10+ prior experiments and the recent ones are mostly `discard`, the direction is saturated. Do NOT submit another tuning variant — switch to a structurally different idea (new signal, removed component, different regime target).
+3. **Propose one change**: Pick one specific, testable idea. Prefer ideas that are different from recent experiments. Prefer changes backed by a concrete mechanism (a reason it should work) over pure parameter sweeps — at N ~200 experiments, pure sweeps are statistically fragile under multiple-testing.
 4. **Implement**: Edit `strategy.py` with your change.
-5. **Commit**: `git commit -am "exp: <short description of what you changed>"`.
+5. **Commit**: Subject line stays short; put the hypothesis in the commit BODY.
+   ```
+   git commit -m "exp: <short description of what you changed>" \
+              -m "Hypothesis: <1-2 sentences on the mechanism — why should this improve composite_score?>" \
+              -m "Expected: <which regime(s) should benefit, e.g. 'bull_2021 via reduced whipsaw; others neutral'>"
+   ```
+   The body is for **post-hoc human audit only**. It is NOT input for future agents (see overfitting hygiene section below).
 6. **Backtest**: `uv run regime_test.py > run.log 2>&1`. This runs backtests across 4 non-overlapping market regimes (bull, bear crash, sideways, rally) and outputs a composite score.
 7. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`. The key metric is `composite_score` (= mean - 0.5*std across regimes). Also check individual regime scores for insights.
 8. **Record**: Keep the experiment ONLY IF BOTH conditions hold:
@@ -117,6 +123,15 @@ Start with these high-probability ideas:
 - BTC, ETH, SOL hourly OHLCV + funding rates
 - History buffer: last 500 bars via `bar_data[symbol].history` DataFrame
 - Columns: timestamp, open, high, low, close, volume, funding_rate
+
+## Overfitting hygiene
+
+These rules exist because this branch has accumulated 190+ experiments. At that scale, selection bias dominates — any single +0.01 improvement is statistically fragile, and the search regimes themselves are effectively in-sample. Violating these rules causes meta-overfit that the regime-regression gate cannot catch.
+
+- **Do NOT read commit bodies of prior experiments.** Use only `git log main..HEAD --oneline` (subjects only) and `results.tsv`. Commit bodies hold past hypotheses — reading them narrows your proposal space to "slight variants of what was tried," amplifying selection bias.
+- **Do NOT base your idea on holdout findings.** The holdout (2025-01+) is never read by you. But also: if you notice phrasing in this prompt or in code comments that references specific holdout events (e.g., "the single-hour DD on 2025-03-02"), treat those as off-limits — do NOT design a rule targeting them. Any insight derived from holdout data is information leakage, regardless of who performed the analysis.
+- **Prefer mechanism-backed changes over parameter sweeps.** At this experiment count, moving a parameter by 10% and finding +0.01 is likely noise. Adding a new signal with a clear mechanism, or removing a component that should be redundant, is a more honest trial.
+- **Respect saturation signals.** If step 2 finds a direction has 10+ prior tries with mostly discards, do not submit another tuning variant.
 
 ## Guidelines
 
