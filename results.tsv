@@ -53,4 +53,8 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 
 -	22.818838	24.899599	4.695522	discard	add R2-based position sizing boost (1.0+0.3*R2) to size up in clean trends (hurt sideways)
 
--	22.298119	24.809659	5.565081	discard	reduce SOL weight 0.33->0.25, increase BTC/ETH to 0.35 (reduce SOL whipsaw impact)
+-	22.298119	24.809659	5.565081	discard	reduce SOL weight 0.33->0.25, increase BTC/ETH to 0.35 (reduce SOL whipsaw impact)-	22.033326	23.308325	3.089998	discard	add 48-bar very-long momentum voter (2-day trend in 10-voter ensemble, hurt sideways -7)
+-	21.764345	23.873076	4.769462	discard	R2-based RSI exit widening (linreg_r2*3.0 widen OB/OS thresholds in clean trends, hurt sideways -9)
+-	23.731762	26.088886	5.268248	discard	reduce sideways_boost multiplier 0.70->0.55 to moderate sizing in sideways markets
+-	23.532899	25.802091	5.092383	discard	increase EMA_SLOPE_LOOKBACK 3->5 for smoother slope voter signal
+22db8c6	23.996071	26.227604	5.025067	keep	inline 4 single-use constants (RSI_PERIOD, RSI_OVERBOUGHT, RSI_OVERSOLD, LINREG_R2_THRESH_REDUCE) for -4 LOC simplicity bonus

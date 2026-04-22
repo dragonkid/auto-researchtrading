@@ -295,6 +295,10 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / 4
                     effective_ob += 4.0 * grace_blend
                     effective_os -= 4.0 * grace_blend
+                elif bars_held > 16:
+                    age_tighten = min((bars_held - 16) / 24.0, 0.5)
+                    effective_ob -= (effective_ob - 55.0) * age_tighten
+                    effective_os += (45.0 - effective_os) * age_tighten
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
