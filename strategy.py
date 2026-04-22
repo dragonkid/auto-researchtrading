@@ -1,4 +1,4 @@
-# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
+# Exp: reduce HIGH_VOTE_BOOST 0.20->0.10 for lower variance across regimes.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -100,7 +100,7 @@ MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
 MIN_VOTES_CALM = 2  # reduced vote requirement when vol_ratio < calm threshold
 MIN_VOTES_CALM_VOL = 0.9  # vol_ratio below which reduced votes apply
 HIGH_VOTE_THRESHOLD = 3  # votes at or above this count get a sizing bonus
-HIGH_VOTE_BOOST = 0.20   # max position size boost for high-conviction entries
+HIGH_VOTE_BOOST = 0.10   # max position size boost for high-conviction entries
 FLIP_MIN_VOTES = 4       # votes required to flip an existing position (vs MIN_VOTES for new entry)
 MAX_COMBINED_MULT = 3.5  # base cap on product of all sizing multipliers
 MAX_COMBINED_MULT_LOW_VOL = 6.5  # higher cap in low-vol regimes (more DD headroom)
