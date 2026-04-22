@@ -91,6 +91,8 @@ PEAK_PROFIT_GIVEBACK_TIGHT = 0.25 # tighter giveback for larger profits
 PEAK_PROFIT_TIGHT_AT = 0.03       # peak profit at which tightest giveback applies
 PEAK_PROFIT_AGE_BARS = 6          # bars held beyond which giveback starts tightening
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
+PEAK_GIVEBACK_SIDEWAYS_TIGHTEN = 0.08  # max giveback tightening in sideways (trendless) markets
+PEAK_GIVEBACK_TREND_DECAY = 0.08       # abs(ret_long) at which sideways tightening fully decays
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
@@ -506,6 +508,10 @@ class Strategy:
                         # Scale giveback: tighter for larger profits
                         profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (PEAK_PROFIT_TIGHT_AT - PEAK_PROFIT_MIN))
                         effective_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_TIGHT - PEAK_PROFIT_GIVEBACK) * profit_blend
+                        # Trend-adaptive tightening: in sideways markets, tighten giveback
+                        # to lock in profits faster (mean reversion dominates)
+                        sideways_gb_strength = 1.0 - min(abs(ret_long) / PEAK_GIVEBACK_TREND_DECAY, 1.0)
+                        effective_giveback -= PEAK_GIVEBACK_SIDEWAYS_TIGHTEN * sideways_gb_strength
                         # Age-adaptive tightening: older positions get tighter giveback
                         if bars_held > PEAK_PROFIT_AGE_BARS:
                             age_excess = min(1.0, (bars_held - PEAK_PROFIT_AGE_BARS) / PEAK_PROFIT_AGE_BARS)
