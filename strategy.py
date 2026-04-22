@@ -243,8 +243,7 @@ class Strategy:
                     compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
                     vol_compress_boost = 1.0 + 0.50 * compress_strength ** 0.85
 
-            sideways_trend_ratio = min(abs(ret_long) / 0.10, 1.0)
-            sideways_trend_strength = sideways_trend_ratio ** 1.7
+            sideways_trend_strength = rsi_trend_str ** 1.7
             sideways_boost = 1.0 + 0.70 * (1.0 - sideways_trend_strength)
 
             winning_votes = max(bull_votes, bear_votes)
@@ -263,8 +262,7 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / 0.12, 1.0)
             strength_floor = 0.6 + (2.6 - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
-            cross_trend_strength = min(abs(ret_long) / 0.06, 1.0)
-            dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
+            dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL
