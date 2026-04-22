@@ -35,3 +35,6 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.749082	26.062798	4.925432	discard	increase dyn_threshold vol exponent 0.85->0.95 for more vol-responsive entry threshold
 -	21.973933	24.096308	4.570749	discard	remove MACD voter (redundant with EMA crossover, correlated noise in 9-voter ensemble)
 9e2c37e	23.760729	26.079966	4.924473	keep	use linreg R-squared to scale entry threshold (lower in clean trends, +0.043)
+-	23.612373	25.914337	4.889929	discard	reduce RSI_YOUNG_GRACE_BARS 4->3 for faster bad-entry exits in sideways
+
+-	23.644119	25.914926	4.827616	discard	reduce VOL_CONFIRM_FLOOR 0.98->0.90 to cut size on low-volume bars
