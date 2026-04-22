@@ -101,9 +101,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Mean-reversion sizing
-MEANREV_SIZE_SCALE = 0.50
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -326,11 +323,10 @@ class Strategy:
                     elif bearish:
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        mr_size = size * MEANREV_SIZE_SCALE
                         if rsi < MEANREV_RSI_OVERSOLD:
-                            target = mr_size
+                            target = size
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -mr_size
+                            target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
