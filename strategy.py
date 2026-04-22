@@ -256,7 +256,7 @@ class Strategy:
                 recent_vol = np.mean(volumes[-12:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
                 if base_vol > 0:
-                    vol_confirm_mult = max(0.98, min(1.20, recent_vol / base_vol))
+                    vol_confirm_mult = max(0.85, min(1.20, recent_vol / base_vol))
 
             weight = 0.33
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
