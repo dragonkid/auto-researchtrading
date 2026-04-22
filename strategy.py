@@ -246,6 +246,8 @@ class Strategy:
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             effective_min_votes = MIN_VOTES_CALM if (vol_ratio < 0.9 or vol_compressed or in_sideways) else MIN_VOTES
+            if linreg_r2 > 0.50:
+                effective_min_votes = max(MIN_VOTES_CALM, effective_min_votes - 1)
             trend_gate_bypassed = in_sideways and abs(trend_avg) < 0.006
             bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= effective_min_votes and (trend_bear or trend_gate_bypassed)
