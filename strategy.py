@@ -1,8 +1,10 @@
 """
-Exp385: Remove dead code and deduplicate ret_long.
-- Remove self.btc_momentum (assigned but never read) — 4 LOC
-- Merge ret_long into ret_long (identical computation) — 1 LOC
-Zero behavior change, -5 LOC for simplicity bonus.
+Exp389: Consolidate duplicate vol computations + inline dead constants.
+- Merge short_vol/long_vol computation (threshold + sizing blocks shared)
+- Inline VOL_BREAKOUT_MULT=1.0 (no-op multiplier)
+- Merge RSI_BULL/RSI_BEAR into RSI_MID (identical values)
+- Inline vol_ratio_raw (used only to compute vol_confirm_mult)
+Zero behavior change, -10 LOC for simplicity bonus.
 """
 
 import numpy as np
@@ -20,8 +22,7 @@ EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
-RSI_BULL = 50
-RSI_BEAR = 50
+RSI_MID = 50
 RSI_TREND_BIAS = 1.5           # max RSI voter threshold shift toward trend direction
 RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
 RSI_OVERBOUGHT = 73
@@ -102,7 +103,6 @@ PEAK_PROFIT_AGE_BARS = 8          # bars held beyond which giveback starts tight
 PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtracted from giveback)
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
-VOL_BREAKOUT_MULT = 1.0  # short vol must exceed long vol * this to trigger
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
@@ -240,16 +240,17 @@ class Strategy:
             trend_reduction = TREND_THRESHOLD_SCALE * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
 
-            # Vol-compression threshold reduction: when short vol << long vol,
-            # a breakout is brewing — lower entry threshold to catch it early
+            # Compute short/long vol once for threshold + sizing blocks
             vol_compressed = False
+            short_vol = long_vol = None
+            sl_ratio_raw = 1.0
             if len(closes) >= VOL_LONG_LOOKBACK + 1:
-                vc_short = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
-                vc_long = self._calc_vol(closes, VOL_LONG_LOOKBACK)
-                vc_ratio = max(0.3, min(1.5, vc_short / max(vc_long, 1e-10)))
-                if vc_ratio < VOL_COMPRESS_THRESHOLD:
+                short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
+                long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
+                sl_ratio_raw = short_vol / max(long_vol, 1e-10)
+                if sl_ratio_raw < VOL_COMPRESS_THRESHOLD:
                     vol_compressed = True
-                    compress_str = (VOL_COMPRESS_THRESHOLD - vc_ratio) / VOL_COMPRESS_THRESHOLD
+                    compress_str = (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
                     dyn_threshold *= (1.0 - VOL_COMPRESS_THRESH_REDUCE * compress_str)
 
             # Adaptive momentum lookback: shorter in high vol, longer in low vol
@@ -279,14 +280,9 @@ class Strategy:
             # In downtrend: raise bear threshold (easier to vote bearish)
             rsi_trend_blend = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
-            if ret_long > 0:
-                rsi_bull_thresh = RSI_BULL - rsi_bias  # easier to vote bullish
-                rsi_bear_thresh = RSI_BEAR - rsi_bias  # harder to vote bearish
-            else:
-                rsi_bull_thresh = RSI_BULL + rsi_bias  # harder to vote bullish
-                rsi_bear_thresh = RSI_BEAR + rsi_bias  # easier to vote bearish
-            rsi_bull = rsi > rsi_bull_thresh
-            rsi_bear = rsi < rsi_bear_thresh
+            rsi_thresh = RSI_MID + (-rsi_bias if ret_long > 0 else rsi_bias)
+            rsi_bull = rsi > rsi_thresh
+            rsi_bear = rsi < rsi_thresh
 
             macd_hist = self._calc_macd(closes)
             macd_bull = macd_hist > 0
@@ -308,7 +304,7 @@ class Strategy:
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
                 vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
                 vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long * VOL_BREAKOUT_MULT:
+                if vb_short > vb_long:
                     # Vol is expanding — vote with the short-term direction
                     if ret_vshort > 0:
                         vol_breakout_bull = True
@@ -353,24 +349,16 @@ class Strategy:
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
             vol_scale = max(0.3, min(2.5, vol_scale))
 
-            # Vol-spike scaling: reduce size when short-term vol spikes above medium-term
+            # Vol-spike/calm/compression sizing (reuses short_vol/long_vol from above)
             vol_spike_scale = 1.0
             calm_boost = 1.0
             vol_compress_boost = 1.0
-            if len(closes) >= VOL_LONG_LOOKBACK + 1:
-                short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
-                long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
-                # Continuous vol-spike scaling: gradually reduce size as short vol rises
-                vol_ratio_spike = short_vol / max(long_vol, 1e-10)
-                if vol_ratio_spike > 1.0:
-                    # Linear interpolation from 1.0 at ratio=1.0 to VOL_SPIKE_SCALE at ratio=VOL_SPIKE_THRESHOLD
-                    spike_blend = min(1.0, (vol_ratio_spike - 1.0) / (VOL_SPIKE_THRESHOLD - 1.0))
+            if short_vol is not None:
+                if sl_ratio_raw > 1.0:
+                    spike_blend = min(1.0, (sl_ratio_raw - 1.0) / (VOL_SPIKE_THRESHOLD - 1.0))
                     vol_spike_scale = 1.0 - (1.0 - VOL_SPIKE_SCALE) * spike_blend
-                # Calm regime boost: when short vol is close to or below long vol, boost size
-                vol_ratio_sl = max(0.5, min(2.0, short_vol / max(long_vol, 1e-10)))
+                vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
-                # Vol compression boost: when short vol drops well below long vol,
-                # a breakout is likely — boost size to capture the move
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
                     compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
                     vol_compress_boost = 1.0 + VOL_COMPRESS_BOOST * compress_strength ** 0.85
@@ -387,16 +375,12 @@ class Strategy:
 
             # Volume confirmation: boost size when recent volume is above longer-term average
             vol_confirm_mult = 1.0
-            vol_ratio_raw = 1.0  # raw volume ratio for divergence detection
             volumes = bd.history["volume"].values
             if len(volumes) >= VOL_CONFIRM_BASE:
                 recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
                 if base_vol > 0:
-                    vol_ratio_raw = recent_vol / base_vol
-                    # Above average: boost up to VOL_CONFIRM_BOOST
-                    # Below average: reduce down to VOL_CONFIRM_FLOOR
-                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, vol_ratio_raw))
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(1.0 + VOL_CONFIRM_BOOST, recent_vol / base_vol))
 
 
             weight = SYMBOL_WEIGHTS.get(symbol, 0.33)
