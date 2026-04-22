@@ -68,3 +68,7 @@ c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.
 
 -	23.911727	25.775442	4.321430	discard	increase linreg_slope voter threshold 0.0001->0.001 for more selective trend voting
 52483b8	24.020464	25.862767	4.264605	keep	add drawdown-aware position sizing dampener (reduce size when in DD >3%)
+-	19.029721	20.721086	3.962729	discard	increase MED2_WINDOW 10->12 for smoother cross-asset agreement (hurt crash_bear badly)
+-	19.795729	21.051613	3.091768	discard	reduce LONG_WINDOW 20->18 for faster trend detection (hurt all regimes)
+-	23.999529	25.844454	4.269849	discard	lower DD_DAMPENING_START 0.03->0.02 for earlier DD protection (marginal, below threshold)
+-	23.987784	25.836680	4.277792	discard	increase trend-based threshold reduction 0.32->0.36 for easier trend entries (marginal, below threshold)
