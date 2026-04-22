@@ -23,3 +23,4 @@ dde844e	23.695235	26.108796	5.067122	keep	inline 4 dead/no-op constants (-5 LOC)
 4b9d640	23.708235	26.108796	5.067122	keep	consolidate duplicate vol computations + inline dead constants (-10 LOC) for simplicity bonus (+0.008)
 b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 LOC) for simplicity bonus (+0.010)
 -	23.132699	25.305045	4.630693	discard	tune EMA crossover periods EMA_FAST 3->5 EMA_SLOW 21->26 for smoother signals
+-	23.154254	25.527853	5.033199	discard	increase DONCHIAN_PERIOD 12->16 for more selective breakout signals
