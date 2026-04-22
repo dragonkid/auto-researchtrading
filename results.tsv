@@ -56,3 +56,7 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	22.298119	24.809659	5.565081	discard	reduce SOL weight 0.33->0.25, increase BTC/ETH to 0.35 (reduce SOL whipsaw impact)
 -	23.743017	25.863268	4.826502	discard	graduated vote boost (0.05 per vote above 2) instead of flat 1.20 threshold
 98a6bfe	23.996154	26.248142	5.089976	keep	reduce MACD_SIGNAL 5->4 for faster MACD histogram response (+0.086)
+c45e3cb	24.024810	26.254322	5.045025	keep	increase MACD fast EMA 6->8 for smoother MACD voter (+0.029, sideways +0.09)
+-	23.815958	26.054944	5.063972	discard	R2-scaled vote boost (1.10-1.20 based on linreg R2, hurt all regimes)
+
+-	23.678205	25.915296	5.060182	discard	increase EMA_SLOPE_LOOKBACK 3->4 for smoother slope voter (hurt sideways)
