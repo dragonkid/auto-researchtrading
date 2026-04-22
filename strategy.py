@@ -92,6 +92,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
+# Funding rate contrarian voter
+FUNDING_LOOKBACK = 8
+FUNDING_THRESHOLD = 0.0003
+
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
 VOL_BREAKOUT_LONG = 20
@@ -265,8 +269,18 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            funding_bull = False
+            funding_bear = False
+            funding_rates = bd.history["funding_rate"].values
+            if len(funding_rates) >= FUNDING_LOOKBACK:
+                avg_funding = np.mean(funding_rates[-FUNDING_LOOKBACK:])
+                if avg_funding > FUNDING_THRESHOLD:
+                    funding_bear = True
+                elif avg_funding < -FUNDING_THRESHOLD:
+                    funding_bull = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, funding_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, funding_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
