@@ -57,6 +57,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.743017	25.863268	4.826502	discard	graduated vote boost (0.05 per vote above 2) instead of flat 1.20 threshold
 98a6bfe	23.996154	26.248142	5.089976	keep	reduce MACD_SIGNAL 5->4 for faster MACD histogram response (+0.086)
 -	21.901732	23.619200	4.030936	discard	reduce cooldown in high-R2 environments (clean trends allow faster re-entry)
--	23.779659	25.430614	3.895911	discard	reduce EMA_SLOPE_PERIOD 22->18 for more responsive slope voter in sideways markets
-
--	23.969439	25.839455	4.334033	discard	increase ret_long threshold scaling 0.32->0.38 for more aggressive threshold reduction in trending markets
