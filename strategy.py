@@ -240,13 +240,9 @@ class Strategy:
             vol_scale = max(0.3, min(2.5, vol_scale))
 
             calm_boost = 1.0
-            vol_compress_boost = 1.0
             if short_vol is not None:
                 vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
-                calm_boost = 1.0 + 0.8 * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
-                if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
-                    compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
-                    vol_compress_boost = 1.0 + 0.50 * compress_strength ** 0.85
+                calm_boost = 1.0 + 1.1 * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
 
             sideways_trend_ratio = min(abs(ret_long) / 0.10, 1.0)
             sideways_trend_strength = sideways_trend_ratio ** 1.7
@@ -270,7 +266,7 @@ class Strategy:
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             cross_trend_strength = min(abs(ret_long) / 0.06, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL
             elif vol_ratio > MAX_COMBINED_VOL_THRESHOLD:
