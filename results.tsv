@@ -50,3 +50,5 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.840125	25.865007	4.587765	discard	increase PEAK_PROFIT_GIVEBACK 0.30->0.38 to let profitable positions run longer
 
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
+
+-	23.847226	25.802996	4.445539	discard	adaptive peak profit giveback scaled by vol_ratio (tighter in calm, wider in volatile)

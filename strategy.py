@@ -243,7 +243,7 @@ class Strategy:
                     vol_compress_boost = 1.0 + 0.50 * compress_strength ** 0.85
 
             sideways_trend_strength = rsi_trend_str ** 1.7
-            sideways_boost = 1.0 + 0.70 * (1.0 - sideways_trend_strength)
+            sideways_boost = 1.0 + 0.45 * (1.0 - sideways_trend_strength)
 
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = 1.20 if winning_votes >= 3 else 1.0
