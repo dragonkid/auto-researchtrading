@@ -52,3 +52,4 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
 
 -	22.818838	24.899599	4.695522	discard	add R2-based position sizing boost (1.0+0.3*R2) to size up in clean trends (hurt sideways)
+-	22.209726	24.787525	5.683598	discard	scale peak profit minimum by linreg R2 to let profits run in clean trends
