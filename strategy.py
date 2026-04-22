@@ -294,16 +294,11 @@ class Strategy:
                         target = size
                     elif bearish:
                         target = -size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD and len(closes) >= DONCHIAN_PERIOD + 1:
-                        donch_hi = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-                        donch_lo = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-                        donch_range = donch_hi - donch_lo
-                        if donch_range > 0:
-                            donch_pct = (mid - donch_lo) / donch_range
-                            if donch_pct < 0.25 and rsi < 45:
-                                target = size
-                            elif donch_pct > 0.75 and rsi > 55:
-                                target = -size
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                        if rsi < 49:
+                            target = size
+                        elif rsi > 51:
+                            target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
                 trend_exit_strength = min(abs(ret_long) / 0.08, 1.0)
