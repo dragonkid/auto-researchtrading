@@ -111,7 +111,7 @@ MAX_COMBINED_VOL_THRESHOLD = 1.2  # vol_ratio above this triggers tighter cap
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-vol cap
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
-TREND_GATE_DEADZONE = 0.010  # bypass trend gate when abs(trend_avg) < this AND in sideways
+TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
