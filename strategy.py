@@ -111,6 +111,7 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
 LINREG_R2_THRESH_REDUCE = 0.20  # max entry threshold reduction when linreg R² is high (clean trend)
+LINREG_R2_TREND_GATE_BYPASS = 0.60  # bypass trend gate when R² exceeds this (linreg confirms clean trend)
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -333,8 +334,11 @@ class Strategy:
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             effective_min_votes = MIN_VOTES_CALM if (vol_ratio < MIN_VOTES_CALM_VOL or vol_compressed or in_sideways) else MIN_VOTES
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= effective_min_votes and (trend_bear or trend_gate_bypassed)
+            # High R² bypass: linreg confirms clean trend direction, trust it over noisy trend_avg
+            r2_bull_bypass = linreg_r2 > LINREG_R2_TREND_GATE_BYPASS and linreg_slope > 0
+            r2_bear_bypass = linreg_r2 > LINREG_R2_TREND_GATE_BYPASS and linreg_slope < 0
+            bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed or r2_bull_bypass)
+            bearish = bear_votes >= effective_min_votes and (trend_bear or trend_gate_bypassed or r2_bear_bypass)
 
             # Adaptive cooldown: shorter in sideways markets for faster re-entry
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_SIDEWAYS_DECAY, 1.0)
