@@ -9,7 +9,6 @@ MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_SLOW = 21
 
-MACD_FAST = 6
 MACD_SLOW = 16
 MACD_SIGNAL = 4
 
@@ -62,7 +61,7 @@ class Strategy:
     def _calc_macd(self, closes):
         if len(closes) < MACD_SLOW + MACD_SIGNAL + 5:
             return 0.0
-        fast_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST)
+        fast_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], 8)
         slow_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
         macd_line = fast_ema - slow_ema
         signal_line = ema(macd_line, MACD_SIGNAL)
