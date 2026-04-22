@@ -1,4 +1,4 @@
-# Exp: Add stale position exit — close positions held >24 bars with <1% PnL.
+# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -96,8 +96,6 @@ PEAK_PROFIT_AGE_TIGHTEN = 0.10    # max additional tightening from age (subtract
 VOL_BREAKOUT_SHORT = 3   # short window for vol breakout detection
 VOL_BREAKOUT_LONG = 20   # long window for vol breakout baseline
 DONCHIAN_PERIOD = 12  # lookback for Donchian channel breakout voter
-STALE_AGE_BARS = 24           # bars held after which stale exit activates
-STALE_PNL_THRESHOLD = 0.01    # PnL below this triggers stale exit
 COOLDOWN_BARS = 3
 COOLDOWN_SIDEWAYS_DECAY = 0.06  # abs(ret_long) below which cooldown is reduced
 MIN_VOTES = 3  # out of 6 — simple majority for more entries in sideways
@@ -515,15 +513,6 @@ class Strategy:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
-
-                # Stale position exit: close positions held too long with negligible PnL
-                if target != 0 and symbol in self.entry_prices and bars_held >= STALE_AGE_BARS:
-                    entry = self.entry_prices[symbol]
-                    pos_pnl = (mid - entry) / entry
-                    if current_pos < 0:
-                        pos_pnl = -pos_pnl
-                    if pos_pnl < STALE_PNL_THRESHOLD:
-                        target = 0.0
 
                 # Require higher conviction to flip (more expensive than new entry)
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
