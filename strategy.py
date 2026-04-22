@@ -294,9 +294,9 @@ class Strategy:
                     elif bearish:
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if rsi < 49:
+                        if linreg_slope > 0.0001:
                             target = size
-                        elif rsi > 51:
+                        elif linreg_slope < -0.0001:
                             target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
