@@ -8,9 +8,6 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_SLOW = 21
-RSI_PERIOD = 8
-RSI_OVERBOUGHT = 73
-RSI_OVERSOLD = 27
 
 MACD_SLOW = 16
 MACD_SIGNAL = 5
@@ -30,7 +27,6 @@ MAX_COMBINED_MULT = 3.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
 MAX_COMBINED_VOL_THRESHOLD = 1.2
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6
-LINREG_R2_THRESH_REDUCE = 0.45
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -144,7 +140,7 @@ class Strategy:
                     dyn_threshold *= 1.0 - 0.25 * (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
-            dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
+            dyn_threshold *= (1.0 - 0.45 * linreg_r2)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
@@ -164,7 +160,7 @@ class Strategy:
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
             rsi_trend_str = min(abs(ret_long) / 0.10, 1.0)
-            adaptive_rsi_period = int(round(6 + (RSI_PERIOD - 6) * rsi_trend_str))
+            adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
             rsi_bias = 1.5 * rsi_trend_str
             rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
@@ -280,8 +276,8 @@ class Strategy:
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / 0.08)
-                base_ob = RSI_OVERBOUGHT + sideways_exit_widen
-                base_os = RSI_OVERSOLD + sideways_exit_widen
+                base_ob = 73 + sideways_exit_widen
+                base_os = 27 + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - 65) * vol_exit_blend
                 effective_os = base_os + (35 - base_os) * vol_exit_blend
                 if symbol in self.entry_prices:
