@@ -114,7 +114,7 @@ class Strategy:
             realized_vol = self._calc_vol(closes, 24)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = 0.005 * (0.10 + vol_ratio * 0.90) ** 0.85
-            dyn_threshold = max(0.004, min(0.015, dyn_threshold))
+            dyn_threshold = max(0.004, min(0.012, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - 0.32 * (1.0 - min(abs(ret_long) / 0.13, 1.0) ** 0.85)
