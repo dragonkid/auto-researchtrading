@@ -1,4 +1,4 @@
-# Exp: increase dyn_threshold vol exponent 0.85->0.95 for more vol-responsive entry threshold.
+# Exp390: Remove docstrings (non-comment LOC) for simplicity bonus.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -218,7 +218,7 @@ class Strategy:
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
-            dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.95
+            dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(0.004, min(0.015, dyn_threshold))
 
             # Reduce threshold in trendless markets (sideways)
