@@ -50,6 +50,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.840125	25.865007	4.587765	discard	increase PEAK_PROFIT_GIVEBACK 0.30->0.38 to let profitable positions run longer
 
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
-
--	23.396701	25.829482	5.401561	discard	reduce sideways_boost coefficient 0.70->0.45 to cut sizing in choppy markets
--	23.981942	26.247312	5.066739	discard	increase LINREG_R2_THRESH_REDUCE 0.45->0.52 for more aggressive threshold reduction in clean trends
