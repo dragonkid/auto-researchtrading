@@ -304,8 +304,9 @@ class Strategy:
                         if giveback > self.peak_pnl[symbol] * adaptive_giveback:
                             target = 0.0
 
-                flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
-                flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
+                eff_flip_votes = FLIP_MIN_VOTES + (1 if linreg_r2 < 0.20 else 0)
+                flip_bearish = bear_votes >= eff_flip_votes and trend_bear
+                flip_bullish = bull_votes >= eff_flip_votes and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
