@@ -176,14 +176,11 @@ class Strategy:
 
             vol_breakout_bull = False
             vol_breakout_bear = False
-            if len(closes) >= 20 + 1:
-                vb_short = self._calc_vol(closes, 3)
-                vb_long = self._calc_vol(closes, 20)
-                if vb_short > vb_long:
-                    if ret_vshort > 0:
-                        vol_breakout_bull = True
-                    elif ret_vshort < 0:
-                        vol_breakout_bear = True
+            if short_vol is not None and short_vol > long_vol:
+                if ret_vshort > 0:
+                    vol_breakout_bull = True
+                elif ret_vshort < 0:
+                    vol_breakout_bear = True
 
             donchian_bull = False
             donchian_bear = False
