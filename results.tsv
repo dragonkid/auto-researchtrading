@@ -54,4 +54,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	22.818838	24.899599	4.695522	discard	add R2-based position sizing boost (1.0+0.3*R2) to size up in clean trends (hurt sideways)
 
 -	22.298119	24.809659	5.565081	discard	reduce SOL weight 0.33->0.25, increase BTC/ETH to 0.35 (reduce SOL whipsaw impact)
--	23.992145	26.248384	5.086478	discard	reduce MACD_SLOW 16->12 for faster MACD response (hurt sideways, increased std)
