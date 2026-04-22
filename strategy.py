@@ -67,13 +67,6 @@ class Strategy:
         signal_line = ema(macd_line, MACD_SIGNAL)
         return macd_line[-1] - signal_line[-1]
 
-    def _calc_ema_slope(self, closes):
-        if len(closes) < EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5:
-            return 0.0
-        ema_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
-        slope = (ema_arr[-1] - ema_arr[-EMA_SLOPE_LOOKBACK]) / ema_arr[-EMA_SLOPE_LOOKBACK]
-        return slope
-
     def _calc_linreg(self, closes):
         if len(closes) < LINREG_PERIOD:
             return 0.0, 0.0
@@ -167,7 +160,8 @@ class Strategy:
             macd_bull = macd_hist > 0
             macd_bear = macd_hist < 0
 
-            ema_slope = self._calc_ema_slope(closes)
+            ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
             slope_bull = ema_slope > 0.0005
             slope_bear = ema_slope < -0.0005
 
