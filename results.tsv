@@ -59,3 +59,4 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	21.901732	23.619200	4.030936	discard	reduce cooldown in high-R2 environments (clean trends allow faster re-entry)
 -	23.974810	25.860657	4.363694	discard	reduce MACD fast EMA period 8->6 for more responsive MACD histogram
 c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.012 for more entries in high-vol regimes (+0.009)
+-	23.443263	25.367662	4.442798	discard	reduce EMA_SLOPE_LOOKBACK 3->2 for more responsive slope voter (hurt crash_bear and rally)
