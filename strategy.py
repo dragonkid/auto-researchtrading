@@ -1,4 +1,3 @@
-# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -14,18 +13,9 @@ EMA_FAST = 3
 EMA_SLOW = 21
 RSI_PERIOD = 8
 RSI_PERIOD_SIDEWAYS = 6
-RSI_MID = 50
-RSI_TREND_BIAS = 1.5           # max RSI voter threshold shift toward trend direction
-RSI_TREND_BIAS_DECAY = 0.10    # abs(ret_long) at which full bias is reached
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
-RSI_OB_TIGHT = 65     # tightest OB exit in extreme high-vol
-RSI_OS_TIGHT = 35     # tightest OS exit in extreme high-vol
-RSI_OB_WIDE = 74      # widest OB exit in sideways/trendless markets
-RSI_OS_WIDE = 26      # widest OS exit in sideways/trendless markets
 RSI_EXIT_VOL_LOW = 0.7   # vol_ratio below this: use standard thresholds
-RSI_EXIT_VOL_HIGH = 1.8  # vol_ratio above this: use tightest thresholds
-RSI_EXIT_TREND_DECAY = 0.08  # abs(ret_long) at which sideways widening fully decays
 
 MACD_FAST = 6
 MACD_SLOW = 16
@@ -77,8 +67,6 @@ VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
@@ -274,9 +262,9 @@ class Strategy:
             # Trend-adaptive RSI voter: bias toward long-term trend direction
             # In uptrend: lower bull threshold (easier to vote bullish)
             # In downtrend: raise bear threshold (easier to vote bearish)
-            rsi_trend_blend = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
-            rsi_bias = RSI_TREND_BIAS * rsi_trend_blend
-            rsi_thresh = RSI_MID + (-rsi_bias if ret_long > 0 else rsi_bias)
+            rsi_trend_blend = min(abs(ret_long) / 0.10, 1.0)
+            rsi_bias = 1.5 * rsi_trend_blend
+            rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
 
@@ -413,9 +401,9 @@ class Strategy:
                         target = -size
                     # Mean-reversion entries in sideways markets
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if rsi < MEANREV_RSI_OVERSOLD:
+                        if rsi < 49:
                             target = size
-                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                        elif rsi > 51:
                             target = -size
             else:
                 atr = self._calc_atr(bd.history, ATR_LOOKBACK)
@@ -457,15 +445,14 @@ class Strategy:
                         target = 0.0
 
                 # Continuous vol-adaptive RSI exit: tighter in high vol, wider in sideways
-                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
-                # Trend-adaptive widening: in sideways markets, widen OB/OS to hold winners longer
-                trend_exit_strength = min(abs(ret_long) / RSI_EXIT_TREND_DECAY, 1.0)
-                sideways_ob_widen = (RSI_OB_WIDE - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
-                sideways_os_widen = (RSI_OVERSOLD - RSI_OS_WIDE) * (1.0 - trend_exit_strength)
+                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (1.8 - RSI_EXIT_VOL_LOW)))
+                trend_exit_strength = min(abs(ret_long) / 0.08, 1.0)
+                sideways_ob_widen = (74 - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
+                sideways_os_widen = (RSI_OVERSOLD - 26) * (1.0 - trend_exit_strength)
                 base_ob = RSI_OVERBOUGHT + sideways_ob_widen
                 base_os = RSI_OVERSOLD + sideways_os_widen
-                effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
-                effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
+                effective_ob = base_ob - (base_ob - 65) * vol_exit_blend
+                effective_os = base_os + (35 - base_os) * vol_exit_blend
                 # Profit-scaled tightening: lock in gains by tightening OB/OS toward center
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
