@@ -4,3 +4,4 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	8.02	11.16	6.76	22.47	7.28	4.96	9.92	discard	exp: add wide-range bar filter (high-low>2x avg skips entry) — catastrophic regression, filter too aggressive for hourly crypto
 -	21.78	24.17	5.28	32.49	21.93	18.06	24.20	discard	exp: per-asset inverse-vol sizing weights (BTC 1.15x, SOL 0.75x) -- hurt crash_bear/sideways/rally, existing vol_scale already handles this dynamically
 -	23.94	25.86	4.33	32.43	24.87	20.30	25.84	discard	exp: widen mean-reversion RSI thresholds 49/51->40/60 — tiny regression across all regimes (-0.04 composite), MR entries at 49/51 contribute marginally positive
+-	23.96	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate z-score voter (72-bar lookback, z>1.0 contrarian) — near-zero impact, z-score threshold rarely triggered at hourly frequency, same issue as prior absolute-threshold funding voter
