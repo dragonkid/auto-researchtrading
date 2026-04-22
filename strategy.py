@@ -92,6 +92,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
+# OBV trend voter
+OBV_FAST_EMA = 8
+OBV_SLOW_EMA = 21
+
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
 VOL_BREAKOUT_LONG = 20
@@ -265,8 +269,24 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            obv_bull = False
+            obv_bear = False
+            if len(closes) >= OBV_SLOW_EMA + 5:
+                obv_len = OBV_SLOW_EMA + 5
+                obv_closes = closes[-obv_len:]
+                obv_volumes = bd.history["volume"].values[-obv_len:]
+                obv_deltas = np.diff(obv_closes)
+                obv_signs = np.sign(obv_deltas)
+                obv_vals = np.cumsum(obv_signs * obv_volumes[1:])
+                obv_fast = ema(obv_vals, OBV_FAST_EMA)
+                obv_slow = ema(obv_vals, OBV_SLOW_EMA)
+                if obv_fast[-1] > obv_slow[-1]:
+                    obv_bull = True
+                elif obv_fast[-1] < obv_slow[-1]:
+                    obv_bear = True
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, obv_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, obv_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
