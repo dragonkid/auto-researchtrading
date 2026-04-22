@@ -61,7 +61,8 @@ RSI_YOUNG_OS_WIDEN = 4.0
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
-# Sizing multipliers
+# Per-asset base sizing (inverse-vol weighted: SOL gets less, BTC gets more)
+ASSET_SIZE_WEIGHT = {"BTC": 1.15, "ETH": 1.0, "SOL": 0.75}
 BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
@@ -311,7 +312,8 @@ class Strategy:
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * BASE_POSITION_SIZE * combined_mult
+            asset_weight = ASSET_SIZE_WEIGHT.get(symbol, 1.0)
+            size = equity * BASE_POSITION_SIZE * combined_mult * asset_weight
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
