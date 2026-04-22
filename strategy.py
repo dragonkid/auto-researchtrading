@@ -3,7 +3,7 @@ import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
-SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
+SYMBOL_WEIGHTS = {"BTC": 0.38, "ETH": 0.31, "SOL": 0.31}
 
 SHORT_WINDOW = 8
 MED_WINDOW_MIN = 8
