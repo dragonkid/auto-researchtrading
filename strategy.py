@@ -327,7 +327,8 @@ class Strategy:
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         age_factor = min(bars_held / 12.0, 1.0)
-                        adaptive_giveback = PEAK_PROFIT_GIVEBACK + 0.15 * age_factor
+                        sideways_giveback_tighten = max(0.0, 1.0 - abs(ret_long) / MEANREV_TREND_THRESHOLD)
+                        adaptive_giveback = PEAK_PROFIT_GIVEBACK - 0.05 * sideways_giveback_tighten + 0.15 * age_factor
                         if giveback > self.peak_pnl[symbol] * adaptive_giveback:
                             target = 0.0
 
