@@ -237,7 +237,7 @@ class Strategy:
             vol_compress_boost = 1.0
             if short_vol is not None:
                 vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
-                calm_boost = 1.0 + 1.0 * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
+                calm_boost = 1.0 + 0.8 * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
                     compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
                     vol_compress_boost = 1.0 + 0.50 * compress_strength ** 0.85
