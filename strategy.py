@@ -389,6 +389,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
                         profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (0.03 - PEAK_PROFIT_MIN))
                         regime_giveback = PEAK_PROFIT_GIVEBACK - 0.08 * (1.0 - sideways_trend_ratio)
+                        regime_giveback += 0.10 * linreg_r2
                         effective_giveback = regime_giveback + (0.25 - regime_giveback) * profit_blend
                         if bars_held > PEAK_PROFIT_AGE_BARS:
                             age_excess = min(1.0, (bars_held - PEAK_PROFIT_AGE_BARS) / PEAK_PROFIT_AGE_BARS)
