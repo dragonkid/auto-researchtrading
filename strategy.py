@@ -5,7 +5,7 @@ from prepare import Signal, PortfolioState, BarData
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 
-SHORT_WINDOW = 8
+SHORT_WINDOW = 6
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
