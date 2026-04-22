@@ -55,3 +55,4 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 
 -	22.298119	24.809659	5.565081	discard	reduce SOL weight 0.33->0.25, increase BTC/ETH to 0.35 (reduce SOL whipsaw impact)
 -	23.743017	25.863268	4.826502	discard	graduated vote boost (0.05 per vote above 2) instead of flat 1.20 threshold
+98a6bfe	23.996154	26.248142	5.089976	keep	reduce MACD_SIGNAL 5->4 for faster MACD histogram response (+0.086)
