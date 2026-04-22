@@ -32,7 +32,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 5
 
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 3
+EMA_SLOPE_LOOKBACK = 5
 LINREG_PERIOD = 16  # rolling linear regression window for slope voter
 
 BASE_POSITION_PCT = 0.30
