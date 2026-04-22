@@ -21,11 +21,6 @@ LINREG_PERIOD = 16
 
 VOL_LONG_LOOKBACK = 36
 TARGET_VOL = 0.015
-ATR_LOOKBACK = 16
-
-STOP_WITH_TREND_MULT = 1.25
-STOP_AGAINST_TREND_MULT = 0.75
-
 VOL_COMPRESS_THRESHOLD = 0.75
 MEANREV_TREND_THRESHOLD = 0.05
 RSI_EXIT_PROFIT_THRESHOLD = 0.01
@@ -68,22 +63,10 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices = {}
-        self.peak_prices = {}
-        self.atr_at_entry = {}
         self.exit_bar = {}
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
-
-    def _calc_atr(self, history, lookback):
-        if len(history) < lookback + 1:
-            return None
-        highs = history["high"].values[-lookback:]
-        lows = history["low"].values[-lookback:]
-        closes = history["close"].values[-(lookback+1):-1]
-        tr = np.maximum(highs - lows,
-                        np.maximum(np.abs(highs - closes), np.abs(lows - closes)))
-        return np.mean(tr)
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -317,40 +300,6 @@ class Strategy:
                         elif rsi > 51:
                             target = -size
             else:
-                atr = self._calc_atr(bd.history, ATR_LOOKBACK)
-                if atr is None:
-                    atr = self.atr_at_entry.get(symbol, mid * 0.02)
-
-                atr_stop_mult = 4.5 / max(vol_ratio, 0.5)
-                atr_stop_mult = max(3.0, min(6.0, atr_stop_mult))
-
-                if current_pos > 0 and ret_long > 0:
-                    atr_stop_mult *= STOP_WITH_TREND_MULT
-                elif current_pos > 0 and ret_long < 0:
-                    atr_stop_mult *= STOP_AGAINST_TREND_MULT
-                elif current_pos < 0 and ret_long < 0:
-                    atr_stop_mult *= STOP_WITH_TREND_MULT
-                elif current_pos < 0 and ret_long > 0:
-                    atr_stop_mult *= STOP_AGAINST_TREND_MULT
-
-                flat_trend_strength = min(abs(ret_long) / 0.08, 1.0)
-                flat_trend_boost = 1.0 + 0.35 * (1.0 - flat_trend_strength)
-                atr_stop_mult *= flat_trend_boost
-
-                if symbol not in self.peak_prices:
-                    self.peak_prices[symbol] = mid
-
-                if current_pos > 0:
-                    self.peak_prices[symbol] = max(self.peak_prices[symbol], mid)
-                    stop = self.peak_prices[symbol] - atr_stop_mult * atr
-                    if mid < stop:
-                        target = 0.0
-                else:
-                    self.peak_prices[symbol] = min(self.peak_prices[symbol], mid)
-                    stop = self.peak_prices[symbol] + atr_stop_mult * atr
-                    if mid > stop:
-                        target = 0.0
-
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
                 trend_exit_strength = min(abs(ret_long) / 0.08, 1.0)
                 sideways_ob_widen = (74 - RSI_OVERBOUGHT) * (1.0 - trend_exit_strength)
@@ -409,21 +358,15 @@ class Strategy:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target != 0 and current_pos == 0:
                     self.entry_prices[symbol] = mid
-                    self.peak_prices[symbol] = mid
-                    self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
-                    self.peak_prices.pop(symbol, None)
-                    self.atr_at_entry.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
-                    self.peak_prices[symbol] = mid
-                    self.atr_at_entry[symbol] = self._calc_atr(bd.history, ATR_LOOKBACK) or mid * 0.02
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
 
