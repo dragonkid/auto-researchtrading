@@ -256,11 +256,10 @@ class Strategy:
                         target = size
                     elif bearish:
                         target = -size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD and donchian_bull is False and donchian_bear is False:
-                        donchian_mid = (donchian_high + donchian_low) / 2
-                        if mid < donchian_mid:
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                        if rsi < 49:
                             target = size
-                        elif mid > donchian_mid:
+                        elif rsi > 51:
                             target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
