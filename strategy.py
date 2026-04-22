@@ -39,8 +39,6 @@ BASE_POSITION_PCT = 0.30
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
-VOL_SPIKE_THRESHOLD = 1.7
-VOL_SPIKE_SCALE = 0.95
 TARGET_VOL = 0.015
 ATR_LOOKBACK = 16
 ATR_STOP_MULT_BASE = 4.5
@@ -340,13 +338,9 @@ class Strategy:
             vol_scale = max(0.3, min(2.5, vol_scale))
 
             # Vol-spike/calm/compression sizing (reuses short_vol/long_vol from above)
-            vol_spike_scale = 1.0
             calm_boost = 1.0
             vol_compress_boost = 1.0
             if short_vol is not None:
-                if sl_ratio_raw > 1.0:
-                    spike_blend = min(1.0, (sl_ratio_raw - 1.0) / (VOL_SPIKE_THRESHOLD - 1.0))
-                    vol_spike_scale = 1.0 - (1.0 - VOL_SPIKE_SCALE) * spike_blend
                 vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
@@ -382,7 +376,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * vol_spike_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
