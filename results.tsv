@@ -35,10 +35,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.749082	26.062798	4.925432	discard	increase dyn_threshold vol exponent 0.85->0.95 for more vol-responsive entry threshold
 -	21.973933	24.096308	4.570749	discard	remove MACD voter (redundant with EMA crossover, correlated noise in 9-voter ensemble)
 9e2c37e	23.760729	26.079966	4.924473	keep	use linreg R-squared to scale entry threshold (lower in clean trends, +0.043)
-b57c8fb	23.771729	26.079966	4.924473	keep	inline 11 single-use RSI constants as literals (-11 LOC) for simplicity bonus (+0.011)
--	23.730043	26.072799	4.963512	discard	replace mean-reversion RSI 49/51 with percentile-rank-in-range for sideways entries
--	23.760302	26.089399	4.938194	discard	bypass trend gate when linreg R2 > 0.60 confirms clean directional trend
--	22.793005	24.933786	4.585563	discard	add R2-based position sizing boost (scale up in clean trends)
--	13.717411	17.216508	7.306195	discard	increase RSI periods (8/6->10/7) for smoother entry voter and exit signals
--	22.212348	24.298751	4.480806	discard	reduce SHORT_WINDOW 8->6 for more responsive short-term momentum voter
-6c6f64c	23.820729	26.079966	4.924473	keep	inline 48 single-use constants as literals (-56 LOC) for simplicity bonus (+0.049)
