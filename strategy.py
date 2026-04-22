@@ -132,9 +132,7 @@ class Strategy:
             dyn_threshold = max(0.004, min(0.015, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            trend_strength = min(abs(ret_long) / 0.13, 1.0) ** 0.85
-            trend_reduction = 0.32 * (1.0 - trend_strength)
-            dyn_threshold *= (1.0 - trend_reduction)
+            dyn_threshold *= 1.0 - 0.32 * (1.0 - min(abs(ret_long) / 0.13, 1.0) ** 0.85)
 
             short_vol = long_vol = None
             sl_ratio_raw = 1.0
@@ -143,8 +141,7 @@ class Strategy:
                 long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
                 sl_ratio_raw = short_vol / max(long_vol, 1e-10)
                 if sl_ratio_raw < VOL_COMPRESS_THRESHOLD:
-                    compress_str = (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
-                    dyn_threshold *= (1.0 - 0.25 * compress_str)
+                    dyn_threshold *= 1.0 - 0.25 * (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
@@ -210,8 +207,7 @@ class Strategy:
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / 0.06, 1.0)
-            trend_med_weight = 0.90 + (0.70 - 0.90) * cooldown_trend_strength ** 0.85
-            trend_avg = trend_med_weight * ret_med + (1.0 - trend_med_weight) * ret_long
+            trend_avg = (0.90 - 0.20 * cooldown_trend_strength ** 0.85) * ret_med + (0.10 + 0.20 * cooldown_trend_strength ** 0.85) * ret_long
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
@@ -233,11 +229,9 @@ class Strategy:
                 vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
                 calm_boost = 1.0 + 0.8 * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
                 if vol_ratio_sl < VOL_COMPRESS_THRESHOLD:
-                    compress_strength = (VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD
-                    vol_compress_boost = 1.0 + 0.50 * compress_strength ** 0.85
+                    vol_compress_boost = 1.0 + 0.50 * ((VOL_COMPRESS_THRESHOLD - vol_ratio_sl) / VOL_COMPRESS_THRESHOLD) ** 0.85
 
-            sideways_trend_strength = rsi_trend_str ** 1.7
-            sideways_boost = 1.0 + 0.70 * (1.0 - sideways_trend_strength)
+            sideways_boost = 1.0 + 0.70 * (1.0 - rsi_trend_str ** 1.7)
 
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = 1.20 if winning_votes >= 3 else 1.0
