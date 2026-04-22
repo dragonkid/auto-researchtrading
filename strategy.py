@@ -239,7 +239,7 @@ class Strategy:
             adaptive_cap = 2.5 if vol_ratio > 1.2 else 6.5 - 3.0 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.6))
             adaptive_cap += 1.5 * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * 0.099 * combined_mult
+            size = equity * 0.115 * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
