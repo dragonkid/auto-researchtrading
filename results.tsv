@@ -47,3 +47,8 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 3508b32	23.910653	26.130700	4.970092	keep	deduplicate trend strength computations (reuse rsi_trend_str and cooldown_trend_strength, -2 LOC)
 -	23.337682	24.879378	3.607392	discard	dampen profit-based RSI exit tightening by trend strength (let winners run in trends)
 -	23.890166	26.124089	4.993846	discard	increase vshort momentum threshold multiplier 0.5->0.65 for more selective short-term voter
+
+-	23.757502	25.964423	4.953841	discard	scale vote_boost linearly with vote count (1.04-1.28 instead of flat 1.20)
+c591fa1	23.928047	26.146146	4.974199	keep	require 4 votes when linreg R2 < 0.15 (filter noisy entries in choppy markets)
+
+-	23.922624	26.136934	4.966620	discard	reduce MIN_VOTES to 2 when linreg R2 > 0.50 (easier entry in clean trends)
