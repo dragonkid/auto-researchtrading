@@ -72,3 +72,7 @@ c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.
 -	19.795729	21.051613	3.091768	discard	reduce LONG_WINDOW 20->18 for faster trend detection (hurt all regimes)
 -	23.999529	25.844454	4.269849	discard	lower DD_DAMPENING_START 0.03->0.02 for earlier DD protection (marginal, below threshold)
 -	23.987784	25.836680	4.277792	discard	increase trend-based threshold reduction 0.32->0.36 for easier trend entries (marginal, below threshold)
+-	23.304903	24.943374	3.856943	discard	increase base position size 0.115->0.13 (DD went up ~1%, hurt all regimes)
+-	23.990498	25.837262	4.273527	discard	require 2+ votes to confirm mean-reversion RSI entries in sideways (marginal, below threshold)
+-	24.020299	25.857727	4.254856	discard	reduce giveback age loosening 0.15->0.10 (no effect, below threshold)
+-	23.474439	25.186939	4.005001	discard	halve cross-asset agreement dampening in trends (boosted DD too much)
