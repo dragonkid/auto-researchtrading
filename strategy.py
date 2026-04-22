@@ -8,7 +8,6 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_SLOW = 21
-RSI_PERIOD = 8
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 
@@ -176,9 +175,7 @@ class Strategy:
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
-            rsi_trend_str = min(abs(ret_long) / 0.10, 1.0)
-            adaptive_rsi_period = int(round(6 + (RSI_PERIOD - 6) * rsi_trend_str))
-            rsi = calc_rsi(closes, adaptive_rsi_period)
+            rsi = calc_rsi(closes, 8)
             rsi_trend_blend = min(abs(ret_long) / 0.10, 1.0)
             rsi_bias = 1.5 * rsi_trend_blend
             rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
