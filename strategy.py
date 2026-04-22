@@ -110,21 +110,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Cross-asset momentum agreement
-        cross_asset_rets = []
-        for s in ACTIVE_SYMBOLS:
-            if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
-                c = bar_data[s].history["close"].values
-                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
-        if len(cross_asset_rets) >= 2:
-            n_pos = sum(1 for r in cross_asset_rets if r > 0)
-            n_neg = sum(1 for r in cross_asset_rets if r < 0)
-            n_total = len(cross_asset_rets)
-            agree_frac = max(n_pos, n_neg) / n_total
-            cross_asset_agree = 1.0 + 0.20 * agree_frac if agree_frac > 0.5 else 1.0
-        else:
-            cross_asset_agree = 1.0
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -269,9 +254,7 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / 0.12, 1.0)
             strength_floor = 0.6 + (2.6 - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
-            cross_trend_strength = min(abs(ret_long) / 0.06, 1.0)
-            dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * vote_boost * vol_compress_boost * vol_confirm_mult
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
                 adaptive_cap = MAX_COMBINED_MULT_LOW_VOL
             elif vol_ratio > MAX_COMBINED_VOL_THRESHOLD:
