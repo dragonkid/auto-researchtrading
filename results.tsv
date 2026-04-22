@@ -52,7 +52,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
 
 -	22.818838	24.899599	4.695522	discard	add R2-based position sizing boost (1.0+0.3*R2) to size up in clean trends (hurt sideways)
--	17.119490	20.857165	7.993348	discard	add portfolio drawdown-based position scaling (reduce size when equity drops >2% from peak, hurt recovery)
--	15.582622	19.098867	7.562491	discard	increase RSI adaptive period floor 6->7 (too aggressive, hurt all regimes)
--	23.813611	26.024775	4.952330	discard	raise vote_boost threshold 3->5 (too restrictive, reduced returns)
-b086fac	23.986071	26.227604	5.025067	keep	inline 6 single-use constants (-6 LOC) for simplicity bonus (+0.006)
