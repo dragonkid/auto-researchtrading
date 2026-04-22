@@ -310,6 +310,7 @@ class Strategy:
                     if pos_pnl > RSI_EXIT_PROFIT_THRESHOLD:
                         profit_excess = pos_pnl - RSI_EXIT_PROFIT_THRESHOLD
                         profit_blend = min(0.15, profit_excess * 20.0)
+                        profit_blend *= (1.0 - 0.7 * trend_exit_strength)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
