@@ -77,8 +77,9 @@ VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
 VOL_CONFIRM_FLOOR = 0.98      # min sizing factor when volume is below average
 MEANREV_TREND_THRESHOLD = 0.05  # abs(ret_long) below this activates mean-reversion entries
-MEANREV_RSI_OVERSOLD = 49       # less extreme RSI threshold for mean-reversion entries
-MEANREV_RSI_OVERBOUGHT = 51     # less extreme RSI threshold for mean-reversion entries
+MEANREV_RANK_PERIOD = 20        # lookback for percentile rank of close
+MEANREV_RANK_LOW = 0.20         # price below this percentile → buy (bottom of range)
+MEANREV_RANK_HIGH = 0.80        # price above this percentile → sell (top of range)
 RSI_EXIT_PROFIT_THRESHOLD = 0.01  # profit above which RSI exit starts tightening
 RSI_EXIT_PROFIT_TIGHTEN = 0.15    # max tightening blend toward center (50) at high profit
 RSI_EXIT_PROFIT_SCALE = 20.0      # how fast tightening ramps with excess profit
@@ -411,12 +412,15 @@ class Strategy:
                         target = size
                     elif bearish:
                         target = -size
-                    # Mean-reversion entries in sideways markets
+                    # Mean-reversion entries in sideways markets (percentile rank)
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if rsi < MEANREV_RSI_OVERSOLD:
-                            target = size
-                        elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -size
+                        if len(closes) >= MEANREV_RANK_PERIOD:
+                            window = closes[-MEANREV_RANK_PERIOD:]
+                            pct_rank = np.sum(window < mid) / len(window)
+                            if pct_rank < MEANREV_RANK_LOW:
+                                target = size
+                            elif pct_rank > MEANREV_RANK_HIGH:
+                                target = -size
             else:
                 atr = self._calc_atr(bd.history, ATR_LOOKBACK)
                 if atr is None:
