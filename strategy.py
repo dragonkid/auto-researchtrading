@@ -306,8 +306,8 @@ class Strategy:
                 sideways_os_widen = (RSI_OVERSOLD - 26) * (1.0 - trend_exit_strength)
                 base_ob = RSI_OVERBOUGHT + sideways_ob_widen
                 base_os = RSI_OVERSOLD + sideways_os_widen
-                effective_ob = base_ob - (base_ob - 65) * vol_exit_blend
-                effective_os = base_os + (35 - base_os) * vol_exit_blend
+                effective_ob = base_ob + (80 - base_ob) * vol_exit_blend
+                effective_os = base_os - (base_os - 20) * vol_exit_blend
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
