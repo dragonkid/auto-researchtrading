@@ -68,4 +68,3 @@ c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.
 
 -	23.911727	25.775442	4.321430	discard	increase linreg_slope voter threshold 0.0001->0.001 for more selective trend voting
 52483b8	24.020464	25.862767	4.264605	keep	add drawdown-aware position sizing dampener (reduce size when in DD >3%)
--	23.808537	25.438102	3.839130	discard	reduce EMA_SLOPE_PERIOD 22->18 for more responsive slope voter (hurt bull/crash)
