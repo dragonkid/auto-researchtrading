@@ -111,6 +111,10 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
 LINREG_R2_THRESH_REDUCE = 0.20  # max entry threshold reduction when linreg R² is high (clean trend)
+CORR_LOOKBACK = 48              # rolling correlation window for cross-asset correlation sizing
+CORR_HIGH = 0.75                # correlation above this = concentrated portfolio, scale down
+CORR_LOW = 0.50                 # correlation below this = diversified, no penalty
+CORR_SIZE_REDUCE = 0.15         # max size reduction when correlation is very high
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -209,6 +213,26 @@ class Strategy:
             cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
+
+        # Cross-asset correlation sizing: reduce size when assets are highly correlated
+        # High correlation = concentrated risk, low correlation = real diversification
+        corr_size_mult = 1.0
+        if "BTC" in bar_data and len(bar_data["BTC"].history) >= CORR_LOOKBACK + 1:
+            btc_closes = bar_data["BTC"].history["close"].values
+            btc_rets = np.diff(np.log(btc_closes[-(CORR_LOOKBACK+1):]))
+            corrs = []
+            for s in ["ETH", "SOL"]:
+                if s in bar_data and len(bar_data[s].history) >= CORR_LOOKBACK + 1:
+                    s_closes = bar_data[s].history["close"].values
+                    s_rets = np.diff(np.log(s_closes[-(CORR_LOOKBACK+1):]))
+                    if len(btc_rets) == len(s_rets) and np.std(btc_rets) > 1e-10 and np.std(s_rets) > 1e-10:
+                        corr = np.corrcoef(btc_rets, s_rets)[0, 1]
+                        corrs.append(corr)
+            if corrs:
+                avg_corr = np.mean(corrs)
+                if avg_corr > CORR_LOW:
+                    corr_blend = min(1.0, (avg_corr - CORR_LOW) / (CORR_HIGH - CORR_LOW))
+                    corr_size_mult = 1.0 - CORR_SIZE_REDUCE * corr_blend
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -383,7 +407,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * corr_size_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
