@@ -58,9 +58,6 @@ def calc_rsi(closes, period):
     return 100 - 100 / (1 + rs)
 
 
-DD_SCALE_START = 0.02
-DD_SCALE_FLOOR = 0.4
-
 class Strategy:
     def __init__(self):
         self.entry_prices = {}
@@ -68,7 +65,6 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
-        self.peak_equity = 0.0
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -111,10 +107,6 @@ class Strategy:
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-
-        self.peak_equity = max(self.peak_equity, equity)
-        dd_frac = (self.peak_equity - equity) / self.peak_equity if self.peak_equity > 0 else 0.0
-        dd_scale = max(DD_SCALE_FLOOR, 1.0 - max(0.0, dd_frac - DD_SCALE_START) / (0.10 - DD_SCALE_START) * (1.0 - DD_SCALE_FLOOR))
 
         # Cross-asset momentum agreement
         cross_asset_rets = []
@@ -281,7 +273,7 @@ class Strategy:
             trend_cap_boost = 1.5 * (1.0 - rsi_trend_str ** 0.85)
             adaptive_cap += trend_cap_boost
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * 0.30 * weight * combined_mult * dd_scale
+            size = equity * 0.30 * weight * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
