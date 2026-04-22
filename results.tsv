@@ -50,3 +50,6 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.840125	25.865007	4.587765	discard	increase PEAK_PROFIT_GIVEBACK 0.30->0.38 to let profitable positions run longer
 
 -	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
+
+-	21.437605	23.501544	4.665877	discard	add minimum 1-bar cooldown floor (1+2*trend_str instead of 3*trend_str) to reduce whipsaw re-entries
+979d012	23.930123	26.153112	4.983977	keep	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1, +0.019)
