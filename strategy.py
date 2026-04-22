@@ -110,7 +110,7 @@ MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6  # vol_ratio below this gets the full low-v
 MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) markets
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
-LINREG_R2_THRESH_REDUCE = 0.20  # max entry threshold reduction when linreg R² is high (clean trend)
+LINREG_R2_THRESH_REDUCE = 0.30  # max entry threshold reduction when linreg R² is high (clean trend)
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
