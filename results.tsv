@@ -72,4 +72,3 @@ c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.
 -	19.795729	21.051613	3.091768	discard	reduce LONG_WINDOW 20->18 for faster trend detection (hurt all regimes)
 -	23.999529	25.844454	4.269849	discard	lower DD_DAMPENING_START 0.03->0.02 for earlier DD protection (marginal, below threshold)
 -	23.987784	25.836680	4.277792	discard	increase trend-based threshold reduction 0.32->0.36 for easier trend entries (marginal, below threshold)
--	20.472900	22.297750	4.229701	discard	widen adaptive RSI period range 6-8 to 5-9 (faster in sideways, smoother in trends)
