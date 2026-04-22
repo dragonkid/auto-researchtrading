@@ -1,4 +1,4 @@
-# Exp: Reduce MED2_WINDOW 10->8 for faster trend gate in sideways markets.
+# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -8,7 +8,7 @@ SYMBOL_WEIGHTS = {"BTC": 0.33, "ETH": 0.33, "SOL": 0.33}
 SHORT_WINDOW = 8
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 8
+MED2_WINDOW = 10
 LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
