@@ -53,6 +53,9 @@ RSI_EXIT_TREND_DECAY = 0.08
 RSI_EXIT_PROFIT_THRESHOLD = 0.01
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
+RSI_EXIT_LOSS_THRESHOLD = 0.015
+RSI_EXIT_LOSS_TIGHTEN = 0.20
+RSI_EXIT_LOSS_SCALE = 12.0
 RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
@@ -344,6 +347,11 @@ class Strategy:
                         profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN, profit_excess * RSI_EXIT_PROFIT_SCALE)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
+                    elif pos_pnl < -RSI_EXIT_LOSS_THRESHOLD:
+                        loss_excess = -pos_pnl - RSI_EXIT_LOSS_THRESHOLD
+                        loss_blend = min(RSI_EXIT_LOSS_TIGHTEN, loss_excess * RSI_EXIT_LOSS_SCALE)
+                        effective_ob = effective_ob - (effective_ob - 50.0) * loss_blend
+                        effective_os = effective_os + (50.0 - effective_os) * loss_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
