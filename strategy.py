@@ -1,4 +1,4 @@
-# Exp: Use linreg R-squared as trend confidence to scale entry threshold.
+# Exp: Normalize momentum returns by realized vol for cross-regime consistency.
 import numpy as np
 from prepare import Signal, PortfolioState, BarData
 
@@ -257,10 +257,14 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            mom_bull = ret_short > dyn_threshold
-            mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            # Vol-normalize momentum for cross-regime consistency
+            vol_norm = max(realized_vol, 1e-6) / TARGET_VOL
+            norm_ret_short = ret_short / vol_norm
+            norm_ret_vshort = ret_vshort / vol_norm
+            mom_bull = norm_ret_short > dyn_threshold
+            mom_bear = norm_ret_short < -dyn_threshold
+            vshort_bull = norm_ret_vshort > dyn_threshold * 0.5
+            vshort_bear = norm_ret_vshort < -dyn_threshold * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
