@@ -23,6 +23,8 @@ MACD_SIGNAL = 4
 
 # Linear regression
 LINREG_PERIOD = 16
+LINREG_R2_BONUS_THRESH = 0.55       # R² above which linreg gets bonus vote
+LINREG_R2_BONUS_VOTES = 1           # extra votes when R² is high
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -265,8 +267,10 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            linreg_bonus_bull = linreg_bull and linreg_r2 > LINREG_R2_BONUS_THRESH
+            linreg_bonus_bear = linreg_bear and linreg_r2 > LINREG_R2_BONUS_THRESH
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull]) + LINREG_R2_BONUS_VOTES * linreg_bonus_bull
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear]) + LINREG_R2_BONUS_VOTES * linreg_bonus_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
