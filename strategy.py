@@ -199,9 +199,7 @@ class Strategy:
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / 0.06, 1.0)
-            r2_long_shift = 0.10 * linreg_r2
-            base_med_w = 0.90 - 0.20 * cooldown_trend_strength ** 0.85
-            trend_avg = (base_med_w - r2_long_shift) * ret_med + (1.0 - base_med_w + r2_long_shift) * ret_long
+            trend_avg = (0.90 - 0.20 * cooldown_trend_strength ** 0.85) * ret_med + (0.10 + 0.20 * cooldown_trend_strength ** 0.85) * ret_long
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
