@@ -39,6 +39,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	23.818729	26.079966	4.924473	discard	reduce MIN_VOTES by 1 when linreg R2 > 0.50 (no effect, +2 LOC cost)
 -	23.818729	26.079966	4.924473	discard	R2-scaled peak profit giveback (no effect on regime scores, +1 LOC cost)
 4eb9fbb	23.868845	26.090230	4.942769	keep	remove ATR trailing stop (never triggers, -48 LOC, bull +0.050, +0.108 total)
--	23.631771	25.785959	4.808376	discard	graduated vote_boost (+0.06 per vote above MIN_VOTES instead of flat 1.20)
--	23.301073	25.703716	5.305285	discard	reduce sideways_boost coefficient 0.70->0.45 for less aggressive sideways sizing
--	23.723610	25.926755	4.906290	discard	raise vote_boost threshold 3->5 for high-conviction-only sizing boost

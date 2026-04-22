@@ -39,7 +39,6 @@ MAX_COMBINED_VOL_THRESHOLD = 1.2
 MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6
 VOL_CONFIRM_BASE = 24
 LINREG_R2_THRESH_REDUCE = 0.20
-MOM_ACCEL_LOOKBACK = 4
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -219,17 +218,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            mom_accel_bull = False
-            mom_accel_bear = False
-            if len(closes) >= adaptive_med + MOM_ACCEL_LOOKBACK + 1:
-                prev_ret = (closes[-1 - MOM_ACCEL_LOOKBACK] - closes[-adaptive_med - MOM_ACCEL_LOOKBACK]) / closes[-adaptive_med - MOM_ACCEL_LOOKBACK]
-                if ret_short > prev_ret:
-                    mom_accel_bull = True
-                elif ret_short < prev_ret:
-                    mom_accel_bear = True
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, mom_accel_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, mom_accel_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             trend_adapt_strength = min(abs(ret_long) / 0.06, 1.0) ** 0.85
             trend_med_weight = 0.90 + (0.70 - 0.90) * trend_adapt_strength
