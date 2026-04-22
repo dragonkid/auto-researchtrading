@@ -56,11 +56,3 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 -	22.298119	24.809659	5.565081	discard	reduce SOL weight 0.33->0.25, increase BTC/ETH to 0.35 (reduce SOL whipsaw impact)
 -	23.743017	25.863268	4.826502	discard	graduated vote boost (0.05 per vote above 2) instead of flat 1.20 threshold
 98a6bfe	23.996154	26.248142	5.089976	keep	reduce MACD_SIGNAL 5->4 for faster MACD histogram response (+0.086)
--	23.858603	26.051993	4.972780	discard	raise vote_boost threshold 3->5 for high-conviction entries only
-
--	23.876478	26.029847	4.892739	discard	increase EMA fast period 3->5 for smoother crossover voter (hurt crash_bear -1.56)
--	23.891445	26.129963	5.059036	discard	R2-modulated trend_avg blend (shift weight toward ret_long in clean trends)
--	23.996154	26.248142	5.089976	discard	reduce MACD fast EMA 8->6 for faster MACD line response
--	22.425395	23.878579	3.498368	discard	reuse existing short_vol/long_vol for vol_breakout (12/36 vs 3/20 hurt bull/rally badly)
--	24.018694	26.249720	5.048051	discard	increase linreg R2 threshold discount 0.45->0.55 (marginal, -0.006)
-1e51f43	24.029810	26.254322	5.045025	keep	inline _calc_ema_slope method into on_bar (-6 LOC) for simplicity bonus (+0.005)
