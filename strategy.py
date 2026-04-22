@@ -30,7 +30,6 @@ PEAK_PROFIT_GIVEBACK = 0.25
 VOL_BREAKOUT_LONG = 20
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
-MIN_VOTES_CALM = 3
 FLIP_MIN_VOTES = 4
 MAX_COMBINED_MULT = 3.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
@@ -144,7 +143,6 @@ class Strategy:
             trend_reduction = 0.32 * (1.0 - trend_strength)
             dyn_threshold *= (1.0 - trend_reduction)
 
-            vol_compressed = False
             short_vol = long_vol = None
             sl_ratio_raw = 1.0
             if len(closes) >= VOL_LONG_LOOKBACK + 1:
@@ -152,7 +150,6 @@ class Strategy:
                 long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
                 sl_ratio_raw = short_vol / max(long_vol, 1e-10)
                 if sl_ratio_raw < VOL_COMPRESS_THRESHOLD:
-                    vol_compressed = True
                     compress_str = (VOL_COMPRESS_THRESHOLD - max(0.3, min(1.5, sl_ratio_raw))) / VOL_COMPRESS_THRESHOLD
                     dyn_threshold *= (1.0 - 0.25 * compress_str)
 
@@ -179,8 +176,7 @@ class Strategy:
             rsi_trend_str = min(abs(ret_long) / 0.10, 1.0)
             adaptive_rsi_period = int(round(6 + (RSI_PERIOD - 6) * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
-            rsi_trend_blend = min(abs(ret_long) / 0.10, 1.0)
-            rsi_bias = 1.5 * rsi_trend_blend
+            rsi_bias = 1.5 * rsi_trend_str
             rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
@@ -227,10 +223,9 @@ class Strategy:
             trend_bear = trend_avg < 0
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
-            effective_min_votes = MIN_VOTES_CALM if (vol_ratio < 0.9 or vol_compressed or in_sideways) else MIN_VOTES
             trend_gate_bypassed = in_sideways and abs(trend_avg) < 0.006
-            bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= effective_min_votes and (trend_bear or trend_gate_bypassed)
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
             cooldown_trend_strength = min(abs(ret_long) / 0.06, 1.0)
             effective_cooldown = 3 * cooldown_trend_strength
