@@ -67,3 +67,4 @@ c1a9a8e	24.005291	25.867443	4.318305	keep	reduce dyn_threshold ceiling 0.015->0.
 -	24.002958	25.867238	4.322561	discard	lower ret_long threshold saturation 0.13->0.10 for earlier threshold reduction in moderate trends
 
 -	23.911727	25.775442	4.321430	discard	increase linreg_slope voter threshold 0.0001->0.001 for more selective trend voting
+52483b8	24.020464	25.862767	4.264605	keep	add drawdown-aware position sizing dampener (reduce size when in DD >3%)
