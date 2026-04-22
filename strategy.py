@@ -258,8 +258,8 @@ class Strategy:
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / (1.8 - 0.7)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / 0.08)
-                base_ob = 73 + sideways_exit_widen
-                base_os = 27 + sideways_exit_widen
+                base_ob = 70 + sideways_exit_widen
+                base_os = 30 + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - 65) * vol_exit_blend
                 effective_os = base_os + (35 - base_os) * vol_exit_blend
                 if symbol in self.entry_prices:
