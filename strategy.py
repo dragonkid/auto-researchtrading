@@ -26,8 +26,7 @@ MEANREV_TREND_THRESHOLD = 0.05
 RSI_EXIT_PROFIT_THRESHOLD = 0.01
 RSI_YOUNG_GRACE_BARS = 4
 PEAK_PROFIT_MIN = 0.025
-PEAK_PROFIT_GIVEBACK = 0.30
-PEAK_PROFIT_AGE_BARS = 6
+PEAK_PROFIT_GIVEBACK = 0.25
 VOL_BREAKOUT_LONG = 20
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
@@ -336,15 +335,8 @@ class Strategy:
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN:
-                        profit_blend = min(1.0, (self.peak_pnl[symbol] - PEAK_PROFIT_MIN) / (0.03 - PEAK_PROFIT_MIN))
-                        regime_giveback = PEAK_PROFIT_GIVEBACK - 0.08 * (1.0 - sideways_trend_ratio)
-                        effective_giveback = regime_giveback + (0.25 - regime_giveback) * profit_blend
-                        if bars_held > PEAK_PROFIT_AGE_BARS:
-                            age_excess = min(1.0, (bars_held - PEAK_PROFIT_AGE_BARS) / PEAK_PROFIT_AGE_BARS)
-                            effective_giveback -= 0.10 * age_excess
-                            effective_giveback = max(0.10, effective_giveback)
                         giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * effective_giveback:
+                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
