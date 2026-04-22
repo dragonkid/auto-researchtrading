@@ -1,8 +1,8 @@
 """
-Exp385: Remove dead code and deduplicate ret_long.
-- Remove self.btc_momentum (assigned but never read) — 4 LOC
-- Merge ret_long into ret_long (identical computation) — 1 LOC
-Zero behavior change, -5 LOC for simplicity bonus.
+Exp388: Increase CROSS_ASSET_TREND_DECAY 0.06->0.10 to let cross-asset
+agreement boost persist into moderate trends (not just sideways).
+In bull/rally regimes all assets trend together — currently the boost
+is fully dampened at 6% ret_long, extending to 10% lets it help more.
 """
 
 import numpy as np
@@ -80,7 +80,7 @@ VOL_COMPRESS_THRESHOLD = 0.75  # short_vol / long_vol below this = compression
 VOL_COMPRESS_BOOST = 0.50     # max position size boost during vol compression
 VOL_COMPRESS_THRESH_REDUCE = 0.25  # max entry threshold reduction during vol compression
 CROSS_ASSET_BOOST = 0.20  # max size boost when all assets agree on direction
-CROSS_ASSET_TREND_DECAY = 0.06  # abs(ret_long) at which cross-asset boost fully dampens
+CROSS_ASSET_TREND_DECAY = 0.10  # abs(ret_long) at which cross-asset boost fully dampens
 VOL_CONFIRM_LOOKBACK = 12     # short-term volume average window
 VOL_CONFIRM_BASE = 24         # longer-term volume average window (shortened for faster regime response)
 VOL_CONFIRM_BOOST = 0.20      # max sizing boost when volume is above average
