@@ -111,7 +111,6 @@ MAX_COMBINED_TREND_BOOST = 1.5    # max cap increase in sideways (weak trend) ma
 MAX_COMBINED_TREND_DECAY = 0.10   # abs(ret_long) at which trend cap boost fully decays
 TREND_GATE_DEADZONE = 0.006  # bypass trend gate when abs(trend_avg) < this AND in sideways
 LINREG_R2_THRESH_REDUCE = 0.20  # max entry threshold reduction when linreg R² is high (clean trend)
-LINREG_R2_SIZE_BOOST = 0.30  # max position size boost when linreg R² is high (confident trend)
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -384,8 +383,7 @@ class Strategy:
             # Dampen cross-asset boost in strong trends (where DD is already near limit)
             cross_trend_strength = min(abs(ret_long) / CROSS_ASSET_TREND_DECAY, 1.0)
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cross_trend_strength)
-            r2_size_boost = 1.0 + LINREG_R2_SIZE_BOOST * linreg_r2
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult * r2_size_boost
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
             # Adaptive cap: allow more stacking in low-vol (sideways) regimes
             # where DD headroom exists, tighter in high-vol regimes to protect DD
             if vol_ratio < MAX_COMBINED_LOW_VOL_THRESHOLD:
