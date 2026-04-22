@@ -23,10 +23,6 @@ MEANREV_TREND_THRESHOLD = 0.05
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
-MAX_COMBINED_MULT = 3.5
-MAX_COMBINED_MULT_LOW_VOL = 6.5
-MAX_COMBINED_VOL_THRESHOLD = 1.2
-MAX_COMBINED_LOW_VOL_THRESHOLD = 0.6
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -240,18 +236,16 @@ class Strategy:
                 if base_vol > 0:
                     vol_confirm_mult = max(0.98, min(1.20, recent_vol / base_vol))
 
-            weight = 0.33
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / 0.12, 1.0)
             strength_floor = 0.6 + (2.6 - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_compress_boost * vol_confirm_mult
-            adaptive_cap = (2.5 if vol_ratio > MAX_COMBINED_VOL_THRESHOLD else
-                MAX_COMBINED_MULT_LOW_VOL + (MAX_COMBINED_MULT - MAX_COMBINED_MULT_LOW_VOL) * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_LOW_VOL_THRESHOLD) / (MAX_COMBINED_VOL_THRESHOLD - MAX_COMBINED_LOW_VOL_THRESHOLD))))
+            adaptive_cap = 2.5 if vol_ratio > 1.2 else 6.5 - 3.0 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.6))
             adaptive_cap += 1.5 * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * 0.30 * weight * combined_mult
+            size = equity * 0.099 * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
