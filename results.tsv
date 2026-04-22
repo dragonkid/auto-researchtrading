@@ -47,3 +47,6 @@ b290401	23.718235	26.108796	5.067122	keep	remove module+method docstrings (-10 L
 3508b32	23.910653	26.130700	4.970092	keep	deduplicate trend strength computations (reuse rsi_trend_str and cooldown_trend_strength, -2 LOC)
 -	23.337682	24.879378	3.607392	discard	dampen profit-based RSI exit tightening by trend strength (let winners run in trends)
 -	23.890166	26.124089	4.993846	discard	increase vshort momentum threshold multiplier 0.5->0.65 for more selective short-term voter
+-	23.840125	25.865007	4.587765	discard	increase PEAK_PROFIT_GIVEBACK 0.30->0.38 to let profitable positions run longer
+
+-	23.933078	26.152963	4.977769	discard	skip low-R2 vote penalty in sideways markets (in_sideways bypasses eff_min_votes+1)
