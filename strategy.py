@@ -19,7 +19,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 4
+MACD_SIGNAL = 6
 
 # Linear regression
 LINREG_PERIOD = 16
