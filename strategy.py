@@ -101,6 +101,11 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Mean-reversion volume gate
+MEANREV_VOL_LOOKBACK = 6
+MEANREV_VOL_BASE = 24
+MEANREV_VOL_MAX_RATIO = 1.15
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -323,10 +328,17 @@ class Strategy:
                     elif bearish:
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if rsi < MEANREV_RSI_OVERSOLD:
-                            target = size
-                        elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -size
+                        vol_quiet = True
+                        if len(volumes) >= MEANREV_VOL_BASE:
+                            mr_recent_vol = np.mean(volumes[-MEANREV_VOL_LOOKBACK:])
+                            mr_base_vol = np.mean(volumes[-MEANREV_VOL_BASE:])
+                            if mr_base_vol > 0 and mr_recent_vol / mr_base_vol > MEANREV_VOL_MAX_RATIO:
+                                vol_quiet = False
+                        if vol_quiet:
+                            if rsi < MEANREV_RSI_OVERSOLD:
+                                target = size
+                            elif rsi > MEANREV_RSI_OVERBOUGHT:
+                                target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
