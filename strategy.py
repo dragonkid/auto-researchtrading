@@ -76,6 +76,9 @@ VOL_CONFIRM_CAP = 1.20
 STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
+# Bar close quality
+BAR_CLOSE_BOOST_MAX = 0.15
+
 # Combined mult cap
 MAX_COMBINED_MULT_HIGH_VOL = 2.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
@@ -307,6 +310,8 @@ class Strategy:
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
+            bar_range = bd.high - bd.low
+            close_pos = (bd.close - bd.low) / bar_range if bar_range > 1e-10 else 0.5
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
@@ -318,15 +323,17 @@ class Strategy:
 
             if current_pos == 0:
                 if not in_cooldown:
+                    bull_bar_q = 1.0 + BAR_CLOSE_BOOST_MAX * (2.0 * close_pos - 1.0)
+                    bear_bar_q = 1.0 + BAR_CLOSE_BOOST_MAX * (1.0 - 2.0 * close_pos)
                     if bullish:
-                        target = size
+                        target = size * bull_bar_q
                     elif bearish:
-                        target = -size
+                        target = -size * bear_bar_q
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
-                            target = size
+                            target = size * bull_bar_q
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -size
+                            target = -size * bear_bar_q
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
@@ -369,10 +376,12 @@ class Strategy:
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
+                bull_bar_q = 1.0 + BAR_CLOSE_BOOST_MAX * (2.0 * close_pos - 1.0)
+                bear_bar_q = 1.0 + BAR_CLOSE_BOOST_MAX * (1.0 - 2.0 * close_pos)
                 if current_pos > 0 and flip_bearish and not in_cooldown:
-                    target = -size
+                    target = -size * bear_bar_q
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
-                    target = size
+                    target = size * bull_bar_q
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
