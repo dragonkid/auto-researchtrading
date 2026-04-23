@@ -61,6 +61,11 @@ RSI_YOUNG_OS_WIDEN = 4.0
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
+# Stale position exit (time-decay for flat positions)
+STALE_MIN_BARS = 24
+STALE_PNL_BAND = 0.012
+STALE_VOL_SPEEDUP = 0.5
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
@@ -366,6 +371,15 @@ class Strategy:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
+
+                if target != 0 and symbol in self.entry_prices:
+                    entry = self.entry_prices[symbol]
+                    stale_pnl = (mid - entry) / entry
+                    if current_pos < 0:
+                        stale_pnl = -stale_pnl
+                    stale_threshold = STALE_MIN_BARS * max(0.5, 1.0 - STALE_VOL_SPEEDUP * (vol_ratio - 1.0))
+                    if bars_held > stale_threshold and abs(stale_pnl) < STALE_PNL_BAND:
+                        target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
