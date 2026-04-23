@@ -44,3 +44,5 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	23.96	25.88	4.33	32.45	24.90	20.31	25.86	discard	exp: directional R2 threshold reduction (only ease with-trend entries, not counter-trend) -- tiny regression -0.02 composite, rally_2024 -0.04, R2 reduction fires too rarely to matter and removing it for counter-trend slightly hurts pullback entries within trends
 
 -	22.91	24.52	3.70	30.29	22.67	20.28	24.83	discard	exp: add multi-timeframe agreement sizing multiplier (boost 1.20x when short/med/long agree, dampen 0.85x when disagree) -- all 4 regimes regressed (-1.07 composite), bull -2.16 crash -2.24, boosted size amplified whipsaws during trend transitions, disagreement dampening cut profitable counter-trend entries
+
+-	18.99	20.67	3.84	26.42	15.81	19.29	21.15	discard	exp: add momentum acceleration gate for position flips (require 3-bar return acceleration for flip direction) -- all 4 regimes regressed badly (-4.99 composite), gate too restrictive, blocked most legitimate flips causing positions to hold through reversals instead of flipping
