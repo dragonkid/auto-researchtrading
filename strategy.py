@@ -101,10 +101,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Momentum persistence filter (sideways whipsaw reduction)
-MOM_PERSIST_LOOKBACK = 1   # bars to look back for momentum confirmation
-MOM_PERSIST_TREND_THRESHOLD = 0.04  # only apply filter when |ret_long| < this
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -281,15 +277,6 @@ class Strategy:
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
-
-            # Momentum persistence filter: in sideways regimes, require that
-            # momentum direction was consistent 1 bar ago to filter whipsaws
-            if abs(ret_long) < MOM_PERSIST_TREND_THRESHOLD and len(closes) >= adaptive_med + MOM_PERSIST_LOOKBACK + 1:
-                prev_ret_short = (closes[-1 - MOM_PERSIST_LOOKBACK] - closes[-adaptive_med - MOM_PERSIST_LOOKBACK]) / closes[-adaptive_med - MOM_PERSIST_LOOKBACK]
-                if bullish and prev_ret_short < 0:
-                    bullish = False
-                if bearish and prev_ret_short > 0:
-                    bearish = False
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
