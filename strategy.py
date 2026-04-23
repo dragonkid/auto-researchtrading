@@ -101,12 +101,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Time-of-day threshold adjustment
-# UTC hours 2-8 have thinner volume and more noise in crypto
-TOD_QUIET_START = 2
-TOD_QUIET_END = 8
-TOD_THRESHOLD_BOOST = 0.15  # raise threshold 15% during quiet hours
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -212,11 +206,6 @@ class Strategy:
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
-
-            # Time-of-day threshold adjustment: raise threshold during quiet hours
-            utc_hour = (bd.timestamp // 3_600_000) % 24
-            if TOD_QUIET_START <= utc_hour < TOD_QUIET_END:
-                dyn_threshold *= (1.0 + TOD_THRESHOLD_BOOST)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
