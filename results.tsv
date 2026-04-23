@@ -71,3 +71,5 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	20.01	22.77	6.03	32.48	18.81	16.82	22.97	discard	exp: reduce Donchian period 12->8 for faster breakout detection -- all 4 regimes regressed badly (-3.97 composite), crash_bear -6.10 worst, sideways -3.50, rally -2.93, shorter Donchian generated excessive false breakout signals especially in volatile/choppy conditions, 12-bar period provides necessary noise filtering
 
 -	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding-rate crowding exit (tighten RSI exits when funding z-score aligns with position direction) -- near-zero impact (-0.01 composite), funding z-score crowding signal fires too infrequently at hourly timeframe to materially shift RSI exit thresholds, same core issue as prior funding entry-voter experiments
+
+-	23.88	25.85	4.43	32.49	24.94	20.06	25.90	discard	exp: add time-of-day entry threshold boost during quiet UTC hours (raise threshold 15% in UTC 2-8) -- sideways regressed -0.26 (quiet-hour filter blocks legitimate sideways entries), composite -0.10, bull/crash improved marginally (+0.04/+0.03) but not enough
