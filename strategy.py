@@ -76,6 +76,9 @@ VOL_CONFIRM_CAP = 1.20
 STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
+# Calm-sideways interaction cap
+CALM_SIDEWAYS_CAP = 2.0
+
 # Combined mult cap
 MAX_COMBINED_MULT_HIGH_VOL = 2.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
@@ -290,6 +293,13 @@ class Strategy:
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.7)
+
+            # Cap interaction of calm_boost and sideways_boost to prevent compounding
+            calm_sideways_product = calm_boost * sideways_boost
+            if calm_sideways_product > CALM_SIDEWAYS_CAP:
+                scale_down = CALM_SIDEWAYS_CAP / calm_sideways_product
+                calm_boost *= scale_down ** 0.5
+                sideways_boost *= scale_down ** 0.5
 
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
