@@ -98,8 +98,6 @@ VOL_BREAKOUT_LONG = 20
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
-FLIP_MIN_VOTES_LOSING = 3
-FLIP_LOSS_THRESHOLD = -0.01
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -369,15 +367,8 @@ class Strategy:
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                flip_pnl = 0.0
-                if symbol in self.entry_prices:
-                    flip_entry = self.entry_prices[symbol]
-                    flip_pnl = (mid - flip_entry) / flip_entry
-                    if current_pos < 0:
-                        flip_pnl = -flip_pnl
-                eff_flip_votes = FLIP_MIN_VOTES_LOSING if flip_pnl < FLIP_LOSS_THRESHOLD else FLIP_MIN_VOTES
-                flip_bearish = bear_votes >= eff_flip_votes and trend_bear
-                flip_bullish = bull_votes >= eff_flip_votes and trend_bull
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
