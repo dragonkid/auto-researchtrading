@@ -56,7 +56,6 @@ RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
-RSI_EXIT_TREND_ASYM = 3.0
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -350,13 +349,6 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
-                trend_asym = RSI_EXIT_TREND_ASYM * min(abs(ret_long) / 0.08, 1.0)
-                if ret_long > 0:
-                    effective_ob += trend_asym
-                    effective_os += trend_asym
-                else:
-                    effective_ob -= trend_asym
-                    effective_os -= trend_asym
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
