@@ -89,9 +89,8 @@ TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_ADAPT_DECAY = 0.06
 TREND_GATE_DEADZONE = 0.006
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_BB_PERIOD = 20
-MEANREV_BB_MULT = 2.0
-MEANREV_SIZE_SCALE = 0.7
+MEANREV_RSI_OVERSOLD = 49
+MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
@@ -324,15 +323,10 @@ class Strategy:
                     elif bearish:
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if len(closes) >= MEANREV_BB_PERIOD:
-                            bb_mean = np.mean(closes[-MEANREV_BB_PERIOD:])
-                            bb_std = np.std(closes[-MEANREV_BB_PERIOD:])
-                            bb_upper = bb_mean + MEANREV_BB_MULT * bb_std
-                            bb_lower = bb_mean - MEANREV_BB_MULT * bb_std
-                            if mid <= bb_lower:
-                                target = size * MEANREV_SIZE_SCALE
-                            elif mid >= bb_upper:
-                                target = -size * MEANREV_SIZE_SCALE
+                        if rsi < MEANREV_RSI_OVERSOLD:
+                            target = size
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                            target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
