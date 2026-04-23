@@ -100,7 +100,6 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-COOLDOWN_SIDEWAYS_FLOOR = 1.5
 
 
 def ema(values, span):
@@ -279,8 +278,7 @@ class Strategy:
             bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
-            sideways_floor = COOLDOWN_SIDEWAYS_FLOOR * (1.0 - cooldown_trend_strength)
-            effective_cooldown = max(COOLDOWN_BARS * cooldown_trend_strength, sideways_floor)
+            effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
