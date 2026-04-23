@@ -35,7 +35,6 @@ BASE_THRESHOLD = 0.005
 DYN_THRESHOLD_FLOOR = 0.004
 DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.32       # max threshold reduction in trends
-SHORT_ENTRY_PENALTY = 0.15         # extra threshold for short entries (crypto upward drift)
 TREND_THRESHOLD_DECAY = 0.13       # abs(ret_long) at which reduction saturates
 LINREG_R2_THRESH_REDUCE = 0.45     # max threshold reduction when R² is high
 
@@ -215,11 +214,10 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            short_threshold = dyn_threshold * (1.0 + SHORT_ENTRY_PENALTY)
             mom_bull = ret_short > dyn_threshold
-            mom_bear = ret_short < -short_threshold
+            mom_bear = ret_short < -dyn_threshold
             vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -short_threshold * 0.5
+            vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
