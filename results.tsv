@@ -57,3 +57,4 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 
 -	23.95	26.01	4.59	33.04	24.87	20.23	25.88	discard	exp: add vol-of-vol dampener to position sizing (dampen vol_scale toward 1.0 when vol is unstable) -- composite -0.03, 3/4 regimes regressed (crash -0.04, sideways -0.09, rally -0.02), bull improved +0.59 but dampening removed beneficial inverse-vol sizing in stable periods
 -	23.98	25.88	4.30	32.40	24.89	20.35	25.88	discard	exp: increase MACD signal period 4->6 -- near-zero impact (+0.001 composite), MACD voter at signal=6 produces nearly identical votes to signal=4 at hourly frequency, smoothing too marginal to change entry decisions
+-	23.41	25.36	4.41	32.24	23.88	20.05	25.26	discard	exp: increase linreg period 16->24 for signal orthogonality -- all 4 regimes regressed (-0.57 composite), crash_bear -1.03 worst, 24-bar window too slow for hourly crypto where 16-bar linreg is well-tuned to voter ensemble timing
