@@ -63,3 +63,7 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	21.57	22.37	2.07	25.77	21.63	20.16	21.90	discard	exp: adaptive flip threshold (3 votes when losing >1%, else 4) -- all 4 regimes regressed badly (-2.41 composite), bull -6.68 crash -3.28 rally -4.00 sideways -0.16, same whipsaw problem as global FLIP_MIN_VOTES=3 (exp 38) just attenuated, losing positions that would recover get flipped prematurely
 
 -	20.53	22.80	5.01	29.93	23.67	15.89	21.70	discard	exp: use Garman-Klass OHLC volatility estimator instead of close-to-close -- all 4 regimes regressed badly (-3.45 composite), GK estimator produces different vol scale than close-to-close std, all sizing/threshold parameters tuned for close-to-close broke (sideways -4.43 worst)
+
+-	20.14	22.17	4.55	28.49	22.81	15.66	21.72	discard	exp: add momentum reversal exit for losing/flat positions held 6+ bars (3+ opposing votes + trend after 6 bars, PnL<0.5%) -- all 4 regimes regressed badly (-3.84 composite), sideways worst -4.66 (premature exits during normal retracements), 3-vote reversal threshold too loose
+
+-	23.28	25.10	4.12	31.44	24.39	19.90	24.65	discard	exp: add directional bar-close quality factor for entry sizing (+-15pct based on close position within bar range) -- all 4 regimes regressed (-0.70 composite), bar close position within hourly range adds noise not signal, bull -1.01 crash -0.52 sideways -0.42 rally -1.25
