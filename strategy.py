@@ -12,7 +12,9 @@ LONG_WINDOW = 20
 
 # EMA parameters
 EMA_FAST = 3
-EMA_SLOW = 21
+EMA_SLOW_BASE = 21
+EMA_SLOW_MIN = 17
+EMA_SLOW_MAX = 27
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
 
@@ -183,7 +185,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW_MAX, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -219,8 +221,13 @@ class Strategy:
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
-            ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
-            ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
+            # Adaptive EMA slow period: longer in high vol (more smoothing),
+            # shorter in low vol (faster response to trends)
+            vol_clamped = max(0.5, min(2.0, vol_ratio))
+            adaptive_ema_slow = int(round(EMA_SLOW_BASE + (vol_clamped - 1.0) * (EMA_SLOW_MAX - EMA_SLOW_BASE)))
+            adaptive_ema_slow = max(EMA_SLOW_MIN, min(EMA_SLOW_MAX, adaptive_ema_slow))
+            ema_fast_arr = ema(closes[-(adaptive_ema_slow+10):], EMA_FAST)
+            ema_slow_arr = ema(closes[-(adaptive_ema_slow+10):], adaptive_ema_slow)
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
