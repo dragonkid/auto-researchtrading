@@ -98,7 +98,6 @@ VOL_BREAKOUT_LONG = 20
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
-HIGH_CONVICTION_VOTES = 7
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -276,10 +275,8 @@ class Strategy:
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            high_conviction_bull = bull_votes >= HIGH_CONVICTION_VOTES
-            high_conviction_bear = bear_votes >= HIGH_CONVICTION_VOTES
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed or high_conviction_bull)
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed or high_conviction_bear)
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
