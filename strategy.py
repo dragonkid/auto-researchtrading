@@ -205,11 +205,7 @@ class Strategy:
                 sl_ratio_raw = short_vol / max(long_vol, 1e-10)
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
-            # Directional R2 threshold: only ease threshold for with-trend entries
-            r2_reduce_bull = LINREG_R2_THRESH_REDUCE * linreg_r2 if linreg_slope > 0 else 0.0
-            r2_reduce_bear = LINREG_R2_THRESH_REDUCE * linreg_r2 if linreg_slope < 0 else 0.0
-            dyn_threshold_bull = dyn_threshold * (1.0 - r2_reduce_bull)
-            dyn_threshold_bear = dyn_threshold * (1.0 - r2_reduce_bear)
+            dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
@@ -218,10 +214,10 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            mom_bull = ret_short > dyn_threshold_bull
-            mom_bear = ret_short < -dyn_threshold_bear
-            vshort_bull = ret_vshort > dyn_threshold_bull * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold_bear * 0.5
+            mom_bull = ret_short > dyn_threshold
+            mom_bear = ret_short < -dyn_threshold
+            vshort_bull = ret_vshort > dyn_threshold * 0.5
+            vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
@@ -306,8 +302,7 @@ class Strategy:
                 if base_vol > 0:
                     vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
 
-            effective_threshold = dyn_threshold_bull if ret_short > 0 else dyn_threshold_bear
-            mom_strength = (abs(ret_short) / effective_threshold) ** 0.85
+            mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
