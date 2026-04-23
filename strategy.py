@@ -257,11 +257,9 @@ class Strategy:
 
             donchian_bull = False
             donchian_bear = False
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            if len(highs) >= DONCHIAN_PERIOD + 1:
-                donchian_high = np.max(highs[-(DONCHIAN_PERIOD+1):-1])
-                donchian_low = np.min(lows[-(DONCHIAN_PERIOD+1):-1])
+            if len(closes) >= DONCHIAN_PERIOD + 1:
+                donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
+                donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
                 if mid >= donchian_high:
                     donchian_bull = True
                 elif mid <= donchian_low:
