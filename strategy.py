@@ -289,9 +289,10 @@ class Strategy:
                 vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85
 
-            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.7)
-
             winning_votes = max(bull_votes, bear_votes)
+            vote_margin = winning_votes - min(bull_votes, bear_votes)
+            sideways_vote_blend = min(vote_margin / 5.0, 1.0)
+            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.7) * sideways_vote_blend
             vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
             vol_confirm_mult = 1.0
