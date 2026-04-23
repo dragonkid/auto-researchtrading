@@ -31,3 +31,5 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	23.93	25.86	4.35	32.48	24.87	20.29	25.80	discard	exp: replace RSI mean-reversion with Bollinger Band mean-reversion in sideways (20-period, 2-sigma) -- sideways regressed -0.03 instead of improving, 2-sigma extremes too rare at hourly frequency, rally -0.10, composite -0.05
 
 -	23.98	26.08	4.72	33.48	24.58	20.44	25.81	discard	exp: remove volume confirmation sizing multiplier -- near-zero composite change (+0.00), bull improved +1.03 but crash_bear regressed -0.33, std increased. Volume confirmation contributes marginally; removal not beneficial.
+
+-	23.97	25.90	4.34	32.46	24.92	20.31	25.90	discard	exp: add volume-quietness gate for mean-reversion entries (require recent_vol/base_vol < 1.15 for MR entries in sideways) -- near-zero impact (-0.01 composite), MR path fires too rarely and volume filter overlap is minimal
