@@ -170,10 +170,7 @@ class Strategy:
         for s in ACTIVE_SYMBOLS:
             if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
                 c = bar_data[s].history["close"].values
-                h = bar_data[s].history["high"].values
-                l = bar_data[s].history["low"].values
-                tp = (h + l + c) / 3.0
-                cross_asset_rets.append((tp[-1] - tp[-MED2_WINDOW]) / tp[-MED2_WINDOW])
+                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
         if len(cross_asset_rets) >= 2:
             n_pos = sum(1 for r in cross_asset_rets if r > 0)
             n_neg = sum(1 for r in cross_asset_rets if r < 0)
@@ -190,9 +187,6 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            hlc3 = (highs + lows + closes) / 3.0
             mid = bd.close
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
@@ -200,7 +194,7 @@ class Strategy:
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
-            ret_long = (hlc3[-1] - hlc3[-LONG_WINDOW]) / hlc3[-LONG_WINDOW]
+            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = 1.0
@@ -216,9 +210,9 @@ class Strategy:
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
-            ret_vshort = (hlc3[-1] - hlc3[-SHORT_WINDOW]) / hlc3[-SHORT_WINDOW]
-            ret_short = (hlc3[-1] - hlc3[-adaptive_med]) / hlc3[-adaptive_med]
-            ret_med = (hlc3[-1] - hlc3[-MED2_WINDOW]) / hlc3[-MED2_WINDOW]
+            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
+            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
