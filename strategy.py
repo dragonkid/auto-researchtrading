@@ -101,6 +101,9 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# BTC lead-lag signal for altcoins
+BTC_LEAD_WINDOW = 6
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -178,6 +181,15 @@ class Strategy:
             cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
+
+        # BTC lead-lag: compute BTC short-term direction for altcoin voting
+        btc_lead_bull = False
+        btc_lead_bear = False
+        if "BTC" in bar_data and len(bar_data["BTC"].history) >= BTC_LEAD_WINDOW + 1:
+            btc_c = bar_data["BTC"].history["close"].values
+            btc_lead_ret = (btc_c[-1] - btc_c[-BTC_LEAD_WINDOW]) / btc_c[-BTC_LEAD_WINDOW]
+            btc_lead_bull = btc_lead_ret > 0.002
+            btc_lead_bear = btc_lead_ret < -0.002
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -265,8 +277,12 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            # BTC lead-lag voter: only for altcoins (ETH, SOL)
+            lead_bull = btc_lead_bull if symbol != "BTC" else False
+            lead_bear = btc_lead_bear if symbol != "BTC" else False
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull, lead_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear, lead_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
