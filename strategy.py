@@ -57,6 +57,10 @@ RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
 
+# Funding-rate crowding exit
+FUNDING_LOOKBACK = 48
+FUNDING_CROWD_TIGHTEN = 0.12   # max RSI tightening toward 50 when crowded
+
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -344,6 +348,20 @@ class Strategy:
                         profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN, profit_excess * RSI_EXIT_PROFIT_SCALE)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
+                # Funding-rate crowding exit: tighten RSI when position aligns with crowd
+                funding_rates = bd.history["funding_rate"].values
+                if len(funding_rates) >= FUNDING_LOOKBACK:
+                    avg_funding = np.mean(funding_rates[-FUNDING_LOOKBACK:])
+                    std_funding = np.std(funding_rates[-FUNDING_LOOKBACK:])
+                    if std_funding > 1e-10:
+                        funding_z = (funding_rates[-1] - avg_funding) / std_funding
+                        # Tighten when long and funding is high (crowd long) or short and funding is low (crowd short)
+                        crowd_signal = funding_z if current_pos > 0 else -funding_z
+                        if crowd_signal > 0:
+                            crowd_blend = min(FUNDING_CROWD_TIGHTEN, crowd_signal * 0.06)
+                            effective_ob = effective_ob - (effective_ob - 50.0) * crowd_blend
+                            effective_os = effective_os + (50.0 - effective_os) * crowd_blend
+
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
