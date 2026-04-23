@@ -274,9 +274,7 @@ class Strategy:
             trend_bear = trend_avg < 0
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
-            sideways_blend = max(0.0, 1.0 - abs(ret_long) / MEANREV_TREND_THRESHOLD)
-            effective_deadzone = TREND_GATE_DEADZONE * (1.0 + 2.0 * sideways_blend)
-            trend_gate_bypassed = in_sideways and abs(trend_avg) < effective_deadzone
+            trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
