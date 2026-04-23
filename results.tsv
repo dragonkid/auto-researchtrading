@@ -34,3 +34,4 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 
 -	23.97	25.90	4.34	32.46	24.92	20.31	25.90	discard	exp: add volume-quietness gate for mean-reversion entries (require recent_vol/base_vol < 1.15 for MR entries in sideways) -- near-zero impact (-0.01 composite), MR path fires too rarely and volume filter overlap is minimal
 -	23.99	25.92	4.36	32.50	25.00	20.28	25.90	discard	exp: fix Donchian channel to use actual high/low instead of close prices -- borderline +0.01 composite, hypothesis falsified (sideways -0.04 instead of improving), bull +0.05 crash_bear +0.09 likely noise
+-	23.96	25.88	4.34	32.42	24.84	20.29	25.95	discard	exp: asymmetric peak-profit giveback longs 0.28 / shorts 0.20 (was symmetric 0.25) -- 3/4 regimes regressed slightly, composite -0.02, crash_bear -0.07 instead of improving, trailing stop symmetric value already near-optimal
