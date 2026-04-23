@@ -24,10 +24,6 @@ MACD_SIGNAL = 4
 # Linear regression
 LINREG_PERIOD = 16
 
-# Momentum acceleration filter
-MOM_ACCEL_LOOKBACK = 4              # bars ago to compare momentum
-MOM_DECEL_PENALTY = 0.20            # threshold increase when decelerating
-
 # Volatility parameters
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
@@ -217,12 +213,6 @@ class Strategy:
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
-
-            # Momentum acceleration filter: raise threshold when momentum decelerates
-            if len(closes) >= adaptive_med + MOM_ACCEL_LOOKBACK + 1:
-                prior_ret = (closes[-1 - MOM_ACCEL_LOOKBACK] - closes[-adaptive_med - MOM_ACCEL_LOOKBACK]) / closes[-adaptive_med - MOM_ACCEL_LOOKBACK]
-                if abs(ret_short) < abs(prior_ret) and ret_short * prior_ret > 0:
-                    dyn_threshold *= (1.0 + MOM_DECEL_PENALTY)
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
