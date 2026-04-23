@@ -101,6 +101,11 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Candlestick body-ratio sizing
+BODY_RATIO_LOOKBACK = 8
+BODY_RATIO_FLOOR = 0.92
+BODY_RATIO_CAP = 1.12
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -302,12 +307,24 @@ class Strategy:
                 if base_vol > 0:
                     vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
 
+            body_ratio_mult = 1.0
+            opens = bd.history["open"].values
+            highs = bd.history["high"].values
+            lows = bd.history["low"].values
+            if len(opens) >= BODY_RATIO_LOOKBACK:
+                recent_bodies = np.abs(closes[-BODY_RATIO_LOOKBACK:] - opens[-BODY_RATIO_LOOKBACK:])
+                recent_ranges = highs[-BODY_RATIO_LOOKBACK:] - lows[-BODY_RATIO_LOOKBACK:]
+                valid = recent_ranges > 1e-10
+                if np.sum(valid) >= BODY_RATIO_LOOKBACK // 2:
+                    avg_ratio = np.mean(recent_bodies[valid] / recent_ranges[valid])
+                    body_ratio_mult = max(BODY_RATIO_FLOOR, min(BODY_RATIO_CAP, 0.8 + 0.4 * avg_ratio))
+
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult * body_ratio_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
