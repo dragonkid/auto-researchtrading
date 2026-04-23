@@ -101,6 +101,10 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Momentum reversal exit (exit to flat when opposing momentum is strong)
+MOMREV_EXIT_MIN_BARS = 6
+MOMREV_EXIT_MAX_PNL = 0.005
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -365,6 +369,17 @@ class Strategy:
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                            target = 0.0
+
+                if target != 0 and bars_held >= MOMREV_EXIT_MIN_BARS:
+                    entry = self.entry_prices.get(symbol, mid)
+                    mr_pnl = (mid - entry) / entry
+                    if current_pos < 0:
+                        mr_pnl = -mr_pnl
+                    if mr_pnl < MOMREV_EXIT_MAX_PNL:
+                        if current_pos > 0 and bear_votes >= MIN_VOTES and trend_bear:
+                            target = 0.0
+                        elif current_pos < 0 and bull_votes >= MIN_VOTES and trend_bull:
                             target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
