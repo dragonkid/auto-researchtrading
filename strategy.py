@@ -67,10 +67,6 @@ CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_BOOST = 0.20
 CROSS_ASSET_TREND_DECAY = 0.06     # dampening in strong trends
-CORR_LOOKBACK = 48
-CORR_HIGH = 0.75
-CORR_LOW = 0.30
-CORR_DAMPEN_MAX = 0.20             # max size reduction at high correlation
 HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -182,27 +178,6 @@ class Strategy:
             cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
-
-        # Cross-asset correlation dampener
-        corr_dampener = 1.0
-        asset_returns = []
-        for s in ACTIVE_SYMBOLS:
-            if s in bar_data and len(bar_data[s].history) >= CORR_LOOKBACK + 1:
-                c = bar_data[s].history["close"].values[-(CORR_LOOKBACK + 1):]
-                rets = np.diff(np.log(c))
-                asset_returns.append(rets)
-        if len(asset_returns) >= 2:
-            corrs = []
-            for i in range(len(asset_returns)):
-                for j in range(i + 1, len(asset_returns)):
-                    c_val = np.corrcoef(asset_returns[i], asset_returns[j])[0, 1]
-                    if not np.isnan(c_val):
-                        corrs.append(c_val)
-            if corrs:
-                avg_corr = sum(corrs) / len(corrs)
-                if avg_corr > CORR_HIGH:
-                    blend = min((avg_corr - CORR_HIGH) / (1.0 - CORR_HIGH), 1.0)
-                    corr_dampener = 1.0 - CORR_DAMPEN_MAX * blend
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -332,7 +307,7 @@ class Strategy:
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult * corr_dampener
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
