@@ -56,6 +56,9 @@ RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
+RSI_AGING_START_BARS = 16
+RSI_AGING_FULL_BARS = 48
+RSI_AGING_MAX_TIGHTEN = 0.20
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -349,6 +352,11 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                if bars_held > RSI_AGING_START_BARS:
+                    aging_progress = min(1.0, (bars_held - RSI_AGING_START_BARS) / (RSI_AGING_FULL_BARS - RSI_AGING_START_BARS))
+                    aging_blend = RSI_AGING_MAX_TIGHTEN * aging_progress
+                    effective_ob = effective_ob - (effective_ob - 50.0) * aging_blend
+                    effective_os = effective_os + (50.0 - effective_os) * aging_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
