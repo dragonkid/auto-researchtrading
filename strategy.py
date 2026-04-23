@@ -67,8 +67,9 @@ CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_BOOST = 0.20
 CROSS_ASSET_TREND_DECAY = 0.06     # dampening in strong trends
-HIGH_VOTE_THRESHOLD = 3
-HIGH_VOTE_BOOST_MULT = 1.20
+VOTE_BOOST_BASE = 0.85
+VOTE_BOOST_PER_VOTE = 0.10
+VOTE_BOOST_CAP = 1.35
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
 VOL_CONFIRM_FLOOR = 0.98
@@ -292,7 +293,7 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.7)
 
             winning_votes = max(bull_votes, bear_votes)
-            vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
+            vote_boost = min(VOTE_BOOST_CAP, VOTE_BOOST_BASE + VOTE_BOOST_PER_VOTE * (winning_votes - MIN_VOTES))
 
             vol_confirm_mult = 1.0
             volumes = bd.history["volume"].values
