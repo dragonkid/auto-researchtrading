@@ -20,3 +20,4 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	20.00	22.18	4.86	28.84	22.09	15.12	22.65	discard	exp: add minimum cooldown floor for sideways markets (1.5 bars when trend_strength~0) — catastrophic -3.99 composite, all 4 regimes regressed, sideways worst -5.20 (floor prevented legitimate entries, not just whipsaw)
 
 -	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding carry position sizing (8-bar avg funding rate adjusts size +-12%) -- near-zero impact, avg funding rate too small at 0.0003 normalization to meaningfully shift sizing
+-	23.96	25.88	4.34	32.46	24.87	20.32	25.87	discard	exp: adaptive MIN_VOTES by vol regime (4 votes in high vol, 3 in calm) -- tiny regression -0.02 composite, high-vol filter removes some profitable entries in crash_bear, existing vol_scale sizing already handles noise reduction
