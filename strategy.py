@@ -29,6 +29,8 @@ VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 TARGET_VOL = 0.015
+VOL_OF_VOL_LOOKBACK = 6
+VOL_OF_VOL_DAMPEN = 0.4
 
 # Entry threshold
 BASE_THRESHOLD = 0.005
@@ -283,6 +285,18 @@ class Strategy:
 
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
             vol_scale = max(0.3, min(2.5, vol_scale))
+            if len(closes) >= VOL_LOOKBACK + VOL_OF_VOL_LOOKBACK:
+                recent_vols = []
+                for vi in range(VOL_OF_VOL_LOOKBACK):
+                    end_idx = len(closes) - vi
+                    start_idx = end_idx - VOL_LOOKBACK
+                    if start_idx >= 1:
+                        lr = np.diff(np.log(closes[start_idx:end_idx]))
+                        recent_vols.append(np.std(lr))
+                if len(recent_vols) >= 3:
+                    vov = np.std(recent_vols) / max(np.mean(recent_vols), 1e-10)
+                    vov_blend = min(1.0, vov * 3.0)
+                    vol_scale = vol_scale * (1.0 - VOL_OF_VOL_DAMPEN * vov_blend) + 1.0 * VOL_OF_VOL_DAMPEN * vov_blend
 
             calm_boost = 1.0
             if have_vol_ratio:
