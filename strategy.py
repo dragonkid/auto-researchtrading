@@ -101,6 +101,9 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Flip momentum acceleration gate
+FLIP_ACCEL_LOOKBACK = 3
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -369,9 +372,20 @@ class Strategy:
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
-                if current_pos > 0 and flip_bearish and not in_cooldown:
+                # Momentum acceleration gate: only flip when reversal is accelerating
+                flip_accel_ok = True
+                if len(closes) >= 2 * FLIP_ACCEL_LOOKBACK + 1:
+                    recent_ret = (closes[-1] - closes[-FLIP_ACCEL_LOOKBACK]) / closes[-FLIP_ACCEL_LOOKBACK]
+                    prior_ret = (closes[-FLIP_ACCEL_LOOKBACK] - closes[-2 * FLIP_ACCEL_LOOKBACK]) / closes[-2 * FLIP_ACCEL_LOOKBACK]
+                    if current_pos > 0 and flip_bearish:
+                        # Flipping to short: recent downward move should exceed prior
+                        flip_accel_ok = recent_ret < prior_ret
+                    elif current_pos < 0 and flip_bullish:
+                        # Flipping to long: recent upward move should exceed prior
+                        flip_accel_ok = recent_ret > prior_ret
+                if current_pos > 0 and flip_bearish and not in_cooldown and flip_accel_ok:
                     target = -size
-                elif current_pos < 0 and flip_bullish and not in_cooldown:
+                elif current_pos < 0 and flip_bullish and not in_cooldown and flip_accel_ok:
                     target = size
 
             if abs(target - current_pos) > 1.0:
