@@ -130,9 +130,19 @@ class Strategy:
         self.peak_pnl = {}
         self.entry_bar = {}
 
-    def _calc_vol(self, closes, lookback):
+    def _calc_vol(self, closes, lookback, highs=None, lows=None, opens=None):
         if len(closes) < lookback:
             return TARGET_VOL
+        if highs is not None and lows is not None and opens is not None:
+            h = highs[-lookback:]
+            l = lows[-lookback:]
+            c = closes[-lookback:]
+            o = opens[-lookback:]
+            log_hl = np.log(h / np.maximum(l, 1e-10))
+            log_co = np.log(c / np.maximum(o, 1e-10))
+            gk_var = 0.5 * log_hl**2 - (2.0 * np.log(2.0) - 1.0) * log_co**2
+            avg_var = np.mean(gk_var)
+            return max(np.sqrt(max(avg_var, 0.0)), 1e-6)
         log_rets = np.diff(np.log(closes[-lookback:]))
         return max(np.std(log_rets), 1e-6)
 
@@ -187,9 +197,12 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
+            highs = bd.history["high"].values
+            lows = bd.history["low"].values
+            opens = bd.history["open"].values
             mid = bd.close
 
-            realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
+            realized_vol = self._calc_vol(closes, VOL_LOOKBACK, highs, lows, opens)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
@@ -200,8 +213,8 @@ class Strategy:
             sl_ratio_raw = 1.0
             have_vol_ratio = len(closes) >= VOL_LONG_LOOKBACK + 1
             if have_vol_ratio:
-                short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
-                long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
+                short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK, highs, lows, opens)
+                long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK, highs, lows, opens)
                 sl_ratio_raw = short_vol / max(long_vol, 1e-10)
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
@@ -247,8 +260,8 @@ class Strategy:
             vol_breakout_bull = False
             vol_breakout_bear = False
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
-                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
-                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
+                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT, highs, lows, opens)
+                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG, highs, lows, opens)
                 if vb_short > vb_long:
                     if ret_vshort > 0:
                         vol_breakout_bull = True
