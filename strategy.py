@@ -100,6 +100,7 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
+STOP_LOSS_PCT = 0.045
 
 
 def ema(values, span):
@@ -373,6 +374,15 @@ class Strategy:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
                     target = size
+
+                # Vol-adaptive stop-loss for held positions (safety net)
+                if target == current_pos and symbol in self.entry_prices:
+                    entry_sl = self.entry_prices[symbol]
+                    pnl_sl = (mid - entry_sl) / entry_sl
+                    if current_pos < 0:
+                        pnl_sl = -pnl_sl
+                    if pnl_sl < -STOP_LOSS_PCT * max(1.0, vol_ratio):
+                        target = 0.0
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
