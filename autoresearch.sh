@@ -56,7 +56,7 @@ run_council() {
   echo ""
 
   local council_output
-  council_output=$(CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
+  council_output=$(CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
     --dangerously-skip-permissions \
     --model opus \
     --effort max \
@@ -110,7 +110,7 @@ while true; do
 
   echo "=== Experiment $EXPERIMENT_COUNT ($(date '+%H:%M:%S')) ==="
 
-  CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
+  CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
     --dangerously-skip-permissions \
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
