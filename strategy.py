@@ -91,7 +91,6 @@ TREND_GATE_DEADZONE = 0.006
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
-MEANREV_COOLDOWN_BARS = 2
 
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
@@ -324,12 +323,10 @@ class Strategy:
                     elif bearish:
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        mr_cooldown_active = (self.bar_count - self.exit_bar.get(symbol, -999)) < MEANREV_COOLDOWN_BARS
-                        if not mr_cooldown_active:
-                            if rsi < MEANREV_RSI_OVERSOLD:
-                                target = size
-                            elif rsi > MEANREV_RSI_OVERBOUGHT:
-                                target = -size
+                        if rsi < MEANREV_RSI_OVERSOLD:
+                            target = size
+                        elif rsi > MEANREV_RSI_OVERBOUGHT:
+                            target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
