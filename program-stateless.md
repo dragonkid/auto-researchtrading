@@ -113,6 +113,12 @@ Start with these high-probability ideas:
 - **Inverse vol position sizing** — proven in production risk framework
 - **Ensemble voting** — combine 3+ signals, only enter when majority agree
 
+### Structural issues (code review findings)
+The sideways regime has the lowest score (20.32 vs bull 32.45). These code-structural issues may explain why:
+- **Cooldown vanishes in low-trend**: `effective_cooldown = COOLDOWN_BARS * min(|ret_long|/0.06, 1.0)` drops to ~0.5 bars when `|ret_long|` is small. A minimum floor (e.g. `max(1, ...)`) would prevent degenerate re-entry cycles without affecting trending regimes.
+- **Mean-reversion RSI 49/51 covers ~95% of RSI values**: RSI oscillates around 50 by construction, so these thresholds make mean-rev the dominant entry path in sideways, overriding voting-based momentum logic.
+- **Momentum and mean-reversion share one cooldown**: both entry paths gate on the same `in_cooldown` flag. Decoupling them (e.g. fixed cooldown for mean-rev entries) could prevent sideways churn.
+
 ### Tier 3 — Radical / novel
 - **Pure mean reversion on funding rate** — trade the mean reversion of funding itself
 - **Correlation regime switching** — different strategies for high/low BTC-ETH correlation
