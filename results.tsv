@@ -77,3 +77,5 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	23.96	25.90	4.36	32.50	24.87	20.30	25.93	discard	exp: add candlestick body-ratio sizing factor (8-bar avg |close-open|/(high-low) as 0.92-1.12x multiplier) -- near-zero impact (-0.02 composite), crash -0.04 sideways -0.02, body-to-range ratio at hourly frequency does not provide meaningful trend quality signal for sizing
 
 -	21.37	22.71	3.17	25.52	22.98	17.47	24.88	discard	exp: asymmetric RSI exit thresholds by macro trend direction (widen with-trend exits, tighten against-trend exits by up to 3 RSI pts) -- all 4 regimes regressed badly (-2.61 composite), bull worst -6.93 (held longs too long past OB), sideways -2.85, asymmetric shift disrupts finely-tuned RSI exit thresholds
+
+-	23.95	25.88	4.34	32.46	24.89	20.30	25.86	discard	exp: add fixed MR cooldown (2-bar min) -- composite -0.03, sideways regressed -0.02 instead of improving, MR entries are net positive and adding cooldown slightly reduces their contribution, same conclusion as prior MR experiments (exp 6/9/53)
