@@ -224,8 +224,7 @@ class Strategy:
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
-            adaptive_bias_decay = RSI_TREND_BIAS_DECAY * max(0.7, min(1.5, vol_ratio ** 0.5))
-            rsi_trend_str = min(abs(ret_long) / adaptive_bias_decay, 1.0)
+            rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_str
