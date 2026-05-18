@@ -101,6 +101,10 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Vote-based exit
+VOTE_EXIT_MIN = 5
+VOTE_EXIT_TREND_CAP = 0.7
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -366,6 +370,12 @@ class Strategy:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
+
+                if target != 0 and cooldown_trend_strength < VOTE_EXIT_TREND_CAP:
+                    if current_pos > 0 and bear_votes >= VOTE_EXIT_MIN:
+                        target = 0.0
+                    elif current_pos < 0 and bull_votes >= VOTE_EXIT_MIN:
+                        target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
