@@ -389,6 +389,5 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
-                    self.exit_bar[symbol] = self.bar_count
 
         return signals
