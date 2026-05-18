@@ -13,7 +13,6 @@ LONG_WINDOW = 20
 # EMA parameters
 EMA_FAST = 3
 EMA_SLOW = 21
-EMA_CROSS_SPREAD = 0.001
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
 
@@ -222,9 +221,8 @@ class Strategy:
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            ema_spread = (ema_fast_arr[-1] - ema_slow_arr[-1]) / ema_slow_arr[-1]
-            ema_bull = ema_spread > EMA_CROSS_SPREAD
-            ema_bear = ema_spread < -EMA_CROSS_SPREAD
+            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
+            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
