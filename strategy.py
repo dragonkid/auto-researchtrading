@@ -129,6 +129,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
+        self.entry_votes = {}
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -334,6 +335,11 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
+                # Conviction-based exit widening: high-vote entries get more room
+                ev = self.entry_votes.get(symbol, MIN_VOTES)
+                conviction_widen = max(0.0, (ev - MIN_VOTES) / 6.0) * 2.5
+                effective_ob += conviction_widen
+                effective_os -= conviction_widen
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
@@ -380,14 +386,17 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
+                    self.entry_votes[symbol] = max(bull_votes, bear_votes)
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
+                    self.entry_votes.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
+                    self.entry_votes[symbol] = max(bull_votes, bear_votes)
 
         return signals
