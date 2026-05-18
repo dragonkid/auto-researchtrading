@@ -225,7 +225,7 @@ class Strategy:
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
-            adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
+            adaptive_rsi_period = int(round(5 + 7 * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_str
             rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
