@@ -95,7 +95,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
 VOL_BREAKOUT_LONG = 20
-DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
@@ -255,18 +254,8 @@ class Strategy:
                     elif ret_vshort < 0:
                         vol_breakout_bear = True
 
-            donchian_bull = False
-            donchian_bear = False
-            if len(closes) >= DONCHIAN_PERIOD + 1:
-                donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-                donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-                if mid >= donchian_high:
-                    donchian_bull = True
-                elif mid <= donchian_low:
-                    donchian_bear = True
-
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
