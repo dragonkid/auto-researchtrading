@@ -95,6 +95,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
 VOL_BREAKOUT_LONG = 20
+VOL_BREAKOUT_EXPANSION = 1.15
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
@@ -249,7 +250,7 @@ class Strategy:
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
                 vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
                 vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long:
+                if vb_short > VOL_BREAKOUT_EXPANSION * vb_long:
                     if ret_vshort > 0:
                         vol_breakout_bull = True
                     elif ret_vshort < 0:
