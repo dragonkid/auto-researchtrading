@@ -34,6 +34,7 @@ TARGET_VOL = 0.015
 BASE_THRESHOLD = 0.005
 DYN_THRESHOLD_FLOOR = 0.004
 DYN_THRESHOLD_CEIL = 0.012
+EMA_SPREAD_SIDEWAYS_THRESH = 0.001  # min EMA spread in sideways to reduce noise votes
 TREND_THRESHOLD_SCALE = 0.32       # max threshold reduction in trends
 TREND_THRESHOLD_DECAY = 0.13       # abs(ret_long) at which reduction saturates
 LINREG_R2_THRESH_REDUCE = 0.45     # max threshold reduction when R² is high
@@ -221,8 +222,13 @@ class Strategy:
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
-            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
+            ema_spread = (ema_fast_arr[-1] - ema_slow_arr[-1]) / mid
+            if abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                ema_bull = ema_spread > EMA_SPREAD_SIDEWAYS_THRESH
+                ema_bear = ema_spread < -EMA_SPREAD_SIDEWAYS_THRESH
+            else:
+                ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
+                ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
