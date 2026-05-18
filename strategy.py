@@ -57,6 +57,10 @@ RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
 
+# Partial profit-taking
+PARTIAL_EXIT_THRESHOLD = 0.02
+PARTIAL_EXIT_KEEP = 0.65
+
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -129,6 +133,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
+        self.partial_exited = {}
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -354,6 +359,16 @@ class Strategy:
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
+                if target != 0 and not self.partial_exited.get(symbol, False):
+                    if symbol in self.entry_prices:
+                        entry = self.entry_prices[symbol]
+                        pos_pnl_pe = (mid - entry) / entry
+                        if current_pos < 0:
+                            pos_pnl_pe = -pos_pnl_pe
+                        if pos_pnl_pe > PARTIAL_EXIT_THRESHOLD:
+                            target = current_pos * PARTIAL_EXIT_KEEP
+                            self.partial_exited[symbol] = True
+
                 if target != 0 and symbol in self.entry_prices and bars_held >= 1:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
@@ -380,14 +395,17 @@ class Strategy:
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
+                    self.partial_exited[symbol] = False
                 elif target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
+                    self.partial_exited.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
+                    self.partial_exited[symbol] = False
 
         return signals
