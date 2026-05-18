@@ -61,10 +61,6 @@ RSI_YOUNG_OS_WIDEN = 4.0
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
-# Vol expansion protective exit
-VOL_EXPAND_EXIT_THRESH = 1.6
-VOL_EXPAND_EXIT_MIN_BARS = 2
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
@@ -369,16 +365,6 @@ class Strategy:
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                            target = 0.0
-
-                # Vol expansion protective exit: cut losers when vol is spiking
-                if target != 0 and have_vol_ratio and sl_ratio_raw > VOL_EXPAND_EXIT_THRESH and bars_held >= VOL_EXPAND_EXIT_MIN_BARS:
-                    if symbol in self.entry_prices:
-                        entry = self.entry_prices[symbol]
-                        pos_pnl_ve = (mid - entry) / entry
-                        if current_pos < 0:
-                            pos_pnl_ve = -pos_pnl_ve
-                        if pos_pnl_ve < 0.0:
                             target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
