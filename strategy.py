@@ -93,8 +93,8 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
-EFFICIENCY_PERIOD = 12
-EFFICIENCY_THRESHOLD = 0.35
+VOL_BREAKOUT_SHORT = 3
+VOL_BREAKOUT_LONG = 20
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
@@ -244,17 +244,16 @@ class Strategy:
             linreg_bull = linreg_slope > 0.0001
             linreg_bear = linreg_slope < -0.0001
 
-            efficiency_bull = False
-            efficiency_bear = False
-            if len(closes) >= EFFICIENCY_PERIOD + 1:
-                direction = closes[-1] - closes[-(EFFICIENCY_PERIOD + 1)]
-                path = np.sum(np.abs(np.diff(closes[-(EFFICIENCY_PERIOD + 1):])))
-                efficiency = abs(direction) / max(path, 1e-10)
-                if efficiency > EFFICIENCY_THRESHOLD:
-                    if direction > 0:
-                        efficiency_bull = True
-                    elif direction < 0:
-                        efficiency_bear = True
+            vol_breakout_bull = False
+            vol_breakout_bear = False
+            if len(closes) >= VOL_BREAKOUT_LONG + 1:
+                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
+                if vb_short > vb_long:
+                    if ret_vshort > 0:
+                        vol_breakout_bull = True
+                    elif ret_vshort < 0:
+                        vol_breakout_bear = True
 
             donchian_bull = False
             donchian_bear = False
@@ -266,8 +265,8 @@ class Strategy:
                 elif mid <= donchian_low:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, efficiency_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, efficiency_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
