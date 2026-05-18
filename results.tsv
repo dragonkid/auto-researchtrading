@@ -91,3 +91,7 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	23.47	24.79	3.14	28.83	24.69	20.04	25.61	discard	exp: raise RSI exit profit threshold 0.01->0.02 -- all 4 regimes regressed (-0.51 composite), bull worst -3.62 (holding 1-2pct profits through reversals), sideways -0.28, crash -0.22, rally -0.29. 1pct profit tightening is effective protection not premature exit
 
 -	21.67	23.28	3.72	29.36	20.17	20.36	23.21	discard	exp: raise FLIP_MIN_VOTES 4->5 (require majority for flips) -- composite -2.31, all regimes except sideways regressed badly (crash -4.74, bull -3.09, rally -2.69, sideways +0.04), requiring 5/9 votes too restrictive causing positions to hold through genuine reversals in trending regimes
+
+-	23.97	25.90	4.34	32.46	24.93	20.30	25.90	discard	exp: add intrabar noise ratio threshold boost (high-low/close vs realized vol, 1.5 threshold, 12pct max boost) -- near-zero impact (-0.01 composite), sideways regressed -0.02 instead of improving, noise ratio filter too conservative or signal fires too rarely at hourly frequency to materially change entry decisions
+
+-	23.95	25.75	4.10	31.84	24.94	20.33	25.90	discard	exp: add return autocorrelation sizing boost (lag-1 autocorr of 24-bar log returns, max 15pct boost when autocorr>0) -- composite -0.03, bull regressed -0.61 (autocorr boost amplified noise in late-trend pullbacks), crash +0.03 sideways +0.01 rally 0.00, autocorrelation too noisy with 24 samples to be reliable sizing signal
