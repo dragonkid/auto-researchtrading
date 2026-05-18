@@ -67,6 +67,7 @@ CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_BOOST = 0.20
 CROSS_ASSET_TREND_DECAY = 0.06     # dampening in strong trends
+CROSS_DISAGREE_PENALTY = 0.85      # reduce size when entry opposes all other assets
 HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -166,11 +167,12 @@ class Strategy:
         self.bar_count += 1
 
         # Cross-asset momentum agreement
-        cross_asset_rets = []
+        cross_asset_ret_map = {}
         for s in ACTIVE_SYMBOLS:
             if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
                 c = bar_data[s].history["close"].values
-                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
+                cross_asset_ret_map[s] = (c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW]
+        cross_asset_rets = list(cross_asset_ret_map.values())
         if len(cross_asset_rets) >= 2:
             n_pos = sum(1 for r in cross_asset_rets if r > 0)
             n_neg = sum(1 for r in cross_asset_rets if r < 0)
@@ -311,7 +313,19 @@ class Strategy:
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            size = equity * BASE_POSITION_SIZE * combined_mult
+
+            # Cross-disagree penalty: reduce size when entry opposes all other assets
+            cross_disagree_mult = 1.0
+            other_rets = [r for s, r in cross_asset_ret_map.items() if s != symbol]
+            if len(other_rets) >= 2:
+                other_neg = sum(1 for r in other_rets if r < 0)
+                other_pos = sum(1 for r in other_rets if r > 0)
+                if bullish and other_neg >= 2:
+                    cross_disagree_mult = CROSS_DISAGREE_PENALTY
+                elif bearish and other_pos >= 2:
+                    cross_disagree_mult = CROSS_DISAGREE_PENALTY
+
+            size = equity * BASE_POSITION_SIZE * combined_mult * cross_disagree_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
