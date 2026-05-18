@@ -210,15 +210,6 @@ class Strategy:
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
-            # Momentum path efficiency: tighten threshold for noisy paths
-            if len(closes) >= adaptive_med + 1:
-                bar_rets = np.abs(np.diff(closes[-(adaptive_med+1):])) / closes[-(adaptive_med+1):-1]
-                path_sum = np.sum(bar_rets)
-                if path_sum > 1e-10:
-                    path_efficiency = abs(closes[-1] - closes[-(adaptive_med+1)]) / closes[-(adaptive_med+1)] / path_sum
-                    if path_efficiency < 0.3:
-                        dyn_threshold *= 1.15
-
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
