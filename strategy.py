@@ -331,7 +331,7 @@ class Strategy:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 base_ob = RSI_OVERBOUGHT + sideways_exit_widen
-                base_os = RSI_OVERSOLD - sideways_exit_widen
+                base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
                 if symbol in self.entry_prices:
