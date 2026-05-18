@@ -30,10 +30,6 @@ VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 TARGET_VOL = 0.015
 
-# Intrabar noise ratio
-NOISE_RATIO_THRESHOLD = 1.5
-NOISE_RATIO_MAX_BOOST = 0.12
-
 # Entry threshold
 BASE_THRESHOLD = 0.005
 DYN_THRESHOLD_FLOOR = 0.004
@@ -197,15 +193,6 @@ class Strategy:
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
-
-            # Intrabar noise ratio: high range relative to directional vol = choppy conditions
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            if len(highs) >= VOL_LOOKBACK:
-                avg_range = np.mean((highs[-VOL_LOOKBACK:] - lows[-VOL_LOOKBACK:]) / closes[-VOL_LOOKBACK:])
-                noise_ratio = avg_range / max(realized_vol, 1e-6)
-                if noise_ratio > NOISE_RATIO_THRESHOLD:
-                    dyn_threshold *= 1.0 + NOISE_RATIO_MAX_BOOST * min((noise_ratio - NOISE_RATIO_THRESHOLD) / 1.0, 1.0)
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
