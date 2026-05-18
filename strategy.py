@@ -60,6 +60,7 @@ RSI_YOUNG_OS_WIDEN = 4.0
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
+PEAK_PROFIT_TREND_FLOOR = 0.70
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
@@ -361,7 +362,8 @@ class Strategy:
                         pos_pnl = -pos_pnl
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
-                    adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                    peak_trend_factor = PEAK_PROFIT_TREND_FLOOR + (1.0 - PEAK_PROFIT_TREND_FLOOR) * rsi_trend_str
+                    adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * peak_trend_factor
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
