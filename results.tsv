@@ -89,3 +89,5 @@ a715429	23.97	25.89	4.33	32.45	24.91	20.32	25.90	discard	exp: add funding rate c
 -	23.85	25.73	4.27	32.28	24.57	20.38	25.69	discard	exp: replace vol_breakout voter with price efficiency ratio (12-bar, 0.35 threshold) -- composite -0.13, sideways +0.06 (correct direction) but 3/4 regimes regressed (bull -0.17, crash -0.34, rally -0.21), vol_breakout captures early trend acceleration that efficiency ratio misses
 
 -	23.47	24.79	3.14	28.83	24.69	20.04	25.61	discard	exp: raise RSI exit profit threshold 0.01->0.02 -- all 4 regimes regressed (-0.51 composite), bull worst -3.62 (holding 1-2pct profits through reversals), sideways -0.28, crash -0.22, rally -0.29. 1pct profit tightening is effective protection not premature exit
+
+-	21.67	23.28	3.72	29.36	20.17	20.36	23.21	discard	exp: raise FLIP_MIN_VOTES 4->5 (require majority for flips) -- composite -2.31, all regimes except sideways regressed badly (crash -4.74, bull -3.09, rally -2.69, sideways +0.04), requiring 5/9 votes too restrictive causing positions to hold through genuine reversals in trending regimes
