@@ -76,9 +76,6 @@ VOL_CONFIRM_CAP = 1.20
 STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
-# Cross-sectional momentum tilt
-XSECT_BOOST = 0.20
-
 # Combined mult cap
 MAX_COMBINED_MULT_HIGH_VOL = 2.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
@@ -170,14 +167,10 @@ class Strategy:
 
         # Cross-asset momentum agreement
         cross_asset_rets = []
-        cross_asset_abs_rets = {}
         for s in ACTIVE_SYMBOLS:
             if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
                 c = bar_data[s].history["close"].values
-                ret = (c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW]
-                cross_asset_rets.append(ret)
-                vol_s = np.std(np.diff(np.log(c[-VOL_LOOKBACK:]))) if len(c) >= VOL_LOOKBACK else TARGET_VOL
-                cross_asset_abs_rets[s] = abs(ret) / max(vol_s, 1e-6)
+                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
         if len(cross_asset_rets) >= 2:
             n_pos = sum(1 for r in cross_asset_rets if r > 0)
             n_neg = sum(1 for r in cross_asset_rets if r < 0)
@@ -185,18 +178,6 @@ class Strategy:
             cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
         else:
             cross_asset_agree = 1.0
-
-        # Cross-sectional momentum tilt: boost most-active asset, dampen quietest
-        xsect_tilts = {}
-        if len(cross_asset_abs_rets) >= 2:
-            sorted_syms = sorted(cross_asset_abs_rets.keys(), key=lambda s: cross_asset_abs_rets[s], reverse=True)
-            abs_vals = [cross_asset_abs_rets[s] for s in sorted_syms]
-            dispersion = abs_vals[0] - abs_vals[-1]
-            tilt_scale = min(1.0, dispersion / 3.0)
-            n = len(sorted_syms)
-            for i, s in enumerate(sorted_syms):
-                rank_frac = i / (n - 1)
-                xsect_tilts[s] = 1.0 + XSECT_BOOST * (0.5 - rank_frac) * tilt_scale
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -326,8 +307,7 @@ class Strategy:
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
-            xsect_mult = xsect_tilts.get(symbol, 1.0)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult * xsect_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
