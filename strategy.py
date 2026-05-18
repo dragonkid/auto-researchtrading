@@ -101,11 +101,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Loss cluster dampener
-LOSS_DAMPENER_WINDOW = 5
-LOSS_DAMPENER_THRESHOLD = 3
-LOSS_DAMPENER_MULT = 0.80
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -134,7 +129,6 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
-        self.recent_trades = []
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -317,12 +311,7 @@ class Strategy:
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            loss_dampener = 1.0
-            if len(self.recent_trades) >= LOSS_DAMPENER_THRESHOLD:
-                recent_losses = sum(1 for t in self.recent_trades[-LOSS_DAMPENER_WINDOW:] if t < 0)
-                if recent_losses >= LOSS_DAMPENER_THRESHOLD:
-                    loss_dampener = LOSS_DAMPENER_MULT
-            size = equity * BASE_POSITION_SIZE * combined_mult * loss_dampener
+            size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -392,25 +381,11 @@ class Strategy:
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
                 elif target == 0:
-                    if symbol in self.entry_prices:
-                        exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            exit_pnl = -exit_pnl
-                        self.recent_trades.append(exit_pnl)
-                        if len(self.recent_trades) > LOSS_DAMPENER_WINDOW:
-                            self.recent_trades.pop(0)
                     self.entry_prices.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    if symbol in self.entry_prices:
-                        exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            exit_pnl = -exit_pnl
-                        self.recent_trades.append(exit_pnl)
-                        if len(self.recent_trades) > LOSS_DAMPENER_WINDOW:
-                            self.recent_trades.pop(0)
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
