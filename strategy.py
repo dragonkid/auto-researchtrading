@@ -192,7 +192,7 @@ class Strategy:
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
-            dyn_threshold = min(DYN_THRESHOLD_CEIL, dyn_threshold)
+            dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
@@ -206,7 +206,6 @@ class Strategy:
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
-            dyn_threshold = max(DYN_THRESHOLD_FLOOR, dyn_threshold)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
