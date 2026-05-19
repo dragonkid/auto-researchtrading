@@ -187,6 +187,8 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
+            highs = bd.history["high"].values
+            lows = bd.history["low"].values
             mid = bd.close
 
             realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
@@ -365,8 +367,12 @@ class Strategy:
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pos_pnl = -pos_pnl
+                    if current_pos > 0:
+                        intrabar_pnl = (highs[-1] - entry) / entry
+                    else:
+                        intrabar_pnl = (entry - lows[-1]) / entry
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
-                    self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
+                    self.peak_pnl[symbol] = max(prev_peak, pos_pnl, intrabar_pnl)
                     adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
