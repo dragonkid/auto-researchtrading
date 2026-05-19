@@ -343,7 +343,8 @@ class Strategy:
                     if pos_pnl > adaptive_profit_thresh:
                         profit_excess = pos_pnl - adaptive_profit_thresh
                         adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
-                        profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN, profit_excess * adaptive_profit_scale)
+                        adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * max(0.7, min(1.3, 1.0 / max(0.5, vol_ratio)))
+                        profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
