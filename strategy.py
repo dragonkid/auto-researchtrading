@@ -288,7 +288,7 @@ class Strategy:
             calm_boost = 1.0
             if have_vol_ratio:
                 vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
-                calm_vol_gate = min(1.0, max(0.0, (1.5 - vol_ratio) / 0.4))
+                calm_vol_gate = min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85 * calm_vol_gate
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.7)
