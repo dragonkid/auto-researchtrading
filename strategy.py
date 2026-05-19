@@ -336,9 +336,6 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
-                r2_exit_widen = linreg_r2 * 0.5
-                effective_ob += r2_exit_widen
-                effective_os -= r2_exit_widen
                 if symbol in self.entry_prices:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
