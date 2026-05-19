@@ -339,8 +339,9 @@ class Strategy:
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
                         pos_pnl = -pos_pnl
-                    if pos_pnl > RSI_EXIT_PROFIT_THRESHOLD:
-                        profit_excess = pos_pnl - RSI_EXIT_PROFIT_THRESHOLD
+                    adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
+                    if pos_pnl > adaptive_profit_thresh:
+                        profit_excess = pos_pnl - adaptive_profit_thresh
                         adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
                         profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN, profit_excess * adaptive_profit_scale)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
