@@ -276,8 +276,8 @@ class Strategy:
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_votes >= MIN_VOTES and bull_votes > bear_votes and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= MIN_VOTES and bear_votes > bull_votes and (trend_bear or trend_gate_bypassed)
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
