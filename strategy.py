@@ -281,7 +281,7 @@ class Strategy:
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
-            vol_scale = (TARGET_VOL / realized_vol) ** 0.92
+            vol_scale = (TARGET_VOL / realized_vol) ** 0.85
             vol_scale = max(0.3, min(2.5, vol_scale))
 
             calm_boost = 1.0
