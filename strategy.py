@@ -355,6 +355,15 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                if vol_ratio < 0.7 and symbol in self.entry_prices:
+                    entry_p = self.entry_prices[symbol]
+                    calm_pnl = (mid - entry_p) / entry_p
+                    if current_pos < 0:
+                        calm_pnl = -calm_pnl
+                    mom_fading = (current_pos > 0 and ret_short < 0) or (current_pos < 0 and ret_short > 0)
+                    if calm_pnl > 0 and mom_fading:
+                        effective_ob -= 1.0
+                        effective_os += 1.0
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
