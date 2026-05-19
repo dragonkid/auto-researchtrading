@@ -354,11 +354,6 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
-                if bars_held >= RSI_YOUNG_GRACE_BARS:
-                    if current_pos > 0 and macd_hist < 0:
-                        effective_ob -= 1.0
-                    elif current_pos < 0 and macd_hist > 0:
-                        effective_os += 1.0
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
