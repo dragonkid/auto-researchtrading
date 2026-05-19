@@ -330,7 +330,8 @@ class Strategy:
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
                             target = -size
             else:
-                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
+                exit_vol_ratio = (long_vol / TARGET_VOL) if have_vol_ratio else vol_ratio
+                vol_exit_blend = max(0.0, min(1.0, (exit_vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 base_ob = RSI_OVERBOUGHT + sideways_exit_widen
                 base_os = RSI_OVERSOLD + sideways_exit_widen
