@@ -336,7 +336,8 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
-                if symbol in self.entry_prices:
+                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                if symbol in self.entry_prices and bars_held >= RSI_YOUNG_GRACE_BARS:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
                     if current_pos < 0:
@@ -350,7 +351,6 @@ class Strategy:
                         profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
-                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
