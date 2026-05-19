@@ -239,8 +239,8 @@ class Strategy:
 
             ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
-            slope_bull = ema_slope > 0.001
-            slope_bear = ema_slope < -0.001
+            slope_bull = ema_slope > 0.0005
+            slope_bear = ema_slope < -0.0005
 
             linreg_bull = linreg_slope > 0.0001
             linreg_bear = linreg_slope < -0.0001
