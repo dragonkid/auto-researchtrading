@@ -261,9 +261,10 @@ class Strategy:
             if len(closes) >= DONCHIAN_PERIOD + 1:
                 donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
                 donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-                if mid > donchian_high * 1.003:
+                donch_margin = 0.002 + 0.002 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.4))
+                if mid > donchian_high * (1.0 + donch_margin):
                     donchian_bull = True
-                elif mid < donchian_low * 0.997:
+                elif mid < donchian_low * (1.0 - donch_margin):
                     donchian_bear = True
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
