@@ -234,8 +234,9 @@ class Strategy:
 
             macd_hist = self._calc_macd(closes)
             macd_rel = macd_hist / mid
-            macd_bull = macd_rel > 0.0003
-            macd_bear = macd_rel < -0.0003
+            macd_dz = 0.0003 * min(1.3, max(0.75, 1.0 / vol_ratio ** 0.5))
+            macd_bull = macd_rel > macd_dz
+            macd_bear = macd_rel < -macd_dz
 
             ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
