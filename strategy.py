@@ -300,8 +300,7 @@ class Strategy:
                 recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
                 base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
                 if base_vol > 0:
-                    calm_vol_cap = VOL_CONFIRM_CAP + 0.15 * max(0.0, min(1.0, (0.65 - vol_ratio) / 0.15)) if vol_ratio < 0.65 else VOL_CONFIRM_CAP
-                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(calm_vol_cap, recent_vol / base_vol))
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
 
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
