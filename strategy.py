@@ -39,7 +39,7 @@ TREND_THRESHOLD_DECAY = 0.13       # abs(ret_long) at which reduction saturates
 LINREG_R2_THRESH_REDUCE = 0.45     # max threshold reduction when R² is high
 
 # RSI voter
-RSI_TREND_BIAS = 1.3
+RSI_TREND_BIAS = 1.5
 RSI_TREND_BIAS_DECAY = 0.10
 
 # RSI exit parameters
