@@ -248,7 +248,12 @@ class Strategy:
             vol_breakout_bull = False
             vol_breakout_bear = False
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
-                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+                highs = bd.history["high"].values
+                lows = bd.history["low"].values
+                tr_vals = np.maximum(highs[-VOL_BREAKOUT_SHORT:] - lows[-VOL_BREAKOUT_SHORT:],
+                    np.maximum(np.abs(highs[-VOL_BREAKOUT_SHORT:] - closes[-(VOL_BREAKOUT_SHORT+1):-1]),
+                              np.abs(lows[-VOL_BREAKOUT_SHORT:] - closes[-(VOL_BREAKOUT_SHORT+1):-1])))
+                vb_short = np.mean(tr_vals) / closes[-1]
                 vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
                 if vb_short > vb_long:
                     if ret_vshort > 0:
