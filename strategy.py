@@ -205,8 +205,7 @@ class Strategy:
                 sl_ratio_raw = short_vol / max(long_vol, 1e-10)
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
-            trend_r2_gate = min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0)
-            dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2 * trend_r2_gate)
+            dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
