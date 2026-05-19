@@ -221,8 +221,11 @@ class Strategy:
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
-            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
+            ema_spread = abs(ema_fast_arr[-1] - ema_slow_arr[-1]) / ema_slow_arr[-1]
+            near_high = mid >= np.max(closes[-50:]) * 0.95 if len(closes) >= 50 else True
+            ema_min_spread = 0.001 if near_high else 0.0
+            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1] and ema_spread > ema_min_spread
+            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1] and ema_spread > ema_min_spread
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
