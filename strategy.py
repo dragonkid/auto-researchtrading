@@ -60,6 +60,7 @@ RSI_YOUNG_OS_WIDEN = 4.0
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
+PEAK_PROFIT_GIVEBACK_SIDEWAYS_EXTRA = 0.06
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
@@ -364,7 +365,9 @@ class Strategy:
                     adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        sideways_give_blend = max(0.0, 1.0 - abs(ret_long) / 0.08)
+                        effective_giveback = PEAK_PROFIT_GIVEBACK + PEAK_PROFIT_GIVEBACK_SIDEWAYS_EXTRA * sideways_give_blend
+                        if giveback > self.peak_pnl[symbol] * effective_giveback:
                             target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
