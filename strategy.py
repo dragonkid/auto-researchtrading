@@ -312,9 +312,7 @@ class Strategy:
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
-            n_other_pos = sum(1 for s in ACTIVE_SYMBOLS if s != symbol and abs(portfolio.positions.get(s, 0.0)) > 1.0)
-            portfolio_dampen = 1.0 / (1.0 + 0.05 * n_other_pos)
-            size = equity * BASE_POSITION_SIZE * combined_mult * portfolio_dampen
+            size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
