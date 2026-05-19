@@ -227,6 +227,7 @@ class Strategy:
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
+            exit_rsi = calc_rsi(closes, 10)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_str
             rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
             rsi_bull = rsi > rsi_thresh
@@ -349,9 +350,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and exit_rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and exit_rsi < effective_os:
                     target = 0.0
 
                 if target != 0 and symbol in self.entry_prices and bars_held >= 1:
