@@ -212,8 +212,7 @@ class Strategy:
 
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
-            trend_med_window = max(MED2_WINDOW, adaptive_med)
-            ret_med = (closes[-1] - closes[-trend_med_window]) / closes[-trend_med_window]
+            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
