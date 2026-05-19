@@ -250,7 +250,7 @@ class Strategy:
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
                 vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
                 vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long:
+                if vb_short > vb_long * 1.03:
                     if ret_vshort > 0:
                         vol_breakout_bull = True
                     elif ret_vshort < 0:
