@@ -250,7 +250,7 @@ class Strategy:
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
                 vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
                 vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long:
+                if vb_short > vb_long and abs(ret_vshort) > dyn_threshold * 0.20:
                     if ret_vshort > 0:
                         vol_breakout_bull = True
                     elif ret_vshort < 0:
@@ -346,7 +346,7 @@ class Strategy:
                         profit_excess = pos_pnl - adaptive_profit_thresh
                         adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
                         calm_tighten_boost = max(0.0, (0.70 - vol_ratio) / 0.15) if vol_ratio < 0.70 else 0.0
-                        adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.30 * min(1.0, calm_tighten_boost))
+                        adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.40 * min(1.0, calm_tighten_boost))
                         profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
                         effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                         effective_os = effective_os + (50.0 - effective_os) * profit_blend
