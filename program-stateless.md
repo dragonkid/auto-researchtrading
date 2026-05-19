@@ -1,14 +1,14 @@
-# autotrader — single experiment
+# autotrader — multi-step experiment session
 
 Autonomous trading strategy research on Hyperliquid perpetual futures.
-You will run **one experiment**, then exit. The outer shell script handles looping.
+You will run **up to 5 experiments** in this session, building on your findings iteratively. The outer shell script invokes you once per "round" — each round is a coherent research arc.
 
 ## Context
 
 This project adapts Karpathy's autoresearch pattern for trading strategy discovery.
 The owner has existing production strategies designed for tick-level market making (20-second intervals). Those strategies underperform when ported to hourly directional trading on this backtest harness.
 
-Your job: **improve the current strategy in `strategy.py`** by trying one experimental idea per invocation.
+Your job: **improve the current strategy in `strategy.py`** through iterative experimentation within a single session.
 
 ## What you CAN do
 
@@ -20,32 +20,59 @@ Your job: **improve the current strategy in `strategy.py`** by trying one experi
 - Install new packages. Only numpy, pandas, scipy, and standard library.
 - Look at holdout data (2025-01 onwards).
 
-## Your single experiment
+## Session protocol
 
-1. **Read context**: Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30` to see recent activity on this branch. `results.tsv` is the canonical experiment log — use it for historical context. Expand the git log range only if you need to verify a specific older experiment that `results.tsv` references.
-2. **Analyze**: What worked? What failed? What hasn't been tried yet? **Saturation check**: grep `results.tsv` descriptions for the direction you're considering (e.g., "sideways", "peak_profit", "cooldown"). If that direction has 10+ prior experiments and the recent ones are mostly `discard`, the direction is saturated. Do NOT submit another tuning variant — switch to a structurally different idea (new signal, removed component, different regime target).
-3. **Propose one change**: Pick one specific, testable idea. Prefer ideas that are different from recent experiments. Prefer changes backed by a concrete mechanism (a reason it should work) over pure parameter sweeps — at N ~200 experiments, pure sweeps are statistically fragile under multiple-testing.
-4. **Implement**: Edit `strategy.py` with your change.
-5. **Commit**: Subject line stays short; put the hypothesis in the commit BODY.
+You run up to 5 experiments per session. Each experiment is still a single-variable change (one idea tested in isolation). The difference from single-experiment mode: you can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements.
+
+### Phase 1: Read context (once per session)
+
+1. Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30`.
+2. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep `results.tsv` descriptions for directions you're considering. If a direction has 10+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
+
+### Phase 2: Experiment loop (repeat up to 5 times)
+
+For each experiment:
+
+1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
+2. **Implement**: Edit `strategy.py` with your change.
+3. **Commit**:
    ```
    git commit -m "exp: <short description of what you changed>" \
-              -m "Hypothesis: <1-2 sentences on the mechanism — why should this improve composite_score?>" \
-              -m "Expected: <which regime(s) should benefit, e.g. 'bull_2021 via reduced whipsaw; others neutral'>"
+              -m "Hypothesis: <1-2 sentences on the mechanism>" \
+              -m "Expected: <which regime(s) should benefit>"
    ```
-   The body is for **post-hoc human audit only**. It is NOT input for future agents (see overfitting hygiene section below).
-6. **Backtest**: `uv run regime_test.py > run.log 2>&1`. This runs backtests across 4 non-overlapping market regimes (bull, bear crash, sideways, rally) and outputs a composite score.
-7. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`. The key metric is `composite_score` (= mean - 0.5*std across regimes). Also check individual regime scores for insights.
-8. **Record** (mandatory — do NOT skip): Every experiment, regardless of outcome, MUST produce exactly one new row appended to `results.tsv` before you exit. This is not optional. On run1, only ~9% of ~700 attempted experiments were logged — the missing 91% silently inflated selection bias (the true N was hidden, so multiple-testing math was under-estimated, and kept experiments looked more significant than they were). Do not repeat that failure mode on run2.
+4. **Backtest**: `uv run regime_test.py > run.log 2>&1`
+5. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`
+6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
-   Keep the experiment ONLY IF BOTH conditions hold:
-   - `composite_score` improved by **at least +0.01** vs the best `keep` in `results.tsv` (improvements below +0.01 are noise at score ~24 — treat as discard).
-   - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs the baseline, where `composite_gain = new_composite - baseline_composite`. Baseline = the most recent `keep` line in `results.tsv` that has per-regime columns (10-column schema, see below). If no such line exists yet (first run after schema adoption), skip the regime-regression check.
-   - **No more than 2 out of 4 regimes may regress** (have `Δregime_score < 0` vs baseline). Count strictly negative deltas; if 3 or 4 regimes regress, reject regardless of the single-regime magnitude. This catches regime-trade experiments whose composite improvement comes from std reduction (one regime gains, most lose slightly) rather than broad-based alpha.
+   **Keep/discard rules** (unchanged):
+   - `composite_score` improved by **at least +0.01** vs the best `keep` in `results.tsv`.
+   - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs baseline.
+   - **No more than 2 out of 4 regimes may regress** (strictly negative Δ).
 
-   Rationale for the regime gates: prevent regime-fit experiments that trade one regime for another. The **magnitude cap** (first rule) auto-scales with gain size: at minimum keep threshold (composite_gain=+0.01) the cap is 0.2, so any meaningful single-regime loss is rejected; at larger gains (composite_gain=+0.1 → cap 0.5) modest regime rebalancing is tolerated. The **majority rule** (second rule) is orthogonal — it catches experiments where no single regression is large but most regimes still drift down. Example of what the magnitude cap catches: composite +0.02 driven by +0.5 in one regime and -0.4 in another (the 0.4 exceeds the 0.2 cap). Example of what the majority rule catches: composite +0.02 driven by +0.17 in one regime and -0.02/-0.12/-0.03 in the other three (no single regression exceeds the 0.2 cap, but 3/4 regimes are down — this is std-gaming disguised as improvement, not real alpha).
+   If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
+   If discard: run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
 
-   If both conditions hold, append a `keep` line with all per-regime scores. Otherwise run `git revert --no-edit HEAD` to fully undo the experiment commit (preserves all prior commits including harness files), then append a `discard` line. NEVER use `git reset --hard` — it destroys commits before the experiment.
-9. **Exit**: You are done. The outer loop will invoke you again for the next experiment.
+7. **Decide next step**:
+   - If you have a clear follow-up insight from the regime breakdown → continue to next experiment.
+   - If you've found a keep and want to try combining it with another idea → continue.
+   - If you've exhausted your ideas or hit 5 experiments → exit.
+
+### Phase 3: Combination experiments (optional, experiments 3-5)
+
+After running at least 2 independent experiments and observing their regime-level effects, you MAY attempt a combination:
+- **Prerequisite**: at least one of the component ideas showed a promising signal (e.g., improved a target regime even if overall was discard due to regression elsewhere).
+- **Combination = applying two ideas together** in a single `strategy.py` edit. Still counts as one experiment, still gets one results.tsv row.
+- **Attribution**: in the commit message, reference which prior experiments you're combining (e.g., "Combines the EMA spread filter (sideways +0.24) with vol_ratio gating (crash protection)").
+- **Same keep/discard rules apply** — no special treatment for combinations.
+
+### Session end
+
+After your last experiment (or when you hit 5), exit. The outer loop will invoke you again for the next round.
+
+### Regime gate rationale
+
+The regime gates prevent regime-fit experiments that trade one regime for another. The **magnitude cap** auto-scales: at minimum keep threshold (composite_gain=+0.01) the cap is 0.2; at larger gains (composite_gain=+0.1 → cap 0.5) modest rebalancing is tolerated. The **majority rule** catches experiments where no single regression is large but most regimes drift down (std-gaming, not real alpha).
 
 ## Results TSV format
 
@@ -144,9 +171,10 @@ These rules exist because this branch has accumulated 190+ experiments. At that 
 
 ## Guidelines
 
-- One change per experiment. Keep it atomic so you know what caused the score change.
+- **One variable per experiment** (within a session you run multiple experiments, but each tests one idea in isolation). The exception is Phase 3 combination experiments, which explicitly merge two independently-validated ideas.
 - If you have no ideas, re-read `strategy.py` carefully and look for parameters to tune or signals to add/remove.
 - All else equal, simpler is better. A 0.001 improvement that adds 20 lines of hacky code is not worth it.
 - **Simplification experiments are as valuable as additions.** Try removing a voter, disabling a sizing multiplier, or deleting dead code. If the score holds or improves, keep the simpler version. Complexity has a hidden cost: it hurts out-of-sample generalization.
 - **Do NOT inline constants or compress code for LOC bonus.** Named constants improve readability. The simplicity bonus rewards removing dead logic, not cosmetic code compression. Inlining a named constant into its usage site is NOT a valid simplification.
-- Do NOT ask for confirmation. You are fully autonomous for this one experiment.
+- **Use your session context wisely.** Your advantage over single-experiment mode is that you can observe patterns across experiments within this session. If experiment 1 shows sideways +0.24 but crash -1.44, experiment 2 should try to preserve the sideways gain while protecting crash — not start from scratch on an unrelated direction.
+- Do NOT ask for confirmation. You are fully autonomous for this session.

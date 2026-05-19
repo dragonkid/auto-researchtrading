@@ -2,12 +2,12 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TAG="${1:?Usage: ./autoresearch.sh <tag> [max_experiments] [council_threshold]}"
+TAG="${1:?Usage: ./autoresearch.sh <tag> [max_rounds] [council_threshold]}"
 BRANCH="autotrader/${TAG}"
 RESULTS="results.tsv"
-MAX_EXPERIMENTS="${2:-0}"
+MAX_ROUNDS="${2:-0}"
 COUNCIL_THRESHOLD="${3:-5}"
-EXPERIMENT_COUNT=0
+ROUND_COUNT=0
 COUNCIL_COUNT=0
 
 cd "$PROJECT_DIR"
@@ -28,7 +28,7 @@ if [ ! -f "$RESULTS" ]; then
 fi
 
 echo "Branch: $BRANCH"
-echo "Max experiments: ${MAX_EXPERIMENTS:-unlimited}"
+echo "Max rounds: ${MAX_ROUNDS:-unlimited} (each round = up to 5 experiments)"
 echo "Council threshold: $COUNCIL_THRESHOLD consecutive discards"
 echo ""
 
@@ -99,16 +99,16 @@ while true; do
     # Council ACCEPT: reset and continue
   fi
 
-  EXPERIMENT_COUNT=$((EXPERIMENT_COUNT + 1))
-  if [ "$MAX_EXPERIMENTS" -gt 0 ] && [ "$EXPERIMENT_COUNT" -gt "$MAX_EXPERIMENTS" ]; then
-    echo "Reached max experiments: $MAX_EXPERIMENTS"
+  ROUND_COUNT=$((ROUND_COUNT + 1))
+  if [ "$MAX_ROUNDS" -gt 0 ] && [ "$ROUND_COUNT" -gt "$MAX_ROUNDS" ]; then
+    echo "Reached max rounds: $MAX_ROUNDS"
     break
   fi
 
   # Clean up any leftover state from interrupted experiments
   git checkout -- strategy.py 2>/dev/null || true
 
-  echo "=== Experiment $EXPERIMENT_COUNT ($(date '+%H:%M:%S')) ==="
+  echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
     --dangerously-skip-permissions \
@@ -116,7 +116,7 @@ while true; do
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
     -- \
-    "Run one experiment. Read program-stateless.md and results.tsv for context. Run 'git log main..HEAD --oneline' for this branch's experiment history only. Modify strategy.py, commit, backtest, record result, then EXIT." \
+    "Run a research round (up to 5 experiments). Read program-stateless.md for the multi-step protocol. Read results.tsv and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue with a follow-up experiment or exit." \
     || {
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5
