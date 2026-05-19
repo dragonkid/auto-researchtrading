@@ -101,11 +101,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# ATR-conditioned EMA spread filter
-EMA_SPREAD_ATR_THRESH = 0.01
-EMA_SPREAD_MIN = 0.001
-EMA_SPREAD_ATR_LOOKBACK = 8
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -228,17 +223,6 @@ class Strategy:
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
-
-            # In calm markets (low ATR), require meaningful EMA spread to filter noise
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            if len(highs) >= EMA_SPREAD_ATR_LOOKBACK:
-                atr_norm = np.mean((highs[-EMA_SPREAD_ATR_LOOKBACK:] - lows[-EMA_SPREAD_ATR_LOOKBACK:]) / closes[-EMA_SPREAD_ATR_LOOKBACK:])
-                if atr_norm < EMA_SPREAD_ATR_THRESH:
-                    ema_spread = abs(ema_fast_arr[-1] - ema_slow_arr[-1]) / closes[-1]
-                    if ema_spread < EMA_SPREAD_MIN:
-                        ema_bull = False
-                        ema_bear = False
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
