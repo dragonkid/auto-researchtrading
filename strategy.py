@@ -12,7 +12,6 @@ LONG_WINDOW = 20
 
 # EMA parameters
 EMA_FAST = 3
-EMA_FAST_SIDEWAYS = 5
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
@@ -220,8 +219,7 @@ class Strategy:
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
-            effective_ema_fast = EMA_FAST_SIDEWAYS if abs(ret_long) < MEANREV_TREND_THRESHOLD else EMA_FAST
-            ema_fast_arr = ema(closes[-(EMA_SLOW+10):], effective_ema_fast)
+            ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
