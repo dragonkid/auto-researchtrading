@@ -250,11 +250,10 @@ class Strategy:
             if len(closes) >= VOL_BREAKOUT_LONG + 1:
                 vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
                 vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                vb_dir_min = dyn_threshold * 0.20
                 if vb_short > vb_long:
-                    if ret_vshort > vb_dir_min:
+                    if ret_vshort > 0:
                         vol_breakout_bull = True
-                    elif ret_vshort < -vb_dir_min:
+                    elif ret_vshort < 0:
                         vol_breakout_bear = True
 
             donchian_bull = False
