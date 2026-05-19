@@ -69,6 +69,10 @@ CROSS_ASSET_BOOST = 0.20
 CROSS_ASSET_TREND_DECAY = 0.06     # dampening in strong trends
 HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
+VOL_CONFIRM_LOOKBACK = 12
+VOL_CONFIRM_BASE = 24
+VOL_CONFIRM_FLOOR = 0.98
+VOL_CONFIRM_CAP = 1.20
 STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
@@ -290,12 +294,20 @@ class Strategy:
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
+            vol_confirm_mult = 1.0
+            volumes = bd.history["volume"].values
+            if len(volumes) >= VOL_CONFIRM_BASE:
+                recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
+                base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
+                if base_vol > 0:
+                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
+
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
