@@ -365,7 +365,8 @@ class Strategy:
                     adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                     if self.peak_pnl[symbol] > adaptive_peak_min:
                         giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        adaptive_giveback = PEAK_PROFIT_GIVEBACK * max(0.85, min(1.4, vol_ratio ** 0.4))
+                        if giveback > self.peak_pnl[symbol] * adaptive_giveback:
                             target = 0.0
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
