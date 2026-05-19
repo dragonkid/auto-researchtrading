@@ -168,9 +168,9 @@ class Strategy:
         # Cross-asset momentum agreement
         cross_asset_rets = []
         for s in ACTIVE_SYMBOLS:
-            if s in bar_data and len(bar_data[s].history) >= LONG_WINDOW + 1:
+            if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
                 c = bar_data[s].history["close"].values
-                cross_asset_rets.append((c[-1] - c[-LONG_WINDOW]) / c[-LONG_WINDOW])
+                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
         if len(cross_asset_rets) >= 2:
             n_pos = sum(1 for r in cross_asset_rets if r > 0)
             n_neg = sum(1 for r in cross_asset_rets if r < 0)
