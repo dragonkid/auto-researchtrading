@@ -342,7 +342,7 @@ class Strategy:
                     adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
                     if pos_pnl > adaptive_profit_thresh:
                         profit_excess = pos_pnl - adaptive_profit_thresh
-                        adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
+                        adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.5, min(1.8, vol_ratio))
                         calm_tighten_boost = max(0.0, (0.65 - vol_ratio) / 0.15) if vol_ratio < 0.65 else 0.0
                         adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.30 * min(1.0, calm_tighten_boost))
                         profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
