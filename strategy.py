@@ -348,9 +348,8 @@ class Strategy:
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
-                    vol_grace_factor = 1.0 / max(0.7, min(1.5, vol_ratio ** 0.5))
-                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend * vol_grace_factor
-                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend * vol_grace_factor
+                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
+                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
