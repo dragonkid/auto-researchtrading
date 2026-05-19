@@ -66,7 +66,6 @@ BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_BOOST = 0.20
-CROSS_ASSET_TREND_DECAY = 0.06     # dampening in strong trends
 HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -86,7 +85,6 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.90
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_ADAPT_DECAY = 0.06
 TREND_GATE_DEADZONE = 0.006
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
@@ -94,7 +92,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
-VOL_BREAKOUT_LONG = 24
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
@@ -247,14 +244,12 @@ class Strategy:
 
             vol_breakout_bull = False
             vol_breakout_bear = False
-            if len(closes) >= VOL_BREAKOUT_LONG + 1:
-                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
-                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long:
-                    if ret_vshort > 0:
-                        vol_breakout_bull = True
-                    elif ret_vshort < 0:
-                        vol_breakout_bear = True
+            vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+            if vb_short > realized_vol:
+                if ret_vshort > 0:
+                    vol_breakout_bull = True
+                elif ret_vshort < 0:
+                    vol_breakout_bear = True
 
             donchian_bull = False
             donchian_bear = False
