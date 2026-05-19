@@ -322,7 +322,8 @@ class Strategy:
                         target = size
                     elif bearish:
                         target = -size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                if target == current_pos and not bullish and not bearish:
+                    if abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
                             target = size
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
