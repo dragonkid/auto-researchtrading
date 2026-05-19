@@ -373,8 +373,8 @@ class Strategy:
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
-                flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and (trend_bear or trend_gate_bypassed)
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and (trend_bull or trend_gate_bypassed)
                 if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
