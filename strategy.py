@@ -195,8 +195,7 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            vol_trend_adj = max(0.8, min(1.2, 1.0 / max(vol_ratio, 0.5)))
-            dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * vol_trend_adj * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+            dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = 1.0
             have_vol_ratio = len(closes) >= VOL_LONG_LOOKBACK + 1
