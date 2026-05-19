@@ -354,17 +354,6 @@ class Strategy:
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
-                if target != 0 and symbol in self.entry_prices and bars_held >= 2:
-                    entry = self.entry_prices[symbol]
-                    pos_pnl = (mid - entry) / entry
-                    if current_pos < 0:
-                        pos_pnl = -pos_pnl
-                    if pos_pnl < 0:
-                        if current_pos > 0 and ema_bear:
-                            target = 0.0
-                        elif current_pos < 0 and ema_bull:
-                            target = 0.0
-
                 if target != 0 and symbol in self.entry_prices and bars_held >= 1:
                     entry = self.entry_prices[symbol]
                     pos_pnl = (mid - entry) / entry
