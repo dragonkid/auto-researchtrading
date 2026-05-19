@@ -283,8 +283,7 @@ class Strategy:
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
-            vol_scale_cap = 2.0 if (have_vol_ratio and sl_ratio_raw > 1.5) else 2.5
-            vol_scale = max(0.3, min(vol_scale_cap, vol_scale))
+            vol_scale = max(0.3, min(2.5, vol_scale))
 
             calm_boost = 1.0
             if have_vol_ratio:
