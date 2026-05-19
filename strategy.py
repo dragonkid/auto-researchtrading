@@ -224,6 +224,18 @@ class Strategy:
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
+            # EMA200-conditioned spread filter: neutralize EMA voter when
+            # price is near EMA200 (genuine sideways) AND spread is tiny.
+            # EMA200 stays elevated during crash-consolidation, preventing
+            # this filter from blocking crash recovery signals.
+            if len(closes) >= 205:
+                ema200_val = ema(closes[-205:], 200)[-1]
+                dist_ema200 = abs(closes[-1] - ema200_val) / ema200_val
+                ema_spread = abs(ema_fast_arr[-1] - ema_slow_arr[-1]) / ema_slow_arr[-1]
+                if dist_ema200 < 0.05 and ema_spread < 0.001:
+                    ema_bull = False
+                    ema_bear = False
+
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
             rsi = calc_rsi(closes, adaptive_rsi_period)
