@@ -291,7 +291,7 @@ class Strategy:
                 calm_vol_gate = min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
                 calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85 * calm_vol_gate
 
-            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.3)
+            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.5)
 
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
