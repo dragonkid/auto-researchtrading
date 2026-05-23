@@ -129,7 +129,6 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
-        self.prev_rsi = {}
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -331,7 +330,6 @@ class Strategy:
                         elif rsi > MEANREV_RSI_OVERBOUGHT:
                             target = -size
             else:
-                exit_rsi = 0.6 * rsi + 0.4 * self.prev_rsi.get(symbol, rsi)
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 base_ob = RSI_OVERBOUGHT + sideways_exit_widen
@@ -357,9 +355,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
-                if current_pos > 0 and exit_rsi > effective_ob:
+                if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and exit_rsi < effective_os:
+                elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
                 if target != 0 and symbol in self.entry_prices and bars_held >= 1:
@@ -381,8 +379,6 @@ class Strategy:
                     target = -size
                 elif current_pos < 0 and flip_bullish and not in_cooldown:
                     target = size
-
-            self.prev_rsi[symbol] = rsi
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
