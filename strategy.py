@@ -66,7 +66,6 @@ BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_BOOST = 0.20
-CROSS_ASSET_TREND_DECAY = 0.06     # dampening in strong trends
 HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -86,7 +85,6 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_ADAPT_DECAY = 0.06
 TREND_GATE_DEADZONE = 0.010
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
@@ -361,10 +359,6 @@ class Strategy:
                     target = 0.0
 
                 if target != 0 and symbol in self.entry_prices and bars_held >= 1:
-                    entry = self.entry_prices[symbol]
-                    pos_pnl = (mid - entry) / entry
-                    if current_pos < 0:
-                        pos_pnl = -pos_pnl
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
                     adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
@@ -382,16 +376,12 @@ class Strategy:
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
-                if target != 0 and current_pos == 0:
-                    self.entry_prices[symbol] = mid
-                    self.peak_pnl[symbol] = 0.0
-                    self.entry_bar[symbol] = self.bar_count
-                elif target == 0:
+                if target == 0:
                     self.entry_prices.pop(symbol, None)
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
-                elif (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
+                elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
