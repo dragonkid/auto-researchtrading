@@ -195,9 +195,8 @@ class Strategy:
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            deep_calm = vol_ratio < 0.65 and abs(ret_long) < MEANREV_TREND_THRESHOLD
-            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1] and not deep_calm
-            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1] and not deep_calm
+            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
+            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
