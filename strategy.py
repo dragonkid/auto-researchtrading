@@ -100,6 +100,7 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
+VOTE_RAMP_WIDTH = 0.30
 
 
 def ema(values, span):
@@ -216,8 +217,13 @@ class Strategy:
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
+            mom_bull_score = max(0.0, min(1.0, (ret_short / dyn_threshold - (1.0 - VOTE_RAMP_WIDTH)) / (2 * VOTE_RAMP_WIDTH)))
+            mom_bear_score = max(0.0, min(1.0, (-ret_short / dyn_threshold - (1.0 - VOTE_RAMP_WIDTH)) / (2 * VOTE_RAMP_WIDTH)))
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            vshort_thresh = dyn_threshold * 0.5
+            vshort_bull_score = max(0.0, min(1.0, (ret_vshort / vshort_thresh - (1.0 - VOTE_RAMP_WIDTH)) / (2 * VOTE_RAMP_WIDTH)))
+            vshort_bear_score = max(0.0, min(1.0, (-ret_vshort / vshort_thresh - (1.0 - VOTE_RAMP_WIDTH)) / (2 * VOTE_RAMP_WIDTH)))
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
@@ -268,6 +274,8 @@ class Strategy:
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes_soft = mom_bull_score + vshort_bull_score + sum([ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes_soft = mom_bear_score + vshort_bear_score + sum([ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
@@ -276,8 +284,8 @@ class Strategy:
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
+            bullish = bull_votes_soft >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes_soft >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
