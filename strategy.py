@@ -92,7 +92,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
-VOL_BREAKOUT_LONG = 24
 DONCHIAN_PERIOD = 12
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
@@ -243,26 +242,14 @@ class Strategy:
             linreg_bull = linreg_slope > 0.0001
             linreg_bear = linreg_slope < -0.0001
 
-            vol_breakout_bull = False
-            vol_breakout_bear = False
-            if len(closes) >= VOL_BREAKOUT_LONG + 1:
-                vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
-                vb_long = self._calc_vol(closes, VOL_BREAKOUT_LONG)
-                if vb_short > vb_long and abs(ret_vshort) > dyn_threshold * 0.20:
-                    if ret_vshort > 0:
-                        vol_breakout_bull = True
-                    elif ret_vshort < 0:
-                        vol_breakout_bear = True
+            vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+            vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
+            vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
-            donchian_bull = False
-            donchian_bear = False
-            if len(closes) >= DONCHIAN_PERIOD + 1:
-                donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-                donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-                if mid > donchian_high * 1.003:
-                    donchian_bull = True
-                elif mid < donchian_low * 0.997:
-                    donchian_bear = True
+            donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
+            donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
+            donchian_bull = mid > donchian_high * 1.003
+            donchian_bear = mid < donchian_low * 0.997
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
