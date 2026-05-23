@@ -39,7 +39,7 @@ TREND_THRESHOLD_SCALE = 0.32       # max threshold reduction in trends
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
 # RSI voter
-RSI_TREND_BIAS = 2.0
+RSI_TREND_BIAS = 2.5
 RSI_TREND_BIAS_DECAY = 0.10
 
 # RSI exit parameters
