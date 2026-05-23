@@ -209,8 +209,8 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
-            trend_bull = trend_avg > 0.002
-            trend_bear = trend_avg < -0.002
+            trend_bull = trend_avg > 0
+            trend_bear = trend_avg < 0
 
             trend_gate_bypassed = abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= MIN_VOTES and (trend_bull or (trend_gate_bypassed and bull_votes > bear_votes))
