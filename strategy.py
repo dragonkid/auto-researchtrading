@@ -128,14 +128,10 @@ class Strategy:
         self.entry_bar = {}
 
     def _calc_vol(self, closes, lookback):
-        if len(closes) < lookback:
-            return TARGET_VOL
         log_rets = np.diff(np.log(closes[-lookback:]))
         return max(np.std(log_rets), 1e-6)
 
     def _calc_macd(self, closes):
-        if len(closes) < MACD_SLOW + MACD_SIGNAL + 5:
-            return 0.0
         fast_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST)
         slow_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
         macd_line = fast_ema - slow_ema
@@ -143,8 +139,6 @@ class Strategy:
         return macd_line[-1] - signal_line[-1]
 
     def _calc_linreg(self, closes):
-        if len(closes) < LINREG_PERIOD:
-            return 0.0, 0.0
         y = np.log(closes[-LINREG_PERIOD:])
         n = LINREG_PERIOD
         x = np.arange(n, dtype=float)
@@ -194,12 +188,9 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            sl_ratio_raw = 1.0
-            have_vol_ratio = len(closes) >= VOL_LONG_LOOKBACK + 1
-            if have_vol_ratio:
-                short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
-                long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
-                sl_ratio_raw = short_vol / max(long_vol, 1e-10)
+            short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
+            long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
+            sl_ratio_raw = short_vol / max(long_vol, 1e-10)
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
@@ -270,11 +261,9 @@ class Strategy:
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
             vol_scale = max(0.3, min(2.5, vol_scale))
 
-            calm_boost = 1.0
-            if have_vol_ratio:
-                vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
-                calm_vol_gate = min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
-                calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85 * calm_vol_gate
+            vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
+            calm_vol_gate = min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
+            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85 * calm_vol_gate
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.5)
 
@@ -321,20 +310,19 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
-                if symbol in self.entry_prices:
-                    entry = self.entry_prices[symbol]
-                    pos_pnl = (mid - entry) / entry
-                    if current_pos < 0:
-                        pos_pnl = -pos_pnl
-                    adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
-                    if pos_pnl > adaptive_profit_thresh:
-                        profit_excess = pos_pnl - adaptive_profit_thresh
-                        adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
-                        calm_tighten_boost = max(0.0, (0.70 - vol_ratio) / 0.15) if vol_ratio < 0.70 else 0.0
-                        adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.40 * min(1.0, calm_tighten_boost))
-                        profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
-                        effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
-                        effective_os = effective_os + (50.0 - effective_os) * profit_blend
+                entry = self.entry_prices[symbol]
+                pos_pnl = (mid - entry) / entry
+                if current_pos < 0:
+                    pos_pnl = -pos_pnl
+                adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
+                if pos_pnl > adaptive_profit_thresh:
+                    profit_excess = pos_pnl - adaptive_profit_thresh
+                    adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
+                    calm_tighten_boost = max(0.0, (0.70 - vol_ratio) / 0.15) if vol_ratio < 0.70 else 0.0
+                    adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.40 * min(1.0, calm_tighten_boost))
+                    profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
+                    effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
+                    effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
@@ -345,7 +333,7 @@ class Strategy:
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
-                if target != 0 and symbol in self.entry_prices and bars_held >= 1:
+                if target != 0 and bars_held >= 1:
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
                     self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
                     adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
