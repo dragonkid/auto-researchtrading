@@ -242,8 +242,8 @@ class Strategy:
             slope_bull = ema_slope > 0.0005
             slope_bear = ema_slope < -0.0005
 
-            linreg_bull = linreg_slope > 0.0002
-            linreg_bear = linreg_slope < -0.0002
+            linreg_bull = linreg_slope > 0.0001
+            linreg_bear = linreg_slope < -0.0001
 
             vol_breakout_bull = False
             vol_breakout_bear = False
