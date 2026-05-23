@@ -108,8 +108,6 @@ def ema(values, span):
     return result
 
 def calc_rsi(closes, period):
-    if len(closes) < period + 1:
-        return 50.0
     deltas = np.diff(closes[-(period+1):])
     gains = np.where(deltas > 0, deltas, 0)
     losses = np.where(deltas < 0, -deltas, 0)
@@ -126,17 +124,6 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
-
-    def _calc_vol(self, closes, lookback):
-        log_rets = np.diff(np.log(closes[-lookback:]))
-        return max(np.std(log_rets), 1e-6)
-
-    def _calc_macd(self, closes):
-        fast_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST)
-        slow_ema = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-        macd_line = fast_ema - slow_ema
-        signal_line = ema(macd_line, MACD_SIGNAL)
-        return macd_line[-1] - signal_line[-1]
 
     def _calc_linreg(self, closes):
         y = np.log(closes[-LINREG_PERIOD:])
@@ -166,7 +153,7 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
 
-            realized_vol = self._calc_vol(closes, VOL_LOOKBACK)
+            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
@@ -174,8 +161,8 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            short_vol = self._calc_vol(closes, VOL_SHORT_LOOKBACK)
-            long_vol = self._calc_vol(closes, VOL_LONG_LOOKBACK)
+            short_vol = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6)
+            long_vol = max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
             sl_ratio_raw = short_vol / max(long_vol, 1e-10)
 
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
@@ -206,8 +193,11 @@ class Strategy:
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
 
-            macd_hist = self._calc_macd(closes)
-            macd_rel = macd_hist / mid
+            _macd_fast = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST)
+            _macd_slow = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            _macd_line = _macd_fast - _macd_slow
+            _signal_line = ema(_macd_line, MACD_SIGNAL)
+            macd_rel = (_macd_line[-1] - _signal_line[-1]) / mid
             macd_bull = macd_rel > 0.0003
             macd_bear = macd_rel < -0.0003
 
@@ -219,7 +209,7 @@ class Strategy:
             linreg_bull = linreg_slope > 0.0001
             linreg_bear = linreg_slope < -0.0001
 
-            vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
+            vb_short = max(np.std(np.diff(np.log(closes[-VOL_BREAKOUT_SHORT:]))), 1e-6)
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
             vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
@@ -256,13 +246,10 @@ class Strategy:
             winning_votes = max(bull_votes, bear_votes)
             vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
-            vol_confirm_mult = 1.0
             volumes = bd.history["volume"].values
-            if len(volumes) >= VOL_CONFIRM_BASE:
-                recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
-                base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
-                if base_vol > 0:
-                    vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
+            recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
+            base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
+            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
 
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
