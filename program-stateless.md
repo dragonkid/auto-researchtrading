@@ -122,6 +122,24 @@ Search regimes (4 non-overlapping periods):
 - sideways: 2023-01 ~ 2023-12 (sideways recovery)
 - rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 
+## Primary Objective: Signal Stability (min_stability ≥ 0.85)
+
+**Stability is the #1 priority.** Until min_stability reaches 0.85, ALL base performance gains are permanently taxed 15-30% by the stability multiplier. Improving base score by +1.0 only yields +0.7-0.8 after penalty. But raising min_stability from 0.67→0.85 removes the penalty entirely (+18% on EVERY regime score simultaneously).
+
+**Do NOT conclude that "stability requires fundamentally different architecture and is too risky."** That reasoning is a trap — it leads to endless base-performance tweaks that never close the gap. Structural changes to improve stability ARE the highest-ROI experiments available.
+
+### Diagnostic-first approach (mandatory before proposing stability fixes)
+
+Before proposing any solution, **diagnose** where the noise sensitivity actually comes from:
+1. Read `strategy.py` and identify all voters/signals that use hard thresholds on price-derived values
+2. For each voter, estimate how far typical signal values sit from their decision boundary — voters that hover near threshold are the primary noise amplifiers
+3. Propose changes that target the MOST sensitive voter/threshold first, not broad architectural rewrites
+
+### How to evaluate stability experiments
+- Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
+- A stability gain of +0.05 (e.g., 0.70→0.75) is worth pursuing even if base_score drops slightly (the net effect on composite depends on the trade-off)
+- Acceptable trade: lose ≤2.0 base_score if stability improves by ≥0.10 (net composite gain from reduced penalty)
+
 ## Strategy research directions
 
 Start with these high-probability ideas:
