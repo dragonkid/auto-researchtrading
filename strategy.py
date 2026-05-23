@@ -265,9 +265,9 @@ class Strategy:
             if current_pos == 0:
                 if not in_cooldown:
                     if bullish:
-                        target = size * (1.0 if bull_votes >= 4 else 0.92)
+                        target = size
                     elif bearish:
-                        target = -size * (1.0 if bear_votes >= 4 else 0.92)
+                        target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
                             target = size
