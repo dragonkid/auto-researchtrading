@@ -316,10 +316,14 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     if not timestamps:
         return BacktestResult()
 
-    # Index data by (symbol, timestamp) for fast lookup
-    indexed = {}
+    # Pre-build per-symbol DataFrames and timestamp sets for fast slicing
+    sym_dfs = {}
+    sym_ts_set = {}
+    sym_pos = {}
     for symbol, df in data.items():
-        indexed[symbol] = df.set_index("timestamp")
+        sym_dfs[symbol] = df[["timestamp", "open", "high", "low", "close", "volume", "funding_rate"]].reset_index(drop=True)
+        sym_ts_set[symbol] = set(df["timestamp"].tolist())
+        sym_pos[symbol] = 0
 
     # Portfolio state
     portfolio = PortfolioState(
@@ -336,9 +340,6 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     total_volume = 0.0
     prev_equity = INITIAL_CAPITAL
 
-    # History buffers
-    history_buffers = {symbol: [] for symbol in data}
-
     for ts in timestamps:
         elapsed = time.time() - t_start
         if elapsed > TIME_BUDGET:
@@ -349,27 +350,15 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         # Build bar data
         bar_data = {}
         for symbol in data:
-            if symbol not in indexed or ts not in indexed[symbol].index:
+            if ts not in sym_ts_set[symbol]:
                 continue
-            row = indexed[symbol].loc[ts]
-            if isinstance(row, pd.DataFrame):
-                row = row.iloc[0]
 
-            # Update history buffer
-            bar_dict = {
-                "timestamp": ts,
-                "open": row["open"],
-                "high": row["high"],
-                "low": row["low"],
-                "close": row["close"],
-                "volume": row["volume"],
-                "funding_rate": row.get("funding_rate", 0.0),
-            }
-            history_buffers[symbol].append(bar_dict)
-            if len(history_buffers[symbol]) > LOOKBACK_BARS:
-                history_buffers[symbol] = history_buffers[symbol][-LOOKBACK_BARS:]
+            pos = sym_pos[symbol]
+            sym_pos[symbol] += 1
 
-            hist_df = pd.DataFrame(history_buffers[symbol])
+            row = sym_dfs[symbol].iloc[pos]
+            start = max(0, pos - LOOKBACK_BARS + 1)
+            hist_df = sym_dfs[symbol].iloc[start:pos + 1]
 
             bar_data[symbol] = BarData(
                 symbol=symbol,
@@ -379,7 +368,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                 low=row["low"],
                 close=row["close"],
                 volume=row["volume"],
-                funding_rate=row.get("funding_rate", 0.0),
+                funding_rate=row["funding_rate"],
                 history=hist_df,
             )
 
