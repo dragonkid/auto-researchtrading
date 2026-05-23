@@ -57,6 +57,10 @@ RSI_YOUNG_GRACE_BARS = 4
 RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
 
+# Peak-profit trailing exit
+PEAK_PROFIT_MIN_BASE = 0.025
+PEAK_PROFIT_GIVEBACK = 0.25
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
@@ -120,6 +124,7 @@ class Strategy:
         self.entry_prices = {}
         self.exit_bar = {}
         self.bar_count = 0
+        self.peak_pnl = {}
         self.entry_bar = {}
 
     def _calc_vol(self, closes, lookback):
@@ -314,6 +319,15 @@ class Strategy:
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
+                if target != 0 and bars_held >= 1:
+                    prev_peak = self.peak_pnl.get(symbol, 0.0)
+                    self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
+                    adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                    if self.peak_pnl[symbol] > adaptive_peak_min:
+                        giveback = self.peak_pnl[symbol] - pos_pnl
+                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                            target = 0.0
+
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
                 if current_pos > 0 and flip_bearish and not in_cooldown:
@@ -325,10 +339,12 @@ class Strategy:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     self.entry_prices.pop(symbol, None)
+                    self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
+                    self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
 
         return signals
