@@ -155,7 +155,6 @@ class Strategy:
             _lr = linregress(np.arange(LINREG_PERIOD), np.log(closes[-LINREG_PERIOD:]))
             linreg_r2 = _lr.rvalue ** 2
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
-            dyn_threshold = max(0.003, dyn_threshold)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
