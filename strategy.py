@@ -181,11 +181,11 @@ class Strategy:
             linreg_slope, linreg_r2 = self._calc_linreg(closes)
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
 
+            adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
+            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
+
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short_fast = (closes[-1] - closes[-MED_WINDOW_MIN]) / closes[-MED_WINDOW_MIN]
-            ret_short_slow = (closes[-1] - closes[-MED_WINDOW_MAX]) / closes[-MED_WINDOW_MAX]
-            vol_blend = max(0.0, min(1.0, (vol_ratio - 0.5) / 1.5))
-            ret_short = vol_blend * ret_short_fast + (1.0 - vol_blend) * ret_short_slow
+            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
