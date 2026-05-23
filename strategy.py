@@ -251,7 +251,7 @@ class Strategy:
             mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
-            strength_scale = max(strength_floor, min(1.90, mom_strength))
+            strength_scale = max(strength_floor, min(2.0, mom_strength))
             dampened_cross_agree = 1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
