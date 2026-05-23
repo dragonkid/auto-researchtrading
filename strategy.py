@@ -369,7 +369,7 @@ class Strategy:
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol] = bd.open
+                    self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
 
