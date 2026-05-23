@@ -210,8 +210,10 @@ class Strategy:
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
-            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
+            # Smoothed reference for noise-sensitive momentum voters only
+            ref_close = (closes[-1] + closes[-2]) * 0.5
+            ret_vshort = (ref_close - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_short = (ref_close - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
