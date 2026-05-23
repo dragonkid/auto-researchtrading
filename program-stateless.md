@@ -42,7 +42,7 @@ For each experiment:
               -m "Expected: <which regime(s) should benefit>"
    ```
 4. **Backtest**: `uv run regime_test.py > run.log 2>&1`
-5. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_" run.log`
+5. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
    **Keep/discard rules** (unchanged):

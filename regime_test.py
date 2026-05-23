@@ -31,8 +31,8 @@ HOLDOUT_REGIMES = [
 # Consistency penalty weight: higher k = stricter consistency requirement
 CONSISTENCY_K = 0.5
 
-# Per-regime timeout (seconds)
-REGIME_TIMEOUT = TIME_BUDGET + 60
+# Per-regime timeout: accounts for clean + N_TRIALS perturbed backtests
+REGIME_TIMEOUT = TIME_BUDGET * 3 + 60
 
 
 def annualize_return(total_return_pct: float, hours: int) -> float:
@@ -70,6 +70,13 @@ def _run_regime_worker(args: tuple) -> dict:
     return_gate = math.log(1.0 + max(annual_return, 0.0) / 100.0)
     score = base_score * return_gate if base_score > 0 else base_score
 
+    # Signal stability: penalize threshold-sensitive strategies
+    from noise_test import compute_signal_stability, STABILITY_THRESHOLD
+    stability = compute_signal_stability(data, result)
+    stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
+    if score > 0:
+        score = score * stability_factor
+
     return {
         "name": name,
         "desc": desc,
@@ -83,6 +90,8 @@ def _run_regime_worker(args: tuple) -> dict:
         "win_rate": result.win_rate_pct,
         "profit_factor": result.profit_factor,
         "seconds": result.backtest_seconds,
+        "stability": stability,
+        "stability_factor": stability_factor,
     }
 
 
@@ -206,3 +215,8 @@ if __name__ == "__main__":
                 print(f"regime_{r['name']}_sharpe: {r['sharpe']:.6f}")
                 print(f"regime_{r['name']}_annual_return_pct: {r['annual_return_pct']:.6f}")
                 print(f"regime_{r['name']}_max_dd: {r['max_dd_pct']:.6f}")
+                print(f"regime_{r['name']}_stability: {r.get('stability', 1.0):.6f}")
+
+        stabilities = [r.get("stability", 1.0) for r in results if "error" not in r]
+        if stabilities:
+            print(f"min_stability: {min(stabilities):.6f}")
