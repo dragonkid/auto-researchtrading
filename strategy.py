@@ -65,7 +65,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
-CROSS_ASSET_BOOST = 0.20
+CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -155,20 +155,6 @@ class Strategy:
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-
-        # Cross-asset momentum agreement
-        cross_asset_rets = []
-        for s in ACTIVE_SYMBOLS:
-            if s in bar_data and len(bar_data[s].history) >= MED2_WINDOW + 1:
-                c = bar_data[s].history["close"].values
-                cross_asset_rets.append((c[-1] - c[-MED2_WINDOW]) / c[-MED2_WINDOW])
-        if len(cross_asset_rets) >= 2:
-            n_pos = sum(1 for r in cross_asset_rets if r > 0)
-            n_neg = sum(1 for r in cross_asset_rets if r < 0)
-            agree_frac = max(n_pos, n_neg) / len(cross_asset_rets)
-            cross_asset_agree = 1.0 + CROSS_ASSET_BOOST * agree_frac if agree_frac > 0.5 else 1.0
-        else:
-            cross_asset_agree = 1.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -282,7 +268,7 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
-            dampened_cross_agree = 1.0 + (cross_asset_agree - 1.0) * (1.0 - cooldown_trend_strength)
+            dampened_cross_agree = 1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
