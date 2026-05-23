@@ -66,6 +66,7 @@ BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
+HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
@@ -252,7 +253,8 @@ class Strategy:
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.5)
 
-            vote_boost = HIGH_VOTE_BOOST_MULT
+            winning_votes = max(bull_votes, bear_votes)
+            vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
 
             vol_confirm_mult = 1.0
             volumes = bd.history["volume"].values
