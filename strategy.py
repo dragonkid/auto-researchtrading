@@ -214,15 +214,19 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            mom_bull = ret_short > dyn_threshold
-            mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            # Soft voting: signals near threshold contribute 0.5 instead of 1.0
+            # This smooths the vote count near the MIN_VOTES boundary, reducing noise sensitivity
+            mom_bull_v = 1.0 if ret_short > dyn_threshold * 1.5 else (0.5 if ret_short > dyn_threshold else 0.0)
+            mom_bear_v = 1.0 if ret_short < -dyn_threshold * 1.5 else (0.5 if ret_short < -dyn_threshold else 0.0)
+            vshort_thresh = dyn_threshold * 0.5
+            vshort_bull_v = 1.0 if ret_vshort > vshort_thresh * 1.5 else (0.5 if ret_vshort > vshort_thresh else 0.0)
+            vshort_bear_v = 1.0 if ret_vshort < -vshort_thresh * 1.5 else (0.5 if ret_vshort < -vshort_thresh else 0.0)
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
-            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
+            ema_spread = (ema_fast_arr[-1] - ema_slow_arr[-1]) / ema_slow_arr[-1]
+            ema_bull_v = 1.0 if ema_spread > 0.001 else (0.5 if ema_spread > 0 else 0.0)
+            ema_bear_v = 1.0 if ema_spread < -0.001 else (0.5 if ema_spread < 0 else 0.0)
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
@@ -266,8 +270,8 @@ class Strategy:
                 elif mid < donchian_low * 0.997:
                     donchian_bear = True
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = mom_bull_v + vshort_bull_v + ema_bull_v + rsi_bull + macd_bull + vol_breakout_bull + linreg_bull + donchian_bull + slope_bull
+            bear_votes = mom_bear_v + vshort_bear_v + ema_bear_v + rsi_bear + macd_bear + vol_breakout_bear + linreg_bear + donchian_bear + slope_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
