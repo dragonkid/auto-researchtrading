@@ -220,8 +220,8 @@ class Strategy:
             linreg_bear = linreg_slope < -0.0001
 
             vb_short = self._calc_vol(closes, VOL_BREAKOUT_SHORT)
-            vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.40
-            vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.40
+            vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
+            vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
             donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
             donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
