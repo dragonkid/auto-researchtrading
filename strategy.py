@@ -375,9 +375,9 @@ class Strategy:
 
                 flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
                 flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
-                if current_pos > 0 and flip_bearish and not in_cooldown and bars_held >= 3:
+                if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and flip_bullish and not in_cooldown and bars_held >= 3:
+                elif current_pos < 0 and flip_bullish and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
