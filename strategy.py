@@ -229,8 +229,9 @@ class Strategy:
             rsi = calc_rsi(closes, adaptive_rsi_period)
             rsi_bias = RSI_TREND_BIAS * rsi_trend_str
             rsi_thresh = 50 + (-rsi_bias if ret_long > 0 else rsi_bias)
-            rsi_bull = rsi > rsi_thresh
-            rsi_bear = rsi < rsi_thresh
+            rsi_voter_dz = 2.0 * (1.0 - rsi_trend_str)
+            rsi_bull = rsi > rsi_thresh + rsi_voter_dz
+            rsi_bear = rsi < rsi_thresh - rsi_voter_dz
 
             macd_hist = self._calc_macd(closes)
             macd_rel = macd_hist / mid
