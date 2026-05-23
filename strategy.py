@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import linregress
 from prepare import Signal, PortfolioState, BarData
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
@@ -124,19 +125,6 @@ class Strategy:
         self.peak_pnl = {}
         self.entry_bar = {}
 
-    def _calc_linreg(self, closes):
-        y = np.log(closes[-LINREG_PERIOD:])
-        n = LINREG_PERIOD
-        x = np.arange(n, dtype=float)
-        x_mean = (n - 1) / 2.0
-        y_mean = y.mean()
-        ss_xy = np.sum((x - x_mean) * (y - y_mean))
-        ss_xx = np.sum((x - x_mean) ** 2)
-        slope = ss_xy / ss_xx
-        ss_yy = np.sum((y - y_mean) ** 2)
-        r_sq = (ss_xy ** 2) / (ss_xx * ss_yy) if ss_yy > 1e-20 else 0.0
-        return slope, r_sq
-
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
@@ -164,7 +152,8 @@ class Strategy:
             long_vol = max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
             sl_ratio_raw = short_vol / max(long_vol, 1e-10)
 
-            linreg_slope, linreg_r2 = self._calc_linreg(closes)
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log(closes[-LINREG_PERIOD:]))
+            linreg_r2 = _lr.rvalue ** 2
             dyn_threshold *= (1.0 - LINREG_R2_THRESH_REDUCE * linreg_r2)
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
@@ -205,8 +194,8 @@ class Strategy:
             slope_bull = ema_slope > 0.0005
             slope_bear = ema_slope < -0.0005
 
-            linreg_bull = linreg_slope > 0.0001
-            linreg_bear = linreg_slope < -0.0001
+            linreg_bull = _lr.slope > 0.0001
+            linreg_bear = _lr.slope < -0.0001
 
             vb_short = max(np.std(np.diff(np.log(closes[-VOL_BREAKOUT_SHORT:]))), 1e-6)
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
