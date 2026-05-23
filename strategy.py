@@ -126,6 +126,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
+        self.rsi_exit_confirm = {}
 
     def _calc_vol(self, closes, lookback):
         if len(closes) < lookback:
@@ -340,10 +341,19 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                rsi_exit_triggered = False
                 if current_pos > 0 and rsi > effective_ob:
-                    target = 0.0
+                    rsi_exit_triggered = True
                 elif current_pos < 0 and rsi < effective_os:
-                    target = 0.0
+                    rsi_exit_triggered = True
+                if rsi_exit_triggered:
+                    if self.rsi_exit_confirm.get(symbol, 0) >= 1:
+                        target = 0.0
+                        self.rsi_exit_confirm[symbol] = 0
+                    else:
+                        self.rsi_exit_confirm[symbol] = 1
+                else:
+                    self.rsi_exit_confirm[symbol] = 0
 
                 if target != 0 and symbol in self.entry_prices and bars_held >= 1:
                     prev_peak = self.peak_pnl.get(symbol, 0.0)
@@ -368,9 +378,11 @@ class Strategy:
                     self.peak_pnl.pop(symbol, None)
                     self.entry_bar.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
+                    self.rsi_exit_confirm[symbol] = 0
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
                     self.entry_bar[symbol] = self.bar_count
+                    self.rsi_exit_confirm[symbol] = 0
 
         return signals
