@@ -310,9 +310,8 @@ class Strategy:
                     effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                     effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                effective_grace = RSI_YOUNG_GRACE_BARS if rsi_trend_str > 0.3 else RSI_YOUNG_GRACE_BARS - 1
-                if bars_held < effective_grace:
-                    grace_blend = 1.0 - bars_held / effective_grace
+                if bars_held < RSI_YOUNG_GRACE_BARS:
+                    grace_blend = 1.0 - bars_held / RSI_YOUNG_GRACE_BARS
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
