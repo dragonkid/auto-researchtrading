@@ -100,7 +100,6 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-SIDEWAYS_VOTE_THRESHOLD = 0.035
 
 
 def ema(values, span):
@@ -277,10 +276,8 @@ class Strategy:
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
-            deep_sideways = abs(ret_long) < SIDEWAYS_VOTE_THRESHOLD
-            effective_min_votes = MIN_VOTES + 1 if deep_sideways else MIN_VOTES
-            bullish = bull_votes >= effective_min_votes and (trend_bull or trend_gate_bypassed)
-            bearish = bear_votes >= effective_min_votes and (trend_bear or trend_gate_bypassed)
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
