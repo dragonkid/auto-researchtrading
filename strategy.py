@@ -304,7 +304,7 @@ class Strategy:
                 if base_vol > 0:
                     vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
 
-            mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
+            mom_strength = (abs(ret_short) / dyn_threshold) ** 0.80
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
