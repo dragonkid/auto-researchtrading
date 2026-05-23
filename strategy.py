@@ -66,7 +66,6 @@ BASE_POSITION_SIZE = 0.115
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
-HIGH_VOTE_THRESHOLD = 3
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
@@ -226,8 +225,7 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
-            trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
+            trend_gate_bypassed = abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
@@ -243,8 +241,7 @@ class Strategy:
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
-            winning_votes = max(bull_votes, bear_votes)
-            vote_boost = HIGH_VOTE_BOOST_MULT if winning_votes >= HIGH_VOTE_THRESHOLD else 1.0
+            vote_boost = HIGH_VOTE_BOOST_MULT
 
             volumes = bd.history["volume"].values
             recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
