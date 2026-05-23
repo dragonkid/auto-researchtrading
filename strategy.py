@@ -36,7 +36,7 @@ DYN_THRESHOLD_FLOOR = 0.004
 DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.32       # max threshold reduction in trends
 TREND_THRESHOLD_DECAY = 0.13       # abs(ret_long) at which reduction saturates
-LINREG_R2_THRESH_REDUCE = 0.45     # max threshold reduction when R² is high
+LINREG_R2_THRESH_REDUCE = 0.50     # max threshold reduction when R² is high
 
 # RSI voter
 RSI_TREND_BIAS = 1.5
