@@ -226,9 +226,8 @@ class Strategy:
             trend_bear = trend_avg < 0
 
             trend_gate_bypassed = abs(trend_avg) < TREND_GATE_DEADZONE
-            trend_gate_soft = abs(trend_avg) < TREND_GATE_DEADZONE * 1.8
-            bullish = (bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)) or (bull_votes >= FLIP_MIN_VOTES and trend_gate_soft)
-            bearish = (bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)) or (bear_votes >= FLIP_MIN_VOTES and trend_gate_soft)
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
