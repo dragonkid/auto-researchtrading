@@ -58,7 +58,7 @@ RSI_YOUNG_OB_WIDEN = 4.0
 RSI_YOUNG_OS_WIDEN = 4.0
 
 # Peak-profit trailing exit
-PEAK_PROFIT_MIN_BASE = 0.025
+PEAK_PROFIT_MIN_BASE = 0.020
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
