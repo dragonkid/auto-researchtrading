@@ -225,8 +225,8 @@ class Strategy:
 
             donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
             donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-            donchian_bull = mid > donchian_high * 1.003
-            donchian_bear = mid < donchian_low * 0.997
+            donchian_bull = mid > donchian_high * 1.0035
+            donchian_bear = mid < donchian_low * 0.9965
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
