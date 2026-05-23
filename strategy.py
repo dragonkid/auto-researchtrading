@@ -226,7 +226,8 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            trend_gate_bypassed = abs(trend_avg) < TREND_GATE_DEADZONE
+            in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
+            trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
             bullish = bull_votes >= MIN_VOTES and (trend_bull or trend_gate_bypassed)
             bearish = bear_votes >= MIN_VOTES and (trend_bear or trend_gate_bypassed)
 
