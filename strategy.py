@@ -126,6 +126,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
+        self._prev_trend_avg = {}
 
     def _calc_vol(self, closes, lookback):
         log_rets = np.diff(np.log(closes[-lookback:]))
@@ -247,8 +248,11 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
-            trend_bull = trend_avg > 0
-            trend_bear = trend_avg < 0
+            prev_ta = self._prev_trend_avg.get(symbol, trend_avg)
+            smooth_trend_avg = 0.7 * trend_avg + 0.3 * prev_ta
+            self._prev_trend_avg[symbol] = trend_avg
+            trend_bull = smooth_trend_avg > 0
+            trend_bear = smooth_trend_avg < 0
 
             in_sideways = abs(ret_long) < MEANREV_TREND_THRESHOLD
             trend_gate_bypassed = in_sideways and abs(trend_avg) < TREND_GATE_DEADZONE
