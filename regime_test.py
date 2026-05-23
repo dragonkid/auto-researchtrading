@@ -70,12 +70,15 @@ def _run_regime_worker(args: tuple) -> dict:
     return_gate = math.log(1.0 + max(annual_return, 0.0) / 100.0)
     score = base_score * return_gate if base_score > 0 else base_score
 
-    # Signal stability: penalize threshold-sensitive strategies
+    # Signal stability: penalize threshold-sensitive strategies (skip if score already non-positive)
     from noise_test import compute_signal_stability, STABILITY_THRESHOLD
-    stability = compute_signal_stability(data, result)
-    stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
     if score > 0:
+        stability = compute_signal_stability(data, result)
+        stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
         score = score * stability_factor
+    else:
+        stability = 1.0
+        stability_factor = 1.0
 
     return {
         "name": name,
