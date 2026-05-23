@@ -15,6 +15,7 @@ EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
+EMA_CROSS_HYSTERESIS = 0.0005
 
 # MACD parameters
 MACD_FAST = 8
@@ -126,6 +127,7 @@ class Strategy:
         self.bar_count = 0
         self.peak_pnl = {}
         self.entry_bar = {}
+        self.ema_direction = {}
 
     def _calc_vol(self, closes, lookback):
         log_rets = np.diff(np.log(closes[-lookback:]))
@@ -195,8 +197,22 @@ class Strategy:
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
-            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
+            ema_spread = (ema_fast_arr[-1] - ema_slow_arr[-1]) / ema_slow_arr[-1]
+            prev_ema_dir = self.ema_direction.get(symbol, 0)
+            if prev_ema_dir >= 0:
+                if ema_spread < -EMA_CROSS_HYSTERESIS:
+                    ema_bull, ema_bear = False, True
+                    self.ema_direction[symbol] = -1
+                else:
+                    ema_bull, ema_bear = True, False
+                    self.ema_direction[symbol] = 1
+            else:
+                if ema_spread > EMA_CROSS_HYSTERESIS:
+                    ema_bull, ema_bear = True, False
+                    self.ema_direction[symbol] = 1
+                else:
+                    ema_bull, ema_bear = False, True
+                    self.ema_direction[symbol] = -1
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
