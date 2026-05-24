@@ -108,15 +108,21 @@ def ema(values, span):
 
 def calc_rsi(closes, period):
     deltas = np.diff(closes[-(period+1):])
-    avg_gain = np.mean(np.maximum(deltas, 0))
-    avg_loss = np.mean(np.maximum(-deltas, 0))
-    return 100 - 100 / (1 + avg_gain / max(avg_loss, 1e-10))
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
+    avg_gain = np.mean(gains)
+    avg_loss = np.mean(losses)
+    rs = avg_gain / max(avg_loss, 1e-10)
+    return 100 - 100 / (1 + rs)
 
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.entry_prices = {}
+        self.exit_bar = {}
         self.bar_count = 0
+        self.peak_pnl = {}
+        self.entry_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -127,6 +133,9 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
+                continue
+
             closes = bd.history["close"].values
             mid = bd.close
 
@@ -291,9 +300,11 @@ class Strategy:
                         if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
+                flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
+                flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
+                if current_pos > 0 and flip_bearish and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
+                elif current_pos < 0 and flip_bullish and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
