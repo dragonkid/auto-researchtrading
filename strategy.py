@@ -116,6 +116,7 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.prev_trend_avg = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -203,6 +204,10 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
+            if abs(trend_avg) < 0.02:
+                prev_ta = self.prev_trend_avg.get(symbol, trend_avg)
+                trend_avg = 0.90 * trend_avg + 0.10 * prev_ta
+            self.prev_trend_avg[symbol] = trend_avg
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
