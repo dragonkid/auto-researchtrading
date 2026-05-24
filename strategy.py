@@ -160,7 +160,10 @@ class Strategy:
             ema_bear = _ef < _es
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
-            rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
+            _rsi_period = 6 + 2 * rsi_trend_str
+            _rsi_lo = int(_rsi_period)
+            _rsi_frac = _rsi_period - _rsi_lo
+            rsi = calc_rsi(closes, _rsi_lo) * (1 - _rsi_frac) + calc_rsi(closes, _rsi_lo + 1) * _rsi_frac
             rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
