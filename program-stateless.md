@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-When min_stability < 0.75: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
+When min_stability < 0.80: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
 
 ## Session protocol
 
