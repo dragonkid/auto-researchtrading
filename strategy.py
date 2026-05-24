@@ -176,7 +176,7 @@ class Strategy:
             linreg_bull = _lr.slope > 0.0001
             linreg_bear = _lr.slope < -0.0001
 
-            vb_short = max(np.std(np.diff(np.log(closes[-VOL_BREAKOUT_SHORT:]))), 1e-6)
+            vb_short = max(np.std(np.diff(np.log(closes[-(VOL_BREAKOUT_SHORT + 1):-1]))), 1e-6)
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
             vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
