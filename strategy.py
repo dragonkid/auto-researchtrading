@@ -137,7 +137,9 @@ class Strategy:
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
-            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            # 2-bar average close for noise-resilient momentum reference
+            ref_price = (closes[-1] + closes[-2]) * 0.5
+            ret_long = (ref_price - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
@@ -147,9 +149,9 @@ class Strategy:
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
 
-            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
-            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
+            ret_vshort = (ref_price - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_short = (ref_price - closes[-adaptive_med]) / closes[-adaptive_med]
+            ret_med = (ref_price - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
