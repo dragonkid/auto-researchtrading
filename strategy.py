@@ -210,9 +210,9 @@ class Strategy:
 
             if current_pos == 0:
                 if not in_cooldown:
-                    if bull_votes >= MIN_VOTES and bull_votes > bear_votes and (trend_bull or abs(trend_avg) < TREND_GATE_DEADZONE):
+                    if bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                         target = size
-                    elif bear_votes >= MIN_VOTES and bear_votes > bull_votes and (trend_bear or abs(trend_avg) < TREND_GATE_DEADZONE):
+                    elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
@@ -247,9 +247,9 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes > bull_votes and trend_bear and not in_cooldown:
+                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes > bear_votes and trend_bull and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
