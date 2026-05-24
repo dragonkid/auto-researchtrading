@@ -57,7 +57,7 @@ RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
 # Underwater RSI exit widening
-UNDERWATER_WIDEN_MAX = 1.75
+UNDERWATER_WIDEN_MAX = 1.5
 UNDERWATER_WIDEN_SAT = 0.012
 
 # Peak-profit trailing exit
@@ -244,9 +244,6 @@ class Strategy:
                     uw_blend = min(1.0, abs(pos_pnl) / UNDERWATER_WIDEN_SAT)
                     effective_ob += UNDERWATER_WIDEN_MAX * uw_blend
                     effective_os -= UNDERWATER_WIDEN_MAX * uw_blend
-                if bars_held >= 12:
-                    effective_ob += 1.0
-                    effective_os -= 1.0
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
