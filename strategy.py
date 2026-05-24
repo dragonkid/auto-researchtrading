@@ -286,6 +286,13 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / adaptive_grace
                     effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                highs = bd.history["high"].values
+                lows = bd.history["low"].values
+                cur_range = (highs[-1] - lows[-1]) / mid
+                avg_range = np.mean((highs[-12:] - lows[-12:]) / closes[-12:])
+                if cur_range > 1.5 * avg_range and pos_pnl > 0.005:
+                    effective_ob -= 1.0
+                    effective_os += 1.0
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
