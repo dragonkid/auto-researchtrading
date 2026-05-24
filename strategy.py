@@ -96,6 +96,9 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Entry trend smoothing (stability)
+ENTRY_TREND_ALPHA = 0.60  # weight on current bar (lower = more smoothing)
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -115,6 +118,7 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.smooth_trend_avg = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -193,8 +197,15 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
+            # Smoothed trend_avg for entry decisions only (stability improvement)
+            prev_smooth = self.smooth_trend_avg.get(symbol, trend_avg)
+            entry_trend_avg = ENTRY_TREND_ALPHA * trend_avg + (1.0 - ENTRY_TREND_ALPHA) * prev_smooth
+            self.smooth_trend_avg[symbol] = entry_trend_avg
+            trend_bull_entry = entry_trend_avg > 0
+            trend_bear_entry = entry_trend_avg < 0
+
+            bullish = bull_votes >= MIN_VOTES and (trend_bull_entry or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
+            bearish = bear_votes >= MIN_VOTES and (trend_bear_entry or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
