@@ -110,9 +110,13 @@ def calc_rsi(closes, period):
     return 100 - 100 / (1 + np.mean(np.maximum(deltas, 0)) / max(np.mean(np.maximum(-deltas, 0)), 1e-10))
 
 
+EXIT_THRESH_ALPHA = 0.80
+
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.prev_ob, self.prev_os = {}, {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -232,6 +236,10 @@ class Strategy:
                     profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - adaptive_profit_thresh) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                     effective_os = effective_os + (50.0 - effective_os) * profit_blend
+                effective_ob = EXIT_THRESH_ALPHA * effective_ob + (1 - EXIT_THRESH_ALPHA) * self.prev_ob.get(symbol, effective_ob)
+                effective_os = EXIT_THRESH_ALPHA * effective_os + (1 - EXIT_THRESH_ALPHA) * self.prev_os.get(symbol, effective_os)
+                self.prev_ob[symbol] = effective_ob
+                self.prev_os[symbol] = effective_os
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
                     grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
@@ -255,10 +263,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.prev_ob, self.prev_os):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.prev_ob.pop(symbol, None)
+                    self.prev_os.pop(symbol, None)
 
         return signals
