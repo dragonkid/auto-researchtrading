@@ -62,8 +62,6 @@ UNDERWATER_WIDEN_SAT = 0.012
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_MIN_SIDEWAYS = 0.012  # lower activation in low-trend (deterministic exits)
-PEAK_PROFIT_TREND_DECAY = 0.08    # ret_long at which full base threshold applies
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
@@ -253,9 +251,7 @@ class Strategy:
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    trend_blend = min(abs(ret_long) / PEAK_PROFIT_TREND_DECAY, 1.0)
-                    adaptive_peak_min = PEAK_PROFIT_MIN_SIDEWAYS + (PEAK_PROFIT_MIN_BASE - PEAK_PROFIT_MIN_SIDEWAYS) * trend_blend
-                    if self.peak_pnl[symbol] > adaptive_peak_min * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
                 if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
