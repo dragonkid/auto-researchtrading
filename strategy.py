@@ -40,7 +40,7 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
 # RSI voter
 RSI_TREND_BIAS = 2.0
-RSI_TREND_BIAS_DECAY = 0.10
+RSI_TREND_BIAS_DECAY = 0.09
 
 # RSI exit parameters
 RSI_OVERBOUGHT = 73
