@@ -43,6 +43,7 @@ RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
 # RSI exit parameters
+RSI_EXIT_EMA_SPAN = 3   # EMA smoothing of RSI for exit decisions
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65
@@ -117,6 +118,7 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.rsi_ema = {}   # per-symbol EMA of RSI for exit smoothing
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -169,6 +171,12 @@ class Strategy:
             rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
+
+            # Smoothed RSI for exit decisions (reduces single-bar noise sensitivity)
+            ema_alpha = 2.0 / (RSI_EXIT_EMA_SPAN + 1)
+            prev_rsi_ema = self.rsi_ema.get(symbol, rsi)
+            rsi_exit = ema_alpha * rsi + (1 - ema_alpha) * prev_rsi_ema
+            self.rsi_ema[symbol] = rsi_exit
 
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
@@ -244,9 +252,9 @@ class Strategy:
                     uw_blend = min(1.0, abs(pos_pnl) / UNDERWATER_WIDEN_SAT)
                     effective_ob += UNDERWATER_WIDEN_MAX * uw_blend
                     effective_os -= UNDERWATER_WIDEN_MAX * uw_blend
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
 
                 if target != 0:
