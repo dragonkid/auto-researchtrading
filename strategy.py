@@ -130,9 +130,6 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            hl2 = (highs + lows) / 2.0
             mid = bd.close
 
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
@@ -198,13 +195,6 @@ class Strategy:
 
             bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
             bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
-
-            # HL2 direction confirmation gate (noise-immune: blocks entries against clear HL2 direction)
-            hl2_ret = (hl2[-1] - hl2[-adaptive_med]) / hl2[-adaptive_med]
-            if bullish and hl2_ret < -dyn_threshold:
-                bullish = False
-            if bearish and hl2_ret > dyn_threshold:
-                bearish = False
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
