@@ -84,6 +84,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.010
+BYPASS_VOTE_MARGIN = 2
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -210,9 +211,9 @@ class Strategy:
 
             if current_pos == 0:
                 if not in_cooldown:
-                    if bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    if bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes >= bear_votes + BYPASS_VOTE_MARGIN)):
                         target = size
-                    elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes >= bull_votes + BYPASS_VOTE_MARGIN)):
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
