@@ -140,12 +140,9 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            short_vol = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6)
-            long_vol = max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
-            sl_ratio_raw = short_vol / max(long_vol, 1e-10)
+            sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log(closes[-LINREG_PERIOD:]))
-
 
             adaptive_med = int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med))
@@ -188,10 +185,8 @@ class Strategy:
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
             vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
-            donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-            donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-            donchian_bull = mid > donchian_high * 1.004
-            donchian_bear = mid < donchian_low * 0.997
+            donchian_bull = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004
+            donchian_bear = mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.997
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
@@ -201,15 +196,13 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            trend_gate_bypassed = abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or (trend_gate_bypassed and bull_votes > bear_votes))
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or (trend_gate_bypassed and bear_votes > bull_votes))
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
 
-            vol_scale = (TARGET_VOL / realized_vol) ** 0.85
-            vol_scale = max(0.3, min(2.5, vol_scale))
+            vol_scale = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85))
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, sl_ratio_raw)) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -220,10 +213,8 @@ class Strategy:
             base_vol = np.mean(volumes[-VOL_CONFIRM_BASE:])
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, recent_vol / base_vol))
 
-            mom_strength = (abs(ret_short) / dyn_threshold) ** 0.85
-            sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
-            strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
-            strength_scale = max(strength_floor, min(2.0, mom_strength))
+            strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0))
+            strength_scale = max(strength_floor, min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
@@ -251,17 +242,15 @@ class Strategy:
                 base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
-                entry = self.entry_prices[symbol]
-                pos_pnl = (mid - entry) / entry
+                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
                 if pos_pnl > adaptive_profit_thresh:
-                    profit_excess = pos_pnl - adaptive_profit_thresh
                     adaptive_profit_scale = RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio))
                     calm_tighten_boost = max(0.0, (0.70 - vol_ratio) / 0.15) if vol_ratio < 0.70 else 0.0
                     adaptive_profit_tighten = RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.40 * min(1.0, calm_tighten_boost))
-                    profit_blend = min(adaptive_profit_tighten, profit_excess * adaptive_profit_scale)
+                    profit_blend = min(adaptive_profit_tighten, (pos_pnl - adaptive_profit_thresh) * adaptive_profit_scale)
                     effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                     effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
