@@ -158,10 +158,15 @@ class Strategy:
             ema_bear = _ef < _es
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
-            rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
+            rsi_period = int(round(6 + 2 * rsi_trend_str))
+            rsi = calc_rsi(closes, rsi_period)
             rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
+
+            # HL2-based RSI for exits (less noisy: midpoint unchanged when close stays in bar range)
+            hl2_series = (bd.history["high"].values + bd.history["low"].values) * 0.5
+            rsi_exit = calc_rsi(hl2_series, rsi_period)
 
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
@@ -237,9 +242,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
 
                 if target != 0:
