@@ -95,7 +95,6 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-TREND_HYSTERESIS = 0.002
 
 
 def ema(values, span):
@@ -116,7 +115,6 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.prev_trend = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -192,17 +190,8 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            prev_td = self.prev_trend.get(symbol, 0)
-            if prev_td > 0:
-                trend_bull = trend_avg > -TREND_HYSTERESIS
-                trend_bear = not trend_bull
-            elif prev_td < 0:
-                trend_bear = trend_avg < TREND_HYSTERESIS
-                trend_bull = not trend_bear
-            else:
-                trend_bull = trend_avg > 0
-                trend_bear = trend_avg < 0
-            self.prev_trend[symbol] = 1 if trend_bull else -1
+            trend_bull = trend_avg > 0
+            trend_bear = trend_avg < 0
 
             bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
             bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
