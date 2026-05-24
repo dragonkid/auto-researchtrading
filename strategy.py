@@ -115,6 +115,7 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.prev_rsi = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -214,6 +215,10 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Smoothed RSI for exit decisions (reduce single-bar noise at exit boundaries)
+            exit_rsi = 0.7 * rsi + 0.3 * self.prev_rsi.get(symbol, rsi)
+            self.prev_rsi[symbol] = rsi
+
             if current_pos == 0:
                 if not in_cooldown:
                     if bullish:
@@ -246,9 +251,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / adaptive_grace
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and exit_rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and exit_rsi < effective_os:
                     target = 0.0
 
                 if target != 0 and bars_held >= 1:
