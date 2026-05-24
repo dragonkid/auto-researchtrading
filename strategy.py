@@ -140,7 +140,10 @@ class Strategy:
 
             sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log(closes[-LINREG_PERIOD:]))
+            highs = bd.history["high"].values
+            lows = bd.history["low"].values
+            hl2 = (highs + lows) / 2.0
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log(hl2[-LINREG_PERIOD:]))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
