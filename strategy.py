@@ -91,10 +91,16 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 VOL_BREAKOUT_SHORT = 3
 DONCHIAN_PERIOD = 13
-MIN_VOTES = 3
-FLIP_MIN_VOTES = 4
+SOFT_MIN_VOTES = 2.5
+SOFT_FLIP_VOTES = 3.5
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
+
+# Soft vote widths (transition zone around threshold)
+SOFT_WIDTH_RET = 0.5       # relative to dyn_threshold for momentum/vshort
+SOFT_WIDTH_RSI = 3.0       # RSI points
+SOFT_WIDTH_LINREG = 0.0001 # slope units
+SOFT_WIDTH_SLOPE = 0.0003  # EMA slope units
 
 
 def ema(values, span):
@@ -104,6 +110,10 @@ def ema(values, span):
     for i in range(1, len(values)):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
+
+def soft_vote(signal, threshold, width):
+    """Continuous vote: 1.0 far above threshold, 0.5 at threshold, 0.0 far below."""
+    return max(0.0, min(1.0, 0.5 + 0.5 * (signal - threshold) / width))
 
 def calc_rsi(closes, period):
     deltas = np.diff(closes[-(period+1):])
@@ -148,43 +158,45 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            mom_bull = ret_short > dyn_threshold
-            mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            # Soft voters (continuous 0-1 based on distance from threshold)
+            w_ret = dyn_threshold * SOFT_WIDTH_RET
+            mom_bull_s = soft_vote(ret_short, dyn_threshold, w_ret)
+            mom_bear_s = soft_vote(-ret_short, dyn_threshold, w_ret)
+            vshort_bull_s = soft_vote(ret_vshort, dyn_threshold * 0.5, w_ret * 0.5)
+            vshort_bear_s = soft_vote(-ret_vshort, dyn_threshold * 0.5, w_ret * 0.5)
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            ema_bull = _ef > _es
-            ema_bear = _ef < _es
+            ema_bull_s = 1.0 if _ef > _es else 0.0
+            ema_bear_s = 1.0 if _ef < _es else 0.0
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
             rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            rsi_bull = rsi > rsi_thresh
-            rsi_bear = rsi < rsi_thresh
+            rsi_bull_s = soft_vote(rsi, rsi_thresh, SOFT_WIDTH_RSI)
+            rsi_bear_s = soft_vote(-rsi, -rsi_thresh, SOFT_WIDTH_RSI)
 
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            macd_bull = macd_rel > 0.0003
-            macd_bear = macd_rel < -0.0003
+            macd_bull_s = 1.0 if macd_rel > 0.0003 else 0.0
+            macd_bear_s = 1.0 if macd_rel < -0.0003 else 0.0
 
             ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
-            slope_bull = ema_slope > 0.0005
-            slope_bear = ema_slope < -0.0005
+            slope_bull_s = soft_vote(ema_slope, 0.0005, SOFT_WIDTH_SLOPE)
+            slope_bear_s = soft_vote(-ema_slope, 0.0005, SOFT_WIDTH_SLOPE)
 
-            linreg_bull = _lr.slope > 0.0001
-            linreg_bear = _lr.slope < -0.0001
+            linreg_bull_s = soft_vote(_lr.slope, 0.0001, SOFT_WIDTH_LINREG)
+            linreg_bear_s = soft_vote(-_lr.slope, 0.0001, SOFT_WIDTH_LINREG)
 
             vb_short = max(np.std(np.diff(np.log(closes[-VOL_BREAKOUT_SHORT:]))), 1e-6)
-            vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
-            vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
+            vol_breakout_bull_s = 1.0 if (vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20) else 0.0
+            vol_breakout_bear_s = 1.0 if (vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20) else 0.0
 
-            donchian_bull = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004
-            donchian_bear = mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
+            donchian_bull_s = 1.0 if mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004 else 0.0
+            donchian_bear_s = 1.0 if mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975 else 0.0
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = mom_bull_s + vshort_bull_s + ema_bull_s + rsi_bull_s + macd_bull_s + vol_breakout_bull_s + linreg_bull_s + donchian_bull_s + slope_bull_s
+            bear_votes = mom_bear_s + vshort_bear_s + ema_bear_s + rsi_bear_s + macd_bear_s + vol_breakout_bear_s + linreg_bear_s + donchian_bear_s + slope_bear_s
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -210,9 +222,9 @@ class Strategy:
 
             if current_pos == 0:
                 if not in_cooldown:
-                    if bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    if bull_votes >= SOFT_MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                         target = size
-                    elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    elif bear_votes >= SOFT_MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
@@ -247,9 +259,9 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
+                if current_pos > 0 and bear_votes >= SOFT_FLIP_VOTES and trend_bear and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= SOFT_FLIP_VOTES and trend_bull and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
