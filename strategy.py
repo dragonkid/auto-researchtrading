@@ -193,13 +193,8 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            opens = bd.history["open"].values
-            open_ret_med = (opens[-1] - opens[-MED2_WINDOW]) / opens[-MED2_WINDOW]
-            open_ret_long = (opens[-1] - opens[-LONG_WINDOW]) / opens[-LONG_WINDOW]
-            open_trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * open_ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * open_ret_long
-
-            bullish = bull_votes >= MIN_VOTES and (open_trend_avg > 0 or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
-            bearish = bear_votes >= MIN_VOTES and (open_trend_avg < 0 or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
