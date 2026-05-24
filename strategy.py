@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import linregress
 from prepare import Signal, PortfolioState, BarData
 
-ACTIVE_SYMBOLS = ["BTC", "ETH"]
+ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
 MED_WINDOW_MIN = 8
