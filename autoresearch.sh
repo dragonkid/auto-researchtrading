@@ -110,6 +110,7 @@ while true; do
 
   echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
+  MAX_THINKING_TOKENS=256000 CLAUDE_CODE_EFFORT_LEVEL=max \
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
     --dangerously-skip-permissions \
     --effort max \
