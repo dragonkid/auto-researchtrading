@@ -113,7 +113,6 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.prior_rsi = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -238,10 +237,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
-                rsi_exit = max(rsi, self.prior_rsi.get(symbol, rsi)) if current_pos > 0 else min(rsi, self.prior_rsi.get(symbol, rsi))
-                if current_pos > 0 and rsi_exit > effective_ob:
+                if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi_exit < effective_os:
+                elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
                 if target != 0:
@@ -253,8 +251,6 @@ class Strategy:
                     target = -size
                 elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
                     target = size
-
-            self.prior_rsi[symbol] = rsi
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
