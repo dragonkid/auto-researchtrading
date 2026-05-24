@@ -138,6 +138,7 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            ret_long_lag = (closes[-2] - closes[-(LONG_WINDOW + 1)]) / closes[-(LONG_WINDOW + 1)]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
@@ -227,7 +228,7 @@ class Strategy:
                             target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
-                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
+                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long_lag) / RSI_EXIT_TREND_DECAY)
                 base_ob = RSI_OVERBOUGHT + sideways_exit_widen
                 base_os = RSI_OVERSOLD + sideways_exit_widen
                 effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
