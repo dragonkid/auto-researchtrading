@@ -243,8 +243,9 @@ class Strategy:
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 adaptive_grace = RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)
                 if bars_held < adaptive_grace:
-                    effective_ob += 2.0
-                    effective_os -= 2.0
+                    grace_blend = 1.0 - bars_held / adaptive_grace
+                    effective_ob += RSI_YOUNG_WIDEN * grace_blend
+                    effective_os -= RSI_YOUNG_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
