@@ -159,16 +159,11 @@ class Strategy:
             mom_bear = ret_short < -dyn_threshold
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
-            vshort_bull_w = min(1.0, max(0.0, ret_vshort / dyn_threshold))
-            vshort_bear_w = min(1.0, max(0.0, -ret_vshort / dyn_threshold))
 
             ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
             ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
             ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
             ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
-            ema_spread = (ema_fast_arr[-1] - ema_slow_arr[-1]) / mid
-            ema_bull_w = min(1.0, max(0.0, ema_spread / 0.0008))
-            ema_bear_w = min(1.0, max(0.0, -ema_spread / 0.0008))
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
@@ -193,8 +188,6 @@ class Strategy:
 
             linreg_bull = _lr.slope > 0.0001
             linreg_bear = _lr.slope < -0.0001
-            linreg_bull_w = min(1.0, max(0.0, _lr.slope / 0.0002))
-            linreg_bear_w = min(1.0, max(0.0, -_lr.slope / 0.0002))
 
             vb_short = max(np.std(np.diff(np.log(closes[-VOL_BREAKOUT_SHORT:]))), 1e-6)
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
@@ -208,17 +201,14 @@ class Strategy:
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
-            bull_score = mom_bull + vshort_bull_w + ema_bull_w + rsi_bull + macd_bull + vol_breakout_bull + linreg_bull_w + donchian_bull + slope_bull
-            bear_score = mom_bear + vshort_bear_w + ema_bear_w + rsi_bear + macd_bear + vol_breakout_bear + linreg_bear_w + donchian_bear + slope_bear
-
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
             trend_gate_bypassed = abs(trend_avg) < TREND_GATE_DEADZONE
-            bullish = bull_score >= MIN_VOTES and (trend_bull or (trend_gate_bypassed and bull_score > bear_score))
-            bearish = bear_score >= MIN_VOTES and (trend_bear or (trend_gate_bypassed and bear_score > bull_score))
+            bullish = bull_votes >= MIN_VOTES and (trend_bull or (trend_gate_bypassed and bull_votes > bear_votes))
+            bearish = bear_votes >= MIN_VOTES and (trend_bear or (trend_gate_bypassed and bear_votes > bull_votes))
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
