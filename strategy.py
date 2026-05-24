@@ -130,6 +130,9 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
+            highs = bd.history["high"].values
+            lows = bd.history["low"].values
+            hl2 = (highs + lows) * 0.5
             mid = bd.close
 
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
@@ -137,18 +140,18 @@ class Strategy:
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
-            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            ret_long = (hl2[-1] - hl2[-LONG_WINDOW]) / hl2[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log(closes[-LINREG_PERIOD:]))
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log(hl2[-LINREG_PERIOD:]))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
-            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
+            ret_vshort = (hl2[-1] - hl2[-SHORT_WINDOW]) / hl2[-SHORT_WINDOW]
+            ret_short = (hl2[-1] - hl2[-adaptive_med]) / hl2[-adaptive_med]
+            ret_med = (hl2[-1] - hl2[-MED2_WINDOW]) / hl2[-MED2_WINDOW]
 
             mom_bull = ret_short > dyn_threshold
             mom_bear = ret_short < -dyn_threshold
@@ -170,7 +173,7 @@ class Strategy:
             macd_bull = macd_rel > 0.0003
             macd_bear = macd_rel < -0.0003
 
-            ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            ema_slope_arr = ema(hl2[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
             slope_bull = ema_slope > 0.0005
             slope_bear = ema_slope < -0.0005
@@ -182,8 +185,8 @@ class Strategy:
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
             vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
-            donchian_bull = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004
-            donchian_bear = mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
+            donchian_bull = mid > np.max(highs[-(DONCHIAN_PERIOD+1):-1]) * 1.001
+            donchian_bear = mid < np.min(lows[-(DONCHIAN_PERIOD+1):-1]) * 0.999
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
