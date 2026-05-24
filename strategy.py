@@ -130,7 +130,6 @@ class Strategy:
                 continue
 
             closes = bd.history["close"].values
-            hl2 = (bd.history["high"].values + bd.history["low"].values) * 0.5
             mid = bd.close
 
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
@@ -151,14 +150,10 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            # HL2-based returns for noise-immune momentum voters
-            ret_short_hl2 = (hl2[-1] - hl2[-adaptive_med]) / hl2[-adaptive_med]
-            ret_vshort_hl2 = (hl2[-1] - hl2[-SHORT_WINDOW]) / hl2[-SHORT_WINDOW]
-
-            mom_bull = ret_short_hl2 > dyn_threshold
-            mom_bear = ret_short_hl2 < -dyn_threshold
-            vshort_bull = ret_vshort_hl2 > dyn_threshold * 0.5
-            vshort_bear = ret_vshort_hl2 < -dyn_threshold * 0.5
+            mom_bull = ret_short > dyn_threshold
+            mom_bear = ret_short < -dyn_threshold
+            vshort_bull = ret_vshort > dyn_threshold * 0.5
+            vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             ema_bull = _ef > _es
