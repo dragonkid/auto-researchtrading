@@ -42,11 +42,11 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
-# RSI exit parameters
-RSI_OVERBOUGHT = 73
-RSI_OVERSOLD = 27
-RSI_OB_TIGHT = 65
-RSI_OS_TIGHT = 35
+# RSI exit parameters (HL2-based: thresholds shifted closer to 50)
+RSI_OVERBOUGHT = 68
+RSI_OVERSOLD = 32
+RSI_OB_TIGHT = 61
+RSI_OS_TIGHT = 39
 RSI_EXIT_VOL_LOW = 0.7
 RSI_EXIT_VOL_HIGH = 1.8
 RSI_EXIT_TREND_DECAY = 0.08
@@ -158,7 +158,9 @@ class Strategy:
             ema_bear = _ef < _es
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
+            hl2 = (bd.history["high"].values + bd.history["low"].values) / 2
             rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
+            exit_rsi = calc_rsi(hl2, int(round(6 + 2 * rsi_trend_str)))
             rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
@@ -237,9 +239,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and exit_rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and exit_rsi < effective_os:
                     target = 0.0
 
                 if target != 0:
