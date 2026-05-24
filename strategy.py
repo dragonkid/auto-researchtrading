@@ -108,21 +108,15 @@ def ema(values, span):
 
 def calc_rsi(closes, period):
     deltas = np.diff(closes[-(period+1):])
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-    avg_gain = np.mean(gains)
-    avg_loss = np.mean(losses)
-    rs = avg_gain / max(avg_loss, 1e-10)
-    return 100 - 100 / (1 + rs)
+    avg_gain = np.mean(np.maximum(deltas, 0))
+    avg_loss = np.mean(np.maximum(-deltas, 0))
+    return 100 - 100 / (1 + avg_gain / max(avg_loss, 1e-10))
 
 
 class Strategy:
     def __init__(self):
-        self.entry_prices = {}
-        self.exit_bar = {}
+        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
-        self.peak_pnl = {}
-        self.entry_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -292,19 +286,15 @@ class Strategy:
                     target = 0.0
 
                 if target != 0 and bars_held >= 1:
-                    prev_peak = self.peak_pnl.get(symbol, 0.0)
-                    self.peak_pnl[symbol] = max(prev_peak, pos_pnl)
+                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
                     adaptive_peak_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                     if self.peak_pnl[symbol] > adaptive_peak_min:
-                        giveback = self.peak_pnl[symbol] - pos_pnl
-                        if giveback > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        if self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                flip_bearish = bear_votes >= FLIP_MIN_VOTES and trend_bear
-                flip_bullish = bull_votes >= FLIP_MIN_VOTES and trend_bull
-                if current_pos > 0 and flip_bearish and not in_cooldown:
+                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and flip_bullish and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
