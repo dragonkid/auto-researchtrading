@@ -107,9 +107,7 @@ def ema(values, span):
 
 def calc_rsi(closes, period):
     deltas = np.diff(closes[-(period+1):])
-    avg_gain = np.mean(np.maximum(deltas, 0))
-    avg_loss = np.mean(np.maximum(-deltas, 0))
-    return 100 - 100 / (1 + avg_gain / max(avg_loss, 1e-10))
+    return 100 - 100 / (1 + np.mean(np.maximum(deltas, 0)) / max(np.mean(np.maximum(-deltas, 0)), 1e-10))
 
 
 class Strategy:
@@ -193,11 +191,7 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
-
-            effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, sl_ratio_raw)) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -216,9 +210,9 @@ class Strategy:
 
             if current_pos == 0:
                 if not in_cooldown:
-                    if bullish:
+                    if bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                         target = size
-                    elif bearish:
+                    elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
                         if rsi < MEANREV_RSI_OVERSOLD:
@@ -228,10 +222,8 @@ class Strategy:
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
-                base_ob = RSI_OVERBOUGHT + sideways_exit_widen
-                base_os = RSI_OVERSOLD + sideways_exit_widen
-                effective_ob = base_ob - (base_ob - RSI_OB_TIGHT) * vol_exit_blend
-                effective_os = base_os + (RSI_OS_TIGHT - base_os) * vol_exit_blend
+                effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
+                effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
@@ -241,9 +233,8 @@ class Strategy:
                     effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                     effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                adaptive_grace = RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)
-                if bars_held < adaptive_grace:
-                    grace_blend = 1.0 - bars_held / adaptive_grace
+                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
+                    grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
@@ -251,11 +242,10 @@ class Strategy:
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
-                if target != 0 and bars_held >= 1:
+                if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)):
-                        if self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                            target = 0.0
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        target = 0.0
 
                 if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
                     target = -size
@@ -269,8 +259,6 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol] = mid
-                    self.peak_pnl[symbol] = 0.0
-                    self.entry_bar[symbol] = self.bar_count
+                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
         return signals
