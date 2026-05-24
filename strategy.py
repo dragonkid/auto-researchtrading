@@ -112,13 +112,10 @@ def calc_rsi(closes, period):
     return 100 - 100 / (1 + avg_gain / max(avg_loss, 1e-10))
 
 
-VOTE_SMOOTH = 0.6  # weight on current bar's votes (0.4 on prior bar)
-
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
-        self.prev_votes = {}  # per-symbol (prev_bull, prev_bear)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -188,14 +185,8 @@ class Strategy:
             donchian_bull = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004
             donchian_bear = mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.997
 
-            raw_bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
-            raw_bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
-
-            # Smooth vote counts to reduce noise sensitivity at threshold
-            pb, pbe = self.prev_votes.get(symbol, (raw_bull_votes, raw_bear_votes))
-            bull_votes = VOTE_SMOOTH * raw_bull_votes + (1.0 - VOTE_SMOOTH) * pb
-            bear_votes = VOTE_SMOOTH * raw_bear_votes + (1.0 - VOTE_SMOOTH) * pbe
-            self.prev_votes[symbol] = (raw_bull_votes, raw_bear_votes)
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, vol_breakout_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, vol_breakout_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength ** 0.85) * ret_long
@@ -266,9 +257,9 @@ class Strategy:
                         if self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                if current_pos > 0 and raw_bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
+                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and raw_bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
