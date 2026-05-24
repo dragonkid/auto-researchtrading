@@ -162,6 +162,7 @@ Current bottleneck: noise sensitivity in indicator TRAJECTORIES, not thresholds.
 Proven ineffective: smoothing discrete thresholds (vote counts, trend gate) has near-zero stability effect.
 Proven ineffective: linearizing exponents helps direction detection but not stability.
 Proven ineffective: single-parameter ±1/±2 sweeps (all core params at optimum).
+**Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy. Any stability gain from using open is illusory and will not generalize.
 
 Unexplored directions for stability:
 - Voter output smoothing: EMA/decay on individual voter outputs before aggregation
