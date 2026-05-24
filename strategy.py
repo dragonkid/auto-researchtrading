@@ -244,6 +244,9 @@ class Strategy:
                     uw_blend = min(1.0, abs(pos_pnl) / UNDERWATER_WIDEN_SAT)
                     effective_ob += UNDERWATER_WIDEN_MAX * uw_blend
                     effective_os -= UNDERWATER_WIDEN_MAX * uw_blend
+                if bars_held >= 10:
+                    effective_ob += 0.5
+                    effective_os -= 0.5
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
