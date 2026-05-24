@@ -115,6 +115,7 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.prior_trend_avg = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -257,10 +258,13 @@ class Strategy:
                         if self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
+                flip_trend_avg = 0.75 * trend_avg + 0.25 * self.prior_trend_avg.get(symbol, trend_avg)
+                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and flip_trend_avg < 0 and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and flip_trend_avg > 0 and not in_cooldown:
                     target = size
+
+            self.prior_trend_avg[symbol] = trend_avg
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
