@@ -223,9 +223,8 @@ class Strategy:
                     effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
                     effective_os = effective_os + (50.0 - effective_os) * profit_blend
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                grace_n = RSI_YOUNG_GRACE_BARS + (1 if vol_ratio < 0.7 else 0) - (1 if vol_ratio > 1.0 else 0)
-                if bars_held < grace_n:
-                    grace_blend = 1.0 - bars_held / grace_n
+                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
+                    grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
                 if pos_pnl < 0:
