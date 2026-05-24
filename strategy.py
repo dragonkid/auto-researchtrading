@@ -183,8 +183,8 @@ class Strategy:
             linreg_bull = _lr.slope > 0.0001
             linreg_bear = _lr.slope < -0.0001
 
-            donchian_bull = hl2[-1] > np.max(hl2[-(DONCHIAN_PERIOD+1):-1]) * 1.004
-            donchian_bear = hl2[-1] < np.min(hl2[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
+            donchian_bull = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004
+            donchian_bear = mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
