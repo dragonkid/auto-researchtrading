@@ -184,8 +184,8 @@ class Strategy:
             _macd_line = _macd_fast - _macd_slow
             _signal_line = ema(_macd_line, MACD_SIGNAL)
             macd_rel = (_macd_line[-1] - _signal_line[-1]) / mid
-            macd_bull = macd_rel > 0.0003
-            macd_bear = macd_rel < -0.0003
+            macd_bull = macd_rel > 0.00032
+            macd_bear = macd_rel < -0.00032
 
             ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
