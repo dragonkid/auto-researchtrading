@@ -230,11 +230,6 @@ class Strategy:
                         target = size
                     elif bearish:
                         target = -size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if rsi < MEANREV_RSI_OVERSOLD:
-                            target = size
-                        elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
