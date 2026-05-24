@@ -155,8 +155,7 @@ class Strategy:
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
-            _ef = np.mean(closes[-EMA_FAST:])
-            _es = np.mean(closes[-EMA_SLOW:])
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             ema_bull = _ef > _es
             ema_bear = _ef < _es
 
