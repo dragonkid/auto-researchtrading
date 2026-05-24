@@ -253,7 +253,9 @@ class Strategy:
 
                 if target != 0 and bars_held >= 1:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)):
+                    # Adaptive trailing activation: lower for fast profits (capture oscillation gains before reversal)
+                    bars_factor = max(0.85, min(1.0, bars_held / 6.0))
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * bars_factor:
                         if self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
