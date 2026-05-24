@@ -45,10 +45,15 @@ For each experiment:
 5. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
-   **Keep/discard rules** (unchanged):
+   **Keep/discard rules:**
    - `composite_score` improved by **at least +0.01** vs the best `keep` in `results.tsv`.
    - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs baseline.
    - **No more than 2 out of 4 regimes may regress** (strictly negative Δ).
+
+   **Stability keep (alternative path):** When `min_stability < 0.80`, an experiment qualifies as keep if:
+   - `min_stability` improved by **at least +0.05** vs baseline.
+   - `composite_score` did NOT drop by more than **1.0** vs baseline (i.e., Δcomposite >= -1.0).
+   - This path exists because structural changes that improve stability often cause short-term regime regression. The long-term payoff (crossing 0.80 removes the 50% penalty) justifies accepting moderate composite loss.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
    If discard: run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
