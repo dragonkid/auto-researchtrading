@@ -136,6 +136,7 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            ret_long_blend = 0.8 * ret_long + 0.2 * (closes[-2] - closes[-(LONG_WINDOW + 1)]) / closes[-(LONG_WINDOW + 1)]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
@@ -157,9 +158,9 @@ class Strategy:
             ema_bull = _ef > _es
             ema_bear = _ef < _es
 
-            rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
+            rsi_trend_str = min(abs(ret_long_blend) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
-            rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long_blend > 0 else 1.0)
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
 
