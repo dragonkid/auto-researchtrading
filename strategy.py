@@ -54,8 +54,7 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
-RSI_YOUNG_OB_WIDEN = 4.0
-RSI_YOUNG_OS_WIDEN = 4.0
+RSI_YOUNG_WIDEN = 4.0
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -160,10 +159,9 @@ class Strategy:
             vshort_bull = ret_vshort > dyn_threshold * 0.5
             vshort_bear = ret_vshort < -dyn_threshold * 0.5
 
-            ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
-            ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
-            ema_bull = ema_fast_arr[-1] > ema_slow_arr[-1]
-            ema_bear = ema_fast_arr[-1] < ema_slow_arr[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            ema_bull = _ef > _es
+            ema_bear = _ef < _es
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             adaptive_rsi_period = int(round(6 + 2 * rsi_trend_str))
@@ -173,11 +171,8 @@ class Strategy:
             rsi_bull = rsi > rsi_thresh
             rsi_bear = rsi < rsi_thresh
 
-            _macd_fast = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST)
-            _macd_slow = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-            _macd_line = _macd_fast - _macd_slow
-            _signal_line = ema(_macd_line, MACD_SIGNAL)
-            macd_rel = (_macd_line[-1] - _signal_line[-1]) / mid
+            _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             macd_bull = macd_rel > 0.0003
             macd_bear = macd_rel < -0.0003
 
@@ -216,13 +211,9 @@ class Strategy:
             vol_scale = (TARGET_VOL / realized_vol) ** 0.85
             vol_scale = max(0.3, min(2.5, vol_scale))
 
-            vol_ratio_sl = max(0.5, min(2.0, sl_ratio_raw))
-            calm_vol_gate = min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
-            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - vol_ratio_sl) ** 0.85 * calm_vol_gate
+            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, sl_ratio_raw)) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
-
-            vote_boost = HIGH_VOTE_BOOST_MULT
 
             volumes = bd.history["volume"].values
             recent_vol = np.mean(volumes[-VOL_CONFIRM_LOOKBACK:])
@@ -233,8 +224,7 @@ class Strategy:
             sideways_strength = min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
-            dampened_cross_agree = 1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)
-            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * dampened_cross_agree * vote_boost * vol_confirm_mult
+            combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
             adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
@@ -278,8 +268,8 @@ class Strategy:
                 adaptive_grace = RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)
                 if bars_held < adaptive_grace:
                     grace_blend = 1.0 - bars_held / adaptive_grace
-                    effective_ob += RSI_YOUNG_OB_WIDEN * grace_blend
-                    effective_os -= RSI_YOUNG_OS_WIDEN * grace_blend
+                    effective_ob += RSI_YOUNG_WIDEN * grace_blend
+                    effective_os -= RSI_YOUNG_WIDEN * grace_blend
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
@@ -300,9 +290,8 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    self.entry_prices.pop(symbol, None)
-                    self.peak_pnl.pop(symbol, None)
-                    self.entry_bar.pop(symbol, None)
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                        _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
