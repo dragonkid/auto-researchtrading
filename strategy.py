@@ -115,6 +115,7 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.smoothed_trend = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -193,8 +194,11 @@ class Strategy:
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
-            bullish = bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
-            bearish = bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
+            prev_smooth = self.smoothed_trend.get(symbol, trend_avg)
+            entry_trend = 0.90 * trend_avg + 0.10 * prev_smooth
+            self.smoothed_trend[symbol] = entry_trend
+            bullish = bull_votes >= MIN_VOTES and (entry_trend > 0 or (abs(entry_trend) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
+            bearish = bear_votes >= MIN_VOTES and (entry_trend < 0 or (abs(entry_trend) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
