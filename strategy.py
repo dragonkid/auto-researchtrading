@@ -199,7 +199,7 @@ class Strategy:
             vol_breakout_bull = vb_short > realized_vol and ret_vshort > dyn_threshold * 0.20
             vol_breakout_bear = vb_short > realized_vol and ret_vshort < -dyn_threshold * 0.20
 
-            donchian_high = np.max(bd.history["high"].values[-(DONCHIAN_PERIOD+1):-1])
+            donchian_high = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
             donchian_low = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
             donchian_bull = mid > donchian_high * 1.003
             donchian_bear = mid < donchian_low * 0.997
