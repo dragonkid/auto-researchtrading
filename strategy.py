@@ -244,9 +244,13 @@ class Strategy:
                     uw_blend = min(1.0, abs(pos_pnl) / UNDERWATER_WIDEN_SAT)
                     effective_ob += UNDERWATER_WIDEN_MAX * uw_blend
                     effective_os -= UNDERWATER_WIDEN_MAX * uw_blend
-                if current_pos > 0 and rsi > effective_ob:
+                _ep = int(round(6 + 2 * rsi_trend_str))
+                _ed = np.diff(closes[-(_ep+1):]).copy()
+                _ed[-1] = (highs[-1] + lows[-1] - highs[-2] - lows[-2]) / 2.0
+                exit_rsi = 100 - 100 / (1 + np.mean(np.maximum(_ed, 0)) / max(np.mean(np.maximum(-_ed, 0)), 1e-10))
+                if current_pos > 0 and exit_rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and exit_rsi < effective_os:
                     target = 0.0
 
                 if target != 0:
