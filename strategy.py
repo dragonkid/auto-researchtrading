@@ -237,10 +237,9 @@ class Strategy:
                     grace_blend = 1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0))
                     effective_ob += RSI_YOUNG_WIDEN * grace_blend
                     effective_os -= RSI_YOUNG_WIDEN * grace_blend
-                exit_margin = min(2.0, max(0.0, 0.002 - pos_pnl) / 0.012 * 2.0)
-                if current_pos > 0 and rsi > effective_ob + exit_margin:
+                if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os - exit_margin:
+                elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
 
                 if target != 0:
