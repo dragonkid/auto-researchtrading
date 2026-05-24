@@ -22,7 +22,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 
 ## Session protocol
 
-You run up to 5 experiments per session. Each experiment is still a single-variable change (one idea tested in isolation). The difference from single-experiment mode: you can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements.
+You run up to 5 experiments per session. Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements.
 
 ### Phase 1: Read context (once per session)
 
@@ -124,9 +124,16 @@ Search regimes (4 non-overlapping periods):
 
 ## Primary Objective: Signal Stability (min_stability ≥ 0.85)
 
-**Stability is the #1 priority.** Until min_stability reaches 0.85, ALL base performance gains are permanently taxed 15-30% by the stability multiplier. Improving base score by +1.0 only yields +0.7-0.8 after penalty. But raising min_stability from 0.67→0.85 removes the penalty entirely (+18% on EVERY regime score simultaneously).
+**Stability is the #1 priority.** The scoring now applies a **hard 50% penalty** when stability < 0.80. This means:
+- stability 0.70 → factor = (0.70/0.85) × 0.5 = 0.41 (score loses 59%)
+- stability 0.80 → factor = 0.80/0.85 = 0.94 (score loses only 6%)
+- stability 0.85+ → factor = 1.0 (no penalty)
+
+Crossing the 0.80 threshold is worth ~+40% on every regime score simultaneously. This dwarfs any parameter tweak.
 
 **Do NOT conclude that "stability requires fundamentally different architecture and is too risky."** That reasoning is a trap — it leads to endless base-performance tweaks that never close the gap. Structural changes to improve stability ARE the highest-ROI experiments available.
+
+**Multi-variable structural changes are explicitly allowed** for stability work. You are NOT limited to single-parameter tweaks. Diagnose the noise sensitivity source first, then propose whatever scope of change is needed — including architectural modifications that touch multiple components simultaneously.
 
 ### Diagnostic-first approach (mandatory before proposing stability fixes)
 
