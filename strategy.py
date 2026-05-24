@@ -115,7 +115,6 @@ def calc_rsi(closes, period):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.exit_prices = {}
         self.bar_count = 0
 
     def on_bar(self, bar_data, portfolio):
@@ -199,10 +198,6 @@ class Strategy:
 
             effective_cooldown = COOLDOWN_BARS * cooldown_trend_strength
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < effective_cooldown
-            # Price-based re-entry gate: require 0.15% move from exit price
-            if not in_cooldown and symbol in self.exit_prices:
-                if abs(mid - self.exit_prices[symbol]) / self.exit_prices[symbol] < 0.0015:
-                    in_cooldown = True
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, sl_ratio_raw)) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -273,7 +268,6 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
-                    self.exit_prices[symbol] = mid
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol] = mid
                     self.peak_pnl[symbol] = 0.0
