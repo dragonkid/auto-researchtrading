@@ -93,7 +93,6 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
-VOL_BREAKOUT_SHORT = 3
 DONCHIAN_PERIOD = 13
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
@@ -146,8 +145,7 @@ class Strategy:
 
             highs = bd.history["high"].values
             lows = bd.history["low"].values
-            hl2 = (highs + lows) / 2.0
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log(hl2[-LINREG_PERIOD:]))
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log((highs[-LINREG_PERIOD:] + lows[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -155,36 +153,26 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            mom_bull = ret_short > dyn_threshold
-            mom_bear = ret_short < -dyn_threshold
-            vshort_bull = ret_vshort > dyn_threshold * 0.5
-            vshort_bear = ret_vshort < -dyn_threshold * 0.5
+            mom_bull, mom_bear = ret_short > dyn_threshold, ret_short < -dyn_threshold
+            vshort_bull, vshort_bear = ret_vshort > dyn_threshold * 0.5, ret_vshort < -dyn_threshold * 0.5
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            ema_bull = _ef > _es
-            ema_bear = _ef < _es
+            ema_bull, ema_bear = _ef > _es, _ef < _es
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
             rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            rsi_bull = rsi > rsi_thresh
-            rsi_bear = rsi < rsi_thresh
+            rsi_bull, rsi_bear = rsi > rsi_thresh, rsi < rsi_thresh
 
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            macd_bull = macd_rel > 0.0003
-            macd_bear = macd_rel < -0.0003
+            macd_bull, macd_bear = macd_rel > 0.0003, macd_rel < -0.0003
 
             ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
-            slope_bull = ema_slope > 0.0005
-            slope_bear = ema_slope < -0.0005
-
-            linreg_bull = _lr.slope > 0.0001
-            linreg_bear = _lr.slope < -0.0001
-
-            donchian_bull = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004
-            donchian_bear = mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
+            slope_bull, slope_bear = ema_slope > 0.0005, ema_slope < -0.0005
+            linreg_bull, linreg_bear = _lr.slope > 0.0001, _lr.slope < -0.0001
+            donchian_bull, donchian_bear = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
@@ -217,11 +205,10 @@ class Strategy:
                         target = size
                     elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                         target = -size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
-                        if rsi < MEANREV_RSI_OVERSOLD:
-                            target = size
-                        elif rsi > MEANREV_RSI_OVERBOUGHT:
-                            target = -size
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi < MEANREV_RSI_OVERSOLD:
+                        target = size
+                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi > MEANREV_RSI_OVERBOUGHT:
+                        target = -size
             else:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
