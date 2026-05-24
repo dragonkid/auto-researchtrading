@@ -96,6 +96,7 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
+FLIP_TREND_MARGIN = 0.002
 
 
 def ema(values, span):
@@ -292,9 +293,9 @@ class Strategy:
                         if self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                             target = 0.0
 
-                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
+                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < -FLIP_TREND_MARGIN and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > FLIP_TREND_MARGIN and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
