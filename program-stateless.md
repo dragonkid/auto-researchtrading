@@ -20,6 +20,9 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Install new packages. Only numpy, pandas, scipy, and standard library.
 - Look at holdout data (2025-01 onwards).
 
+### Phase priority rule
+When min_stability < 0.75: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
+
 ## Session protocol
 
 You run up to 5 experiments per session. Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements.
@@ -152,6 +155,20 @@ Before proposing any solution, **diagnose** where the noise sensitivity actually
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
 - A stability gain of +0.05 (e.g., 0.70→0.75) is worth pursuing even if base_score drops slightly (the net effect on composite depends on the trade-off)
 - Acceptable trade: lose ≤2.0 base_score if stability improves by ≥0.10 (net composite gain from reduced penalty)
+
+## Stability-first directions (priority when min_stability < 0.80)
+
+Current bottleneck: noise sensitivity in indicator TRAJECTORIES, not thresholds.
+Proven ineffective: smoothing discrete thresholds (vote counts, trend gate) has near-zero stability effect.
+Proven ineffective: linearizing exponents helps direction detection but not stability.
+Proven ineffective: single-parameter ±1/±2 sweeps (all core params at optimum).
+
+Unexplored directions for stability:
+- Voter output smoothing: EMA/decay on individual voter outputs before aggregation
+- Confidence weighting: voters near their decision boundary contribute less
+- Temporal consistency: penalize vote flips within N bars (hysteresis)
+- Reduce voter count: merge correlated voters (e.g., momentum + ultra-short momentum)
+- Bar-level signal averaging: use 2-3 bar lookback for voter inputs instead of single bar
 
 ## Strategy research directions
 
