@@ -173,7 +173,7 @@ class Strategy:
 
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            macd_bull = macd_rel > 0.00035
+            macd_bull = macd_rel > 0.0003
             macd_bear = macd_rel < -0.0003
 
             ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
