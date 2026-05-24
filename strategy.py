@@ -40,7 +40,7 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
 # RSI voter
 RSI_TREND_BIAS = 2.0
-RSI_TREND_BIAS_DECAY = 0.09
+RSI_TREND_BIAS_DECAY = 0.10
 
 # RSI exit parameters
 RSI_OVERBOUGHT = 73
@@ -225,7 +225,8 @@ class Strategy:
             strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - sideways_strength)
             strength_scale = max(strength_floor, min(2.0, mom_strength))
             combined_mult = vol_scale * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
-            adaptive_cap = (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
+            adaptive_cap = MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))
+            adaptive_cap += MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
             combined_mult = min(combined_mult, adaptive_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
