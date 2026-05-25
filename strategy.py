@@ -23,7 +23,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 4
 
 # Linear regression
-LINREG_PERIOD = 16
+LINREG_PERIOD = 17
 
 # Volatility parameters
 VOL_LOOKBACK = 24
