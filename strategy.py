@@ -56,6 +56,10 @@ RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
+# Channel break exit
+CHANNEL_EXIT_LOOKBACK = 5
+CHANNEL_EXIT_BUFFER = 0.001
+
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -211,6 +215,13 @@ class Strategy:
                     target = 0.0
                 if target != 0 and abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42)):
                     target = 0.0
+                if target != 0:
+                    _ch_lows = bd.history["low"].values[-(CHANNEL_EXIT_LOOKBACK+1):-1]
+                    _ch_highs = bd.history["high"].values[-(CHANNEL_EXIT_LOOKBACK+1):-1]
+                    if current_pos > 0 and mid < np.min(_ch_lows) * (1.0 - CHANNEL_EXIT_BUFFER):
+                        target = 0.0
+                    elif current_pos < 0 and mid > np.max(_ch_highs) * (1.0 + CHANNEL_EXIT_BUFFER):
+                        target = 0.0
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
