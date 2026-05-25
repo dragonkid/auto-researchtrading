@@ -31,9 +31,6 @@ VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 TARGET_VOL = 0.015
 
-# Input denoising
-SMOOTH_SPAN = 3                    # EMA span for close pre-filter
-
 # Entry threshold
 BASE_THRESHOLD = 0.005
 DYN_THRESHOLD_FLOOR = 0.00475
@@ -128,38 +125,35 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
 
-            # Pre-filter close with EMA-3 for short-term indicators (reduces ±5bps noise to ±2.9bps)
-            sc = ema(closes[-(max(LONG_WINDOW, EMA_SLOW) + 10):], SMOOTH_SPAN)
-
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
-            ret_long = (sc[-1] - sc[-LONG_WINDOW]) / sc[-LONG_WINDOW]
+            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            ret_vshort = (sc[-1] - sc[-SHORT_WINDOW]) / sc[-SHORT_WINDOW]
-            ret_short = (sc[-1] - sc[-adaptive_med]) / sc[-adaptive_med]
+            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
 
-            _ef, _es = ema(sc, EMA_FAST)[-1], ema(sc, EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(sc[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            _rd_exit = np.diff(sc[-7:])
+            _rd_exit = np.diff(closes[-7:])
             rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
-            _ml = ema(sc[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(sc[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-            _ea = ema(sc[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / sc[-1] > 0.0003, _lr.slope > 0.00015, sc[-1] > np.max(sc[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / sc[-1] < -0.0003, _lr.slope < -0.00015, sc[-1] < np.min(sc[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((sc[-1] - sc[-MED2_WINDOW]) / sc[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
