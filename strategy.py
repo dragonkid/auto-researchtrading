@@ -197,9 +197,6 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-                if bars_held >= 5 and 0.003 < pos_pnl < 0.02 and vol_ratio >= 0.55 and ((current_pos > 0 and _macd_hist > 0.0003) or (current_pos < 0 and _macd_hist < -0.0003)):
-                    effective_ob, effective_os = effective_ob + 0.5, effective_os - 0.5
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
