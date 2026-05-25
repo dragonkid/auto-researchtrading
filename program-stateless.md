@@ -32,6 +32,10 @@ You run up to 5 experiments per session. Each experiment may be a **single-varia
 1. Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30`.
 2. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep `results.tsv` descriptions for directions you're considering. If a direction has 10+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
 
+### ESCALATION RULE (multi-variable architectural change)
+
+If the last 5+ stability-targeted experiments in `results.tsv` all achieved < +0.005 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
+
 ### Phase 2: Experiment loop (repeat up to 5 times)
 
 For each experiment:
@@ -48,10 +52,11 @@ For each experiment:
 5. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
-   **Keep/discard rules:**
-   - `composite_score` improved by **at least +0.01** vs the best `keep` in `results.tsv`.
+   **Keep/discard rules (composite path):**
+   - `composite_score` improved by **at least +0.05** vs the best `keep` in `results.tsv`.
    - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs baseline.
    - **No more than 2 out of 4 regimes may regress** (strictly negative Δ).
+   - **While `min_stability < 0.80`:** composite keep also requires `min_stability` did NOT decrease vs baseline (Δ ≥ 0). Composite improvements that sacrifice stability are rejected.
 
    **Stability keep (alternative path):** When `min_stability < 0.80`, an experiment qualifies as keep if:
    - `min_stability` improved by **at least +0.01** vs baseline.
