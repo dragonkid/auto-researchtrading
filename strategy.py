@@ -56,10 +56,6 @@ RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
-# Underwater RSI exit widening
-UNDERWATER_WIDEN_MAX = 1.5
-UNDERWATER_WIDEN_SAT = 0.012
-
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -196,9 +192,6 @@ class Strategy:
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
-                if pos_pnl < 0:
-                    _uw = UNDERWATER_WIDEN_MAX * min(1.0, abs(pos_pnl) / UNDERWATER_WIDEN_SAT)
-                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
