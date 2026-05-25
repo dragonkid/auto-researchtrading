@@ -117,6 +117,7 @@ class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
+        self.smoothed_trend = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -179,6 +180,9 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
+            entry_trend_bull = self.smoothed_trend[symbol] > 0
+            entry_trend_bear = self.smoothed_trend[symbol] < 0
             trend_bull = trend_avg > 0
             trend_bear = trend_avg < 0
 
@@ -201,9 +205,9 @@ class Strategy:
 
             if current_pos == 0:
                 if not in_cooldown:
-                    if bull_votes >= MIN_VOTES and (trend_bull or (abs(trend_avg) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    if bull_votes >= MIN_VOTES and (entry_trend_bull or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                         target = size
-                    elif bear_votes >= MIN_VOTES and (trend_bear or (abs(trend_avg) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    elif bear_votes >= MIN_VOTES and (entry_trend_bear or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                         target = -size
                     elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi < MEANREV_RSI_OVERSOLD:
                         target = size
