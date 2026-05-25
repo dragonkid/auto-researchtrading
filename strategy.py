@@ -153,8 +153,7 @@ class Strategy:
             vshort_bull, vshort_bear = ret_vshort > dyn_threshold * 0.5, ret_vshort < -dyn_threshold * 0.5
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            _ema_spread = (_ef - _es) / _es
-            ema_bull, ema_bear = _ema_spread > 0.0005, _ema_spread < -0.0005
+            ema_bull, ema_bear = _ef > _es, _ef < _es
 
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             rsi = calc_rsi(closes, int(round(6 + 2 * rsi_trend_str)))
