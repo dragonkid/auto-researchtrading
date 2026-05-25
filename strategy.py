@@ -118,7 +118,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.smoothed_vol = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -137,7 +136,6 @@ class Strategy:
 
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
-            self.smoothed_vol[symbol] = 0.85 * vol_ratio + 0.15 * self.smoothed_vol.get(symbol, vol_ratio)
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
@@ -205,7 +203,7 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi > MEANREV_RSI_OVERBOUGHT:
                     target = -size
             elif current_pos != 0:
-                vol_exit_blend = max(0.0, min(1.0, (self.smoothed_vol[symbol] - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
+                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
