@@ -154,8 +154,8 @@ class Strategy:
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
             ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
-            mom_bull, mom_bear = ret_short > dyn_threshold, ret_short < -dyn_threshold
-            vshort_bull, vshort_bear = ret_vshort > dyn_threshold * 0.5, ret_vshort < -dyn_threshold * 0.5
+            mom_bull = ret_short > dyn_threshold or ret_vshort > dyn_threshold * 0.5
+            mom_bear = ret_short < -dyn_threshold or ret_vshort < -dyn_threshold * 0.5
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             ema_bull, ema_bear = _ef > _es, _ef < _es
@@ -175,8 +175,8 @@ class Strategy:
             linreg_bull, linreg_bear = _lr.slope > 0.0001, _lr.slope < -0.0001
             donchian_bull, donchian_bear = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
+            bull_votes = sum([mom_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
+            bear_votes = sum([mom_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
