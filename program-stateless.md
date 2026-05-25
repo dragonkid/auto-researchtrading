@@ -163,6 +163,7 @@ Proven ineffective: smoothing discrete thresholds (vote counts, trend gate) has 
 Proven ineffective: linearizing exponents helps direction detection but not stability.
 Proven ineffective: single-parameter ±1/±2 sweeps (all core params at optimum).
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy. Any stability gain from using open is illusory and will not generalize.
+**HL2 stability gains are overstated.** HL2=(high+low)/2 receives roughly half the perturbation of close (because high/low only change when perturbed close exceeds original range). In trending regimes with wide bars, HL2 is nearly unperturbed — this flatters stability scores. Acceptable use: multi-point aggregations (e.g., linreg over 16 bars) where averaging further reduces noise. Unacceptable use: single-point comparisons (e.g., Donchian max/min) or magnitude calculations (breaks sizing calibration). Always discount reported HL2 stability gains by ~50%.
 
 Unexplored directions for stability:
 - Voter output smoothing: EMA/decay on individual voter outputs before aggregation
