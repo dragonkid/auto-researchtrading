@@ -56,6 +56,10 @@ RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
+# Exit RSI confirmation
+EXIT_RSI_CLEAR_MARGIN = 3.0
+EXIT_RSI_CONFIRM_MARGIN = 3.0
+
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -109,6 +113,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_rsi_exit = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -199,9 +204,10 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                if current_pos > 0 and rsi_exit > effective_ob:
+                _prev_rsi = self.prev_rsi_exit.get(symbol, 50.0)
+                if current_pos > 0 and rsi_exit > effective_ob and (rsi_exit > effective_ob + EXIT_RSI_CLEAR_MARGIN or _prev_rsi > effective_ob - EXIT_RSI_CONFIRM_MARGIN):
                     target = 0.0
-                elif current_pos < 0 and rsi_exit < effective_os:
+                elif current_pos < 0 and rsi_exit < effective_os and (rsi_exit < effective_os - EXIT_RSI_CLEAR_MARGIN or _prev_rsi < effective_os + EXIT_RSI_CONFIRM_MARGIN):
                     target = 0.0
 
                 if target != 0:
@@ -211,6 +217,8 @@ class Strategy:
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
+
+            self.prev_rsi_exit[symbol] = rsi_exit
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
