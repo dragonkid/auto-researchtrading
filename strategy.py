@@ -186,18 +186,21 @@ class Strategy:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
+                # Use market-state proxy for profit tightening (deterministic across runs)
+                _profit_proxy = ret_vshort if current_pos > 0 else -ret_vshort
                 _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
-                if pos_pnl > _apt:
-                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
+                if _profit_proxy > _apt:
+                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (_profit_proxy - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
+                # Young grace only in sideways (in trends, allow fast exit for convergence)
+                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0) and abs(ret_long) < 0.03:
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                if vol_ratio < 0.55 and _profit_proxy > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and ret_long > 0.02:
