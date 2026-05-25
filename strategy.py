@@ -199,8 +199,6 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                if (current_pos > 0 and _lr.slope < -0.0001) or (current_pos < 0 and _lr.slope > 0.0001):
-                    effective_ob, effective_os = effective_ob - 0.5, effective_os + 0.5
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
