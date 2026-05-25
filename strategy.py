@@ -104,11 +104,15 @@ def ema(values, span):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
 
+# Exit RSI smoothing
+RSI_EXIT_EMA_ALPHA = 0.70          # blend weight for current rsi_exit (higher = less smoothing)
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.rsi_exit_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -145,7 +149,9 @@ class Strategy:
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _rd_exit = np.diff(closes[-7:])
-            rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
+            _rsi_exit_raw = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
+            self.rsi_exit_ema[symbol] = RSI_EXIT_EMA_ALPHA * _rsi_exit_raw + (1 - RSI_EXIT_EMA_ALPHA) * self.rsi_exit_ema.get(symbol, _rsi_exit_raw)
+            rsi_exit = self.rsi_exit_ema[symbol]
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
