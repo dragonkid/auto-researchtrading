@@ -163,7 +163,7 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             slope_bull, slope_bear = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005
             linreg_bull, linreg_bear = _lr.slope > 0.0001, _lr.slope < -0.0001
-            donchian_bull, donchian_bear = closes[-2] > np.max(closes[-(DONCHIAN_PERIOD+2):-2]) * 1.004, closes[-2] < np.min(closes[-(DONCHIAN_PERIOD+2):-2]) * 0.9975
+            donchian_bull, donchian_bear = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
 
             bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
