@@ -50,9 +50,9 @@ RSI_OS_TIGHT = 35
 RSI_EXIT_VOL_LOW = 0.7
 RSI_EXIT_VOL_HIGH = 1.8
 RSI_EXIT_TREND_DECAY = 0.08
+RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
-RSI_EXIT_EXT_THRESHOLD = 0.006
-RSI_EXIT_EXT_SCALE = 18.0
+RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
@@ -186,11 +186,9 @@ class Strategy:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
-                _sma20 = np.mean(closes[-20:])
-                _dir_ext = ((mid - _sma20) / _sma20) if current_pos > 0 else ((_sma20 - mid) / _sma20)
-                _ext_thresh = RSI_EXIT_EXT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
-                if _dir_ext > _ext_thresh:
-                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (_dir_ext - _ext_thresh) * RSI_EXIT_EXT_SCALE / max(0.6, min(1.8, vol_ratio)))
+                _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
+                if pos_pnl > _apt:
+                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
@@ -199,7 +197,7 @@ class Strategy:
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if vol_ratio < 0.55 and _dir_ext > 0.008 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
