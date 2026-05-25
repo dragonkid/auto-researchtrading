@@ -43,6 +43,7 @@ RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
 # RSI exit parameters
+RSI_EXIT_CONFIRM_MARGIN = 2.0
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
 RSI_OB_TIGHT = 65
@@ -196,9 +197,11 @@ class Strategy:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if current_pos > 0 and rsi > effective_ob:
-                    target = 0.0
+                    if rsi > effective_ob + RSI_EXIT_CONFIRM_MARGIN or pos_pnl <= 0 or _lr.slope < 0:
+                        target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
-                    target = 0.0
+                    if rsi < effective_os - RSI_EXIT_CONFIRM_MARGIN or pos_pnl <= 0 or _lr.slope > 0:
+                        target = 0.0
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
