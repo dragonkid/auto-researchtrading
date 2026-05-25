@@ -57,7 +57,7 @@ RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
 # Underwater RSI exit widening
-UNDERWATER_WIDEN_MAX = 2.0
+UNDERWATER_WIDEN_MAX = 1.5
 UNDERWATER_WIDEN_SAT = 0.012
 
 # Peak-profit trailing exit
