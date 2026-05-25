@@ -95,20 +95,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Confidence scoring (replaces binary vote counting for entries)
-CONF_ENTRY_THRESHOLD = 2.8        # continuous score threshold for entry (equiv ~3 binary)
-CONF_FLIP_THRESHOLD = 3.5         # higher threshold for flip decisions
-CONF_TANH_SCALES = {              # per-voter normalization scale
-    'ret_short': 1.8,
-    'ret_vshort': 1.8,
-    'ema_cross': 0.003,           # normalized by price
-    'rsi': 8.0,                   # RSI units from threshold
-    'macd_hist': 0.0004,          # histogram magnitude
-    'linreg': 0.00025,            # slope magnitude
-    'donchian': 0.006,            # fractional distance from channel
-    'ema_slope': 0.0006,          # slope magnitude
-}
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -163,39 +149,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Continuous confidence scoring: each voter contributes tanh(distance/scale) in [0,1]
-            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _donch_max = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-            _donch_min = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-            _ema_sl = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            def _conf(val, thresh, scale):
-                return 0.5 + 0.5 * np.tanh((val - thresh) / scale)
-
-            bull_conf = (
-                _conf(ret_short, dyn_threshold, dyn_threshold * CONF_TANH_SCALES['ret_short'])
-                + _conf(ret_vshort, dyn_threshold * 0.70, dyn_threshold * CONF_TANH_SCALES['ret_vshort'])
-                + _conf((_ef - _es) / mid, 0.0, CONF_TANH_SCALES['ema_cross'])
-                + _conf(rsi, _rsi_thresh, CONF_TANH_SCALES['rsi'])
-                + _conf(_macd_val, 0.0003, CONF_TANH_SCALES['macd_hist'])
-                + _conf(_lr.slope, 0.00015, CONF_TANH_SCALES['linreg'])
-                + _conf((mid - _donch_max) / _donch_max, 0.004, CONF_TANH_SCALES['donchian'])
-                + _conf(_ema_sl, 0.0005, CONF_TANH_SCALES['ema_slope'])
-            )
-            bear_conf = (
-                _conf(-ret_short, dyn_threshold, dyn_threshold * CONF_TANH_SCALES['ret_short'])
-                + _conf(-ret_vshort, dyn_threshold * 0.70, dyn_threshold * CONF_TANH_SCALES['ret_vshort'])
-                + _conf((_es - _ef) / mid, 0.0, CONF_TANH_SCALES['ema_cross'])
-                + _conf(-rsi + 100, 100 - _rsi_thresh, CONF_TANH_SCALES['rsi'])
-                + _conf(-_macd_val, 0.0003, CONF_TANH_SCALES['macd_hist'])
-                + _conf(-_lr.slope, 0.00015, CONF_TANH_SCALES['linreg'])
-                + _conf((_donch_min - mid) / _donch_min, 0.0025, CONF_TANH_SCALES['donchian'])
-                + _conf(-_ema_sl, 0.0005, CONF_TANH_SCALES['ema_slope'])
-            )
-            # Keep integer votes for flip logic (higher threshold already provides noise resistance)
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > _rsi_thresh, _macd_val > 0.0003, _lr.slope > 0.00015, mid > _donch_max * 1.004, _ema_sl > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < _rsi_thresh, _macd_val < -0.0003, _lr.slope < -0.00015, mid < _donch_min * 0.9975, _ema_sl < -0.0005])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -217,9 +172,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_conf >= CONF_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_conf > bear_conf)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size
-                elif bear_conf >= CONF_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_conf > bull_conf)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
