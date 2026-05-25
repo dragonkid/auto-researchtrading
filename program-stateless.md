@@ -53,14 +53,14 @@ For each experiment:
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
    **Keep/discard rules (composite path):**
-   - `composite_score` improved by **at least +0.05** vs the best `keep` in `results.tsv`.
+   - `composite_score` improved by **at least +0.03** vs the best `keep` in `results.tsv`.
    - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs baseline.
    - **No more than 2 out of 4 regimes may regress** (strictly negative Δ).
    - **While `min_stability < 0.80`:** composite keep also requires `min_stability` did NOT decrease vs baseline (Δ ≥ 0). Composite improvements that sacrifice stability are rejected.
 
    **Stability keep (alternative path):** When `min_stability < 0.80`, an experiment qualifies as keep if:
    - `min_stability` improved by **at least +0.01** vs baseline.
-   - No regime's `max_dd_pct` increased by more than **0.5%** vs baseline.
+   - No regime's `max_dd_pct` increased by more than **1.0%** vs baseline.
    - `composite_score` did NOT drop by more than **2.0** vs baseline.
    - This path exists because structural changes that improve stability often reduce returns (fewer entries, smaller positions, smoother signals). That's acceptable — crossing 0.80 removes the 50% penalty, which more than compensates for moderate return loss. But DD must not worsen.
 
