@@ -109,7 +109,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.smoothed_ob, self.smoothed_os = {}, {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -190,15 +189,12 @@ class Strategy:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if pos_pnl < 0 and rsi_trend_str > 0.5:
-                    _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
-                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                effective_ob = 0.85 * effective_ob + 0.15 * self.smoothed_ob.get(symbol, effective_ob)
-                effective_os = 0.85 * effective_os + 0.15 * self.smoothed_os.get(symbol, effective_os)
-                self.smoothed_ob[symbol], self.smoothed_os[symbol] = effective_ob, effective_os
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
+                if pos_pnl < 0 and rsi_trend_str > 0.5:
+                    _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
+                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
@@ -215,12 +211,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.smoothed_ob, self.smoothed_os):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.smoothed_ob.pop(symbol, None)
-                    self.smoothed_os.pop(symbol, None)
 
         return signals
