@@ -50,12 +50,15 @@ RSI_OS_TIGHT = 35
 RSI_EXIT_VOL_LOW = 0.7
 RSI_EXIT_VOL_HIGH = 1.8
 RSI_EXIT_TREND_DECAY = 0.08
+RSI_EXIT_PROFIT_THRESHOLD = 0.007
+RSI_EXIT_PROFIT_TIGHTEN = 0.15
+RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
-# Peak-profit trailing exit (disabled for stability - entry-state dependent)
-# PEAK_PROFIT_MIN_BASE = 0.025
-# PEAK_PROFIT_GIVEBACK = 0.25
+# Peak-profit trailing exit
+PEAK_PROFIT_MIN_BASE = 0.025
+PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.115
@@ -103,7 +106,7 @@ def ema(values, span):
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.entry_bar = {}, {}, {}
+        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -183,7 +186,10 @@ class Strategy:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
-                # Profit tightening removed for stability (narrows thresholds → more noise-sensitive exits)
+                _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
+                if pos_pnl > _apt:
+                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
+                    effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
@@ -198,7 +204,10 @@ class Strategy:
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
 
-                # Peak trailing removed for stability (entry-state-dependent → path divergence)
+                if target != 0:
+                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        target = 0.0
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
@@ -206,10 +215,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol], self.entry_bar[symbol] = mid, self.bar_count
+                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
         return signals
