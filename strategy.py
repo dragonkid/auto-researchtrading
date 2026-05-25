@@ -137,9 +137,8 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            mid_smooth = (closes[-1] + closes[-2]) * 0.5
-            ret_vshort = (mid_smooth - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (mid_smooth - closes[-adaptive_med]) / closes[-adaptive_med]
+            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
@@ -217,7 +216,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0 and _lr.slope < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0 and _lr.slope > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
