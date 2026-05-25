@@ -163,11 +163,49 @@ Before proposing any solution, **diagnose** where the noise sensitivity actually
 
 ### Stability methodology: diagnose → layered defense
 
-**Step 1: Diagnose the weakest voter (mandatory before any stability fix)**
-Quantify each voter's individual noise sensitivity:
-- For each voter independently, compute its per-bar flip rate under ±5bps perturbation
-- The voter with the highest flip rate is the primary noise amplifier
-- A voter that flips on >30% of bars under ±5bps noise is a clear removal/replacement candidate
+**⚠️ HARD RULE: Any stability experiment attempted WITHOUT first completing Step 1 diagnosis is INVALID. You must have concrete flip-rate numbers before proposing a fix. "I think X is noisy" is not diagnosis — you need measured data.**
+
+**Step 1: Diagnose the weakest voter (MANDATORY — run this code before ANY stability experiment)**
+
+Run this diagnostic ONCE at the start of each session (before your first stability experiment). Copy this into a temporary script, execute it, then delete the script:
+
+```python
+# diagnostic: per-voter flip rate under ±5bps noise
+# Add to strategy.py temporarily, run via: uv run python -c "from strategy import diagnose_flips; diagnose_flips()"
+def diagnose_flips():
+    """Compute per-voter flip rate: how often does each voter change output under ±5bps close perturbation?"""
+    import numpy as np
+    from prepare import load_data
+    data = load_data()
+    # Use the longest available symbol
+    for sym in ['BTC', 'ETH']:
+        if sym not in data: continue
+        df = data[sym]
+        closes_clean = df['close'].values.copy()
+        n_bars = len(closes_clean)
+        n_trials = 20
+        noise_mag = 0.0005  # ±5bps
+        
+        # For each bar, run strategy on clean vs perturbed, record each voter's output
+        # You must instrument the vote computation to extract individual voter booleans
+        # Compare: voter_bull_clean[i] != voter_bull_perturbed[i] → flip
+        # Report: flip_rate[voter] = flips / (n_bars * n_trials)
+        print(f"TODO: instrument {sym} voters, compute flip rates")
+        print(f"Target: identify voter with flip_rate > 0.30")
+diagnose_flips()
+```
+
+Adapt this skeleton to actually instrument your voters (extract each voter's boolean output per bar under clean vs perturbed close). The output you need is a table like:
+```
+Voter          | Flip rate | Bars affected
+ema_cross      | 0.12      | 847
+macd_hist      | 0.08      | 592  
+donchian       | 0.31      | 2184  ← PRIMARY TARGET
+linreg_slope   | 0.05      | 350
+...
+```
+
+**Only after you have this table** may you proceed to Step 2.
 
 **Step 2: Choose intervention from four layers (address the outermost broken layer first)**
 
