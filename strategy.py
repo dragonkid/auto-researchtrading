@@ -24,6 +24,8 @@ MACD_SIGNAL = 4
 
 # Linear regression
 LINREG_PERIOD = 16
+LINREG_EXIT_BROAD_SLOPE = 0.0004
+LINREG_EXIT_BROAD_COOLDOWN = 5
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -107,6 +109,7 @@ def ema(values, span):
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.linreg_exit_bar = {}
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -156,7 +159,7 @@ class Strategy:
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
 
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength or (self.bar_count - self.linreg_exit_bar.get(symbol, -999)) < LINREG_EXIT_BROAD_COOLDOWN
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -210,6 +213,9 @@ class Strategy:
                     target = 0.0
                 if target != 0 and abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42)):
                     target = 0.0
+                if target != 0 and ((current_pos > 0 and _lr.slope < -LINREG_EXIT_BROAD_SLOPE) or (current_pos < 0 and _lr.slope > LINREG_EXIT_BROAD_SLOPE)):
+                    target = 0.0
+                    self.linreg_exit_bar[symbol] = self.bar_count
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
