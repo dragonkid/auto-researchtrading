@@ -92,7 +92,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 DONCHIAN_PERIOD = 13
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
-FLIP_LINREG_THRESHOLD = 0.001
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -218,8 +217,6 @@ class Strategy:
                         target = 0.0
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    target = -size if current_pos > 0 else size
-                elif not in_cooldown and ((current_pos > 0 and _lr.slope < -FLIP_LINREG_THRESHOLD) or (current_pos < 0 and _lr.slope > FLIP_LINREG_THRESHOLD)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
