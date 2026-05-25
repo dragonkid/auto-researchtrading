@@ -144,6 +144,8 @@ class Strategy:
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
+            _rd_exit = np.diff(closes[-7:])
+            rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
@@ -197,9 +199,9 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                if current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi < effective_os:
+                elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
 
                 if target != 0:
