@@ -95,12 +95,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Conviction scaling (stability: reduce divergence magnitude for marginal entries)
-CONVICTION_BASE = 0.55
-CONVICTION_STEP = 0.15
-# Flip exit dead zone (stability: prevent position reversal in ambiguous trend)
-FLIP_TREND_DEADZONE = 0.005
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -179,11 +173,9 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    _conv = min(1.0, CONVICTION_BASE + CONVICTION_STEP * (bull_votes - MIN_VOTES))
-                    target = size * _conv
+                    target = size
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    _conv = min(1.0, CONVICTION_BASE + CONVICTION_STEP * (bear_votes - MIN_VOTES))
-                    target = -size * _conv
+                    target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
@@ -217,9 +209,8 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < -FLIP_TREND_DEADZONE) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > FLIP_TREND_DEADZONE)):
-                    _fconv = min(1.0, CONVICTION_BASE + CONVICTION_STEP * ((bear_votes if current_pos > 0 else bull_votes) - MIN_VOTES))
-                    target = (-size if current_pos > 0 else size) * _fconv
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
