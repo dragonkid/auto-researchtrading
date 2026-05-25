@@ -161,7 +161,8 @@ class Strategy:
             rsi_bull, rsi_bear = rsi > rsi_thresh, rsi < rsi_thresh
 
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-            macd_bull, macd_bear = _ml[-1] / mid > 0.0003, _ml[-1] / mid < -0.0003
+            macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            macd_bull, macd_bear = macd_rel > 0.0003, macd_rel < -0.0003
 
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
             slope_bull, slope_bear = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005
