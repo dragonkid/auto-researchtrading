@@ -36,7 +36,7 @@ You run up to 5 experiments per session. Each experiment may be a **single-varia
 
 If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0.005 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
 
-### Phase 2: Experiment loop (repeat up to 5 times)
+### Phase 2: Experiment loop (max 15 experiments, exit on 5 consecutive discards)
 
 For each experiment:
 
