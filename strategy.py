@@ -91,13 +91,9 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 DONCHIAN_PERIOD = 13
 MIN_VOTES = 3
-FLIP_MIN_VOTES = 5
+FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-
-# Linreg underwater flip parameters
-LINREG_FLIP_SLOPE = 0.0004
-LINREG_FLIP_LOSS_THRESHOLD = -0.003
 
 
 def ema(values, span):
@@ -220,13 +216,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Linreg underwater flip: deterministic, targets losing positions
-                if pos_pnl < LINREG_FLIP_LOSS_THRESHOLD and not in_cooldown:
-                    if (current_pos > 0 and _lr.slope < -LINREG_FLIP_SLOPE and trend_avg < 0) or \
-                       (current_pos < 0 and _lr.slope > LINREG_FLIP_SLOPE and trend_avg > 0):
-                        target = -size if current_pos > 0 else size
-                # Vote-based flip: strong signals only (5+ votes)
-                if target != 0 and not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
