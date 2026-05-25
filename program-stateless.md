@@ -3,8 +3,6 @@
 Autonomous trading strategy research on Hyperliquid perpetual futures.
 You will run **up to 5 experiments** in this session, building on your findings iteratively. The outer shell script invokes you once per "round" — each round is a coherent research arc.
 
-**⚠️ DO NOT modify or revert program-stateless.md or autoresearch.sh. These files are maintained by the human operator. You may ONLY modify strategy.py and results.tsv.**
-
 ## Context
 
 This project adapts Karpathy's autoresearch pattern for trading strategy discovery.
