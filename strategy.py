@@ -196,11 +196,9 @@ class Strategy:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if current_pos > 0 and rsi > effective_ob:
-                    if not (pos_pnl > 0.01 and vol_ratio < 0.6 and _lr.slope > 0):
-                        target = 0.0
+                    target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
-                    if not (pos_pnl > 0.01 and vol_ratio < 0.6 and _lr.slope < 0):
-                        target = 0.0
+                    target = 0.0
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
