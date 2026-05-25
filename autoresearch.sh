@@ -28,7 +28,7 @@ if [ ! -f "$RESULTS" ]; then
 fi
 
 echo "Branch: $BRANCH"
-echo "Max rounds: ${MAX_ROUNDS:-unlimited} (each round = up to 15 experiments, exits on 5 consecutive discards)"
+echo "Max rounds: ${MAX_ROUNDS:-unlimited} (each round = up to 20 experiments, exits on 5 consecutive discards)"
 echo "Council threshold: $COUNCIL_THRESHOLD consecutive discards"
 echo ""
 
@@ -117,7 +117,7 @@ while true; do
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
     -- \
-    "Working directory: $PROJECT_DIR. Run a research session. FIRST: Read program-stateless.md — it contains MANDATORY diagnostic steps you must complete before stability experiments. Then read results.tsv (from 3rd-last keep onward) and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue or exit. EXIT CONDITIONS: stop the session when (1) you hit 5 consecutive discards without progress, OR (2) you reach 15 experiments total. Otherwise keep going — especially when you're close to a breakthrough." \
+    "Working directory: $PROJECT_DIR. Run a research session. FIRST: Read program-stateless.md — it contains MANDATORY diagnostic steps you must complete before stability experiments. Then read results.tsv (from 3rd-last keep onward) and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue or exit. EXIT CONDITIONS: stop the session when (1) you hit 5 consecutive discards without progress, OR (2) you reach 20 experiments total. A discard with stability ≥ +0.005 counts as 'progress' and resets the consecutive discard counter. Otherwise keep going — especially when you're close to a breakthrough." \
     || {
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5

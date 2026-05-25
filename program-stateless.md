@@ -36,9 +36,11 @@ You run up to 5 experiments per session. Each experiment may be a **single-varia
 
 If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0.005 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
 
-### Phase 2: Experiment loop (max 15 experiments, exit on 5 consecutive discards)
+### Phase 2: Experiment loop (max 20 experiments, exit on 5 consecutive discards without progress)
 
 For each experiment:
+
+**Exit rule:** 5 consecutive discards → stop session. But a discard with stability ≥ +0.005 counts as "progress" and resets the counter — keep iterating on that direction.
 
 1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
 2. **Implement**: Edit `strategy.py` with your change.
