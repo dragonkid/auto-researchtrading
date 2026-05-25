@@ -203,7 +203,7 @@ class Strategy:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
-                if target != 0 and abs(ret_long) < 0.04 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42)):
+                if target != 0 and abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42)):
                     target = 0.0
 
                 if target != 0:
