@@ -75,9 +75,11 @@ def _run_regime_worker(args: tuple) -> dict:
     if score > 0:
         stability = compute_signal_stability(data, result)
         stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
-        # Hard gate: stability below 0.80 gets additional 50% penalty
+        # Tiered penalty: <0.80 = 50%, 0.80-0.90 = 25%, >=0.90 = no penalty
         if stability < 0.80:
-            stability_factor *= 0.5
+            stability_factor *= 0.50
+        elif stability < 0.90:
+            stability_factor *= 0.75
         score = score * stability_factor
     else:
         stability = 1.0

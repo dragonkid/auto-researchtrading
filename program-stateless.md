@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-When min_stability < 0.80: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
+When min_stability < 0.90: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
 
 ## Session protocol
 
@@ -56,13 +56,13 @@ For each experiment:
    - `composite_score` improved by **at least +0.03** vs the best `keep` in `results.tsv`.
    - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs baseline.
    - **No more than 2 out of 4 regimes may regress** (strictly negative Δ).
-   - **While `min_stability < 0.80`:** composite keep also requires `min_stability` did NOT decrease vs baseline (Δ ≥ 0). Composite improvements that sacrifice stability are rejected.
+   - **While `min_stability < 0.90`:** composite keep also requires `min_stability` did NOT decrease vs baseline (Δ ≥ 0). Composite improvements that sacrifice stability are rejected.
 
-   **Stability keep (alternative path):** When `min_stability < 0.80`, an experiment qualifies as keep if:
+   **Stability keep (alternative path):** When `min_stability < 0.90`, an experiment qualifies as keep if:
    - `min_stability` improved by **at least +0.01** vs baseline.
    - No regime's `max_dd_pct` increased by more than **1.0%** vs baseline.
    - `composite_score` did NOT drop by more than **2.0** vs baseline.
-   - This path exists because structural changes that improve stability often reduce returns (fewer entries, smaller positions, smoother signals). That's acceptable — crossing 0.80 removes the 50% penalty, which more than compensates for moderate return loss. But DD must not worsen.
+   - This path exists because structural changes that improve stability often reduce returns (fewer entries, smaller positions, smoother signals). That's acceptable — the tiered penalty (< 0.80 = 50%, 0.80-0.90 = 25%, ≥ 0.90 = none) means every stability gain directly boosts composite. Target: 0.90+.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
    If discard: run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
@@ -136,14 +136,14 @@ Search regimes (4 non-overlapping periods):
 - sideways: 2023-01 ~ 2023-12 (sideways recovery)
 - rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 
-## Primary Objective: Signal Stability (min_stability ≥ 0.85)
+## Primary Objective: Signal Stability (min_stability ≥ 0.90)
 
-**Stability is the #1 priority.** The scoring now applies a **hard 50% penalty** when stability < 0.80. This means:
-- stability 0.70 → factor = (0.70/0.85) × 0.5 = 0.41 (score loses 59%)
-- stability 0.80 → factor = 0.80/0.85 = 0.94 (score loses only 6%)
-- stability 0.85+ → factor = 1.0 (no penalty)
+**Stability is the #1 priority.** The scoring applies a **tiered penalty**:
+- stability < 0.80 → 50% penalty: factor = (stab/0.85) × 0.50 (e.g., 0.70 → 0.41, loses 59%)
+- stability 0.80–0.89 → 25% penalty: factor = (stab/0.85) × 0.75 (e.g., 0.82 → 0.72, loses 28%)
+- stability ≥ 0.90 → no penalty: factor = stab/0.85, capped at 1.0
 
-Crossing the 0.80 threshold is worth ~+40% on every regime score simultaneously. This dwarfs any parameter tweak.
+Each tier crossing yields a massive score boost. Reaching 0.80 = +40% per regime. Reaching 0.90 = another +33% per regime. Target: 0.90+.
 
 **Do NOT conclude that "stability requires fundamentally different architecture and is too risky."** That reasoning is a trap — it leads to endless base-performance tweaks that never close the gap. Structural changes to improve stability ARE the highest-ROI experiments available.
 
@@ -161,7 +161,7 @@ Before proposing any solution, **diagnose** where the noise sensitivity actually
 - A stability gain of +0.05 (e.g., 0.70→0.75) is worth pursuing even if base_score drops slightly (the net effect on composite depends on the trade-off)
 - Acceptable trade: lose ≤2.0 base_score if stability improves by ≥0.10 (net composite gain from reduced penalty)
 
-## Stability-first directions (priority when min_stability < 0.80)
+## Stability-first directions (priority when min_stability < 0.90)
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy. Any stability gain from using open is illusory and will not generalize.
 **HL2 stability gains are overstated.** HL2=(high+low)/2 receives roughly half the perturbation of close (because high/low only change when perturbed close exceeds original range). In trending regimes with wide bars, HL2 is nearly unperturbed — this flatters stability scores. Acceptable use: multi-point aggregations (e.g., linreg over 16 bars) where averaging further reduces noise. Unacceptable use: single-point comparisons (e.g., Donchian max/min) or magnitude calculations (breaks sizing calibration). Always discount reported HL2 stability gains by ~50%.
