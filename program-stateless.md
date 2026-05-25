@@ -29,9 +29,8 @@ You run up to 5 experiments per session. Each experiment may be a **single-varia
 
 ### Phase 1: Read context (once per session)
 
-1. Read `strategy.py` and run `git log main..HEAD --oneline -n 30`.
-2. Read `results.tsv` **from the 3rd-last `keep` row onward** (not the full file). Command: `awk '/\tkeep\t/{keeps[++k]=NR} END{start=(k>=3)?keeps[k-2]:1; system("tail -n +" start " results.tsv")}' results.tsv`. Historical experiments before that point reflect outdated baselines and will mislead direction choices.
-3. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep the loaded results for directions you're considering. If a direction has 5+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
+1. Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30`.
+2. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep `results.tsv` descriptions for directions you're considering. If a direction has 10+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
 
 ### ESCALATION RULE (multi-variable architectural change)
 
