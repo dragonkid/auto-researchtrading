@@ -142,17 +142,12 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            sl_ratio_raw = max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6)
-
-            highs = bd.history["high"].values
-            lows = bd.history["low"].values
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((highs[-LINREG_PERIOD:] + lows[-LINREG_PERIOD:]) / 2.0))
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
             ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
-            ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
 
             mom_bull, mom_bear = ret_short > dyn_threshold, ret_short < -dyn_threshold
             vshort_bull, vshort_bear = ret_vshort > dyn_threshold * 0.5, ret_vshort < -dyn_threshold * 0.5
@@ -169,9 +164,8 @@ class Strategy:
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             macd_bull, macd_bear = macd_rel > 0.0003, macd_rel < -0.0003
 
-            ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
-            ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
-            slope_bull, slope_bear = ema_slope > 0.0005, ema_slope < -0.0005
+            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            slope_bull, slope_bear = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005
             linreg_bull, linreg_bear = _lr.slope > 0.0001, _lr.slope < -0.0001
             donchian_bull, donchian_bear = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
 
@@ -179,16 +173,12 @@ class Strategy:
             bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
-            entry_trend_bull = self.smoothed_trend[symbol] > 0
-            entry_trend_bear = self.smoothed_trend[symbol] < 0
-            trend_bull = trend_avg > 0
-            trend_bear = trend_avg < 0
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
-            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, sl_ratio_raw)) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
+            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK:]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK:]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
@@ -203,17 +193,16 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            if current_pos == 0:
-                if not in_cooldown:
-                    if bull_votes >= MIN_VOTES and (entry_trend_bull or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                        target = size
-                    elif bear_votes >= MIN_VOTES and (entry_trend_bear or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                        target = -size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi < MEANREV_RSI_OVERSOLD:
-                        target = size
-                    elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi > MEANREV_RSI_OVERBOUGHT:
-                        target = -size
-            else:
+            if current_pos == 0 and not in_cooldown:
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    target = size
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    target = -size
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi < MEANREV_RSI_OVERSOLD:
+                    target = size
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and rsi > MEANREV_RSI_OVERBOUGHT:
+                    target = -size
+            elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
@@ -245,9 +234,9 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_bear and not in_cooldown:
+                if current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0 and not in_cooldown:
                     target = -size
-                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_bull and not in_cooldown:
+                elif current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0 and not in_cooldown:
                     target = size
 
             if abs(target - current_pos) > 1.0:
