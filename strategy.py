@@ -203,6 +203,8 @@ class Strategy:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
+                elif pos_pnl < -0.012 and ((current_pos > 0 and mid < _es) or (current_pos < 0 and mid > _es)):
+                    target = 0.0
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
