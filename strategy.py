@@ -175,8 +175,11 @@ class Strategy:
             linreg_bull, linreg_bear = _lr.slope > 0.0001, _lr.slope < -0.0001
             donchian_bull, donchian_bear = mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975
 
-            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull])
-            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear])
+            avg_funding = np.mean(bd.history["funding_rate"].values[-8:])
+            fund_bull, fund_bear = avg_funding > 0, avg_funding < 0
+
+            bull_votes = sum([mom_bull, vshort_bull, ema_bull, rsi_bull, macd_bull, linreg_bull, donchian_bull, slope_bull, fund_bull])
+            bear_votes = sum([mom_bear, vshort_bear, ema_bear, rsi_bear, macd_bear, linreg_bear, donchian_bear, slope_bear, fund_bear])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
