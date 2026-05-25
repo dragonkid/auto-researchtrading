@@ -89,8 +89,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.013
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 47
+MEANREV_RSI_OVERBOUGHT = 53
 
 # Vote / cooldown
 DONCHIAN_PERIOD = 13
@@ -210,7 +210,7 @@ class Strategy:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
-                adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
+                adaptive_profit_thresh = RSI_EXIT_PROFIT_THRESHOLD * max(0.85, min(1.4, vol_ratio ** 0.5))
                 if pos_pnl > adaptive_profit_thresh:
                     profit_blend = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - adaptive_profit_thresh) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob = effective_ob - (effective_ob - 50.0) * profit_blend
