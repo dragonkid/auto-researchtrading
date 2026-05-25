@@ -195,9 +195,7 @@ class Strategy:
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if bars_held >= 8 and rsi_trend_str < 0.30 and self.peak_pnl.get(symbol, 0) > 0.004 and pos_pnl < -0.001:
-                    target = 0.0
-                elif current_pos > 0 and rsi > effective_ob:
+                if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
                     target = 0.0
