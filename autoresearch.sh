@@ -117,7 +117,7 @@ while true; do
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
     -- \
-    "Run a research round (up to 5 experiments). FIRST: Read program-stateless.md — it contains MANDATORY diagnostic steps you must complete before stability experiments. Then read results.tsv and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue with a follow-up experiment or exit." \
+    "Run a research round (up to 5 experiments). Read program-stateless.md for the multi-step protocol. Read results.tsv and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue with a follow-up experiment or exit." \
     || {
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5
