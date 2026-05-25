@@ -122,7 +122,7 @@ class Strategy:
             if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
-            closes = bd.history["close"].values
+            closes = ema(bd.history["close"].values, 3)
             mid = bd.close
 
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
