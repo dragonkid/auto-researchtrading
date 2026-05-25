@@ -158,29 +158,16 @@ Before proposing any solution, **diagnose** where the noise sensitivity actually
 
 ## Stability-first directions (priority when min_stability < 0.80)
 
-Current bottleneck: noise sensitivity in indicator TRAJECTORIES, not thresholds.
-Proven ineffective: smoothing discrete thresholds (vote counts, trend gate) has near-zero stability effect.
-Proven ineffective: linearizing exponents helps direction detection but not stability.
-Proven ineffective: single-parameter ±1/±2 sweeps (all core params at optimum).
-Proven ineffective: underwater widening (both max and saturation, both directions).
-Proven ineffective: RSI exit dampening/lagging (any delay = DD explosion).
-Proven ineffective: profit tightening lag (crash bounces are 1-2 bars, can't delay).
+**Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy. Any stability gain from using open is illusory and will not generalize.
+**HL2 stability gains are overstated.** HL2=(high+low)/2 receives roughly half the perturbation of close (because high/low only change when perturbed close exceeds original range). In trending regimes with wide bars, HL2 is nearly unperturbed — this flatters stability scores. Acceptable use: multi-point aggregations (e.g., linreg over 16 bars) where averaging further reduces noise. Unacceptable use: single-point comparisons (e.g., Donchian max/min) or magnitude calculations (breaks sizing calibration). Always discount reported HL2 stability gains by ~50%.
 
 **When stability is stuck (3+ rounds with <+0.01 stability gain):**
 The most effective stability path is REMOVING the noisiest voter, not tuning existing ones. Procedure:
 1. For each voter in strategy.py, mentally apply ±5bps to close and trace whether the voter's boolean output flips. Voters whose signal sits closest to their decision boundary on typical bars are the worst noise amplifiers.
 2. Run a removal experiment: disable the noisiest voter entirely. If stability jumps +0.02+ even with composite loss, that confirms it's a noise source.
 3. Then decide: keep it removed (if within stability-keep thresholds), or replace it with a smoother equivalent signal.
-This is how vol_breakout removal yielded +0.01 stability. The same logic applies to other voters — identify and eliminate the weakest link.
-**Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy. Any stability gain from using open is illusory and will not generalize.
-**HL2 stability gains are overstated.** HL2=(high+low)/2 receives roughly half the perturbation of close (because high/low only change when perturbed close exceeds original range). In trending regimes with wide bars, HL2 is nearly unperturbed — this flatters stability scores. Acceptable use: multi-point aggregations (e.g., linreg over 16 bars) where averaging further reduces noise. Unacceptable use: single-point comparisons (e.g., Donchian max/min) or magnitude calculations (breaks sizing calibration). Always discount reported HL2 stability gains by ~50%.
 
-Unexplored directions for stability:
-- Voter output smoothing: EMA/decay on individual voter outputs before aggregation
-- Confidence weighting: voters near their decision boundary contribute less
-- Temporal consistency: penalize vote flips within N bars (hysteresis)
-- Reduce voter count: merge correlated voters (e.g., momentum + ultra-short momentum)
-- Bar-level signal averaging: use 2-3 bar lookback for voter inputs instead of single bar
+Do NOT hardcode "proven ineffective" conclusions here — read results.tsv each round to discover what has been tried. Only methodology-level blind spots (like open price artifact and HL2 overestimation above) belong in this file.
 
 ## Strategy research directions
 
