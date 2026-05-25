@@ -24,6 +24,8 @@ MACD_SIGNAL = 4
 
 # Linear regression
 LINREG_PERIOD = 16
+LINREG_EXIT_STRONG_SLOPE = 0.0008
+LINREG_EXIT_STRONG_TREND_GATE = 0.06
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -209,6 +211,8 @@ class Strategy:
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
                 if target != 0 and abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42)):
+                    target = 0.0
+                if target != 0 and abs(ret_long) < LINREG_EXIT_STRONG_TREND_GATE and ((current_pos > 0 and _lr.slope < -LINREG_EXIT_STRONG_SLOPE) or (current_pos < 0 and _lr.slope > LINREG_EXIT_STRONG_SLOPE)):
                     target = 0.0
 
                 if target != 0:
