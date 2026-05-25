@@ -95,10 +95,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Confidence-weighted voting (Layer 4 stability)
-CONF_ENTRY_THRESHOLD = 2.8
-CONF_FLIP_THRESHOLD = 3.5
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -107,11 +103,6 @@ def ema(values, span):
     for i in range(1, len(values)):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
-
-
-def _conf(signal, threshold, margin):
-    """Continuous confidence: 0.5 at threshold, 1.0 at threshold+margin, 0.0 at threshold-margin."""
-    return max(0.0, min(1.0, 0.5 + 0.5 * (signal - threshold) / margin))
 
 class Strategy:
     def __init__(self):
@@ -156,33 +147,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Confidence-weighted voting: continuous [0,1] per voter
-            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _donch_max = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-            _donch_min = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-            _eslope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            bull_votes = (
-                _conf(ret_short, dyn_threshold, dyn_threshold * 0.7)
-                + _conf(ret_vshort, dyn_threshold * 0.5, dyn_threshold * 0.4)
-                + _conf((_ef - _es) / _es, 0.0, 0.002)
-                + _conf(rsi, _rsi_thresh, 6.0)
-                + _conf(_macd_val, 0.0003, 0.0003)
-                + _conf(_lr.slope, 0.00015, 0.00015)
-                + _conf(mid / _donch_max, 1.004, 0.003)
-                + _conf(_eslope, 0.0005, 0.0005)
-            )
-            bear_votes = (
-                _conf(-ret_short, dyn_threshold, dyn_threshold * 0.7)
-                + _conf(-ret_vshort, dyn_threshold * 0.5, dyn_threshold * 0.4)
-                + _conf((_es - _ef) / _es, 0.0, 0.002)
-                + _conf(-rsi + 100, 100 - _rsi_thresh, 6.0)
-                + _conf(-_macd_val, 0.0003, 0.0003)
-                + _conf(-_lr.slope, 0.00015, 0.00015)
-                + _conf(_donch_min / mid, 1.0 / 0.9975, 0.003)
-                + _conf(-_eslope, 0.0005, 0.0005)
-            )
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.5, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.5, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -204,9 +170,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= CONF_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size
-                elif bear_votes >= CONF_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
@@ -239,7 +205,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= CONF_FLIP_THRESHOLD and trend_avg < 0) or (current_pos < 0 and bull_votes >= CONF_FLIP_THRESHOLD and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
