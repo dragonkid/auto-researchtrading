@@ -109,7 +109,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.hyst = {}  # per-symbol: [don_bull, don_bear, ema_cross_bull, ema_cross_bear, ema_slope_bull, ema_slope_bear]
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -150,23 +149,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            _don_hi = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-            _don_lo = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-            _ema_sl = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            h = self.hyst.get(symbol, [False]*6)
-            # Donchian hysteresis: enter at 1.004x max, stay until below max (4bps band)
-            _don_bull = (mid > _don_hi * 1.004) or (h[0] and mid > _don_hi)
-            _don_bear = (mid < _don_lo * 0.9975) or (h[1] and mid < _don_lo)
-            # EMA cross hysteresis: enter when _ef > _es, stay until _ef < _es*0.998 (2bps band)
-            _ema_x_bull = (_ef > _es) or (h[2] and _ef > _es * 0.998)
-            _ema_x_bear = (_ef < _es) or (h[3] and _ef < _es * 1.002)
-            # EMA slope hysteresis: enter at 0.0005, stay until < 0.0002 (3bps band)
-            _ema_s_bull = (_ema_sl > 0.0005) or (h[4] and _ema_sl > 0.0002)
-            _ema_s_bear = (_ema_sl < -0.0005) or (h[5] and _ema_sl < -0.0002)
-            self.hyst[symbol] = [_don_bull, _don_bear, _ema_x_bull, _ema_x_bear, _ema_s_bull, _ema_s_bear]
-
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ema_x_bull, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, _don_bull, _ema_s_bull])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ema_x_bear, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, _don_bear, _ema_s_bear])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
