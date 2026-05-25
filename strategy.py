@@ -152,7 +152,8 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
+            _st_alpha = min(0.85, 0.35 + 0.50 * min(abs(trend_avg) / 0.010, 1.0))
+            self.smoothed_trend[symbol] = _st_alpha * trend_avg + (1.0 - _st_alpha) * self.smoothed_trend.get(symbol, trend_avg)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
