@@ -168,7 +168,8 @@ class Strategy:
             macd_rel = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             macd_bull, macd_bear = macd_rel > 0.0003, macd_rel < -0.0003
 
-            ema_slope_arr = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            _hl2 = (highs[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):] + lows[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):]) / 2.0
+            ema_slope_arr = ema(_hl2, EMA_SLOPE_PERIOD)
             ema_slope = (ema_slope_arr[-1] - ema_slope_arr[-EMA_SLOPE_LOOKBACK]) / ema_slope_arr[-EMA_SLOPE_LOOKBACK]
             slope_bull, slope_bear = ema_slope > 0.0005, ema_slope < -0.0005
             linreg_bull, linreg_bear = _lr.slope > 0.0001, _lr.slope < -0.0001
