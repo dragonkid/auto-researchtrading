@@ -94,7 +94,6 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-MAX_HOLD_BARS = 40
 
 
 def ema(values, span):
@@ -203,9 +202,6 @@ class Strategy:
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
-                    target = 0.0
-
-                if target != 0 and bars_held >= MAX_HOLD_BARS:
                     target = 0.0
 
                 if target != 0:
