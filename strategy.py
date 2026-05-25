@@ -60,6 +60,9 @@ RSI_YOUNG_WIDEN = 4.0
 UNDERWATER_WIDEN_MAX = 1.5
 UNDERWATER_WIDEN_SAT = 0.012
 
+# Volume-quiet exit widening (noise-immune)
+VOL_QUIET_WIDEN_MAX = 0.5
+
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -213,6 +216,8 @@ class Strategy:
                 if pos_pnl < 0:
                     _uw = UNDERWATER_WIDEN_MAX * min(1.0, abs(pos_pnl) / UNDERWATER_WIDEN_SAT)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
+                _qw = VOL_QUIET_WIDEN_MAX * max(0.0, 1.0 - bd.history["volume"].values[-1] / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:]))
+                effective_ob, effective_os = effective_ob + _qw, effective_os - _qw
                 if current_pos > 0 and rsi > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi < effective_os:
