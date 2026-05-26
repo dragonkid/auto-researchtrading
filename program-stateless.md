@@ -51,20 +51,27 @@ For each experiment:
               -m "Expected: <which regime(s) should benefit>"
    ```
 4. **Backtest**: `uv run regime_test.py > run.log 2>&1`
-5. **Parse results**: `grep "^composite_score:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
+5. **Parse results**: `grep "^composite_score:\|^raw_composite:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
-   **Keep/discard rules (composite path):**
-   - `composite_score` improved by **at least +0.03** vs the best `keep` in `results.tsv`.
-   - No individual `regime_score` regressed by more than **`max(0.2, 5 × composite_gain)`** vs baseline.
-   - **No more than 2 out of 4 regimes may regress** (strictly negative Δ).
-   - **While `min_stability < 0.90`:** composite keep also requires `min_stability` did NOT decrease vs baseline (Δ ≥ 0). Composite improvements that sacrifice stability are rejected.
+   **Keep/discard rules (stability-first):**
 
-   **Stability keep (alternative path):** When `min_stability < 0.90`, an experiment qualifies as keep if:
-   - `min_stability` improved by **at least +0.01** vs baseline.
-   - No regime's `max_dd_pct` increased by more than **1.0%** vs baseline.
-   - `composite_score` did NOT drop by more than **2.0** vs baseline.
-   - This path exists because structural changes that improve stability often reduce returns (fewer entries, smaller positions, smoother signals). That's acceptable — the tiered penalty (< 0.80 = 50%, 0.80-0.90 = 25%, ≥ 0.90 = none) means every stability gain directly boosts composite. Target: 0.90+.
+   An experiment qualifies as `keep` if ALL of the following are met:
+   - `min_stability` improved by **at least +0.005** vs baseline.
+   - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
+   - `raw_composite` ≥ **8.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
+
+   **Absolute DD caps (hard ceiling, never changes):**
+   - bull_2021: ≤ 7.8%
+   - crash_bear: ≤ 6.9%
+   - sideways: ≤ 5.6%
+   - rally_2024: ≤ 4.8%
+
+   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 8.0. Do NOT discard experiments solely because composite decreased.
+
+   **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
+
+   **Composite keep path (only when min_stability ≥ 0.90):** Once stability reaches 0.90+, an alternative keep path opens: `composite_score` improved by at least +0.03 vs baseline, with no DD cap violation. This allows revenue optimization after the stability goal is achieved.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
    If discard: run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
@@ -160,8 +167,8 @@ Before proposing any solution, **diagnose** where the noise sensitivity actually
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.05 (e.g., 0.70→0.75) is worth pursuing even if base_score drops slightly (the net effect on composite depends on the trade-off)
-- Acceptable trade: lose ≤2.0 base_score if stability improves by ≥0.10 (net composite gain from reduced penalty)
+- A stability gain of +0.005 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 8.0 and DD caps are not violated
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤4.8%) and raw_composite ≥ 8.0
 
 ## Stability-first directions (priority when min_stability < 0.90)
 

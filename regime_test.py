@@ -211,9 +211,28 @@ if __name__ == "__main__":
         var_s = sum((s - mean_s) ** 2 for s in scores) / len(scores) if scores else 0
         std_s = math.sqrt(var_s)
 
+        # Compute raw composite (before stability penalty) for keep threshold check
+        raw_scores = []
+        for r in results:
+            if "error" not in r:
+                stab = r.get("stability", 1.0)
+                sf = r.get("stability_factor", 1.0)
+                raw_s = r["score"] / sf if sf > 0 else r["score"]
+                raw_scores.append(raw_s)
+        if raw_scores:
+            raw_mean = sum(raw_scores) / len(raw_scores)
+            raw_var = sum((s - raw_mean) ** 2 for s in raw_scores) / len(raw_scores)
+            raw_std = math.sqrt(raw_var)
+            loc = _count_effective_loc()
+            simplicity_bonus = max(0.0, (SIMPLICITY_BASELINE_LOC - loc)) * SIMPLICITY_BONUS_PER_LINE
+            raw_composite = raw_mean - CONSISTENCY_K * raw_std + simplicity_bonus
+        else:
+            raw_composite = -999.0
+
         # Parseable output for autoresearch agent
         print("---")
         print(f"composite_score:    {composite:.6f}")
+        print(f"raw_composite:      {raw_composite:.6f}")
         print(f"mean_score:         {mean_s:.6f}")
         print(f"std_score:          {std_s:.6f}")
         print(f"num_regimes:        {len(scores)}")
