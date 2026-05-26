@@ -197,8 +197,11 @@ class Strategy:
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
-                    effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
+                # Linreg-confirmed exit widening: noise-immune signal prevents premature RSI exits
+                _lr_confirms = (current_pos > 0 and _lr.slope > 0.00005) or (current_pos < 0 and _lr.slope < -0.00005)
+                if _lr_confirms and pos_pnl > 0.003:
+                    _lr_w = 1.5 * min(1.0, abs(_lr.slope) / 0.0004)
+                    effective_ob, effective_os = effective_ob + _lr_w, effective_os - _lr_w
                 _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and ret_long > 0.02:
                     effective_ob += _tw
