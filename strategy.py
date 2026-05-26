@@ -54,7 +54,7 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
-RSI_YOUNG_WIDEN = 3.5
+RSI_YOUNG_WIDEN = 4.0
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -208,7 +208,7 @@ class Strategy:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
-                if target != 0 and abs(ret_long) < 0.030 and ((current_pos > 0 and _lr.slope < -0.00015 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.00015 and rsi_exit < 42)):
+                if target != 0 and abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42)):
                     target = 0.0
 
                 if target != 0:
