@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_rsi_exit = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -205,9 +206,10 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                if current_pos > 0 and rsi_exit > effective_ob:
+                _prev_rx = self.prev_rsi_exit.get(symbol, rsi_exit)
+                if current_pos > 0 and (rsi_exit > effective_ob + 5 or (rsi_exit > effective_ob and _prev_rx > effective_ob - 2)):
                     target = 0.0
-                elif current_pos < 0 and rsi_exit < effective_os:
+                elif current_pos < 0 and (rsi_exit < effective_os - 5 or (rsi_exit < effective_os and _prev_rx < effective_os + 2)):
                     target = 0.0
                 if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
@@ -220,6 +222,7 @@ class Strategy:
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
+            self.prev_rsi_exit[symbol] = rsi_exit
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
