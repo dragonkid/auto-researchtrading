@@ -55,7 +55,6 @@ RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.5
-RSI_EXIT_NOISE_MARGIN = 1.0
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -206,8 +205,6 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                effective_ob += RSI_EXIT_NOISE_MARGIN
-                effective_os -= RSI_EXIT_NOISE_MARGIN
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
