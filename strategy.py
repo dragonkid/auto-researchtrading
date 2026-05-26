@@ -211,6 +211,8 @@ class Strategy:
                     target = 0.0
                 if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
+                if target != 0 and rsi_trend_str < 0.6 and vol_confirm_mult > 1.06 and ((current_pos > 0 and _lr.slope < -0.00015) or (current_pos < 0 and _lr.slope > 0.00015)):
+                    target = 0.0
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
