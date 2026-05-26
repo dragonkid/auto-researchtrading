@@ -196,6 +196,13 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     effective_ob, effective_os = effective_ob + 1.2, effective_os - 1.2
+                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                    effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
+                _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
+                if current_pos > 0 and ret_long > 0.02:
+                    effective_ob += _tw
+                elif current_pos < 0 and ret_long < -0.02:
+                    effective_os -= _tw
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
