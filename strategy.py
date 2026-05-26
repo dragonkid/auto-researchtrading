@@ -56,9 +56,9 @@ RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.0
 
-# Peak-profit trailing exit (DISABLED - state-dependent divergence source)
-# PEAK_PROFIT_MIN_BASE = 0.025
-# PEAK_PROFIT_GIVEBACK = 0.25
+# Peak-profit trailing exit
+PEAK_PROFIT_MIN_BASE = 0.025
+PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.080
@@ -106,7 +106,7 @@ def ema(values, span):
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.entry_bar = {}, {}, {}
+        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -209,9 +209,13 @@ class Strategy:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
-                if target != 0 and ((abs(ret_long) < 0.035 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
+                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
 
+                if target != 0:
+                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                        target = 0.0
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
@@ -219,10 +223,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol], self.entry_bar[symbol] = mid, self.bar_count
+                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
         return signals
