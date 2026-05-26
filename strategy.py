@@ -61,7 +61,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.087
+BASE_POSITION_SIZE = 0.090
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -188,7 +188,7 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
                 if pos_pnl > _apt:
-                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), max(0.04, (bars_held - 4) * 0.025))
+                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
