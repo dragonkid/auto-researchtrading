@@ -109,7 +109,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.flip_pending = {}  # symbol -> 'long' or 'short'
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -217,19 +216,8 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Flip with 2-bar confirmation (extreme moves bypass)
-                flip_to_short = current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0
-                flip_to_long = current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0
-                extreme_move = abs(ret_vshort) > dyn_threshold * 3.0
-                if not in_cooldown and (flip_to_short or flip_to_long):
-                    desired_flip = 'short' if flip_to_short else 'long'
-                    if extreme_move or self.flip_pending.get(symbol) == desired_flip:
-                        target = -size if current_pos > 0 else size
-                        self.flip_pending.pop(symbol, None)
-                    else:
-                        self.flip_pending[symbol] = desired_flip
-                else:
-                    self.flip_pending.pop(symbol, None)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
