@@ -108,11 +108,12 @@ while true; do
   # Clean up any leftover state from interrupted experiments
   git checkout -- strategy.py 2>/dev/null || true
 
-  echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
+echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
-  MAX_THINKING_TOKENS=256000 CLAUDE_CODE_EFFORT_LEVEL=max \
+  ANTHROPIC_MODEL=bedrock-claude-4-7-opus[1m] MAX_THINKING_TOKENS=256000 CLAUDE_CODE_EFFORT_LEVEL=max \
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
     --dangerously-skip-permissions \
+    --model bedrock-claude-4-7-opus[1m] \
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
