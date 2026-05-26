@@ -92,6 +92,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 DONCHIAN_PERIOD = 13
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
+SOFT_ENTRY_THRESH = 1.5
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -149,9 +150,18 @@ class Strategy:
             rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            _mh = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _esv = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            _rc = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _don_max = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
+            _don_min = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
 
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > _rc, _mh > 0.0003, _lr.slope > 0.00015, mid > _don_max * 1.004, _esv > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < _rc, _mh < -0.0003, _lr.slope < -0.00015, mid < _don_min * 0.9975, _esv < -0.0005])
+
+            _sc = lambda x: max(0.0, min(1.0, x))
+            bull_conf = _sc(ret_short / (2*dyn_threshold)) + _sc(ret_vshort / (1.4*dyn_threshold)) + _sc(0.5 + (_ef - _es) / (mid * 0.004)) + _sc(0.5 + (rsi - _rc) / 20.0) + _sc(_mh / 0.0006) + _sc(_lr.slope / 0.0003) + _sc((mid/_don_max - 1.0) / 0.008) + _sc(_esv / 0.001)
+            bear_conf = _sc(-ret_short / (2*dyn_threshold)) + _sc(-ret_vshort / (1.4*dyn_threshold)) + _sc(0.5 + (_es - _ef) / (mid * 0.004)) + _sc(0.5 + (_rc - rsi) / 20.0) + _sc(-_mh / 0.0006) + _sc(-_lr.slope / 0.0003) + _sc((1.0 - mid/_don_min) / 0.005) + _sc(-_esv / 0.001)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -173,9 +183,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_conf >= SOFT_ENTRY_THRESH and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_conf > bear_conf)):
                     target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_conf >= SOFT_ENTRY_THRESH and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_conf > bull_conf)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
