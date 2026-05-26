@@ -143,11 +143,8 @@ class Strategy:
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
-            _rsi_period = int(round(6 + 2 * rsi_trend_str))
-            def _rsi_at(end):
-                _r = np.diff(closes[end-_rsi_period-1:end] if end < 0 else closes[-_rsi_period-1:])
-                return 100 - 100 / (1 + np.mean(np.maximum(_r, 0)) / max(np.mean(np.maximum(-_r, 0)), 1e-10))
-            rsi = float(np.median([_rsi_at(0), _rsi_at(-1), _rsi_at(-2)]))
+            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _rd_exit = np.diff(closes[-7:])
             rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
