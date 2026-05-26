@@ -109,11 +109,16 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_trend_avgs = {}
+
+    CROSS_FLIP_DEADZONE = 0.001
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
+        cross_avg_trend = np.mean(list(self.prev_trend_avgs.values())) if self.prev_trend_avgs else 0.0
+        current_trend_avgs = {}
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -155,6 +160,7 @@ class Strategy:
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
+            current_trend_avgs[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -215,7 +221,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and (trend_avg < 0 or cross_avg_trend < -self.CROSS_FLIP_DEADZONE)) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and (trend_avg > 0 or cross_avg_trend > self.CROSS_FLIP_DEADZONE))):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
@@ -227,4 +233,5 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
+        self.prev_trend_avgs = current_trend_avgs
         return signals
