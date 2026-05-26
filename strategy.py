@@ -142,7 +142,8 @@ class Strategy:
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             rsi_trend_str = min(abs(ret_long) / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            _rsi_period_str = min(abs(0.5 * ret_long + 0.5 * (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]) / RSI_TREND_BIAS_DECAY, 1.0)
+            _rd = np.diff(closes[-(int(round(6 + 2 * _rsi_period_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _rd_exit = np.diff(closes[-7:])
             rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
