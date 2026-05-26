@@ -108,7 +108,6 @@ class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
-        self.smoothed_trend = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -154,7 +153,7 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            self.smoothed_trend[symbol] = 0.85 * trend_avg + 0.15 * self.smoothed_trend.get(symbol, trend_avg)
+            smoothed_trend = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -172,9 +171,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (smoothed_trend > 0 or (abs(smoothed_trend) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (smoothed_trend < 0 or (abs(smoothed_trend) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
@@ -194,9 +193,6 @@ class Strategy:
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
-                if pos_pnl < 0 and rsi_trend_str > 0.5:
-                    _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
-                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
