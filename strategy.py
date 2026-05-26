@@ -200,16 +200,16 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                _tw = max(0.0, (abs(_ret_long_lagged) - 0.02) / 0.08) * 2.5
-                if current_pos > 0 and _ret_long_lagged > 0.02:
+                _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
+                if current_pos > 0 and ret_long > 0.02:
                     effective_ob += _tw
-                elif current_pos < 0 and _ret_long_lagged < -0.02:
+                elif current_pos < 0 and ret_long < -0.02:
                     effective_os -= _tw
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
-                if target != 0 and ((abs(_ret_long_lagged) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and _ret_long_lagged > 0.05 and _lr.slope < -0.0003)):
+                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
 
                 if target != 0:
