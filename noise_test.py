@@ -71,21 +71,31 @@ def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
 
 
 def _perturb_data(data: dict, noise_bps: float, rng, *, correlated: bool = False) -> dict:
-    """Apply per-bar noise to close (and adjust H/L) for all symbols."""
+    """Apply per-bar noise to close, high, and low independently.
+
+    Close noise is shared across symbols in correlated mode (simulates
+    market-wide microstructure shift).  High/low noise is always per-symbol
+    (intra-bar microstructure is symbol-specific).  After perturbation,
+    OHLC consistency is enforced: high >= close, low <= close, high >= low.
+    """
     lengths = [len(df) for df in data.values()]
     if max(lengths) - min(lengths) > 5:
         raise ValueError(f"symbol bar count mismatch ({max(lengths) - min(lengths)}) too large for correlated noise")
 
     max_len = max(lengths)
-    common_noise = rng.uniform(-noise_bps, noise_bps, size=max_len) / 10000.0 if correlated else None
+    common_noise_c = rng.uniform(-noise_bps, noise_bps, size=max_len) / 10000.0 if correlated else None
 
     result = {}
     for sym, df in data.items():
         new_df = df.copy()
         n = len(new_df)
-        noise = common_noise[:n] if correlated else rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
-        new_df["close"] = new_df["close"] * (1.0 + noise)
-        new_df["high"] = new_df[["high", "close"]].max(axis=1)
-        new_df["low"] = new_df[["low", "close"]].min(axis=1)
+        noise_c = common_noise_c[:n] if (correlated and common_noise_c is not None) else rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
+        noise_h = rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
+        noise_l = rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
+        new_df["close"] = new_df["close"] * (1.0 + noise_c)
+        new_df["high"] = np.maximum(new_df["high"].values * (1.0 + noise_h), new_df["close"].values)
+        new_df["low"] = np.minimum(new_df["low"].values * (1.0 + noise_l), new_df["close"].values)
+        # Ensure high >= low (rare edge case after independent perturbation)
+        new_df["high"] = np.maximum(new_df["high"].values, new_df["low"].values)
         result[sym] = new_df
     return result
