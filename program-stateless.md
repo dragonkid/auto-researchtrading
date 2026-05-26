@@ -36,11 +36,17 @@ You run up to 5 experiments per session. Each experiment may be a **single-varia
 
 If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0.005 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
 
-### Phase 2: Experiment loop (max 20 experiments, exit on 5 consecutive discards without progress)
+**This rule is enforced by the exit rule below:** you cannot exit a session without having attempted at least 2 architectural changes. The escalation rule checks BOTH the current session's discards AND the tail of `results.tsv` from prior sessions — if the last 3+ results across sessions are sub-threshold discards, escalation is already active from experiment 1.
+
+### Phase 2: Experiment loop (max 8 experiments per session)
 
 For each experiment:
 
-**Exit rule:** 5 consecutive discards → stop session. But a discard with stability ≥ +0.005 counts as "progress" and resets the counter — keep iterating on that direction.
+**Exit rule (escalation-gated):**
+- 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (layers 3-4 from the stability methodology: hysteresis, confidence margin, weighted ensemble, abstain zone, etc.). Single-parameter tweaks are forbidden after 3 discards.
+- 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the hard cap of 8 experiments.
+- A discard with stability ≥ +0.005 counts as "progress" and resets the counter — keep iterating on that direction.
+- A `keep` resets everything.
 
 1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
 2. **Implement**: Edit `strategy.py` with your change.
@@ -91,7 +97,7 @@ After running at least 2 independent experiments and observing their regime-leve
 
 ### Session end
 
-After your last experiment (or when you hit 5), exit. The outer loop will invoke you again for the next round.
+After your last experiment (or when the exit rule triggers), exit. The outer loop will invoke you again for the next round.
 
 ### Regime gate rationale
 

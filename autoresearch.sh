@@ -117,7 +117,7 @@ while true; do
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
     -- \
-    "Working directory: $PROJECT_DIR. Run a research session. FIRST: Read program-stateless.md — it contains MANDATORY diagnostic steps you must complete before stability experiments. Then read results.tsv (from 3rd-last keep onward) and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue or exit. EXIT CONDITIONS: stop the session when (1) you hit 5 consecutive discards without progress, OR (2) you reach 20 experiments total. A discard with stability ≥ +0.005 counts as 'progress' and resets the consecutive discard counter. Otherwise keep going — especially when you're close to a breakthrough." \
+    "Working directory: $PROJECT_DIR. Run a research session. FIRST: Read program-stateless.md — it contains MANDATORY diagnostic steps and the EXIT RULE you must follow. Then read results.tsv (from 3rd-last keep onward) and run 'git log main..HEAD --oneline' for context. For each experiment: modify strategy.py, commit, backtest, record to results.tsv, then decide whether to continue or exit. Follow the EXIT RULE in program-stateless.md exactly — you CANNOT exit without having attempted at least 2 architectural changes among your discards." \
     || {
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5
