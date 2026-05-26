@@ -61,7 +61,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.075
+BASE_POSITION_SIZE = 0.080
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -198,6 +198,8 @@ class Strategy:
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
+                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                    effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and ret_long > 0.02:
                     effective_ob += _tw
