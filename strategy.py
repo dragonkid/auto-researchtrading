@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_vol_ratio = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -179,7 +180,8 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
-                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
+                _exit_vr = self.prev_vol_ratio.get(symbol, vol_ratio)
+                vol_exit_blend = max(0.0, min(1.0, (_exit_vr - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
@@ -218,6 +220,8 @@ class Strategy:
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
+
+            self.prev_vol_ratio[symbol] = vol_ratio
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
