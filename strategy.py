@@ -54,7 +54,7 @@ RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
 RSI_YOUNG_GRACE_BARS = 5
-RSI_YOUNG_WIDEN = 4.5
+RSI_YOUNG_WIDEN = 4.0
 
 # Peak-profit trailing exit
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -155,7 +155,7 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            self.smoothed_trend[symbol] = 0.65 * trend_avg + 0.35 * self.smoothed_trend.get(symbol, trend_avg)
+            self.smoothed_trend[symbol] = 0.50 * trend_avg + 0.50 * self.smoothed_trend.get(symbol, trend_avg)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
