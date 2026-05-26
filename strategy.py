@@ -109,7 +109,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.voter_state = {}  # {symbol: {voter: 'bull'|'bear'|'neutral'}}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -150,68 +149,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Per-voter hysteresis: once a voter enters bull/bear state, it needs to drop
-            # further to exit (50% retention buffer reduces noise-induced flips)
-            vs = self.voter_state.setdefault(symbol, {})
-            macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            # ret_vshort hysteresis
-            rvs_bull_enter = dyn_threshold * 0.70
-            rvs_bull_retain = dyn_threshold * 0.35
-            rvs_bear_enter = -dyn_threshold * 0.70
-            rvs_bear_retain = -dyn_threshold * 0.35
-            prev_rvs = vs.get('rvs', 'neutral')
-            if prev_rvs == 'bull':
-                rvs_bull = ret_vshort > rvs_bull_retain
-            else:
-                rvs_bull = ret_vshort > rvs_bull_enter
-            if prev_rvs == 'bear':
-                rvs_bear = ret_vshort < rvs_bear_retain
-            else:
-                rvs_bear = ret_vshort < rvs_bear_enter
-            vs['rvs'] = 'bull' if rvs_bull else ('bear' if rvs_bear else 'neutral')
-
-            # macd_hist hysteresis
-            prev_macd = vs.get('macd', 'neutral')
-            if prev_macd == 'bull':
-                macd_bull = macd_val > 0.00015
-            else:
-                macd_bull = macd_val > 0.0003
-            if prev_macd == 'bear':
-                macd_bear = macd_val < -0.00015
-            else:
-                macd_bear = macd_val < -0.0003
-            vs['macd'] = 'bull' if macd_bull else ('bear' if macd_bear else 'neutral')
-
-            # ema_cross hysteresis (use 0.1% buffer)
-            ema_ratio = _ef / _es
-            prev_ema = vs.get('ema', 'neutral')
-            if prev_ema == 'bull':
-                ema_bull = ema_ratio > 0.999
-            else:
-                ema_bull = ema_ratio > 1.0
-            if prev_ema == 'bear':
-                ema_bear = ema_ratio < 1.001
-            else:
-                ema_bear = ema_ratio < 1.0
-            vs['ema'] = 'bull' if ema_bull else ('bear' if ema_bear else 'neutral')
-
-            # rsi hysteresis (1.5pt buffer)
-            prev_rsi = vs.get('rsi', 'neutral')
-            if prev_rsi == 'bull':
-                rsi_bull = rsi > rsi_thresh - 1.5
-            else:
-                rsi_bull = rsi > rsi_thresh
-            if prev_rsi == 'bear':
-                rsi_bear = rsi < rsi_thresh + 1.5
-            else:
-                rsi_bear = rsi < rsi_thresh
-            vs['rsi'] = 'bull' if rsi_bull else ('bear' if rsi_bear else 'neutral')
-
-            bull_votes = sum([ret_short > dyn_threshold, rvs_bull, ema_bull, rsi_bull, macd_bull, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, ema_slope_val > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, rvs_bear, ema_bear, rsi_bear, macd_bear, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, ema_slope_val < -0.0005])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
