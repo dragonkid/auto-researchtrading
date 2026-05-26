@@ -137,7 +137,7 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
+            ret_vshort = (closes[-2] - closes[-SHORT_WINDOW - 1]) / closes[-SHORT_WINDOW - 1]
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
@@ -184,7 +184,7 @@ class Strategy:
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
-                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                pos_pnl = (closes[-2] - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
