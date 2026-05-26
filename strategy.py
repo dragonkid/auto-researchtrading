@@ -125,7 +125,9 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
 
-            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK:]))), 1e-6)
+            _vol_raw = np.std(np.diff(np.log(closes[-VOL_LOOKBACK:])))
+            _vol_lag = np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1])))
+            realized_vol = max(_vol_lag, _vol_raw * 0.70, 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
