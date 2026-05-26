@@ -65,7 +65,7 @@ For each experiment:
    - bull_2021: ≤ 7.8%
    - crash_bear: ≤ 6.9%
    - sideways: ≤ 5.6%
-   - rally_2024: ≤ 4.8%
+   - rally_2024: ≤ 6.0%
 
    **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 8.0. Do NOT discard experiments solely because composite decreased.
 
@@ -168,7 +168,7 @@ Before proposing any solution, **diagnose** where the noise sensitivity actually
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
 - A stability gain of +0.005 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 8.0 and DD caps are not violated
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤4.8%) and raw_composite ≥ 8.0
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 8.0
 
 ## Stability-first directions (priority when min_stability < 0.90)
 
