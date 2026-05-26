@@ -181,7 +181,7 @@ class Strategy:
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
-                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
+                sideways_exit_widen = max(0.0, 1.0 - abs(_ret_long_lagged) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -200,11 +200,6 @@ class Strategy:
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
                 if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                _tw = max(0.0, (abs(ret_long) - 0.02) / 0.08) * 2.5
-                if current_pos > 0 and ret_long > 0.02:
-                    effective_ob += _tw
-                elif current_pos < 0 and ret_long < -0.02:
-                    effective_os -= _tw
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
