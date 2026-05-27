@@ -115,15 +115,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Cross-symbol RSI consensus precomputation (architectural)
-        _market_rsi_vals = []
-        for _s in ACTIVE_SYMBOLS:
-            if _s in bar_data and len(bar_data[_s].history) >= 8:
-                _c = bar_data[_s].history["close"].values
-                _rd = np.diff(_c[-8:])
-                _market_rsi_vals.append(100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10)))
-        market_rsi = float(np.mean(_market_rsi_vals)) if _market_rsi_vals else 50.0
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -186,10 +177,7 @@ class Strategy:
                     target = size
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
-                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (
-                    (rsi < MEANREV_RSI_OVERSOLD and market_rsi < 49.5) or
-                    (rsi > MEANREV_RSI_OVERBOUGHT and market_rsi > 50.5)
-                ):
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
