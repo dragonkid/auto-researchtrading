@@ -53,9 +53,6 @@ RSI_EXIT_TREND_DECAY = 0.08
 RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
-RSI_YOUNG_GRACE_BARS = 5
-RSI_YOUNG_WIDEN = 4.5
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.080
 CALM_BOOST_MAX = 0.8
@@ -102,7 +99,7 @@ def ema(values, span):
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.entry_bar = {}, {}, {}
+        self.entry_prices, self.exit_bar = {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -141,7 +138,7 @@ class Strategy:
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            _rd_exit = np.diff(closes[-(int(round(7 + (1.0 - rsi_trend_str))) + 1):])
+            _rd_exit = np.diff(closes[-7:])
             rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
@@ -187,10 +184,6 @@ class Strategy:
                 if pos_pnl > _apt:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
-                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
-                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
-                    effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
@@ -214,10 +207,9 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.entry_bar):
-                        _d.pop(symbol, None)
+                    self.entry_prices.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol], self.entry_bar[symbol] = mid, self.bar_count
+                    self.entry_prices[symbol] = mid
 
         return signals
