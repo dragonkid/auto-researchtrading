@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.exit_pending = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -145,9 +146,8 @@ class Strategy:
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            _r5 = 100 - 100 / (1 + np.mean(np.maximum(np.diff(closes[-5:]), 0)) / max(np.mean(np.maximum(-np.diff(closes[-5:]), 0)), 1e-10))
-            _r7 = 100 - 100 / (1 + np.mean(np.maximum(np.diff(closes[-7:]), 0)) / max(np.mean(np.maximum(-np.diff(closes[-7:]), 0)), 1e-10))
-            rsi_exit = _r7 + min(abs(_ret_long_lagged) / 0.05, 1.0) * (_r5 - _r7) * 0.5
+            _rd_exit = np.diff(closes[-7:])
+            rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
@@ -206,10 +206,20 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                if current_pos > 0 and rsi_exit > effective_ob:
-                    target = 0.0
-                elif current_pos < 0 and rsi_exit < effective_os:
-                    target = 0.0
+                if current_pos > 0:
+                    if rsi_exit > effective_ob:
+                        self.exit_pending[symbol] = 'ob'
+                    elif rsi_exit < effective_ob - 5.0:
+                        self.exit_pending.pop(symbol, None)
+                    if self.exit_pending.get(symbol) == 'ob':
+                        target = 0.0
+                else:
+                    if rsi_exit < effective_os:
+                        self.exit_pending[symbol] = 'os'
+                    elif rsi_exit > effective_os + 5.0:
+                        self.exit_pending.pop(symbol, None)
+                    if self.exit_pending.get(symbol) == 'os':
+                        target = 0.0
                 if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
 
@@ -224,7 +234,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.exit_pending):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
