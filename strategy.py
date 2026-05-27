@@ -229,9 +229,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                _flip_l2s = FLIP_MIN_VOTES + (0 if macro_bear_ok else 1)
-                _flip_s2l = FLIP_MIN_VOTES + (0 if macro_bull_ok else 1)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_l2s and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_s2l and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
