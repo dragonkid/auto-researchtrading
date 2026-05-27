@@ -206,9 +206,9 @@ class Strategy:
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
                 if current_pos > 0 and rsi_exit > effective_ob:
-                    target = current_pos * max(0.0, 1.0 - (rsi_exit - effective_ob) / 5.0)
+                    target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
-                    target = current_pos * max(0.0, 1.0 - (effective_os - rsi_exit) / 5.0)
+                    target = 0.0
                 if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
 
