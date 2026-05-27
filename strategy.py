@@ -217,10 +217,6 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                if current_pos > 0 and macro_ret_avg > MACRO_DEADZONE:
-                    effective_ob += min(2.0, (macro_ret_avg - MACRO_DEADZONE) * 30.0)
-                elif current_pos < 0 and macro_ret_avg < -MACRO_DEADZONE:
-                    effective_os -= min(2.0, (-macro_ret_avg - MACRO_DEADZONE) * 30.0)
                 if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
