@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.smoothed_pos_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -214,7 +215,9 @@ class Strategy:
                     target = 0.0
 
                 if target != 0:
-                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                    _spp = 0.7 * pos_pnl + 0.3 * self.smoothed_pos_pnl.get(symbol, pos_pnl)
+                    self.smoothed_pos_pnl[symbol] = _spp
+                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), _spp)
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
@@ -224,7 +227,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.smoothed_pos_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
