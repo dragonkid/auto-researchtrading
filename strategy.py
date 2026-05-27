@@ -110,7 +110,6 @@ class Strategy:
         self.bar_count = 0
         self.smoothed_trend = {}
         self.entry_vol_ratio = {}
-        self.entry_freeze = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -182,7 +181,8 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
-                evr = self.entry_vol_ratio.get(symbol, vol_ratio) if self.entry_freeze.get(symbol, False) else vol_ratio
+                _alpha = max(0.0, min(1.0, (rsi_trend_str - 0.3) / 0.4))
+                evr = _alpha * self.entry_vol_ratio.get(symbol, vol_ratio) + (1.0 - _alpha) * vol_ratio
                 vol_exit_blend = max(0.0, min(1.0, (evr - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
@@ -226,11 +226,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_vol_ratio, self.entry_freeze):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_vol_ratio):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol], self.entry_vol_ratio[symbol] = mid, 0.0, self.bar_count, vol_ratio
-                    self.entry_freeze[symbol] = rsi_trend_str > 0.5
 
         return signals
