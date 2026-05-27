@@ -192,16 +192,14 @@ class Strategy:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                grace_horizon = RSI_YOUNG_GRACE_BARS - max(0.0, min(1.0, vol_ratio - 1.0))
-                _gw = RSI_YOUNG_WIDEN * max(0.0, 1.0 - bars_held / grace_horizon)
-                effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
-                _uw_pnl = max(0.0, min(1.0, -pos_pnl / 0.003))
-                _uw_trend = max(0.0, min(1.0, (rsi_trend_str - 0.4) / 0.2))
-                _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012) * _uw_pnl * _uw_trend
-                effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                _calm_widen_str = max(0.0, min(1.0, (0.55 - vol_ratio) / 0.10)) * max(0.0, min(1.0, (pos_pnl - 0.01) / 0.005))
-                if _calm_widen_str > 0 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
-                    effective_ob, effective_os = effective_ob + 1.5 * _calm_widen_str, effective_os - 1.5 * _calm_widen_str
+                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
+                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
+                    effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
+                if pos_pnl < 0 and rsi_trend_str > 0.5:
+                    _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
+                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
+                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                    effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(_ret_long_lagged) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and _ret_long_lagged > 0.02:
                     effective_ob += _tw
