@@ -90,13 +90,10 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 DONCHIAN_PERIOD = 13
-MIN_VOTES = 3.0
-FLIP_MIN_VOTES = 4.0
+MIN_VOTES = 3
+FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-# Voter weights ordered: ret_short, ret_vshort, ema_cross, rsi, macd, linreg, donchian, ema_slope
-# Higher weight = more noise-immune (multi-bar averaging); lower = single-point comparisons
-VOTER_WEIGHTS = (0.8, 0.7, 1.1, 0.9, 1.0, 1.6, 0.85, 1.05)
 
 
 def ema(values, span):
@@ -153,8 +150,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            bull_votes = sum(w * s for w, s in zip(VOTER_WEIGHTS, [ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005]))
-            bear_votes = sum(w * s for w, s in zip(VOTER_WEIGHTS, [ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005]))
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
