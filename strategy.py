@@ -227,6 +227,6 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = float(np.mean(closes[-3:])), 0.0, self.bar_count
 
         return signals
