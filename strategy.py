@@ -123,7 +123,7 @@ class Strategy:
                 _macro_sum += (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
                 _macro_n += 1
         macro_ret_avg = _macro_sum / max(_macro_n, 1)
-        MACRO_DEADZONE = 0.012
+        MACRO_DEADZONE = 0.025
         macro_bull_ok = macro_ret_avg > -MACRO_DEADZONE
         macro_bear_ok = macro_ret_avg < MACRO_DEADZONE
 
