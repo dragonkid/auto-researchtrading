@@ -176,16 +176,12 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and self.smoothed_trend[symbol] > 0:
                     target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and self.smoothed_trend[symbol] < 0:
                     target = -size
-                else:
-                    mr_offset = 0.5 + 0.5 * min(rsi_trend_str / 0.5, 1.0)
-                    mr_oversold = 50.0 - mr_offset
-                    mr_overbought = 50.0 + mr_offset
-                    if abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < mr_oversold or rsi > mr_overbought):
-                        target = size if rsi < mr_oversold else -size
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
