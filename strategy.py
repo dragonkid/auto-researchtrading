@@ -95,11 +95,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
-# Funding-rate-based exit widening (noise-immune regime indicator)
-FUNDING_LOOKBACK = 24
-FUNDING_NORM = 0.0001
-FUNDING_EXIT_WIDEN_MAX = 1.0
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -189,10 +184,6 @@ class Strategy:
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
-                funding_strength = min(abs(np.mean(bd.history["funding_rate"].values[-FUNDING_LOOKBACK:])) / FUNDING_NORM, 1.0)
-                funding_exit_widen = (1.0 - funding_strength) * FUNDING_EXIT_WIDEN_MAX
-                effective_ob += funding_exit_widen
-                effective_os -= funding_exit_widen
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
