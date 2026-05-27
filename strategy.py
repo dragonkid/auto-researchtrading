@@ -109,28 +109,11 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.macro_history = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-
-        # Cross-asset macro direction: noise-immune via averaging across 3 independently-perturbed symbols
-        _macro_sum, _macro_n = 0.0, 0
-        for _sym in ACTIVE_SYMBOLS:
-            if _sym in bar_data and len(bar_data[_sym].history) >= LONG_WINDOW + 1:
-                _c = bar_data[_sym].history["close"].values
-                _macro_sum += (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
-                _macro_n += 1
-        macro_ret_avg = _macro_sum / max(_macro_n, 1)
-        self.macro_history.append(macro_ret_avg)
-        if len(self.macro_history) > 3:
-            self.macro_history.pop(0)
-        macro_smooth = sum(self.macro_history) / len(self.macro_history)
-        MACRO_DEADZONE = 0.025
-        macro_bull_ok = macro_smooth > -MACRO_DEADZONE
-        macro_bear_ok = macro_smooth < MACRO_DEADZONE
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -190,9 +173,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and ((self.smoothed_trend[symbol] > 0 and macro_bull_ok) or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size
-                elif bear_votes >= MIN_VOTES and ((self.smoothed_trend[symbol] < 0 and macro_bear_ok) or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
