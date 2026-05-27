@@ -115,6 +115,14 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Cross-asset macro direction signal (architectural - used for size boost only)
+        _macro_returns = []
+        for _s in ACTIVE_SYMBOLS:
+            if _s in bar_data and len(bar_data[_s].history) >= LONG_WINDOW + 1:
+                _c = bar_data[_s].history["close"].values
+                _macro_returns.append((_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW])
+        macro_signal = float(np.mean(_macro_returns)) if _macro_returns else 0.0
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -174,9 +182,9 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size
+                    target = size * (1.15 if macro_signal > 0.025 else 1.0)
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size
+                    target = -size * (1.15 if macro_signal < -0.025 else 1.0)
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
