@@ -145,7 +145,7 @@ class Strategy:
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            rsi_exit = sum(100 - 100 / (1 + np.mean(np.maximum(np.diff(closes[-p:]), 0)) / max(np.mean(np.maximum(-np.diff(closes[-p:]), 0)), 1e-10)) for p in (7, 9)) / 2.0
+            rsi_exit = sum(100 - 100 / (1 + np.mean(np.maximum(np.diff(closes[-p:]), 0)) / max(np.mean(np.maximum(-np.diff(closes[-p:]), 0)), 1e-10)) for p in (5, 7, 9)) / 3.0
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
