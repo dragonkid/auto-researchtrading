@@ -85,8 +85,9 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.013
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 45
-MEANREV_RSI_OVERBOUGHT = 55
+MEANREV_RSI_OVERSOLD = 47
+MEANREV_RSI_OVERBOUGHT = 53
+DEADZONE_VOTE_MARGIN = 1.0
 
 # Vote / cooldown
 DONCHIAN_PERIOD = 13
@@ -179,9 +180,9 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 _bve, _bre = self.bull_vote_ema[symbol], self.bear_vote_ema[symbol]
-                if _bve >= MIN_VOTES_EMA and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and _bve > _bre)):
+                if _bve >= MIN_VOTES_EMA and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and _bve - _bre >= DEADZONE_VOTE_MARGIN)):
                     target = size
-                elif _bre >= MIN_VOTES_EMA and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and _bre > _bve)):
+                elif _bre >= MIN_VOTES_EMA and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and _bre - _bve >= DEADZONE_VOTE_MARGIN)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
