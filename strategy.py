@@ -109,6 +109,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_vol_ratio = {}
+        self.smoothed_pos_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -192,13 +194,14 @@ class Strategy:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
-                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
+                _evr = self.entry_vol_ratio.get(symbol, vol_ratio)
+                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if _evr > 1.0 else 0):
+                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if _evr > 1.0 else 0)))
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                if _evr < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(_ret_long_lagged) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and _ret_long_lagged > 0.02:
@@ -213,8 +216,10 @@ class Strategy:
                     target = 0.0
 
                 if target != 0:
-                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                    _spp = 0.7 * pos_pnl + 0.3 * self.smoothed_pos_pnl.get(symbol, pos_pnl)
+                    self.smoothed_pos_pnl[symbol] = _spp
+                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), _spp)
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - _spp > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
@@ -223,10 +228,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_vol_ratio, self.smoothed_pos_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.entry_vol_ratio[symbol], self.smoothed_pos_pnl[symbol] = vol_ratio, 0.0
 
         return signals
