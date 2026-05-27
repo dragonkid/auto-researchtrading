@@ -1,7 +1,7 @@
 # autotrader — multi-step experiment session
 
 Autonomous trading strategy research on Hyperliquid perpetual futures.
-You will run **up to 5 experiments** in this session, building on your findings iteratively. The outer shell script invokes you once per "round" — each round is a coherent research arc.
+You will run **up to 10 experiments** in this session, building on your findings iteratively. The outer shell script invokes you once per "round" — each round is a coherent research arc. Use the extra slots for exploration branches — when a direction shows promise, iterate on it rather than reverting immediately.
 
 ## Context
 
@@ -25,7 +25,7 @@ When min_stability < 0.90: at least 3 of 5 experiments MUST target stability (us
 
 ## Session protocol
 
-You run up to 5 experiments per session. Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements.
+You run up to 10 experiments per session. Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements. **Exploration branches** (see below) let you iterate on a promising direction without reverting — use them when a regime-level signal is strong.
 
 ### Phase 1: Read context (once per session)
 
@@ -44,7 +44,7 @@ For each experiment:
 
 **Exit rule (escalation-gated):**
 - 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (layers 3-4 from the stability methodology: hysteresis, confidence margin, weighted ensemble, abstain zone, etc.). Single-parameter tweaks are forbidden after 3 discards.
-- 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the hard cap of 8 experiments.
+- 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the hard cap of 10 experiments.
 - A discard with stability ≥ +0.005 counts as "progress" and resets the counter — keep iterating on that direction.
 - A `keep` resets everything.
 
@@ -80,12 +80,55 @@ For each experiment:
    **Composite keep path (only when min_stability ≥ 0.90):** Once stability reaches 0.90+, an alternative keep path opens: `composite_score` improved by at least +0.03 vs baseline, with no DD cap violation. This allows revenue optimization after the stability goal is achieved.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
-   If discard: run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
+   If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
+
+### Exploration branches (iterate before reverting)
+
+When an experiment does NOT meet full keep criteria but shows architectural promise, you MAY keep the change and open an **exploration branch** instead of reverting. This lets you iterate on a promising direction — fixing weak regimes, tuning the new mechanism — before the final keep/discard decision.
+
+**Entry conditions (any ONE is sufficient):**
+- At least one regime score improved by ≥ +0.3
+- At least one regime stability improved by ≥ +0.002
+- Overall min_stability is unchanged or only slightly worse (≥ -0.003) AND the change introduces a fundamentally new mechanism (not a parameter tweak)
+- The experiment improves composite/raw_composite meaningfully (+0.03) with stability regression explainable and plausibly fixable
+
+You do NOT need the experiment to "almost pass" — the point is to allow bold architectural exploration. If you can articulate WHY the regression happened and HOW a follow-up change could fix it, that's sufficient justification to open a branch.
+
+**Rules:**
+- **Justification required**: State explicitly (1) what the new architecture does differently, (2) which regime regressed and why, (3) your hypothesis for fixing it in the next step.
+- **Max depth**: 7 consecutive experiments on the branch (including the initial one that opened it). You get 6 more attempts to iterate on the new architecture.
+- **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
+- **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **original baseline** (not branch-internal baseline), it's a real `keep`. Record as `keep` and update baseline.
+- **Failure (revert the branch)**: if after max depth the keep criteria are still not met, revert ALL branch commits back to the original baseline: `git revert --no-edit HEAD~N..HEAD` (where N = number of branch commits). Record ONE summary `discard` line explaining the branch attempt and why it failed.
+- **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv.
+- **Exit rule interaction**: branch experiments count as architectural if the opening experiment was architectural.
+- **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you still have step 3-7 to recover.
+
+**Typical session shape:**
+- Experiments 1-3: independent explorations (normal discard/revert cycle)
+- Experiment 3-4: promising direction found → open exploration branch
+- Experiments 4-10 (branch): iterate on new architecture, fixing weak regimes one by one
+- Branch concludes → session ends
+
+**Example flow (success):**
+1. Exp 2: linreg slope deadzone gate → bull +0.47, rally -0.0003 → open exploration branch
+2. Exp 3 (branch): add rally-protective condition → rally fixed, sideways -0.001 → continue
+3. Exp 4 (branch): tune sideways parameters → sideways fixed, crash -0.001 → continue
+4. Exp 5 (branch): crash-protective adjustment → all regimes pass → KEEP (vs original baseline)
+
+**Example flow (failure):**
+1. Exp 3: new exit mechanism → crash +0.5, sideways -0.010 → open exploration branch
+2. Exp 4 (branch): add fast sideways exit path → sideways -0.005 (improved) → continue
+3. Exp 5 (branch): alternative sideways fix → sideways -0.004 → continue
+4. Exp 6 (branch): regime-specific sideways logic → sideways -0.003 → continue
+5. Exp 7 (branch): different approach to sideways → sideways -0.003 → continue
+6. Exp 8 (branch): hybrid exit for sideways → sideways -0.002 → continue
+7. Exp 9 (branch): final attempt → sideways -0.002 (still failing) → max depth reached → revert all 7, record discard, session ends
 
 7. **Decide next step**:
    - If you have a clear follow-up insight from the regime breakdown → continue to next experiment.
    - If you've found a keep and want to try combining it with another idea → continue.
-   - If you've exhausted your ideas or hit 5 experiments → exit.
+   - If you've exhausted your ideas or hit 10 experiments → exit.
 
 ### Phase 3: Combination experiments (optional, experiments 3-5)
 
