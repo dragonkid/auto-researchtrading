@@ -9,8 +9,7 @@ MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 VSHORT_WINDOWS = (4, 6, 8, 10)
-VSHORT_QUORUM = 3
-VSHORT_THRESH_FACTOR = 0.55
+VSHORT_QUORUM = 2
 LONG_WINDOW = 20
 
 # EMA parameters
@@ -140,8 +139,8 @@ class Strategy:
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
             ret_subs = [(closes[-1] - closes[-k]) / closes[-k] for k in VSHORT_WINDOWS]
-            v2_bull = sum(r > dyn_threshold * VSHORT_THRESH_FACTOR for r in ret_subs) >= VSHORT_QUORUM
-            v2_bear = sum(r < -dyn_threshold * VSHORT_THRESH_FACTOR for r in ret_subs) >= VSHORT_QUORUM
+            v2_bull = sum(r > dyn_threshold * 0.70 for r in ret_subs) >= VSHORT_QUORUM
+            v2_bear = sum(r < -dyn_threshold * 0.70 for r in ret_subs) >= VSHORT_QUORUM
             ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
