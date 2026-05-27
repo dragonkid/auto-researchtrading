@@ -83,9 +83,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_SIGNAL_SCALE = 0.005
-TREND_SIGNAL_CLIP = 2.0
-ENTRY_COMBINED_THRESHOLD = 1.5
+TREND_GATE_DEADZONE = 0.013
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -175,12 +173,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                _trend_signal = max(-TREND_SIGNAL_CLIP, min(TREND_SIGNAL_CLIP, self.smoothed_trend[symbol] / TREND_SIGNAL_SCALE))
-                _combined_long = (bull_votes - bear_votes) + _trend_signal
-                _combined_bear = (bear_votes - bull_votes) - _trend_signal
-                if bull_votes >= MIN_VOTES and _combined_long >= ENTRY_COMBINED_THRESHOLD:
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size
-                elif bear_votes >= MIN_VOTES and _combined_bear >= ENTRY_COMBINED_THRESHOLD:
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
