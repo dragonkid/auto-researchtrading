@@ -188,6 +188,8 @@ class Strategy:
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 if self.entry_path.get(symbol) == 'mr':
                     effective_ob, effective_os = effective_ob - 15.0, effective_os + 15.0
+                elif abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE:
+                    effective_ob, effective_os = effective_ob - 5.0, effective_os + 5.0
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
