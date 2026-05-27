@@ -206,14 +206,19 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                prev_pending = self.exit_pending.get(symbol)
                 if current_pos > 0:
-                    self.exit_pending[symbol] = 'ob' if rsi_exit > effective_ob else None
-                    if prev_pending == 'ob' and self.exit_pending[symbol] == 'ob':
+                    if rsi_exit > effective_ob:
+                        self.exit_pending[symbol] = 'ob'
+                    elif rsi_exit < effective_ob - 5.0:
+                        self.exit_pending.pop(symbol, None)
+                    if self.exit_pending.get(symbol) == 'ob':
                         target = 0.0
                 else:
-                    self.exit_pending[symbol] = 'os' if rsi_exit < effective_os else None
-                    if prev_pending == 'os' and self.exit_pending[symbol] == 'os':
+                    if rsi_exit < effective_os:
+                        self.exit_pending[symbol] = 'os'
+                    elif rsi_exit > effective_os + 5.0:
+                        self.exit_pending.pop(symbol, None)
+                    if self.exit_pending.get(symbol) == 'os':
                         target = 0.0
                 if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
