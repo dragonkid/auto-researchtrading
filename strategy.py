@@ -109,7 +109,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.entry_path = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -172,22 +171,19 @@ class Strategy:
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
-            _new_path = None
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target, _new_path = size, 'trend'
+                    target = size
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target, _new_path = -size, 'trend'
+                    target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target, _new_path = ((size * 0.5) if rsi < MEANREV_RSI_OVERSOLD else (-size * 0.5)), 'mr'
+                    target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
-                if self.entry_path.get(symbol) == 'mr':
-                    effective_ob, effective_os = effective_ob - 15.0, effective_os + 15.0
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
@@ -222,16 +218,15 @@ class Strategy:
                         target = 0.0
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    target, _new_path = (-size if current_pos > 0 else size), 'trend'
+                    target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.entry_path[symbol] = _new_path
 
         return signals
