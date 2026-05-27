@@ -45,7 +45,6 @@ RSI_TREND_BIAS_DECAY = 0.10
 # RSI exit parameters
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
-RSI_EXIT_TREND_DECAY = 0.08
 RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
 RSI_EXIT_PROFIT_SCALE = 20.0
@@ -53,7 +52,7 @@ RSI_YOUNG_GRACE_BARS = 5
 RSI_YOUNG_WIDEN = 4.5
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.070
+BASE_POSITION_SIZE = 0.080
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -172,9 +171,8 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
-                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
-                effective_ob = RSI_OVERBOUGHT + sideways_exit_widen
-                effective_os = RSI_OVERSOLD + sideways_exit_widen
+                effective_ob = RSI_OVERBOUGHT
+                effective_os = RSI_OVERSOLD
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
