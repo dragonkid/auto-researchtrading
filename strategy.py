@@ -175,14 +175,10 @@ class Strategy:
             _new_path = None
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and self.smoothed_trend[symbol] > 0:
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target, _new_path = size, 'trend'
-                elif bear_votes >= MIN_VOTES and self.smoothed_trend[symbol] < 0:
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target, _new_path = -size, 'trend'
-                elif abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes >= MIN_VOTES and bull_votes > bear_votes:
-                    target, _new_path = size, 'mr'
-                elif abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes >= MIN_VOTES and bear_votes > bull_votes:
-                    target, _new_path = -size, 'mr'
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target, _new_path = (size if rsi < MEANREV_RSI_OVERSOLD else -size), 'mr'
             elif current_pos != 0:
