@@ -66,7 +66,7 @@ VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
 VOL_CONFIRM_FLOOR = 0.98
 VOL_CONFIRM_CAP = 1.10
-STRENGTH_FLOOR_SIDEWAYS = 2.6
+STRENGTH_FLOOR_SIDEWAYS = 2.3
 STRENGTH_FLOOR_DECAY = 0.12
 
 # Combined mult cap
@@ -180,7 +180,7 @@ class Strategy:
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
-                sideways_exit_widen = max(0.0, 1.0 - abs(_ret_long_lagged) / RSI_EXIT_TREND_DECAY)
+                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
