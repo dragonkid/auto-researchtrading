@@ -173,10 +173,14 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size
+                _dz_long = abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes
+                _dz_short = abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes
+                _dz_long_scale = 0.5 + 0.5 * min((bull_votes - bear_votes - 1) / 3.0, 1.0) if _dz_long else 1.0
+                _dz_short_scale = 0.5 + 0.5 * min((bear_votes - bull_votes - 1) / 3.0, 1.0) if _dz_short else 1.0
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or _dz_long):
+                    target = size * _dz_long_scale
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or _dz_short):
+                    target = -size * _dz_short_scale
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
