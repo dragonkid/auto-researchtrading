@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.macro_history = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -123,9 +124,13 @@ class Strategy:
                 _macro_sum += (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
                 _macro_n += 1
         macro_ret_avg = _macro_sum / max(_macro_n, 1)
+        self.macro_history.append(macro_ret_avg)
+        if len(self.macro_history) > 3:
+            self.macro_history.pop(0)
+        macro_smooth = sum(self.macro_history) / len(self.macro_history)
         MACRO_DEADZONE = 0.025
-        macro_bull_ok = macro_ret_avg > -MACRO_DEADZONE
-        macro_bear_ok = macro_ret_avg < MACRO_DEADZONE
+        macro_bull_ok = macro_smooth > -MACRO_DEADZONE
+        macro_bear_ok = macro_smooth < MACRO_DEADZONE
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
