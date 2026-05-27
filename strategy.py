@@ -199,6 +199,11 @@ class Strategy:
                 if bars_held < _gd:
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / _gd)
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
+                if pos_pnl < 0 and rsi_trend_str > 0.5:
+                    _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
+                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
+                if _evr < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                    effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(_ret_long_lagged) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and _ret_long_lagged > 0.02:
                     effective_ob += _tw
