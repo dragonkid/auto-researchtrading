@@ -38,7 +38,7 @@ If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0
 
 **This rule is enforced by the exit rule below:** you cannot exit a session without having attempted at least 2 architectural changes. The escalation rule checks BOTH the current session's discards AND the tail of `results.tsv` from prior sessions — if the last 3+ results across sessions are sub-threshold discards, escalation is already active from experiment 1.
 
-### Phase 2: Experiment loop (max 8 experiments per session)
+### Phase 2: Experiment loop
 
 For each experiment:
 
@@ -130,7 +130,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
    - If you've found a keep and want to try combining it with another idea → continue.
    - If you've exhausted your ideas or hit 10 experiments → exit.
 
-### Phase 3: Combination experiments (optional, experiments 3-5)
+### Phase 3: Combination experiments (optional)
 
 After running at least 2 independent experiments and observing their regime-level effects, you MAY attempt a combination:
 - **Prerequisite**: at least one of the component ideas showed a promising signal (e.g., improved a target regime even if overall was discard due to regression elsewhere).
@@ -141,10 +141,6 @@ After running at least 2 independent experiments and observing their regime-leve
 ### Session end
 
 After your last experiment (or when the exit rule triggers), exit. The outer loop will invoke you again for the next round.
-
-### Regime gate rationale
-
-The regime gates prevent regime-fit experiments that trade one regime for another. The **magnitude cap** auto-scales: at minimum keep threshold (composite_gain=+0.01) the cap is 0.2; at larger gains (composite_gain=+0.1 → cap 0.5) modest rebalancing is tolerated. The **majority rule** catches experiments where no single regression is large but most regimes drift down (std-gaming, not real alpha).
 
 ## Results TSV format
 
@@ -207,119 +203,57 @@ Each tier crossing yields a massive score boost. Reaching 0.80 = +40% per regime
 
 **Multi-variable structural changes are explicitly allowed** for stability work. You are NOT limited to single-parameter tweaks. Diagnose the noise sensitivity source first, then propose whatever scope of change is needed — including architectural modifications that touch multiple components simultaneously.
 
-### Diagnostic-first approach (mandatory before proposing stability fixes)
+### Diagnostic-first approach (optional, recommended for new sessions)
 
-Before proposing any solution, **diagnose** where the noise sensitivity actually comes from:
-1. Read `strategy.py` and identify all voters/signals that use hard thresholds on price-derived values
-2. For each voter, estimate how far typical signal values sit from their decision boundary — voters that hover near threshold are the primary noise amplifiers
-3. Propose changes that target the MOST sensitive voter/threshold first, not broad architectural rewrites
+If results.tsv has < 10 entries or you haven't seen flip-rate data from prior sessions, diagnose noise sensitivity first:
+1. Read `strategy.py` and identify voters/signals using hard thresholds on price-derived values
+2. Estimate how far typical signal values sit from decision boundaries
+3. Run the flip-rate diagnostic (see reference below) to quantify per-voter noise sensitivity
+
+If results.tsv already contains diagnostic insights from prior sessions (grep for "flip rate", "noise", "voter sensitivity"), you may skip re-running diagnostics and proceed directly to experimentation.
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
 - A stability gain of +0.005 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 8.0 and DD caps are not violated
 - The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 8.0
 
-## Stability-first directions (priority when min_stability < 0.90)
+## Stability improvement approaches (priority when min_stability < 0.90)
 
-**Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy. Any stability gain from using open is illusory and will not generalize.
-**HL2 stability gains are overstated.** HL2=(high+low)/2 receives roughly half the perturbation of close (because high/low only change when perturbed close exceeds original range). In trending regimes with wide bars, HL2 is nearly unperturbed — this flatters stability scores. Acceptable use: multi-point aggregations (e.g., linreg over 16 bars) where averaging further reduces noise. Unacceptable use: single-point comparisons (e.g., Donchian max/min) or magnitude calculations (breaks sizing calibration). Always discount reported HL2 stability gains by ~50%.
+**Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
+**HL2 stability gains are overstated.** HL2=(high+low)/2 receives ~half the perturbation of close. Acceptable use: multi-point aggregations (e.g., linreg over 16 bars). Unacceptable use: single-point comparisons or magnitude calculations. Discount reported HL2 stability gains by ~50%.
 
-### Stability methodology: diagnose → layered defense
+### Choosing your approach
 
-**⚠️ HARD RULE: Any stability experiment attempted WITHOUT first completing Step 1 diagnosis is INVALID. You must have concrete flip-rate numbers before proposing a fix. "I think X is noisy" is not diagnosis — you need measured data.**
+There is no single correct path to stability. Choose based on your analysis of results.tsv and the current architecture:
 
-**Step 1: Diagnose the weakest voter (MANDATORY — run this code before ANY stability experiment)**
+**Incremental (within current architecture):**
+- Per-voter hysteresis, confidence margins, abstain zones
+- Input denoising (smoothing before voters)
+- Aggregate decision margin (not just majority)
+- Remove/replace the noisiest voter entirely
 
-Run this diagnostic ONCE at the start of each session (before your first stability experiment). Copy this into a temporary script, execute it, then delete the script:
+**Structural (new architecture):**
+- Replace binary voting with weighted/continuous signals
+- Redesign exit logic entirely (not RSI-based)
+- Different signal fusion method (regression, scoring, probabilistic)
+- Fundamentally different entry/exit decision mechanism
+- Replace voter-based decisions with continuous confidence scores
+
+If incremental approaches are saturated (check results.tsv — 10+ discards in that direction), switch to structural. **Do not keep iterating on approaches that have been proven to plateau.**
+
+### Flip-rate diagnostic (reference)
+
+Run this once per session if you need to identify the noisiest voter. Adapt the skeleton to instrument your actual voters:
 
 ```python
 # diagnostic: per-voter flip rate under ±5bps noise
-# Add to strategy.py temporarily, run via: uv run python -c "from strategy import diagnose_flips; diagnose_flips()"
-def diagnose_flips():
-    """Compute per-voter flip rate: how often does each voter change output under ±5bps close perturbation?"""
-    import numpy as np
-    from prepare import load_data
-    data = load_data()
-    # Use the longest available symbol
-    for sym in ['BTC', 'ETH']:
-        if sym not in data: continue
-        df = data[sym]
-        closes_clean = df['close'].values.copy()
-        n_bars = len(closes_clean)
-        n_trials = 20
-        noise_mag = 0.0005  # ±5bps
-        
-        # For each bar, run strategy on clean vs perturbed, record each voter's output
-        # You must instrument the vote computation to extract individual voter booleans
-        # Compare: voter_bull_clean[i] != voter_bull_perturbed[i] → flip
-        # Report: flip_rate[voter] = flips / (n_bars * n_trials)
-        print(f"TODO: instrument {sym} voters, compute flip rates")
-        print(f"Target: identify voter with flip_rate > 0.30")
-diagnose_flips()
+# Instrument vote computation to extract individual voter booleans
+# Compare: voter_clean[i] != voter_perturbed[i] → flip
+# Report table: Voter | Flip rate | Bars affected
+# Target: identify voters with flip_rate > 0.03 (3%)
 ```
-
-Adapt this skeleton to actually instrument your voters (extract each voter's boolean output per bar under clean vs perturbed close). The output you need is a table like:
-```
-Voter          | Flip rate | Bars affected
-ema_cross      | 0.12      | 847
-macd_hist      | 0.08      | 592  
-donchian       | 0.31      | 2184  ← PRIMARY TARGET
-linreg_slope   | 0.05      | 350
-...
-```
-
-**Only after you have this table** may you proceed to Step 2.
-
-**Step 2: Choose intervention from four layers (address the outermost broken layer first)**
-
-| Layer | What it does | Example approaches |
-|-------|-------------|-------------------|
-| 1. Input denoising | Remove noise before indicators see it | Pre-filter close with low-pass/robust smoother before feeding to voters |
-| 2. Robust indicator | Make the indicator computation itself noise-resistant | Robust regression (median-based), Kalman velocity with uncertainty, longer aggregation windows |
-| 3. Per-voter hysteresis | Prevent individual voter output from flipping on small moves | Asymmetric enter/exit thresholds, minimum hold time before voter can flip |
-| 4. Aggregate margin | Make the collective decision robust even if individual voters flip | Require margin (not just majority), confidence-weighted voting (distance from boundary = weight), abstain zone |
-
-Most stability improvements come from layers 3 and 4 (cheapest to implement, highest impact on boolean-voter architectures). Layer 1-2 changes are more invasive but have higher ceiling.
-
-**Step 3: Two valid paths to higher stability**
-- **Removal/simplification**: eliminate the noisiest voter entirely. If stability jumps +0.02+ even with composite loss, that confirms it was a noise source. This is how vol_breakout removal worked.
-- **Structural change**: add hysteresis, confidence weighting, or input denoising to make existing voters more robust without removing them. This preserves signal diversity.
-
-Both are valid. Diagnose first, then choose based on the flip rate magnitude.
 
 Do NOT hardcode "proven ineffective" conclusions here — read results.tsv each round to discover what has been tried. Only methodology-level blind spots (like open price artifact and HL2 overestimation above) belong in this file.
-
-## Strategy research directions
-
-Start with these high-probability ideas:
-
-### Tier 1 — Most likely to improve score
-- **Add SOL with lower weight** — diversification should help Sharpe
-- **Vol-regime adaptive sizing** — reduce positions in high vol, increase in low vol
-- **Multi-timeframe momentum** — require 12h, 24h, 48h agreement before entry
-- **ATR-based trailing stops** — volatility-adjusted trailing exits
-- **Funding carry overlay** — add carry component on top of momentum
-
-### Tier 2 — Worth exploring
-- **EMA crossover instead of raw momentum** — smoother signals, fewer whipsaws
-- **Cross-asset lead-lag** — BTC momentum predicts ETH/SOL 1-6h later
-- **Dynamic threshold** — adjust momentum entry threshold by recent vol
-- **Inverse vol position sizing** — proven in production risk framework
-- **Ensemble voting** — combine 3+ signals, only enter when majority agree
-
-### Structural issues (code review findings)
-The sideways regime has the lowest score (20.32 vs bull 32.45). These code-structural issues may explain why:
-- **Cooldown vanishes in low-trend**: `effective_cooldown = COOLDOWN_BARS * min(|ret_long|/0.06, 1.0)` drops to ~0.5 bars when `|ret_long|` is small. A minimum floor (e.g. `max(1, ...)`) would prevent degenerate re-entry cycles without affecting trending regimes.
-- **Mean-reversion RSI 49/51 covers ~95% of RSI values**: RSI oscillates around 50 by construction, so these thresholds make mean-rev the dominant entry path in sideways, overriding voting-based momentum logic.
-- **Momentum and mean-reversion share one cooldown**: both entry paths gate on the same `in_cooldown` flag. Decoupling them (e.g. fixed cooldown for mean-rev entries) could prevent sideways churn.
-
-### Tier 3 — Radical / novel
-- **Pure mean reversion on funding rate** — trade the mean reversion of funding itself
-- **Correlation regime switching** — different strategies for high/low BTC-ETH correlation
-- **Pairs trading** — long ETH/short BTC (or vice versa) on relative value
-- **Time-of-day patterns** — are there hourly seasonality patterns?
-- **Volatility breakout** — enter when realized vol breaks above/below its own SMA
-- **Machine learning lite** — rolling linear regression of features → direction
 
 ## Data available
 
