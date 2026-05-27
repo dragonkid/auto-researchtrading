@@ -87,6 +87,8 @@ TREND_GATE_DEADZONE = 0.013
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_Z_WINDOW = 20
+MEANREV_Z_THRESHOLD = 1.0
 
 # Vote / cooldown
 DONCHIAN_PERIOD = 13
@@ -177,8 +179,11 @@ class Strategy:
                     target = size
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
-                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = size if rsi < MEANREV_RSI_OVERSOLD else -size
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD:
+                    _mr_window = closes[-MEANREV_Z_WINDOW:]
+                    _mr_z = (closes[-1] - np.mean(_mr_window)) / max(np.std(_mr_window), 1e-6)
+                    if abs(_mr_z) > MEANREV_Z_THRESHOLD:
+                        target = size if _mr_z < 0 else -size
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
