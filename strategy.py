@@ -209,7 +209,8 @@ class Strategy:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.00015 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.00015 and rsi_exit < 42)):
+                _slope_thresh = 0.00015 + 0.00015 * min(1.0, abs(_ret_long_lagged) / 0.025)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_slope_thresh and rsi_exit > 58) or (current_pos < 0 and _lr.slope > _slope_thresh and rsi_exit < 42)):
                     target = 0.0
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
