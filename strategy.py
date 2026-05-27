@@ -45,11 +45,6 @@ RSI_TREND_BIAS_DECAY = 0.10
 # RSI exit parameters
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
-RSI_OB_TIGHT = 65
-RSI_OS_TIGHT = 35
-RSI_EXIT_VOL_LONG_LOW = 0.7
-RSI_EXIT_VOL_LONG_HIGH = 1.8
-RSI_EXIT_VOL_LONG_LOOKBACK = 100
 RSI_EXIT_TREND_DECAY = 0.08
 RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
@@ -120,7 +115,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5, RSI_EXIT_VOL_LONG_LOOKBACK) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -181,11 +176,9 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
-                vol_long_ratio = max(np.std(np.diff(np.log(closes[-RSI_EXIT_VOL_LONG_LOOKBACK - 1:-1]))), 1e-6) / TARGET_VOL
-                vol_exit_blend_long = max(0.0, min(1.0, (vol_long_ratio - RSI_EXIT_VOL_LONG_LOW) / (RSI_EXIT_VOL_LONG_HIGH - RSI_EXIT_VOL_LONG_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
-                effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend_long
-                effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend_long
+                effective_ob = RSI_OVERBOUGHT + sideways_exit_widen
+                effective_os = RSI_OVERSOLD + sideways_exit_widen
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
