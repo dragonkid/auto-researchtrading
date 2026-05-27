@@ -45,6 +45,10 @@ RSI_TREND_BIAS_DECAY = 0.10
 # RSI exit parameters
 RSI_OVERBOUGHT = 73
 RSI_OVERSOLD = 27
+RSI_OB_TIGHT = 65
+RSI_OS_TIGHT = 35
+RSI_EXIT_VOL_LOW = 0.7
+RSI_EXIT_VOL_HIGH = 1.8
 RSI_EXIT_TREND_DECAY = 0.08
 RSI_EXIT_PROFIT_THRESHOLD = 0.007
 RSI_EXIT_PROFIT_TIGHTEN = 0.15
@@ -176,9 +180,10 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
+                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
-                effective_ob = RSI_OVERBOUGHT + sideways_exit_widen
-                effective_os = RSI_OVERSOLD + sideways_exit_widen
+                effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
+                effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
