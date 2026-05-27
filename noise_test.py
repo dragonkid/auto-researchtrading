@@ -9,7 +9,7 @@ import numpy as np
 
 from prepare import run_backtest, BacktestResult
 
-N_TRIALS = 10
+N_TRIALS = 20
 NOISE_BPS = 5.0
 STABILITY_THRESHOLD = 0.85
 

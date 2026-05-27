@@ -34,7 +34,7 @@ You run up to 10 experiments per session. Each experiment may be a **single-vari
 
 ### ESCALATION RULE (multi-variable architectural change)
 
-If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0.005 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
+If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0.003 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
 
 **This rule is enforced by the exit rule below:** you cannot exit a session without having attempted at least 2 architectural changes. The escalation rule checks BOTH the current session's discards AND the tail of `results.tsv` from prior sessions — if the last 3+ results across sessions are sub-threshold discards, escalation is already active from experiment 1.
 
@@ -45,7 +45,7 @@ For each experiment:
 **Exit rule (escalation-gated):**
 - 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (layers 3-4 from the stability methodology: hysteresis, confidence margin, weighted ensemble, abstain zone, etc.). Single-parameter tweaks are forbidden after 3 discards.
 - 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the hard cap of 10 experiments.
-- A discard with stability ≥ +0.005 counts as "progress" and resets the counter — keep iterating on that direction.
+- A discard with stability ≥ +0.003 counts as "progress" and resets the counter — keep iterating on that direction.
 - A `keep` resets everything.
 
 1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
@@ -63,7 +63,7 @@ For each experiment:
    **Keep/discard rules (stability-first):**
 
    An experiment qualifies as `keep` if ALL of the following are met:
-   - `min_stability` improved by **at least +0.005** vs baseline.
+   - `min_stability` improved by **at least +0.003** vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
    - `raw_composite` ≥ **8.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
 
@@ -214,7 +214,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.005 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 8.0 and DD caps are not violated
+- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 8.0 and DD caps are not violated
 - The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 8.0
 
 ## Stability improvement approaches (priority when min_stability < 0.90)
