@@ -205,11 +205,9 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                _strong_trend_long = current_pos > 0 and ret_long > 0.05 and pos_pnl > 0.01
-                _strong_trend_short = current_pos < 0 and ret_long < -0.05 and pos_pnl > 0.01
-                if current_pos > 0 and rsi_exit > effective_ob and (not _strong_trend_long or _lr.slope < -0.0001):
+                if current_pos > 0 and rsi_exit > effective_ob:
                     target = 0.0
-                elif current_pos < 0 and rsi_exit < effective_os and (not _strong_trend_short or _lr.slope > 0.0001):
+                elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
                 if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
