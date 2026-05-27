@@ -214,10 +214,8 @@ class Strategy:
                     target = 0.0
 
                 if target != 0:
-                    self.smoothed_pos_pnl[symbol] = 0.7 * pos_pnl + 0.3 * self.smoothed_pos_pnl.get(symbol, pos_pnl)
-                    _trend_blend = max(0.0, min(1.0, (abs(ret_long) - 0.03) / 0.04))
-                    _peak_input = _trend_blend * pos_pnl + (1 - _trend_blend) * self.smoothed_pos_pnl[symbol]
-                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), _peak_input)
+                    self.smoothed_pos_pnl[symbol] = 0.85 * pos_pnl + 0.15 * self.smoothed_pos_pnl.get(symbol, pos_pnl)
+                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), self.smoothed_pos_pnl[symbol])
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
