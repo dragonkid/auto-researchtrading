@@ -181,7 +181,7 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
-                evr = 0.5 * self.entry_vol_ratio.get(symbol, vol_ratio) + 0.5 * vol_ratio
+                evr = self.entry_vol_ratio.get(symbol, vol_ratio) if rsi_trend_str > 0.5 else vol_ratio
                 vol_exit_blend = max(0.0, min(1.0, (evr - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
