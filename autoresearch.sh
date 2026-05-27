@@ -39,7 +39,7 @@ count_consecutive_discards() {
     return
   fi
   # Read status column (5th field), count consecutive "discard" from bottom
-  tail -n +2 "$RESULTS" | awk -F'\t' '{print $5}' | tail -r | awk '
+  tail -n +2 "$RESULTS" | awk -F'\t' '{print $9}' | tail -r | awk '
     /^discard$/ { count++; next }
     { exit }
     END { print count+0 }
@@ -125,7 +125,9 @@ echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
     }
 
   # Ensure results.tsv ends with a newline (agent sometimes uses Write/Edit tool which strips it)
-  [ -f "$RESULTS" ] && [ -n "$(tail -c1 "$RESULTS")" ] && echo >> "$RESULTS"
+  if [ -f "$RESULTS" ] && [ -n "$(tail -c1 "$RESULTS")" ]; then
+    echo >> "$RESULTS"
+  fi
 
   echo ""
 done
