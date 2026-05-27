@@ -189,12 +189,12 @@ class Strategy:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
-                _evr = self.entry_vol_ratio.get(symbol, vol_ratio)
-                _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, _evr ** 0.5))
+                _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
                 if pos_pnl > _apt:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                _evr = self.entry_vol_ratio.get(symbol, vol_ratio)
                 _gd = RSI_YOUNG_GRACE_BARS - max(0.0, min(1.0, (_evr - 0.85) / 0.30))
                 if bars_held < _gd:
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / _gd)
