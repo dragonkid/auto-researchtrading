@@ -96,13 +96,13 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 
 **Rules:**
 - **Justification required**: State explicitly (1) what the new architecture does differently, (2) which regime regressed and why, (3) your hypothesis for fixing it in the next step.
-- **Max depth**: 7 experiments by default, extendable to 10. If the last 2 steps show improving min_stability (each step better than the previous), the branch auto-extends up to 10 total steps. Conversely, if 3 consecutive steps show no improvement (min_stab delta ≤ 0 vs the previous branch step), terminate the branch early regardless of remaining depth.
+- **Max depth**: 7 consecutive experiments on the branch (including the initial one that opened it). You get 6 more attempts to iterate on the new architecture.
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
 - **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **original baseline** (not branch-internal baseline), it's a real `keep`. Record as `keep` and update baseline.
 - **Failure (revert the branch)**: if after max depth the keep criteria are still not met, revert ALL branch commits back to the original baseline: `git revert --no-edit HEAD~N..HEAD` (where N = number of branch commits). Record ONE summary `discard` line explaining the branch attempt and why it failed.
 - **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv.
 - **Exit rule interaction**: branch experiments count as architectural if the opening experiment was architectural.
-- **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you may have up to 10 steps to recover. If you're making steady progress (each step closer to baseline), keep going.
+- **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you still have step 3-7 to recover.
 
 **Typical session shape:**
 - Experiments 1-3: independent explorations (normal discard/revert cycle)
