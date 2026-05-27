@@ -209,7 +209,7 @@ class Strategy:
                     target = 0.0
                 elif current_pos < 0 and rsi_exit < effective_os:
                     target = 0.0
-                _slope_thresh = 0.00015 + 0.00030 * min(1.0, abs(_ret_long_lagged) / 0.04)
+                _slope_thresh = 0.00015 + 0.00015 * min(1.0, abs(_ret_long_lagged) / 0.025)
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_slope_thresh and rsi_exit > 58) or (current_pos < 0 and _lr.slope > _slope_thresh and rsi_exit < 42)):
                     target = 0.0
                 if target != 0:
