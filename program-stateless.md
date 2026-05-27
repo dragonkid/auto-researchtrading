@@ -241,6 +241,14 @@ There is no single correct path to stability. Choose based on your analysis of r
 
 If incremental approaches are saturated (check results.tsv — 10+ discards in that direction), switch to structural. **Do not keep iterating on approaches that have been proven to plateau.**
 
+### Regime-conditional strategies (overfitting warning)
+
+Regime-conditional behavior (different logic for sideways vs trending) is allowed and may be necessary to break through stability plateaus. However:
+
+**Hard binary regime switches are forbidden.** A strategy that detects "current regime = sideways" and switches to a different code path creates boundary noise that destroys stability (the switch point itself is noise-sensitive). More importantly, the ±5bps noise test CANNOT detect regime-detection overfitting — a smooth regime classifier (e.g., 100-bar volatility average) will pass stability tests while being perfectly overfit to the 4 known backtest regimes. This is the one form of overfitting our test harness does not catch.
+
+**Required approach:** use continuous/gradual transitions. Parameters should scale smoothly with regime indicators rather than switching between discrete modes. The transition must be gradual enough that there is no identifiable "switch point" to overfit.
+
 ### Flip-rate diagnostic (reference)
 
 Run this once per session if you need to identify the noisiest voter. Adapt the skeleton to instrument your actual voters:
