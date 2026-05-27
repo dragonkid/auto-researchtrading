@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.smoothed_dyn_threshold = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -132,6 +133,8 @@ class Strategy:
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+            self.smoothed_dyn_threshold[symbol] = 0.5 * dyn_threshold + 0.5 * self.smoothed_dyn_threshold.get(symbol, dyn_threshold)
+            dyn_threshold = self.smoothed_dyn_threshold[symbol]
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
