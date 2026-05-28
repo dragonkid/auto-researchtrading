@@ -82,7 +82,6 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
-FLIP_TREND_DEADZONE = 0.008  # Dead-zone for flip trend gate (noise-immune)
 
 
 def ema(values, span):
@@ -142,7 +141,7 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            self.smoothed_trend[symbol] = 0.50 * trend_avg + 0.50 * self.smoothed_trend.get(symbol, trend_avg)
+            self.smoothed_trend[symbol] = 0.65 * trend_avg + 0.35 * self.smoothed_trend.get(symbol, trend_avg)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -190,8 +189,8 @@ class Strategy:
                 if target != 0 and bars_held >= MAX_HOLD_BARS:
                     target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg with dead-zone for noise immunity)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < -FLIP_TREND_DEADZONE) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > FLIP_TREND_DEADZONE)):
+                # Flip mechanism (preserved: 4 votes + trend_avg sign)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
