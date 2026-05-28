@@ -102,7 +102,7 @@ def ema(values, span):
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.entry_bar = {}, {}, {}
+        self.entry_prices, self.exit_bar, self.entry_bar, self.entry_vol_ratio = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
         self.smoothed_equity = 0.0
@@ -163,7 +163,7 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
-            strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(0.5 * (ret_long + _ret_long_lagged)) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
+            strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(_ret_long_lagged) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity_for_sizing * BASE_POSITION_SIZE * combined_mult
@@ -191,13 +191,15 @@ class Strategy:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
-                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
+                _evr = self.entry_vol_ratio.get(symbol, vol_ratio)
+                _gd = RSI_YOUNG_GRACE_BARS - (1 if _evr > 1.0 else 0)
+                if bars_held < _gd:
+                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / _gd)
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
                 if pos_pnl < 0 and rsi_trend_str > 0.5:
                     _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
                     effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
+                if _evr < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
                     effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
                 _tw = max(0.0, (abs(_ret_long_lagged) - 0.02) / 0.08) * 2.5
                 if current_pos > 0 and _ret_long_lagged > 0.02:
@@ -217,10 +219,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.entry_bar):
+                    for _d in (self.entry_prices, self.entry_bar, self.entry_vol_ratio):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol], self.entry_bar[symbol] = mid, self.bar_count
+                    self.entry_prices[symbol], self.entry_bar[symbol], self.entry_vol_ratio[symbol] = mid, self.bar_count, vol_ratio
 
         return signals
