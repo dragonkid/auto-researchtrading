@@ -206,12 +206,9 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                clear_exit = (current_pos > 0 and rsi_exit > effective_ob + 5.0) or (current_pos < 0 and rsi_exit < effective_os - 5.0)
-                marginal_exit = (current_pos > 0 and rsi_exit > effective_ob) or (current_pos < 0 and rsi_exit < effective_os)
-                if clear_exit:
-                    target = 0.0
-                elif marginal_exit:
-                    if self.exit_pending.get(symbol, False):
+                primary_exit_cross = (current_pos > 0 and rsi_exit > effective_ob) or (current_pos < 0 and rsi_exit < effective_os)
+                if primary_exit_cross:
+                    if self.exit_pending.get(symbol, False) or pos_pnl < -0.010 or vol_ratio > 1.2:
                         target = 0.0
                     else:
                         self.exit_pending[symbol] = True
