@@ -180,14 +180,11 @@ class Strategy:
                 if target != 0:
                     slope_against = (-_lr.slope if current_pos > 0 else _lr.slope)
                     # slope_against > 0 means trend moving against us
-                    # Two-layer slope exit:
-                    # 1) Continuous hold reduction in mild trends (noise-immune gradient)
+                    # Reduce hold time smoothly when trend is mild (abs(ret_long) < 0.025)
+                    # In strong trends, disable slope reduction (rely on stop-loss + time)
                     trend_gate = max(0.0, 1.0 - abs(ret_long) / 0.025)
                     slope_hold_reduction = max(0.0, min(5.0, slope_against / 0.00012)) * trend_gate
                     effective_max_hold = MAX_HOLD_BARS - slope_hold_reduction
-                    # 2) High-threshold slope exit for reversals (only in strong trends)
-                    if abs(ret_long) >= 0.025 and slope_against > 0.0006:
-                        effective_max_hold = min(effective_max_hold, 5.0)
                     if bars_held >= effective_max_hold:
                         target = 0.0
 
