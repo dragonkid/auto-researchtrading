@@ -180,18 +180,21 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
+                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                if current_pos < 0:
+                    pos_pnl = -pos_pnl
+                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                # Sideways fast exit: deterministic vote-reversal exit bypasses RSI noise
+                if abs(ret_long) < 0.03 and bars_held >= 3 and pos_pnl > 0 and ((current_pos > 0 and bear_votes >= MIN_VOTES) or (current_pos < 0 and bull_votes >= MIN_VOTES)):
+                    target = 0.0
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
-                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                if current_pos < 0:
-                    pos_pnl = -pos_pnl
                 _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
                 if pos_pnl > _apt:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
                     effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
-                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
                 if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
                     _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
                     effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
