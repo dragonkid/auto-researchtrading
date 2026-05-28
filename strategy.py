@@ -79,9 +79,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
-FLIP_MARGIN_BASE = 2  # margin in high-vol (noise-prone)
-FLIP_MARGIN_CALM = 1  # margin in low-vol (legitimate flips)
-FLIP_VOL_THRESHOLD = 1.0  # vol_ratio above which full margin applies
+FLIP_MARGIN = 2  # opposing votes must exceed same-direction by this margin
 COOLDOWN_BARS = 2
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -191,9 +189,8 @@ class Strategy:
                 if target != 0 and bars_held >= MAX_HOLD_BARS:
                     target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign + vol-scaled margin)
-                flip_margin = FLIP_MARGIN_CALM + (FLIP_MARGIN_BASE - FLIP_MARGIN_CALM) * min(1.0, vol_ratio / FLIP_VOL_THRESHOLD)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes - bull_votes >= flip_margin and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes - bear_votes >= flip_margin and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign + margin requirement)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes - bull_votes >= FLIP_MARGIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes - bear_votes >= FLIP_MARGIN and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
