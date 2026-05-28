@@ -42,27 +42,11 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
-# RSI exit parameters
-RSI_OVERBOUGHT = 73
-RSI_OVERSOLD = 27
-RSI_OB_TIGHT = 65
-RSI_OS_TIGHT = 35
-RSI_EXIT_VOL_LOW = 0.7
-RSI_EXIT_VOL_HIGH = 1.8
-RSI_EXIT_TREND_DECAY = 0.08
-RSI_EXIT_PROFIT_THRESHOLD = 0.007
-RSI_EXIT_PROFIT_TIGHTEN = 0.15
-RSI_EXIT_PROFIT_SCALE = 20.0
-RSI_YOUNG_GRACE_BARS = 5
-RSI_YOUNG_WIDEN = 4.5
-
-# Peak-profit trailing exit
-PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
-
-# Time-based exit (replaces RSI exit)
+# Exit parameters (time-based + slope + peak-profit + stop-loss)
 MAX_HOLD_BARS = 10
 STOP_LOSS_PCT = -0.020
+PEAK_PROFIT_MIN_BASE = 0.025
+PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.055
