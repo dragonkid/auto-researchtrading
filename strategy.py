@@ -149,7 +149,7 @@ class Strategy:
             _rsi_exit_curr = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit_curr, 0)) / max(np.mean(np.maximum(-_rd_exit_curr, 0)), 1e-10))
             _rd_exit_lag = np.diff(closes[-8:-1])
             _rsi_exit_lag = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit_lag, 0)) / max(np.mean(np.maximum(-_rd_exit_lag, 0)), 1e-10))
-            _lag_blend = max(0.0, rsi_trend_str - 0.5) * 1.2
+            _lag_blend = min(1.0, abs(self.smoothed_trend.get(symbol, 0.0)) / 0.02) ** 2 * 0.5
             rsi_exit = _rsi_exit_curr * (1.0 - _lag_blend) + _rsi_exit_lag * _lag_blend
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
