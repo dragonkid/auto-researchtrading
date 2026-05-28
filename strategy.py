@@ -180,10 +180,8 @@ class Strategy:
                 if target != 0:
                     slope_against = (-_lr.slope if current_pos > 0 else _lr.slope)
                     # slope_against > 0 means trend moving against us
-                    # Reduce hold time smoothly, scaled by vol_ratio for crash protection
-                    # High vol (crash): divisor shrinks → faster exit. Low vol: gradual.
-                    slope_divisor = 0.00012 / max(0.5, min(2.0, vol_ratio ** 0.7))
-                    slope_hold_reduction = max(0.0, min(5.0, slope_against / slope_divisor))
+                    # Reduce hold time smoothly: at slope 0.0006 against, hold = 5 bars
+                    slope_hold_reduction = max(0.0, min(5.0, slope_against / 0.00012))
                     effective_max_hold = MAX_HOLD_BARS - slope_hold_reduction
                     if bars_held >= effective_max_hold:
                         target = 0.0
