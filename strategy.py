@@ -60,8 +60,9 @@ RSI_YOUNG_WIDEN = 4.5
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
-# Time-based exit (replaces RSI exit in sideways)
-MAX_HOLD_BARS = 20
+# Time-based exit (replaces RSI exit)
+MAX_HOLD_BARS = 10
+STOP_LOSS_PCT = -0.020
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.080
@@ -188,8 +189,12 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
+                # Stop-loss exit (noise-immune: anchored to entry_price)
+                if pos_pnl < STOP_LOSS_PCT:
+                    target = 0.0
+
                 # Linreg-slope exit (noise-immune: 16-bar HL2 regression)
-                if (abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003):
+                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
