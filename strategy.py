@@ -95,6 +95,10 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 3
 COOLDOWN_TREND_DECAY = 0.06
 
+# Vote accumulator (entry smoothing)
+VOTE_ACCUM_ALPHA = 0.4  # decay per bar (lower = more memory)
+VOTE_ACCUM_ENTRY_THRESH = 1.8  # accumulated vote excess needed to enter
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -109,6 +113,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.vote_accum_bull = {}  # per-symbol accumulated bull vote excess
+        self.vote_accum_bear = {}  # per-symbol accumulated bear vote excess
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -172,10 +178,20 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Update vote accumulators (exponential decay + current signal)
+            bull_excess = max(0.0, bull_votes - MIN_VOTES + 1)  # how much above threshold-1
+            bear_excess = max(0.0, bear_votes - MIN_VOTES + 1)
+            prev_bull_accum = self.vote_accum_bull.get(symbol, 0.0)
+            prev_bear_accum = self.vote_accum_bear.get(symbol, 0.0)
+            self.vote_accum_bull[symbol] = (1.0 - VOTE_ACCUM_ALPHA) * prev_bull_accum + VOTE_ACCUM_ALPHA * bull_excess
+            self.vote_accum_bear[symbol] = (1.0 - VOTE_ACCUM_ALPHA) * prev_bear_accum + VOTE_ACCUM_ALPHA * bear_excess
+
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                bull_ready = bull_votes >= MIN_VOTES and self.vote_accum_bull[symbol] >= VOTE_ACCUM_ENTRY_THRESH
+                bear_ready = bear_votes >= MIN_VOTES and self.vote_accum_bear[symbol] >= VOTE_ACCUM_ENTRY_THRESH
+                if bull_ready and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_ready and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
