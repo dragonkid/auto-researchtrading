@@ -45,8 +45,8 @@ RSI_TREND_BIAS_DECAY = 0.10
 # Exit parameters (time-based + slope + peak-profit + stop-loss)
 MAX_HOLD_BARS = 10
 STOP_LOSS_PCT = -0.020
-PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
+PEAK_PROFIT_MIN_BASE = 0.020
+PEAK_PROFIT_GIVEBACK = 0.20
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.055
@@ -174,8 +174,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (noise-immune: 16-bar HL2 regression, no RSI gate)
-                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
+                # Linreg-slope exit (16-bar HL2 regression, raised threshold for noise immunity)
+                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0005) or (current_pos < 0 and _lr.slope > 0.0005))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0005)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
