@@ -213,8 +213,8 @@ class Strategy:
                     target = 0.0
                 if target != 0 and abs(ret_long) < 0.025:
                     _adv_strength = max(0.0, (rsi_exit - 50) / 8.0) * (1.0 if current_pos > 0 else -1.0) + max(0.0, (50 - rsi_exit) / 8.0) * (-1.0 if current_pos > 0 else 1.0)
-                    _adv_slope = (-_lr.slope if current_pos > 0 else _lr.slope) * 4000.0
-                    if _adv_strength + _adv_slope > 2.5:
+                    _adv_slope = (-_lr.slope if current_pos > 0 else _lr.slope) * 5000.0
+                    if _adv_strength + _adv_slope > 2.3:
                         target = 0.0
 
                 if target != 0:

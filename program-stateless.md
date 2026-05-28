@@ -1,7 +1,7 @@
 # autotrader — multi-step experiment session
 
 Autonomous trading strategy research on Hyperliquid perpetual futures.
-You will run **up to 5 independent experiments + 1 exploration branch (up to 10 steps deep)** per session. The outer shell script invokes you once per "round" — each round is a coherent research arc. The session has two phases: independent exploration (find a promising direction) and branch deepening (iterate on it without reverting).
+You will run **up to 10 experiments** in this session, building on your findings iteratively. The outer shell script invokes you once per "round" — each round is a coherent research arc. Use the extra slots for exploration branches — when a direction shows promise, iterate on it rather than reverting immediately.
 
 ## Context
 
@@ -25,9 +25,7 @@ When min_stability < 0.90: at least 3 of 5 experiments MUST target stability (us
 
 ## Session protocol
 
-You run **up to 5 independent experiments** in the exploration phase, plus **one exploration branch up to 10 steps deep** (independent budget). Total session ceiling = 15 experiments.
-
-Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements. **Exploration branches** (see below) let you iterate on a promising direction without reverting — use them when a regime-level signal is strong.
+You run up to 10 experiments per session. Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements. **Exploration branches** (see below) let you iterate on a promising direction without reverting — use them when a regime-level signal is strong.
 
 ### Phase 1: Read context (once per session)
 
@@ -46,7 +44,7 @@ For each experiment:
 
 **Exit rule (escalation-gated):**
 - 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (layers 3-4 from the stability methodology: hysteresis, confidence margin, weighted ensemble, abstain zone, etc.). Single-parameter tweaks are forbidden after 3 discards.
-- 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the independent-exploration cap of 5 experiments.
+- 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the hard cap of 10 experiments.
 - A discard with stability ≥ +0.003 counts as "progress" and resets the counter — keep iterating on that direction.
 - A `keep` resets everything.
 
@@ -102,7 +100,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
 - **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **original baseline** (not branch-internal baseline), it's a real `keep`. Record as `keep` and update baseline.
 - **Failure (revert the branch)**: if after max depth the keep criteria are still not met, revert ALL branch commits back to the original baseline: `git revert --no-edit HEAD~N..HEAD` (where N = number of branch commits). Record ONE summary `discard` line explaining the branch attempt and why it failed.
-- **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv. Note: if branch reverts and you still have unused independent-exploration slots, the session still ends — branch revert is a strong enough signal that the round should conclude and reset with fresh context.
+- **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv.
 - **Exit rule interaction**: branch experiments count as architectural if the opening experiment was architectural.
 - **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you still have step 3-7 to recover.
 
@@ -130,7 +128,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 7. **Decide next step**:
    - If you have a clear follow-up insight from the regime breakdown → continue to next experiment.
    - If you've found a keep and want to try combining it with another idea → continue.
-   - If you've exhausted your ideas or hit the independent-exploration cap (5 experiments) without opening a branch → exit. If a branch concluded → exit.
+   - If you've exhausted your ideas or hit 10 experiments → exit.
 
 ### Phase 3: Combination experiments (optional)
 
