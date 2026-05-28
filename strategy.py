@@ -208,7 +208,7 @@ class Strategy:
                     effective_os -= _tw
                 primary_exit_cross = (current_pos > 0 and rsi_exit > effective_ob) or (current_pos < 0 and rsi_exit < effective_os)
                 if primary_exit_cross:
-                    if self.exit_pending.get(symbol, False) or pos_pnl < -0.005:
+                    if self.exit_pending.get(symbol, False) or pos_pnl < -0.010:
                         target = 0.0
                     else:
                         self.exit_pending[symbol] = True
