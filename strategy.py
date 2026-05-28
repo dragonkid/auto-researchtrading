@@ -180,10 +180,10 @@ class Strategy:
                 if target != 0:
                     slope_against = (-_lr.slope if current_pos > 0 else _lr.slope)
                     # slope_against > 0 means trend moving against us
-                    # Reduce hold time smoothly: strong adverse slope → hold down to 5 bars
-                    # Using steeper gradient (0.00008 divisor) for faster crash response
-                    # Cap reduction at 5 bars (min hold = 5) to avoid noise-floor exits
-                    slope_hold_reduction = max(0.0, min(5.0, slope_against / 0.00008))
+                    # Reduce hold time smoothly when trend is mild (abs(ret_long) < 0.025)
+                    # In strong trends, disable slope reduction (rely on stop-loss + time)
+                    trend_gate = max(0.0, 1.0 - abs(ret_long) / 0.025)
+                    slope_hold_reduction = max(0.0, min(5.0, slope_against / 0.00012)) * trend_gate
                     effective_max_hold = MAX_HOLD_BARS - slope_hold_reduction
                     if bars_held >= effective_max_hold:
                         target = 0.0
