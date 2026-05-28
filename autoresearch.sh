@@ -123,6 +123,7 @@ echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5
     }
+  echo "[DEBUG] Round $ROUND_COUNT completed (post-codemax), looping..."
 
   # Ensure results.tsv ends with a newline (agent sometimes uses Write/Edit tool which strips it)
   if [ -f "$RESULTS" ] && [ -n "$(tail -c1 "$RESULTS")" ]; then
