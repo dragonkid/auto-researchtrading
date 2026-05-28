@@ -158,9 +158,14 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Architectural change: replace hard smoothed_trend boundary with vote-margin override
+                # Strong consensus (margin >= 2) bypasses trend gate entirely (noise-immune)
+                # Weak consensus (margin < 2) still uses smoothed_trend for direction confirmation
+                _bull_margin = bull_votes - bear_votes
+                _bear_margin = bear_votes - bull_votes
+                if bull_votes >= MIN_VOTES and (_bull_margin >= 2 or self.smoothed_trend[symbol] > -TREND_GATE_DEADZONE):
                     target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (_bear_margin >= 2 or self.smoothed_trend[symbol] < TREND_GATE_DEADZONE):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
