@@ -61,8 +61,8 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Time-based exit (replaces RSI exit)
-MAX_HOLD_BARS = 10
-STOP_LOSS_PCT = -0.020
+MAX_HOLD_BARS = 8
+STOP_LOSS_PCT = -0.015
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.080
