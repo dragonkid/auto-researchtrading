@@ -55,7 +55,7 @@ BASE_POSITION_SIZE = 0.061
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
-HIGH_VOTE_BOOST_MULT = 1.20
+HIGH_VOTE_BOOST_MULT = 1.30
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
 VOL_CONFIRM_FLOOR = 0.98
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (wider noise-immune window)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (maximum noise immunity)
 ENTRY_FULL_BARS = 4  # bars to reach full position (linear scale-in over 4 bars)
 
 
