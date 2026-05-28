@@ -79,9 +79,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
-FLIP_MARGIN_TREND = 3  # margin when trending (noise-prone reversals)
-FLIP_MARGIN_SIDEWAYS = 1  # margin in sideways (legitimate direction changes)
-FLIP_TREND_SCALE = 0.04  # abs(ret_long) at which full trend margin applies
+FLIP_MARGIN = 2  # opposing votes must exceed same-direction by this margin
+FLIP_MIN_HOLD = 3  # must hold at least N bars before flip allowed
 COOLDOWN_BARS = 2
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -191,10 +190,8 @@ class Strategy:
                 if target != 0 and bars_held >= MAX_HOLD_BARS:
                     target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign + trend-scaled margin)
-                trend_flip_str = min(abs(ret_long) / FLIP_TREND_SCALE, 1.0)
-                flip_margin = FLIP_MARGIN_SIDEWAYS + (FLIP_MARGIN_TREND - FLIP_MARGIN_SIDEWAYS) * trend_flip_str
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes - bull_votes >= flip_margin and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes - bear_votes >= flip_margin and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign + margin + min hold)
+                if not in_cooldown and bars_held >= FLIP_MIN_HOLD and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes - bull_votes >= FLIP_MARGIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes - bear_votes >= FLIP_MARGIN and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
