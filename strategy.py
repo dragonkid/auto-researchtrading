@@ -60,6 +60,10 @@ RSI_YOUNG_WIDEN = 4.5
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
+# Sideways take-profit (noise-immune pos_pnl-based exit)
+SIDEWAYS_TP_THRESHOLD = 0.004
+SIDEWAYS_TP_TREND_GATE = 0.03
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.080
 CALM_BOOST_MAX = 0.8
@@ -180,13 +184,16 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
+                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                if current_pos < 0:
+                    pos_pnl = -pos_pnl
+                # Sideways take-profit: noise-immune exit anchored to entry_price
+                if abs(ret_long) < SIDEWAYS_TP_TREND_GATE and pos_pnl > SIDEWAYS_TP_THRESHOLD:
+                    target = 0.0
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
                 effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
                 effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
-                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                if current_pos < 0:
-                    pos_pnl = -pos_pnl
                 _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
                 if pos_pnl > _apt:
                     _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
