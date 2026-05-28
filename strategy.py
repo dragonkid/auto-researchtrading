@@ -136,40 +136,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Continuous confidence scoring: tanh-smoothed distance from threshold
-            # Each voter contributes a value in (-1, 1) instead of binary 0/1
-            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _donch_hi = np.max(closes[-(DONCHIAN_PERIOD+1):-1])
-            _donch_lo = np.min(closes[-(DONCHIAN_PERIOD+1):-1])
-            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            # Confidence = tanh(signal_distance / scale) -- smooth, bounded (-1, 1)
-            CONF_SCALE_RET = dyn_threshold * 0.5  # half-threshold = tanh(1) ≈ 0.76
-            CONF_SCALE_RSI = 3.0  # 3 RSI points = tanh(1)
-            CONF_SCALE_MACD = 0.00015
-            CONF_SCALE_SLOPE = 0.00008
-            CONF_SCALE_DONCH = 0.002
-            CONF_SCALE_EMA_SLOPE = 0.00025
-
-            conf_ret_short = np.tanh((ret_short) / CONF_SCALE_RET)
-            conf_ret_vshort = np.tanh((ret_vshort) / CONF_SCALE_RET)
-            conf_ema_cross = np.tanh((_ef - _es) / (_es * 0.001 + 1e-10))
-            conf_rsi = np.tanh((rsi - _rsi_thresh) / CONF_SCALE_RSI)
-            conf_macd = np.tanh(_macd_val / CONF_SCALE_MACD)
-            conf_linreg = np.tanh(_lr.slope / CONF_SCALE_SLOPE)
-            conf_donch = np.tanh((mid / _donch_hi - 1.0) / CONF_SCALE_DONCH) if mid > _donch_hi else np.tanh((mid / _donch_lo - 1.0) / CONF_SCALE_DONCH) if mid < _donch_lo else 0.0
-            conf_ema_slope = np.tanh(_ema_slope_val / CONF_SCALE_EMA_SLOPE)
-
-            # Aggregate confidence: sum of all voter confidences
-            bull_confidence = conf_ret_short + conf_ret_vshort + conf_ema_cross + conf_rsi + conf_macd + conf_linreg + max(0.0, conf_donch) + conf_ema_slope
-            bear_confidence = -conf_ret_short - conf_ret_vshort - conf_ema_cross - conf_rsi - conf_macd - conf_linreg + max(0.0, -conf_donch) - conf_ema_slope
-
-            # Map confidence to approximate vote count for compatibility with downstream logic
-            # Threshold of 2.5 confidence ≈ 3 binary votes (preserved entry frequency)
-            CONF_ENTRY_THRESHOLD = 2.5
-            bull_votes = int(bull_confidence >= CONF_ENTRY_THRESHOLD) * MIN_VOTES + int(bull_confidence >= 3.5)
-            bear_votes = int(bear_confidence >= CONF_ENTRY_THRESHOLD) * MIN_VOTES + int(bear_confidence >= 3.5)
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, mid > np.max(closes[-(DONCHIAN_PERIOD+1):-1]) * 1.004, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, mid < np.min(closes[-(DONCHIAN_PERIOD+1):-1]) * 0.9975, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
