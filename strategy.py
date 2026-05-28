@@ -109,7 +109,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.pending_flip = {}  # symbol -> direction (+1/-1) if flip signal seen last bar
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -218,19 +217,8 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                flip_signal = 0
-                if not in_cooldown and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0:
-                    flip_signal = -1
-                elif not in_cooldown and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0:
-                    flip_signal = 1
-                if flip_signal != 0:
-                    if self.pending_flip.get(symbol, 0) == flip_signal:
-                        target = -size if current_pos > 0 else size
-                        self.pending_flip.pop(symbol, None)
-                    else:
-                        self.pending_flip[symbol] = flip_signal
-                else:
-                    self.pending_flip.pop(symbol, None)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
