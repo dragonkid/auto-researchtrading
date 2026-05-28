@@ -43,9 +43,9 @@ RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
 # Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
-HOLD_DECAY_START = 5   # bars after which exit pressure begins
-HOLD_DECAY_RATE = 0.20  # exit pressure per bar beyond start (0.20 = exit at bar 10 with no momentum)
-MOMENTUM_HOLD_BONUS = 5  # extra bars allowed when slope strongly agrees
+HOLD_DECAY_START = 6   # bars after which exit pressure begins
+HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
+MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.020
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
