@@ -60,6 +60,11 @@ RSI_YOUNG_WIDEN = 4.5
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
+# Time-based exit parameters
+MAX_HOLD_BARS = 14
+EXIT_STOP_LOSS = -0.015
+EXIT_VOTE_REVERSAL_MIN = 3
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.080
 CALM_BOOST_MAX = 0.8
@@ -180,42 +185,21 @@ class Strategy:
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
-                vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
-                sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
-                effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
-                effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
-                _apt = RSI_EXIT_PROFIT_THRESHOLD * max(0.7, min(1.4, vol_ratio ** 0.5))
-                if pos_pnl > _apt:
-                    _pb = min(RSI_EXIT_PROFIT_TIGHTEN * (1.0 + 0.50 * min(1.0, max(0.0, (0.70 - vol_ratio) / 0.15))), (pos_pnl - _apt) * RSI_EXIT_PROFIT_SCALE / max(0.6, min(1.8, vol_ratio)))
-                    effective_ob, effective_os = effective_ob - (effective_ob - 50.0) * _pb, effective_os + (50.0 - effective_os) * _pb
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if bars_held < RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0):
-                    _gw = RSI_YOUNG_WIDEN * (1.0 - bars_held / (RSI_YOUNG_GRACE_BARS - (1 if vol_ratio > 1.0 else 0)))
-                    effective_ob, effective_os = effective_ob + _gw, effective_os - _gw
-                if pos_pnl < 0 and rsi_trend_str > 0.5:
-                    _uw = 1.5 * min(1.0, abs(pos_pnl) / 0.012)
-                    effective_ob, effective_os = effective_ob + _uw, effective_os - _uw
-                if vol_ratio < 0.55 and pos_pnl > 0.01 and ((current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)):
-                    effective_ob, effective_os = effective_ob + 1.5, effective_os - 1.5
-                _tw = max(0.0, (abs(_ret_long_lagged) - 0.02) / 0.08) * 2.5
-                if current_pos > 0 and _ret_long_lagged > 0.02:
-                    effective_ob += _tw
-                elif current_pos < 0 and _ret_long_lagged < -0.02:
-                    effective_os -= _tw
-                if current_pos > 0 and rsi_exit > effective_ob:
-                    target = 0.0
-                elif current_pos < 0 and rsi_exit < effective_os:
-                    target = 0.0
-                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0002 and rsi_exit > 58) or (current_pos < 0 and _lr.slope > 0.0002 and rsi_exit < 42))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
-                    target = 0.0
 
-                if target != 0:
-                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                        target = 0.0
+                # Time-based + vote-reversal + stop-loss exit (replaces RSI threshold)
+                # 1. Stop-loss: deterministic, noise-immune (anchored to entry price)
+                if pos_pnl < EXIT_STOP_LOSS:
+                    target = 0.0
+                # 2. Vote-reversal exit: discrete vote count, low noise sensitivity
+                elif (current_pos > 0 and bear_votes >= EXIT_VOTE_REVERSAL_MIN) or (current_pos < 0 and bull_votes >= EXIT_VOTE_REVERSAL_MIN):
+                    target = 0.0
+                # 3. Max holding period: completely deterministic
+                elif bars_held >= MAX_HOLD_BARS:
+                    target = 0.0
 
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
