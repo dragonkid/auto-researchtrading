@@ -91,6 +91,11 @@ def ema(values, span):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
 
+# Position accumulation (build position over bars)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target
+ENTRY_FULL_BARS = 2  # bars to reach full position (linear scale-in)
+
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
@@ -165,16 +170,24 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size
+                    target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size
+                    target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = size if rsi < MEANREV_RSI_OVERSOLD else -size
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+
+                # Position accumulation: scale up if still below full size and votes confirm
+                if bars_held <= ENTRY_FULL_BARS:
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    full_target = size if current_pos > 0 else -size
+                    scaled_target = full_target * scale_frac
+                    if (current_pos > 0 and bull_votes >= MIN_VOTES) or (current_pos < 0 and bear_votes >= MIN_VOTES):
+                        target = scaled_target
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
                 if pos_pnl < STOP_LOSS_PCT:
