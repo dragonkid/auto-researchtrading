@@ -109,6 +109,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.mr_pending = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -178,7 +179,15 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = size if rsi < MEANREV_RSI_OVERSOLD else -size
+                    _mr_dir = 1 if rsi < MEANREV_RSI_OVERSOLD else -1
+                    _prev_dir = self.mr_pending.get(symbol, 0)
+                    if _prev_dir == _mr_dir:
+                        target = size * _mr_dir
+                        self.mr_pending[symbol] = 0
+                    else:
+                        self.mr_pending[symbol] = _mr_dir
+                else:
+                    self.mr_pending[symbol] = 0
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
