@@ -79,7 +79,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
-FLIP_MARGIN = 1  # opposing votes must exceed same-direction by this margin
+FLIP_MARGIN = 2  # opposing votes must exceed same-direction by this margin
 COOLDOWN_BARS = 2
 COOLDOWN_TREND_DECAY = 0.06
 
