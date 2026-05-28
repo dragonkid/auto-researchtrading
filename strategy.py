@@ -84,10 +84,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 2
 COOLDOWN_TREND_DECAY = 0.06
 
-# Vote-margin sizing (reduce boundary noise impact)
-VOTE_MARGIN_FLOOR = 0.55  # minimum sizing at MIN_VOTES (4 votes = 55%)
-TOTAL_VOTERS = 7
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -176,11 +172,9 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    _margin_scale = VOTE_MARGIN_FLOOR + (1.0 - VOTE_MARGIN_FLOOR) * (bull_votes - MIN_VOTES) / (TOTAL_VOTERS - MIN_VOTES)
-                    target = size * ENTRY_INITIAL_FRAC * _margin_scale
+                    target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    _margin_scale = VOTE_MARGIN_FLOOR + (1.0 - VOTE_MARGIN_FLOOR) * (bear_votes - MIN_VOTES) / (TOTAL_VOTERS - MIN_VOTES)
-                    target = -size * ENTRY_INITIAL_FRAC * _margin_scale
+                    target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -191,10 +185,8 @@ class Strategy:
 
                 # Position accumulation: scale up if still below full size and votes confirm
                 if bars_held <= ENTRY_FULL_BARS:
-                    _accum_votes = bull_votes if current_pos > 0 else bear_votes
-                    _accum_margin = VOTE_MARGIN_FLOOR + (1.0 - VOTE_MARGIN_FLOOR) * max(0, _accum_votes - MIN_VOTES) / (TOTAL_VOTERS - MIN_VOTES)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = (size if current_pos > 0 else -size) * _accum_margin
+                    full_target = size if current_pos > 0 else -size
                     scaled_target = full_target * scale_frac
                     if (current_pos > 0 and bull_votes >= MIN_VOTES) or (current_pos < 0 and bear_votes >= MIN_VOTES):
                         target = scaled_target
