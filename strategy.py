@@ -111,6 +111,12 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
+            # 2-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
+            _smooth_alpha = 2.0 / 3.0  # span=2 EMA
+            smoothed_closes = np.empty_like(closes, dtype=float)
+            smoothed_closes[0] = closes[0]
+            for _si in range(1, len(closes)):
+                smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
 
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
@@ -124,8 +130,8 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            ret_vshort = (closes[-1] - closes[-SHORT_WINDOW]) / closes[-SHORT_WINDOW]
-            ret_short = (closes[-1] - closes[-adaptive_med]) / closes[-adaptive_med]
+            ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
+            ret_short = (smoothed_closes[-1] - smoothed_closes[-adaptive_med]) / smoothed_closes[-adaptive_med]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
