@@ -211,10 +211,6 @@ class Strategy:
                     target = 0.0
                 if target != 0 and current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003:
                     target = 0.0
-                bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                if target != 0 and bars_held >= 12 and abs(ret_long) < 0.025:
-                    if (current_pos > 0 and _lr.slope < -0.0005) or (current_pos < 0 and _lr.slope > 0.0005):
-                        target = 0.0
 
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
