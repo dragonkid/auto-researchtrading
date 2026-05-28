@@ -145,11 +145,12 @@ class Strategy:
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            _rd_exit = np.diff(closes[-7:])
-            rsi_exit = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit, 0)) / max(np.mean(np.maximum(-_rd_exit, 0)), 1e-10))
+            _rd_exit_curr = np.diff(closes[-7:])
+            _rsi_exit_curr = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit_curr, 0)) / max(np.mean(np.maximum(-_rd_exit_curr, 0)), 1e-10))
             _rd_exit_lag = np.diff(closes[-8:-1])
             _rsi_exit_lag = 100 - 100 / (1 + np.mean(np.maximum(_rd_exit_lag, 0)) / max(np.mean(np.maximum(-_rd_exit_lag, 0)), 1e-10))
-            _exit_confirm = 1.0 if (rsi_exit > 60 and _rsi_exit_lag > 60) or (rsi_exit < 40 and _rsi_exit_lag < 40) else 0.0
+            _lag_blend = min(1.0, abs(self.smoothed_trend.get(symbol, 0.0)) / 0.02) ** 2 * 0.5
+            rsi_exit = _rsi_exit_curr * (1.0 - _lag_blend) + _rsi_exit_lag * _lag_blend
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
@@ -185,9 +186,8 @@ class Strategy:
             elif current_pos != 0:
                 vol_exit_blend = max(0.0, min(1.0, (vol_ratio - RSI_EXIT_VOL_LOW) / (RSI_EXIT_VOL_HIGH - RSI_EXIT_VOL_LOW)))
                 sideways_exit_widen = max(0.0, 1.0 - abs(ret_long) / RSI_EXIT_TREND_DECAY)
-                _confirm_widen = _exit_confirm * 1.5 * min(1.0, abs(_ret_long_lagged) / 0.05)
-                effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen + _confirm_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen + _confirm_widen) - RSI_OB_TIGHT) * vol_exit_blend
-                effective_os = (RSI_OVERSOLD - _confirm_widen + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD - _confirm_widen + sideways_exit_widen)) * vol_exit_blend
+                effective_ob = (RSI_OVERBOUGHT + sideways_exit_widen) - ((RSI_OVERBOUGHT + sideways_exit_widen) - RSI_OB_TIGHT) * vol_exit_blend
+                effective_os = (RSI_OVERSOLD + sideways_exit_widen) + (RSI_OS_TIGHT - (RSI_OVERSOLD + sideways_exit_widen)) * vol_exit_blend
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
