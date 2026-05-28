@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.062
+BASE_POSITION_SIZE = 0.059
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.70
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (wider noise-immune window)
+ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (wider noise-immune window)
 ENTRY_FULL_BARS = 4  # bars to reach full position (linear scale-in over 4 bars)
 
 
