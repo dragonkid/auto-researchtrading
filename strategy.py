@@ -80,6 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
 FLIP_MARGIN = 2  # opposing votes must exceed same-direction by this margin
+FLIP_MIN_HOLD = 3  # must hold at least N bars before flip allowed
 COOLDOWN_BARS = 2
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -141,7 +142,7 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            self.smoothed_trend[symbol] = 0.55 * trend_avg + 0.45 * self.smoothed_trend.get(symbol, trend_avg)
+            self.smoothed_trend[symbol] = 0.65 * trend_avg + 0.35 * self.smoothed_trend.get(symbol, trend_avg)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -189,8 +190,8 @@ class Strategy:
                 if target != 0 and bars_held >= MAX_HOLD_BARS:
                     target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign + margin)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes - bull_votes >= FLIP_MARGIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes - bear_votes >= FLIP_MARGIN and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign + margin + min hold)
+                if not in_cooldown and bars_held >= FLIP_MIN_HOLD and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes - bull_votes >= FLIP_MARGIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes - bear_votes >= FLIP_MARGIN and trend_avg > 0)):
                     target = -size if current_pos > 0 else size
 
             if abs(target - current_pos) > 1.0:
