@@ -98,31 +98,34 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 
 **Rules:**
 - **Justification required**: State explicitly (1) what the new architecture does differently, (2) which regime regressed and why, (3) your hypothesis for fixing it in the next step.
-- **Max depth**: 10 experiments on the branch (including the initial one that opened it). You get 9 more attempts to iterate on the new architecture. Branch budget is INDEPENDENT of the 5-experiment exploration cap — they don't share slots. If 7 consecutive branch steps show no improvement (min_stab delta ≤ 0 vs the previous branch step), terminate the branch early regardless of remaining depth.
+- **Max depth**: 7 consecutive experiments on the branch (including the initial one that opened it). You get 6 more attempts to iterate on the new architecture.
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
 - **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **original baseline** (not branch-internal baseline), it's a real `keep`. Record as `keep` and update baseline.
 - **Failure (revert the branch)**: if after max depth the keep criteria are still not met, revert ALL branch commits back to the original baseline: `git revert --no-edit HEAD~N..HEAD` (where N = number of branch commits). Record ONE summary `discard` line explaining the branch attempt and why it failed.
 - **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv. Note: if branch reverts and you still have unused independent-exploration slots, the session still ends — branch revert is a strong enough signal that the round should conclude and reset with fresh context.
 - **Exit rule interaction**: branch experiments count as architectural if the opening experiment was architectural.
-- **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you have up to 10 steps to recover.
+- **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you still have step 3-7 to recover.
 
 **Typical session shape:**
-- Independent exploration (cap = 5): normal discard/revert cycle while searching for a promising direction
-- Once a direction shows promise → open exploration branch (separate budget, up to 10 steps)
-- Branch concludes (keep or revert) → session ends
+- Experiments 1-3: independent explorations (normal discard/revert cycle)
+- Experiment 3-4: promising direction found → open exploration branch
+- Experiments 4-10 (branch): iterate on new architecture, fixing weak regimes one by one
+- Branch concludes → session ends
 
 **Example flow (success):**
-1. Exp 1 (independent): smoothed equity → flat, discard
-2. Exp 2 (independent): linreg slope deadzone gate → bull +0.47, rally -0.0003 → **open exploration branch**
-3. Branch step 2: add rally-protective condition → rally fixed, sideways -0.001 → continue
-4. Branch step 3: tune sideways parameters → sideways fixed, crash -0.001 → continue
-5. Branch step 4: crash-protective adjustment → all regimes pass → **KEEP** (vs original baseline)
+1. Exp 2: linreg slope deadzone gate → bull +0.47, rally -0.0003 → open exploration branch
+2. Exp 3 (branch): add rally-protective condition → rally fixed, sideways -0.001 → continue
+3. Exp 4 (branch): tune sideways parameters → sideways fixed, crash -0.001 → continue
+4. Exp 5 (branch): crash-protective adjustment → all regimes pass → KEEP (vs original baseline)
 
-**Example flow (failure with full exploration):**
-1-3. Exp 1-3 (independent): three different directions, all discard
-4. Exp 4 (independent): new exit mechanism → crash +0.5, sideways -0.010 → **open exploration branch**
-5-13. Branch steps 2-10: iterate on sideways fixes (fast exit path, regime-specific logic, hybrid exit, etc.) → sideways stays at -0.002 throughout
-14. Branch max depth (10) reached → revert all branch commits, record discard, session ends
+**Example flow (failure):**
+1. Exp 3: new exit mechanism → crash +0.5, sideways -0.010 → open exploration branch
+2. Exp 4 (branch): add fast sideways exit path → sideways -0.005 (improved) → continue
+3. Exp 5 (branch): alternative sideways fix → sideways -0.004 → continue
+4. Exp 6 (branch): regime-specific sideways logic → sideways -0.003 → continue
+5. Exp 7 (branch): different approach to sideways → sideways -0.003 → continue
+6. Exp 8 (branch): hybrid exit for sideways → sideways -0.002 → continue
+7. Exp 9 (branch): final attempt → sideways -0.002 (still failing) → max depth reached → revert all 7, record discard, session ends
 
 7. **Decide next step**:
    - If you have a clear follow-up insight from the regime breakdown → continue to next experiment.
