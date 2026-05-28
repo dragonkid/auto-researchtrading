@@ -72,6 +72,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.013
+TREND_OPPOSE_SCALE = 0.020  # smoothed_trend magnitude at which opposition = full block
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -158,10 +159,18 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size
+                st = self.smoothed_trend[symbol]
+                if bull_votes >= MIN_VOTES:
+                    # Continuous trend alignment: oppose_factor goes from 1.0 (aligned/neutral) to 0.0 (strongly opposed)
+                    oppose = max(0.0, -st) / TREND_OPPOSE_SCALE  # 0 when aligned, 1 when opposed by TREND_OPPOSE_SCALE
+                    trend_factor = max(0.0, 1.0 - oppose)  # 1.0 aligned, 0.0 fully blocked
+                    if trend_factor > 0.3 or (abs(st) < TREND_GATE_DEADZONE and bull_votes > bear_votes):
+                        target = size * trend_factor if trend_factor < 1.0 else size
+                elif bear_votes >= MIN_VOTES:
+                    oppose = max(0.0, st) / TREND_OPPOSE_SCALE
+                    trend_factor = max(0.0, 1.0 - oppose)
+                    if trend_factor > 0.3 or (abs(st) < TREND_GATE_DEADZONE and bear_votes > bull_votes):
+                        target = -size * trend_factor if trend_factor < 1.0 else -size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = size if rsi < MEANREV_RSI_OVERSOLD else -size
             elif current_pos != 0:
