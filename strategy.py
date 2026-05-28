@@ -206,7 +206,7 @@ class Strategy:
                     effective_ob += _tw
                 elif current_pos < 0 and _ret_long_lagged < -0.02:
                     effective_os -= _tw
-                clear_exit = (current_pos > 0 and rsi_exit > effective_ob + 5.0) or (current_pos < 0 and rsi_exit < effective_os - 5.0)
+                clear_exit = (current_pos > 0 and rsi_exit > effective_ob + 2.0) or (current_pos < 0 and rsi_exit < effective_os - 2.0)
                 marginal_exit = (current_pos > 0 and rsi_exit > effective_ob) or (current_pos < 0 and rsi_exit < effective_os)
                 if clear_exit:
                     target = 0.0
