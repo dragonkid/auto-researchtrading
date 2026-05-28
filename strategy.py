@@ -175,19 +175,22 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (noise-immune: 16-bar HL2 regression, no RSI gate)
-                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
-                    target = 0.0
+                # Slope-adjusted time exit: slope against position reduces max hold
+                # Replaces binary slope threshold with continuous time reduction
+                if target != 0:
+                    slope_against = (-_lr.slope if current_pos > 0 else _lr.slope)
+                    # slope_against > 0 means trend moving against us
+                    # Reduce hold time smoothly: at slope 0.0006 against, hold = 5 bars
+                    slope_hold_reduction = max(0.0, min(5.0, slope_against / 0.00012))
+                    effective_max_hold = MAX_HOLD_BARS - slope_hold_reduction
+                    if bars_held >= effective_max_hold:
+                        target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
-
-                # Time-based exit (completely deterministic, replaces noisy RSI)
-                if target != 0 and bars_held >= MAX_HOLD_BARS:
-                    target = 0.0
 
                 # Flip mechanism (preserved: 4 votes + trend_avg sign)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
