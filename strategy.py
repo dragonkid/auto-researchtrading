@@ -207,9 +207,9 @@ class Strategy:
                 if target != 0 and bars_held >= MAX_HOLD_BARS:
                     target = 0.0
 
-                # Flip mechanism (preserved: 4 votes + trend_avg sign)
+                # Flip mechanism (preserved: 4 votes + trend_avg sign, with accumulation)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    target = -size if current_pos > 0 else size
+                    target = (-size if current_pos > 0 else size) * ENTRY_INITIAL_FRAC
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
