@@ -51,11 +51,11 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.065
+BASE_POSITION_SIZE = 0.067
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
-HIGH_VOTE_BOOST_MULT = 1.25
+HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
 VOL_CONFIRM_FLOOR = 0.98
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.45  # first bar: 45% of target (lower = more noise immunity at cost of returns)
+ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (lower = more noise immunity at cost of returns)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
@@ -198,8 +198,8 @@ class Strategy:
                     target = 0.0
 
                 # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Wider threshold (0.00035) reduces boundary proximity = fewer noise-triggered exits
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.00035) or (current_pos < 0 and _lr.slope > 0.00035)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
