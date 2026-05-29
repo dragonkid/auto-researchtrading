@@ -84,9 +84,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Vote count EMA (architectural: smooth aggregate vote counts over time)
-VOTE_EMA_ALPHA = 0.65  # fast EMA (span ~2.1 bars): responsive but absorbs single-bar noise
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -106,8 +103,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.smooth_bull_votes = {}  # per-symbol: EMA-smoothed bull vote count
-        self.smooth_bear_votes = {}  # per-symbol: EMA-smoothed bear vote count
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -153,15 +148,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            _raw_bull = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            _raw_bear = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
-            # EMA-smooth vote counts: absorbs single-bar noise flips
-            _alpha = VOTE_EMA_ALPHA
-            self.smooth_bull_votes[symbol] = _alpha * _raw_bull + (1 - _alpha) * self.smooth_bull_votes.get(symbol, float(_raw_bull))
-            self.smooth_bear_votes[symbol] = _alpha * _raw_bear + (1 - _alpha) * self.smooth_bear_votes.get(symbol, float(_raw_bear))
-            # Use smoothed votes for entry decisions, raw for exit/flip (need immediate response)
-            bull_votes = self.smooth_bull_votes[symbol]
-            bear_votes = self.smooth_bear_votes[symbol]
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -227,8 +215,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (uses RAW votes for immediate crash protection)
-                if not in_cooldown and ((current_pos > 0 and _raw_bear >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and _raw_bull >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
