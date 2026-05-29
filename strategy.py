@@ -97,16 +97,12 @@ def ema(values, span):
 ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (lower = more noise immunity at cost of returns)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
-# Exit accumulation: reduce position gradually on slope exit (reduce noise-exit divergence)
-EXIT_FIRST_FRAC = 0.50  # first bar of slope exit: reduce to 50% of current position
-
 
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.slope_exit_bar = {}  # bar when slope exit first triggered (for gradual exit)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -200,21 +196,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit with gradual accumulation (reduce noise-exit divergence)
-                # First bar: reduce to 50% of position. Second bar: full exit if slope persists.
-                _slope_exit_triggered = (current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)
-                if target != 0 and _slope_exit_triggered:
-                    _se_bar = self.slope_exit_bar.get(symbol, -999)
-                    if self.bar_count - _se_bar >= 1:
-                        # Second+ bar of slope exit: full exit
-                        target = 0.0
-                    else:
-                        # First bar: partial exit (reduce position by EXIT_FIRST_FRAC)
-                        self.slope_exit_bar[symbol] = self.bar_count
-                        target = current_pos * EXIT_FIRST_FRAC
-                elif not _slope_exit_triggered:
-                    # Slope recovered — cancel partial exit, clear state
-                    self.slope_exit_bar.pop(symbol, None)
+                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
+                # Removing ret_long guard eliminates a noise-sensitive boundary condition
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
@@ -242,7 +227,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.slope_exit_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
