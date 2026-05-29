@@ -6,7 +6,7 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
 MED_WINDOW_MIN = 10  # raised from 8: longer min window stabilizes crash/bull trade patterns
-MED_WINDOW_MAX = 14  # reduced from 16: narrower range keeps sideways window near original ~11
+MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 SHORT_WINDOW = 8
 LONG_WINDOW = 20
