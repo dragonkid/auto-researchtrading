@@ -150,7 +150,10 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
             ret_short = _ret_lo * (1.0 - _med_frac) + _ret_hi * _med_frac
 
-            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            # Use smoothed_closes for fast EMA to reduce single-bar noise impact on crossover voter
+            # span-3 EMA on raw close has ~67% weight on current bar; on smoothed_closes the effective
+            # noise is diluted by the span-2 pre-filter (~44% on current bar * 67% = ~30% net)
+            _ef, _es = ema(smoothed_closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
