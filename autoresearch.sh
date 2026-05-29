@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
+# NOTE: removed 'set -e' — it caused silent exits when subcommands
+# (codemax, git, awk pipelines) returned non-zero unexpectedly.
+# Errors are handled explicitly via || clauses.
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TAG="${1:?Usage: ./autoresearch.sh <tag> [max_rounds] [council_threshold]}"
