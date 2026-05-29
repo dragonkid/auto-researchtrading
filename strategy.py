@@ -24,7 +24,6 @@ MACD_SIGNAL = 4
 
 # Linear regression
 LINREG_PERIOD = 16
-LINREG_EXIT_PERIOD = 24  # longer window for exit confirmation (more noise-immune)
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -135,7 +134,6 @@ class Strategy:
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-            _lr_exit = linregress(np.arange(LINREG_EXIT_PERIOD), np.log((bd.history["high"].values[-LINREG_EXIT_PERIOD:] + bd.history["low"].values[-LINREG_EXIT_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -198,12 +196,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Dual linreg-slope exit (require BOTH 16-bar and 24-bar to confirm reversal)
-                # Single-bar noise can flip 16-bar slope near 0.0003 boundary;
-                # 24-bar linreg dilutes perturbation to 1/24 so flipping both is much less likely
-                _lr16_exit = (current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)
-                _lr24_exit = (current_pos > 0 and _lr_exit.slope < -0.0001) or (current_pos < 0 and _lr_exit.slope > 0.0001)
-                if target != 0 and _lr16_exit and _lr24_exit:
+                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
+                # Removing ret_long guard eliminates a noise-sensitive boundary condition
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
