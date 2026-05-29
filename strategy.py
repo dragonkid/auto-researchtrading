@@ -184,13 +184,13 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: scale up if still below full size and votes confirm
+                # Position accumulation: deterministic scale-up (no vote confirmation needed)
+                # Rationale: vote check during accumulation is a noise channel.
+                # Entry decision was already validated on bar 0; scale-in is commitment.
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
-                    scaled_target = full_target * scale_frac
-                    if (current_pos > 0 and bull_votes >= MIN_VOTES) or (current_pos < 0 and bear_votes >= MIN_VOTES):
-                        target = scaled_target
+                    target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
                 if pos_pnl < STOP_LOSS_PCT:
