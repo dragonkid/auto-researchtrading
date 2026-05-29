@@ -48,13 +48,13 @@ HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
+PEAK_PROFIT_GIVEBACK = 0.30  # widened from 0.25: less noise-sensitive trailing stop
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.0625  # between 0.062 (too low composite) and 0.0635 (crash DD blown)
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
-CROSS_ASSET_FIXED_BOOST = 0.10  # reduced from 0.15: less sizing amplification in sideways
+CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24

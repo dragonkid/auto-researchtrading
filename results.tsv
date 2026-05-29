@@ -1188,3 +1188,4 @@ f4204f7	5.31	5.54	1.28	7.69	5.13	4.30	5.05	branch	exp: ENTRY_FULL_BARS=2 + SIZE=
 012b03f	5.35	5.60	1.32	7.80	5.41	4.35	4.86	branch	branch step 9: meanrev RSI 47/53 -- min_stab 0.8437 (+0.0023, BEST). sideways +0.003 rally +0.003. raw_composite 7.04. Need +0.0007 more for keep.
 2f20f84	5.37	5.62	1.31	7.77	5.52	4.33	4.84	branch	branch step 10: meanrev 46/54 -- min_stab REGRESSED to 0.8420 (-0.0017 vs step 9). Bull CATASTROPHIC -0.004. Wider meanrev kills bull entries. REVERTING to 47/53.
 b9c1a77	5.34	5.54	1.22	7.54	5.40	4.35	4.86	branch	branch step 11: VOL_CONFIRM_CAP 1.05 -- min_stab 0.8433 (-0.0004 vs step 9). All stabs slightly regressed. REVERTING to 1.10.
+bfd41b8	5.37	5.64	1.34	7.87	5.41	4.36	4.90	branch	branch step 12: CROSS_ASSET_FIXED_BOOST 0.10 -- min_stab 0.8437 (FLAT vs step 9). Neutral. REVERTING.
