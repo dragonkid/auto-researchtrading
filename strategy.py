@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 8  # widened from 7->8 for additional MACD histogram smoothing (crash stab +0.006 in prior branch)
+MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
 
 # Linear regression
 LINREG_PERIOD = 16
@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0625  # balance crash DD and composite
+BASE_POSITION_SIZE = 0.067
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -74,9 +74,9 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
-MEANREV_TREND_THRESHOLD = 0.04  # tighter: only trigger meanrev in clearly sideways environments
-MEANREV_RSI_OVERSOLD = 47
-MEANREV_RSI_OVERBOUGHT = 53
+MEANREV_TREND_THRESHOLD = 0.05
+MEANREV_RSI_OVERSOLD = 49
+MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 MIN_VOTES = 4
@@ -94,8 +94,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.44  # first bar: 44% of target (compromise between noise immunity and return capture)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster build reduces multi-bar noise window)
+ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
+ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
 class Strategy:
@@ -144,8 +144,7 @@ class Strategy:
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            # 3-bar average for ret_long_lagged reduces single-point noise cascading to RSI/sizing
-            _ret_long_lagged = (np.mean(closes[-4:-1]) - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
+            _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
@@ -181,10 +180,7 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Require at least 2 voters to agree with meanrev direction (filter pure-RSI noise entries)
-                    _mr_dir_votes = bull_votes if rsi < MEANREV_RSI_OVERSOLD else bear_votes
-                    if _mr_dir_votes >= 2:
-                        target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
