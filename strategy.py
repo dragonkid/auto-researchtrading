@@ -33,7 +33,7 @@ TARGET_VOL = 0.015
 
 # Entry threshold
 BASE_THRESHOLD = 0.005
-DYN_THRESHOLD_FLOOR = 0.00475
+DYN_THRESHOLD_FLOOR = 0.0046
 DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
@@ -160,8 +160,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Minimum 1-bar cooldown always (prevent immediate re-entry noise amplification)
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < max(1, COOLDOWN_BARS * cooldown_trend_strength)
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
