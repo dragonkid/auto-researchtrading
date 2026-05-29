@@ -130,7 +130,9 @@ class Strategy:
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
-            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            # 3-bar median around lookback point for ret_long (stabilize the 20-bar trend estimate)
+            _ret_long_ref = np.median(closes[-LONG_WINDOW - 1: -LONG_WINDOW + 2])
+            ret_long = (closes[-1] - _ret_long_ref) / _ret_long_ref
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
