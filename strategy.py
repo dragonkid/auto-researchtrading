@@ -15,7 +15,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 3
+EMA_SLOPE_LOOKBACK = 5  # widened from 3 to reduce single-bar noise impact on slope
 
 # MACD parameters
 MACD_FAST = 8
