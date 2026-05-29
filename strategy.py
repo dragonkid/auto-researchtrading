@@ -135,13 +135,11 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            # Fixed median window (eliminates int-rounding noise from adaptive window calculation)
-            # The adaptive window's int(round()) creates discrete jumps when vol_ratio crosses boundaries
-            _fixed_med = 12  # midpoint of original 8-16 range
+            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
-            _med_ref_med = np.median(smoothed_closes[-_fixed_med - 2: -_fixed_med + 3])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
