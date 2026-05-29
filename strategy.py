@@ -52,7 +52,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.062  # reduced to keep crash DD under 6.9% cap with ENTRY_FULL_BARS=2
-CALM_BOOST_MAX = 0.8
+CALM_BOOST_MAX = 0.5  # reduced: high calm boost amplifies sizing noise in sideways
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
@@ -79,7 +79,7 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
-MIN_VOTES = 5  # require 71% voter agreement (stronger conviction, fewer noise-sensitive entries)
+MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
