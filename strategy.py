@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.53  # first bar: 53% of target (balance noise immunity vs returns)
+ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (lower = more noise immunity at cost of returns)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
