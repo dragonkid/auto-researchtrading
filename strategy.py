@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 MIN_VOTES = 4
-FLIP_MIN_VOTES = 5  # require stronger agreement for flip (reduce noise-sensitive flip decisions)
+FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -201,7 +201,7 @@ class Strategy:
 
                 # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
                 # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.00025) or (current_pos < 0 and _lr.slope > 0.00025)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
