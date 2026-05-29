@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.44  # first bar: 44% of target (compromise between noise immunity and return capture)
+ENTRY_INITIAL_FRAC = 0.435  # first bar: 43.5% of target (minimal noise reduction while preserving composite)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster build reduces multi-bar noise window)
 
 
