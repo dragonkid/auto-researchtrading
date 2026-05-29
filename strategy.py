@@ -217,11 +217,12 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, accumulation-based)
-                # Use same initial fraction as entry — flip starts partial, scales deterministically
-                # This removes the vol_ratio/1.2 boundary as a noise channel
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    target = (-size if current_pos > 0 else size) * ENTRY_INITIAL_FRAC
+                    # In high vol (crash/trend), flip is full size for protection
+                    # In low vol (sideways), flip is partial to reduce noise impact
+                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
+                    target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
