@@ -118,8 +118,8 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # 3-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
-            _smooth_alpha = 2.0 / 4.0  # span=3 EMA (slightly more smoothing than span=2)
+            # 2-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
+            _smooth_alpha = 2.0 / 3.0  # span=2 EMA
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
