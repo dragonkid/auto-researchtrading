@@ -49,6 +49,12 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
+# Vol-scaled exit: exit thresholds scale smoothly with vol_ratio
+# Low vol (sideways): tighter exits → less noise sensitivity (positions exit quickly)
+# High vol (trending): wider exits → hold through noise (trends need patience)
+SLOPE_EXIT_BASE = 0.0003  # base threshold (same as before)
+SLOPE_EXIT_VOL_SCALE = 0.5  # max additional threshold in high vol
+SLOPE_EXIT_VOL_MIDPOINT = 1.0  # vol_ratio at which scaling is 50%
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
@@ -199,9 +205,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit with vol-scaled threshold
+                # In low vol (sideways): exit threshold ~ 0.0003 (responsive to reversals)
+                # In high vol (trending): exit threshold up to 0.00045 (hold through noise)
+                _slope_exit_th = SLOPE_EXIT_BASE * (1.0 + SLOPE_EXIT_VOL_SCALE * min(1.0, max(0.0, (vol_ratio - 0.5) / SLOPE_EXIT_VOL_MIDPOINT)))
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_slope_exit_th) or (current_pos < 0 and _lr.slope > _slope_exit_th)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
