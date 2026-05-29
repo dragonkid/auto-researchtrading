@@ -33,7 +33,7 @@ TARGET_VOL = 0.015
 
 # Entry threshold
 BASE_THRESHOLD = 0.005
-DYN_THRESHOLD_FLOOR = 0.00475
+DYN_THRESHOLD_FLOOR = 0.0052  # raised: wider threshold floor protects sideways from noise flips
 DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.35  # reduced: amplified sizing in sideways amplifies noise impact
+SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
