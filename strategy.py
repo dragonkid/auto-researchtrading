@@ -79,8 +79,8 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
-MIN_VOTES = 4
-FLIP_MIN_VOTES = 4
+MIN_VOTES = 3
+FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -148,8 +148,30 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # 5-voter system: merge correlated voters to reduce noise-sensitive boundaries
+            # Voter 1: combined momentum (ret_short OR ret_vshort above threshold)
+            _bull_mom = (ret_short > dyn_threshold) or (ret_vshort > dyn_threshold * 0.70)
+            _bear_mom = (ret_short < -dyn_threshold) or (ret_vshort < -dyn_threshold * 0.70)
+            # Voter 2: RSI
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _bull_rsi = rsi > _rsi_thresh
+            _bear_rsi = rsi < _rsi_thresh
+            # Voter 3: MACD
+            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _bull_macd = _macd_val > 0.0003
+            _bear_macd = _macd_val < -0.0003
+            # Voter 4: linreg slope
+            _bull_lr = _lr.slope > 0.00015
+            _bear_lr = _lr.slope < -0.00015
+            # Voter 5: combined EMA (crossover AND slope agree)
+            _ema_cross_bull = _ef > _es
+            _ema_slope_bull = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005
+            _ema_cross_bear = _ef < _es
+            _ema_slope_bear = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005
+            _bull_ema = _ema_cross_bull or _ema_slope_bull
+            _bear_ema = _ema_cross_bear or _ema_slope_bear
+            bull_votes = sum([_bull_mom, _bull_rsi, _bull_macd, _bull_lr, _bull_ema])
+            bear_votes = sum([_bear_mom, _bear_rsi, _bear_macd, _bear_lr, _bear_ema])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
