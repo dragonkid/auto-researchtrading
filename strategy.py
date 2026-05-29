@@ -84,6 +84,11 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Vol-conditional voter hysteresis (architectural: sticky only in trending, fast in sideways)
+VOTER_HYST_MAX = 0.30  # max hysteresis fraction (at high vol)
+VOTER_HYST_VOL_ONSET = 0.8  # vol_ratio below which hysteresis = 0
+VOTER_HYST_VOL_FULL = 1.4  # vol_ratio above which hysteresis = max
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -103,6 +108,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.voter_state = {}  # per-symbol: list of 7 voter states (-1, 0, +1)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -148,8 +154,52 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # Vol-conditional hysteresis: sticky in trends, fast in sideways
+            _hyst_frac = VOTER_HYST_MAX * max(0.0, min(1.0, (vol_ratio - VOTER_HYST_VOL_ONSET) / (VOTER_HYST_VOL_FULL - VOTER_HYST_VOL_ONSET)))
+            _prev_state = self.voter_state.get(symbol, [0] * 7)
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+
+            # (value, bull_threshold, bear_threshold, uses_hysteresis)
+            _voter_specs = [
+                (ret_short, dyn_threshold, -dyn_threshold, True),
+                (ret_vshort, dyn_threshold * 0.70, -dyn_threshold * 0.70, True),
+                ((_ef - _es), 0.0, 0.0, False),  # EMA cross: no hysteresis
+                (rsi - _rsi_thresh, 0.0, 0.0, False),  # RSI: no hysteresis
+                (_macd_val, 0.0003, -0.0003, True),
+                (_lr.slope, 0.00015, -0.00015, True),
+                (_ema_slope_val, 0.0005, -0.0005, True),
+            ]
+            _new_state = []
+            bull_votes, bear_votes = 0, 0
+            for _vi, (_val, _bt, _brt, _use_hyst) in enumerate(_voter_specs):
+                _ps = _prev_state[_vi] if _vi < len(_prev_state) else 0
+                if not _use_hyst or _hyst_frac < 0.01:
+                    # No hysteresis: standard binary vote
+                    _ns = 1 if _val > _bt else (-1 if _val < _brt else 0)
+                else:
+                    # Hysteresis: wider threshold to flip direction
+                    if _ps >= 0:  # was bull or neutral
+                        if _val < _brt * (1.0 + _hyst_frac):
+                            _ns = -1
+                        elif _val > _bt:
+                            _ns = 1
+                        else:
+                            _ns = _ps
+                    else:  # was bear
+                        if _val > _bt * (1.0 + _hyst_frac):
+                            _ns = 1
+                        elif _val < _brt:
+                            _ns = -1
+                        else:
+                            _ns = _ps
+                _new_state.append(_ns)
+                if _ns == 1:
+                    bull_votes += 1
+                elif _ns == -1:
+                    bear_votes += 1
+            self.voter_state[symbol] = _new_state
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
