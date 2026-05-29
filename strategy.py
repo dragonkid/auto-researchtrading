@@ -137,10 +137,10 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # Use median reference for lookback points (noise-immune via 5-bar median)
+            # Use median reference for lookback points (noise-immune via 7-bar median)
             # Current bar stays noise-sensitive (react to real moves), but reference is stabilized
-            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW-2:-SHORT_WINDOW+3])
-            _med_ref_med = np.median(smoothed_closes[-adaptive_med-2:-adaptive_med+3])
+            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW-3:-SHORT_WINDOW+4])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med-3:-adaptive_med+4])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
@@ -201,8 +201,8 @@ class Strategy:
                     target = 0.0
 
                 # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Wider threshold -0.0004 (vs -0.0003) reduces marginal slope exits in rally/bull
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0004) or (current_pos < 0 and _lr.slope > 0.0004)):
+                # Removing ret_long guard eliminates a noise-sensitive boundary condition
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
