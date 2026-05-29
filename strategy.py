@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.063  # slightly larger for composite headroom (crash DD was 6.79 at 0.0625)
+BASE_POSITION_SIZE = 0.0625  # balance crash DD and composite
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -181,9 +181,9 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Require at least 3 voters to agree with meanrev direction (stronger noise filter)
+                    # Require at least 2 voters to agree with meanrev direction (filter pure-RSI noise entries)
                     _mr_dir_votes = bull_votes if rsi < MEANREV_RSI_OVERSOLD else bear_votes
-                    if _mr_dir_votes >= 3:
+                    if _mr_dir_votes >= 2:
                         target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
