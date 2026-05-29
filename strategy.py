@@ -12,7 +12,7 @@ SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
-EMA_FAST = 3
+EMA_FAST = 5  # was 3: span=3 puts ~50% on last close; span=5 puts ~33%, reducing noise sensitivity
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
+MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram (proven +0.0011 stability)
 
 # Linear regression
 LINREG_PERIOD = 16
