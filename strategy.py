@@ -51,9 +51,9 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.063
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.40
+SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -185,15 +185,17 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up with locked strength_scale
-                # Only strength_scale is noise-sensitive (uses ret_short); vol-targeting and equity are noise-immune
+                # Position accumulation: deterministic scale-up with asymmetric strength lock
+                # max(locked, current) prevents noise-induced SHRINKAGE while allowing genuine GROWTH
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    # Use locked strength but current vol/equity for sizing
                     _locked_str = self.entry_strength.get(symbol, strength_scale)
-                    _accum_size = equity * BASE_POSITION_SIZE * max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * _locked_str * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
-                    _accum_size = min(_accum_size, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)) * equity * BASE_POSITION_SIZE
-                    full_target = _accum_size if current_pos > 0 else -_accum_size
+                    _effective_str = max(_locked_str, strength_scale)
+                    # Recompute size with effective strength (replaces strength_scale in combined_mult)
+                    _eff_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * _effective_str * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+                    _eff_mult = min(_eff_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
+                    _eff_size = equity * BASE_POSITION_SIZE * _eff_mult
+                    full_target = _eff_size if current_pos > 0 else -_eff_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
