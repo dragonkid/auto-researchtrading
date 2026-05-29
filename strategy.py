@@ -135,10 +135,11 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
-
+            # Fixed medium window (architectural: remove discrete noise channel from vol-dependent window)
+            # adaptive_med used vol_ratio → int rounding → discontinuous ret_short jumps on ±5bps noise
+            # Fixed window = completely noise-immune lookback. Use MED2_WINDOW (10) as compromise between 8-16 range.
             ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
-            ret_short = (smoothed_closes[-1] - smoothed_closes[-adaptive_med]) / smoothed_closes[-adaptive_med]
+            ret_short = (smoothed_closes[-1] - smoothed_closes[-MED2_WINDOW]) / smoothed_closes[-MED2_WINDOW]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
