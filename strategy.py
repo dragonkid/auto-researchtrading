@@ -23,7 +23,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to further smooth MACD histogram noise
 
 # Linear regression
-LINREG_PERIOD = 18  # wider window dilutes single-bar noise on HL2 regression
+LINREG_PERIOD = 16
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.50
+SIDEWAYS_BOOST_MAX = 0.35  # reduced: amplified sizing in sideways amplifies noise impact
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
