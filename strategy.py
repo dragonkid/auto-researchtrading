@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.063  # reduced from 0.067 to offset ENTRY_FULL_BARS=2 DD increase
+BASE_POSITION_SIZE = 0.062  # reduced further to keep crash DD under 6.9% cap
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
