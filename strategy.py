@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.50
+SIDEWAYS_BOOST_MAX = 0.45
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.45  # first bar: 45% of target (lower = more noise immunity at cost of returns)
+ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (lower = more noise immunity at cost of returns)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
@@ -103,7 +103,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.entry_size = {}  # locked position size from entry bar
+        self.entry_strength = {}  # locked strength_scale from entry bar (noise-sensitive component)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -185,12 +185,15 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up with LOCKED size
-                # Entry size locked at bar 0 prevents noise-induced sizing drift during scale-in
+                # Position accumulation: deterministic scale-up with locked strength_scale
+                # Lock prevents noise-induced sizing changes during accumulation
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    _locked_size = self.entry_size.get(symbol, size)
-                    full_target = _locked_size if current_pos > 0 else -_locked_size
+                    _locked_str = self.entry_strength.get(symbol, strength_scale)
+                    _eff_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * _locked_str * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+                    _eff_mult = min(_eff_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
+                    _eff_size = equity * BASE_POSITION_SIZE * _eff_mult
+                    full_target = _eff_size if current_pos > 0 else -_eff_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -228,11 +231,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_size):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_strength):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.entry_size[symbol] = size  # lock size at entry
+                    self.entry_strength[symbol] = strength_scale  # lock noise-sensitive component
 
         return signals
