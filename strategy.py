@@ -216,10 +216,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg deadzone, vol-scaled accumulation)
-                # Require trend_avg to be clearly opposing (half-deadzone buffer reduces noise-triggered flips)
-                _flip_trend_thresh = TREND_GATE_DEADZONE * 0.5
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < -_flip_trend_thresh) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > _flip_trend_thresh)):
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
