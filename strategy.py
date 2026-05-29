@@ -73,7 +73,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_DEADZONE = 0.018
+TREND_GATE_DEADZONE = 0.022
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -118,8 +118,8 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
-            _smooth_alpha = 2.0 / 3.5  # span=2.5 EMA (slightly more smoothing than span-2)
+            # 2-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
+            _smooth_alpha = 2.0 / 3.0  # span=2 EMA
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
