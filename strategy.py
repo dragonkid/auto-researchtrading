@@ -97,6 +97,9 @@ def ema(values, span):
 ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (lower = more noise immunity at cost of returns)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
+# Entry price quantization (architectural: reduce exit-timing divergence from ±1 bar entry offset)
+ENTRY_PRICE_GRID_MULT = 3.0  # grid size = realized_vol * mid * this multiplier
+
 
 class Strategy:
     def __init__(self):
@@ -231,6 +234,11 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    # Quantize entry price to volatility-scaled grid
+                    # If noise shifts entry by ±1 bar, the grid-rounded price is often the same
+                    # → exit triggers (stop, peak-profit) fire at same time → path convergence
+                    _grid_size = max(mid * realized_vol * ENTRY_PRICE_GRID_MULT, mid * 0.001)
+                    _quantized_entry = round(mid / _grid_size) * _grid_size
+                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = _quantized_entry, 0.0, self.bar_count
 
         return signals
