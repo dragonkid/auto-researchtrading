@@ -137,9 +137,9 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # Asymmetric median: 3-bar for fast signal (less lag), 4-bar for medium (more noise immunity)
+            # Asymmetric median: 3-bar for fast signal, 5-bar for medium (proven sideways +0.006)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 1: -SHORT_WINDOW + 2])
-            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 2])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
