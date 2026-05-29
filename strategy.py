@@ -12,7 +12,7 @@ SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
-EMA_FAST = 3
+EMA_FAST = 5  # widened from 3: smoother fast EMA reduces crossover noise
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
@@ -95,7 +95,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.43
-ENTRY_FULL_BARS = 4  # bars to reach full position (slower scale-in reduces per-bar noise impact)
+ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
 class Strategy:
