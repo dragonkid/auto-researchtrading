@@ -33,7 +33,7 @@ TARGET_VOL = 0.015
 
 # Entry threshold
 BASE_THRESHOLD = 0.005
-DYN_THRESHOLD_FLOOR = 0.0046
+DYN_THRESHOLD_FLOOR = 0.00468
 DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
