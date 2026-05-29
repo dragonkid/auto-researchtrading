@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.0625  # balance crash DD and composite
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.50
+SIDEWAYS_BOOST_MAX = 0.40  # reduced from 0.50: less sizing amplification noise in sideways
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.435  # first bar: 43.5% of target (minimal noise reduction while preserving composite)
+ENTRY_INITIAL_FRAC = 0.44  # first bar: 44% of target (compromise between noise immunity and return capture)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster build reduces multi-bar noise window)
 
 
