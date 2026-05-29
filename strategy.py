@@ -8,7 +8,7 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 MED_WINDOW_MIN = 10  # raised from 8: longer min window stabilizes crash/bull trade patterns
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
-SHORT_WINDOW = 8
+SHORT_WINDOW = 10  # raised from 8: longer vshort window reduces sideways noise sensitivity
 LONG_WINDOW = 20
 
 # EMA parameters
