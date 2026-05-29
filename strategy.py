@@ -50,6 +50,10 @@ STOP_LOSS_PCT = -0.022
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
+# Graduated exit (architectural: partial exit on first signal, complete on persistence)
+EXIT_INITIAL_REDUCTION = 0.60  # fraction to exit immediately on soft-exit signal
+EXIT_PERSIST_BARS = 1  # bars after which full exit completes if signal persists
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -103,6 +107,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.partial_exit_bar = {}  # bar when graduated exit began (per symbol)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -191,28 +196,45 @@ class Strategy:
                     if (current_pos > 0 and bull_votes >= MIN_VOTES) or (current_pos < 0 and bear_votes >= MIN_VOTES):
                         target = scaled_target
 
-                # Stop-loss exit (noise-immune: anchored to entry_price)
+                # Stop-loss exit (IMMEDIATE — hard protection, never graduated)
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (noise-immune: 16-bar HL2 regression, no RSI gate)
-                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
-                    target = 0.0
+                # Graduated exit signals (linreg-slope + momentum-decay)
+                # These use partial exit on first signal, full exit if signal persists
+                _soft_exit_triggered = False
 
-                # Peak-profit trailing exit (noise-immune: anchored to entry_price)
+                # Linreg-slope exit signal
+                if target != 0 and ((abs(ret_long) < 0.025 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003))) or (current_pos > 0 and ret_long > 0.05 and _lr.slope < -0.0003)):
+                    _soft_exit_triggered = True
+
+                # Momentum-decay exit signal (soft time pressure, slope-extended)
+                if target != 0 and not _soft_exit_triggered and bars_held > HOLD_DECAY_START:
+                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    if bars_held >= _effective_max:
+                        _soft_exit_triggered = True
+
+                # Apply graduated exit logic
+                if target != 0 and _soft_exit_triggered:
+                    _partial_start = self.partial_exit_bar.get(symbol, 0)
+                    if self.bar_count - _partial_start > EXIT_PERSIST_BARS:
+                        # Signal persisted (or first time): full exit
+                        target = 0.0
+                    elif _partial_start == 0 or self.bar_count - _partial_start == 0:
+                        # First bar of soft exit: partial reduction
+                        self.partial_exit_bar[symbol] = self.bar_count
+                        _reduced = abs(current_pos) * (1.0 - EXIT_INITIAL_REDUCTION)
+                        target = _reduced if current_pos > 0 else -_reduced
+                elif not _soft_exit_triggered and symbol in self.partial_exit_bar:
+                    # Signal disappeared (noise): cancel partial exit, stay in position
+                    del self.partial_exit_bar[symbol]
+
+                # Peak-profit trailing exit (IMMEDIATE — hard protection)
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                        target = 0.0
-
-                # Momentum-decay exit (soft time pressure, slope-extended)
-                if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Slope agreement: does linreg slope support position direction?
-                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
-                    # Extra hold time when slope strongly agrees
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                    if bars_held >= _effective_max:
                         target = 0.0
 
                 # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
@@ -225,7 +247,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.partial_exit_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
