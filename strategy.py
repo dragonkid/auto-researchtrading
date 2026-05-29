@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
+MACD_SIGNAL = 8  # widened from 7->8 for additional MACD histogram smoothing (crash stab +0.006 in prior branch)
 
 # Linear regression
 LINREG_PERIOD = 16

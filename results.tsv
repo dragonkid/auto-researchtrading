@@ -1181,3 +1181,4 @@ f4204f7	5.31	5.54	1.28	7.69	5.13	4.30	5.05	branch	exp: ENTRY_FULL_BARS=2 + SIZE=
 05820b4	5.31	5.55	1.29	7.70	5.14	4.30	5.05	branch	branch step 2: SIZE 0.062 -- min_stab 0.8419 (+0.0005). All DDs pass (crash 6.89<=6.9). raw_composite 6.99<7.0. Need +0.01 composite.
 7098a8f	5.51	5.72	1.25	7.82	5.36	4.53	5.19	branch	branch step 3: FRAC 0.45 -- min_stab 0.8414 (+0.0000 vs baseline). raw_composite 7.26 PASSES. Rally stab -0.001 from larger first-bar. Need to find composite boost that preserves rally.
 68d3783	5.42	5.64	1.25	7.74	5.24	4.44	5.13	branch	branch step 4: FRAC 0.44, SIZE 0.0635 -- min_stab 0.8416 (+0.0002). crash DD 6.96>6.9 BLOWN. raw_composite 7.14. SIZE too large for crash.
+92822af	5.42	5.64	1.26	7.75	5.25	4.44	5.12	branch	branch step 5: SIZE 0.0625, FRAC 0.44 -- min_stab 0.8416 (+0.0002 vs baseline). ALL DDs pass. raw_composite 7.14. Need +0.0028 more stability for keep.
