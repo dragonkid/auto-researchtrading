@@ -137,19 +137,27 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
-            ret_short = (smoothed_closes[-1] - smoothed_closes[-adaptive_med]) / smoothed_closes[-adaptive_med]
+            # Use 1-bar lagged smoothed_closes for momentum voters (noise-immune: bar -2 unaffected by bar -1 perturbation)
+            ret_vshort = (smoothed_closes[-2] - smoothed_closes[-SHORT_WINDOW - 1]) / smoothed_closes[-SHORT_WINDOW - 1]
+            ret_short = (smoothed_closes[-2] - smoothed_closes[-adaptive_med - 1]) / smoothed_closes[-adaptive_med - 1]
 
-            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            # Use 1-bar lagged EMA values for crossover voter (noise-immune)
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-2], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-2]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            # RSI uses 1-bar lagged closes (noise-immune)
+            _rsi_len = int(round(6 + 2 * rsi_trend_str))
+            _rd = np.diff(closes[-(_rsi_len + 2):-1])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            # MACD uses 1-bar lagged values (noise-immune)
+            _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 6):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 6):], MACD_SLOW)
+            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 6):], EMA_SLOPE_PERIOD)
 
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # All voters use lagged values (noise-immune: current bar perturbation doesn't affect decisions)
+            _macd_val = (_ml[-2] - ema(_ml, MACD_SIGNAL)[-2]) / mid
+            _ea_slope = (_ea[-2] - _ea[-EMA_SLOPE_LOOKBACK - 1]) / _ea[-EMA_SLOPE_LOOKBACK - 1]
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.70, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), _macd_val > 0.0003, _lr.slope > 0.00015, _ea_slope > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.70, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), _macd_val < -0.0003, _lr.slope < -0.00015, _ea_slope < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
