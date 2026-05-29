@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (lower = more noise immunity at cost of returns)
+ENTRY_INITIAL_FRAC = 0.45  # first bar: 45% of target (lower = more noise immunity at cost of returns)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
@@ -118,8 +118,8 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # 2-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
-            _smooth_alpha = 2.0 / 3.0  # span=2 EMA
+            # 3-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
+            _smooth_alpha = 2.0 / 4.0  # span=3 EMA (passes 50% of single-bar noise vs 67% for span-2)
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
