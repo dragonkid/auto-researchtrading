@@ -135,11 +135,11 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            # Fixed medium window=14 (branch: remove discrete noise channel, use longer window for rally/crash buffering)
-            # Adaptive window oscillated 8-16 via noisy vol_ratio int rounding.
-            # Fixed=14 eliminates rounding noise while preserving the longer lookback that stabilizes high-vol regimes.
+            # Fixed medium window=12 (branch step 2: compromise between crash buffering and sideways responsiveness)
+            # 14 was too long for sideways (stab -0.003), 10 was too short for rally (stab -0.006)
+            # 12 splits the difference, still eliminates discrete int-rounding noise channel.
             ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
-            ret_short = (smoothed_closes[-1] - smoothed_closes[-14]) / smoothed_closes[-14]
+            ret_short = (smoothed_closes[-1] - smoothed_closes[-12]) / smoothed_closes[-12]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
