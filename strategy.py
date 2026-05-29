@@ -103,7 +103,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.flip_exit_bar = {}  # tracks when a flip-exit occurred (for delayed re-entry)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -157,10 +156,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Cooldown: exempt flip-exits (they should re-enter immediately in new direction)
-            _last_exit = self.exit_bar.get(symbol, -999)
-            _was_flip_exit = self.flip_exit_bar.get(symbol, -999) == _last_exit
-            in_cooldown = not _was_flip_exit and (self.bar_count - _last_exit) < COOLDOWN_BARS * cooldown_trend_strength
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -221,20 +217,12 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: 2-phase (exit first, then re-enter next bar)
-                # Phase 1: exit current position when flip conditions met
-                # Phase 2: re-entry happens via normal entry logic on subsequent bars
-                # This splits the 2x divergence into two independent smaller decisions.
-                # In high vol (crash), use immediate full flip for protection.
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    if vol_ratio >= 1.2:
-                        # High vol: immediate full flip for crash protection
-                        _flip_frac = 1.0
-                        target = (-size if current_pos > 0 else size) * _flip_frac
-                    else:
-                        # Low vol: just exit, let normal entry logic handle re-entry
-                        target = 0.0
-                        self.flip_exit_bar[symbol] = self.bar_count
+                    # In high vol (crash/trend), flip is full size for protection
+                    # In low vol (sideways), flip is partial to reduce noise impact
+                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
+                    target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
@@ -242,7 +230,6 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
-                    # Note: don't clear flip_exit_bar here — it persists to exempt next cooldown
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
