@@ -137,8 +137,12 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
-            ret_short = (smoothed_closes[-1] - smoothed_closes[-adaptive_med]) / smoothed_closes[-adaptive_med]
+            # Use median reference for lookback points (noise-immune via 5-bar median)
+            # Current bar stays noise-sensitive (react to real moves), but reference is stabilized
+            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW-2:-SHORT_WINDOW+3])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med-2:-adaptive_med+3])
+            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
+            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
