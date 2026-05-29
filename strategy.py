@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 8  # widened from 4->6->7->8 to further smooth MACD histogram noise
+MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
 
 # Linear regression
 LINREG_PERIOD = 16
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (more commitment on entry, less noise from scale-in)
+ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
