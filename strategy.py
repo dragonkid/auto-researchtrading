@@ -81,8 +81,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
-FLIP_TREND_DISCOUNT = 1.0  # max vote reduction when trend strongly opposes position
-FLIP_TREND_SCALE = 0.04    # |trend_avg| at which full discount is reached
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -219,12 +217,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: trend-discounted vote threshold (architectural)
-                # When trend strongly opposes position, fewer votes needed to flip.
-                # This ensures protective flips fire even if 1 voter is noise-flipped.
-                _trend_opposition = abs(trend_avg) / FLIP_TREND_SCALE if ((current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)) else 0.0
-                _effective_flip_votes = FLIP_MIN_VOTES - FLIP_TREND_DISCOUNT * min(1.0, _trend_opposition)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _effective_flip_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= _effective_flip_votes and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
