@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.064  # increased from 0.0625 to compensate FRAC 0.43 return loss
+BASE_POSITION_SIZE = 0.0625  # balance crash DD and composite
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -74,7 +74,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
-MEANREV_TREND_THRESHOLD = 0.05
+MEANREV_TREND_THRESHOLD = 0.04  # tighter: only trigger meanrev in clearly sideways environments
 MEANREV_RSI_OVERSOLD = 47
 MEANREV_RSI_OVERBOUGHT = 53
 
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (lower first-bar commitment = less noise impact)
+ENTRY_INITIAL_FRAC = 0.44  # first bar: 44% of target (compromise between noise immunity and return capture)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster build reduces multi-bar noise window)
 
 
