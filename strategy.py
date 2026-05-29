@@ -23,7 +23,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to further smooth MACD histogram noise
 
 # Linear regression
-LINREG_PERIOD = 18  # wider window dilutes single-bar noise on HL2 regression
+LINREG_PERIOD = 16
 
 # Volatility parameters
 VOL_LOOKBACK = 24
