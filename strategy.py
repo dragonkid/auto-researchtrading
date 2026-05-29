@@ -80,7 +80,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown
 MIN_VOTES = 4
-MIN_VOTES_REVERSAL = 5  # extra vote needed to enter opposite last direction (hysteresis)
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -104,7 +103,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.last_entry_dir = {}  # +1 for long, -1 for short (hysteresis memory)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -177,16 +175,10 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Hysteresis: require extra vote to enter opposite last direction
-                _last_dir = self.last_entry_dir.get(symbol, 0)
-                _bull_req = MIN_VOTES_REVERSAL if _last_dir == -1 else MIN_VOTES
-                _bear_req = MIN_VOTES_REVERSAL if _last_dir == 1 else MIN_VOTES
-                if bull_votes >= _bull_req and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                    self.last_entry_dir[symbol] = 1
-                elif bear_votes >= _bear_req and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
-                    self.last_entry_dir[symbol] = -1
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
