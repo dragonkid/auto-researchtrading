@@ -103,6 +103,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_lr_slope = {}  # track previous bar's linreg slope for exit confirmation
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -199,9 +200,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit with 2-bar confirmation (architectural: require consecutive slope reversal)
+                # Single-bar slope noise is a stability channel — require BOTH current and previous slope to agree
+                _prev_slope = self.prev_lr_slope.get(symbol, 0.0)
+                _exit_thresh = 0.0003
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_thresh and _prev_slope < 0) or (current_pos < 0 and _lr.slope > _exit_thresh and _prev_slope > 0)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -226,6 +229,9 @@ class Strategy:
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
                     target = (-size if current_pos > 0 else size) * _flip_frac
+
+            # Store current slope for next bar's exit confirmation
+            self.prev_lr_slope[symbol] = _lr.slope
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
