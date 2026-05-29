@@ -49,6 +49,9 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
+# Slope exit hysteresis: require stronger adverse slope to exit (exit threshold > entry threshold)
+# This reduces noise-triggered exits by widening the exit boundary
+SLOPE_EXIT_THRESHOLD = 0.0005  # vs entry uses 0.00015 for voter, exit needs 3.3x to trigger
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
@@ -199,9 +202,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit with hysteresis (require stronger slope to exit than to enter)
+                # Entry voter uses 0.00015; exit requires SLOPE_EXIT_THRESHOLD (3.3x wider)
+                # This reduces noise-triggered premature exits while maintaining crash protection
+                if target != 0 and ((current_pos > 0 and _lr.slope < -SLOPE_EXIT_THRESHOLD) or (current_pos < 0 and _lr.slope > SLOPE_EXIT_THRESHOLD)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
