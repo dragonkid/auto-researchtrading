@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.072
+BASE_POSITION_SIZE = 0.069
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -137,8 +137,8 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # Use 4-bar median as reference point (balance between noise immunity and lag)
-            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 2])
+            # Asymmetric median: 3-bar for fast signal (less lag), 4-bar for medium (more noise immunity)
+            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 1: -SHORT_WINDOW + 2])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 2])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
