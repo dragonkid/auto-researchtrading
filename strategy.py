@@ -33,7 +33,7 @@ TARGET_VOL = 0.015
 
 # Entry threshold
 BASE_THRESHOLD = 0.005
-DYN_THRESHOLD_FLOOR = 0.00475
+DYN_THRESHOLD_FLOOR = 0.0052
 DYN_THRESHOLD_CEIL = 0.012
 TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
@@ -135,20 +135,11 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            # Continuous adaptive window (branch step 4: interpolate between integer points to eliminate discrete jumps)
-            # Original adaptive_med = int(round(float_val)) → discrete jumps when noise shifts vol_ratio across boundary
-            # New: compute float window, linearly interpolate ret_short between floor/ceil lookbacks
-            # This preserves vol-adaptation while making ret_short a smooth function of vol_ratio
-            _float_med = MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5
-            _float_med = max(float(MED_WINDOW_MIN), min(float(MED_WINDOW_MAX), _float_med))
-            _med_lo = int(_float_med)
-            _med_hi = min(_med_lo + 1, MED_WINDOW_MAX)
-            _med_frac = _float_med - _med_lo
-            # Interpolated ret_short: weighted average of ret at floor/ceil lookbacks
-            _ret_lo = (smoothed_closes[-1] - smoothed_closes[-_med_lo]) / smoothed_closes[-_med_lo]
-            _ret_hi = (smoothed_closes[-1] - smoothed_closes[-_med_hi]) / smoothed_closes[-_med_hi]
+            # Fixed medium window=12 (branch step 2: compromise between crash buffering and sideways responsiveness)
+            # 14 was too long for sideways (stab -0.003), 10 was too short for rally (stab -0.006)
+            # 12 splits the difference, still eliminates discrete int-rounding noise channel.
             ret_vshort = (smoothed_closes[-1] - smoothed_closes[-SHORT_WINDOW]) / smoothed_closes[-SHORT_WINDOW]
-            ret_short = _ret_lo * (1.0 - _med_frac) + _ret_hi * _med_frac
+            ret_short = (smoothed_closes[-1] - smoothed_closes[-12]) / smoothed_closes[-12]
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
