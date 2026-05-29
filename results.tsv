@@ -1184,3 +1184,4 @@ f4204f7	5.31	5.54	1.28	7.69	5.13	4.30	5.05	branch	exp: ENTRY_FULL_BARS=2 + SIZE=
 92822af	5.42	5.64	1.26	7.75	5.25	4.44	5.12	branch	branch step 5: SIZE 0.0625, FRAC 0.44 -- min_stab 0.8416 (+0.0002 vs baseline). ALL DDs pass. raw_composite 7.14. Need +0.0028 more stability for keep.
 4acfef7	5.38	5.62	1.30	7.80	5.40	4.49	4.78	branch	branch step 6: MACD_SIGNAL=8 -- min_stab 0.8430 (+0.0016 vs baseline, BEST SO FAR). Sideways bottleneck 0.8429. Rally +0.003! raw_composite 7.07. All DDs pass. Need +0.0014 more for keep.
 93aa701	5.37	5.62	1.30	7.80	5.39	4.49	4.78	branch	branch step 7: deadzone 0.020 -- min_stab 0.8430 (FLAT vs step 6). Zero effect. Reverting.
+09e197c	5.80	6.43	2.08	9.84	6.38	4.60	4.90	branch	branch step 8: STOP_LOSS -0.026 -- min_stab 0.8423 (-0.0007 vs step 6). Sideways +0.0005 but rally -0.0013. Wider stop hurts rally. REVERTING.

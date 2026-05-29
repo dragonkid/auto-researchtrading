@@ -46,7 +46,7 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-STOP_LOSS_PCT = -0.026  # widened from -0.024 to reduce noise-triggered stop divergence
+STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 47
+MEANREV_RSI_OVERBOUGHT = 53
 
 # Vote / cooldown
 MIN_VOTES = 4
