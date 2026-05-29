@@ -181,9 +181,9 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Require at least 2 voters to agree with meanrev direction (filter pure-RSI noise entries)
+                    # Require at least 3 voters to agree with meanrev direction (stronger noise filter)
                     _mr_dir_votes = bull_votes if rsi < MEANREV_RSI_OVERSOLD else bear_votes
-                    if _mr_dir_votes >= 2:
+                    if _mr_dir_votes >= 3:
                         target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
