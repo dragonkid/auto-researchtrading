@@ -78,13 +78,7 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Confidence scoring parameters (replaces binary vote counting)
-# Each voter contributes a continuous confidence [0, 1] based on how far past threshold
-CONF_HALFWIDTH = 1.5  # signal at 1.5x threshold → confidence 0.75 (sigmoid midpoint at 1x)
-CONF_ENTRY_THRESHOLD = 3.2  # sum of confidences needed for entry (replaces MIN_VOTES=4)
-CONF_FLIP_THRESHOLD = 3.2  # sum of confidences needed for flip
-
-# Vote / cooldown (retained for compatibility)
+# Vote / cooldown
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
@@ -157,40 +151,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Continuous confidence scoring: each voter contributes sigmoid(distance_past_threshold)
-            # This reduces noise sensitivity at boundaries (near-threshold → ~0.5 instead of 0/1 flip)
-            def _conf(value, threshold):
-                """Sigmoid confidence: 0.5 at threshold, approaches 1.0 far past it."""
-                x = (abs(value) / max(abs(threshold), 1e-10) - 1.0) / (CONF_HALFWIDTH - 1.0)
-                return 1.0 / (1.0 + np.exp(-4.0 * x))  # steep sigmoid centered at threshold
-
-            _rsi_threshold = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            # Bull confidences (continuous [0, 1] per voter)
-            bull_conf = (
-                _conf(ret_short, dyn_threshold) * (1.0 if ret_short > 0 else 0.0) +
-                _conf(ret_vshort, dyn_threshold * 0.75) * (1.0 if ret_vshort > 0 else 0.0) +
-                _conf(_ef - _es, abs(_es) * 0.001) * (1.0 if _ef > _es else 0.0) +
-                _conf(rsi - _rsi_threshold, 5.0) * (1.0 if rsi > _rsi_threshold else 0.0) +
-                _conf(_macd_hist, 0.0003) * (1.0 if _macd_hist > 0 else 0.0) +
-                _conf(_lr.slope, 0.00015) * (1.0 if _lr.slope > 0 else 0.0) +
-                _conf(_ema_slope_val, 0.0005) * (1.0 if _ema_slope_val > 0 else 0.0)
-            )
-            # Bear confidences
-            bear_conf = (
-                _conf(ret_short, dyn_threshold) * (1.0 if ret_short < 0 else 0.0) +
-                _conf(ret_vshort, dyn_threshold * 0.75) * (1.0 if ret_vshort < 0 else 0.0) +
-                _conf(_ef - _es, abs(_es) * 0.001) * (1.0 if _ef < _es else 0.0) +
-                _conf(_rsi_threshold - rsi, 5.0) * (1.0 if rsi < _rsi_threshold else 0.0) +
-                _conf(_macd_hist, 0.0003) * (1.0 if _macd_hist < 0 else 0.0) +
-                _conf(_lr.slope, 0.00015) * (1.0 if _lr.slope < 0 else 0.0) +
-                _conf(_ema_slope_val, 0.0005) * (1.0 if _ema_slope_val < 0 else 0.0)
-            )
-            # Keep integer votes for compatibility with flip/trend logic
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.75, _ef > _es, rsi > _rsi_threshold, _macd_hist > 0.0003, _lr.slope > 0.00015, _ema_slope_val > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.75, _ef < _es, rsi < _rsi_threshold, _macd_hist < -0.0003, _lr.slope < -0.00015, _ema_slope_val < -0.0005])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.75, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.75, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -213,9 +175,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_conf >= CONF_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_conf > bear_conf)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_conf >= CONF_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_conf > bull_conf)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -258,8 +220,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (confidence threshold + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_conf >= CONF_FLIP_THRESHOLD and trend_avg < 0) or (current_pos < 0 and bull_conf >= CONF_FLIP_THRESHOLD and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
