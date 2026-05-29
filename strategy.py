@@ -78,11 +78,14 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown
+# Vote / cooldown + confidence-weighted sizing
 MIN_VOTES = 4
 FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Confidence sizing: scale position by vote margin (stateless noise dampening)
+CONF_SIZE_FLOOR = 0.55  # minimum size multiplier (at margin=1, i.e., 4-3 split)
+CONF_SIZE_CEIL = 1.0    # max multiplier (at margin=7, i.e., 7-0 unanimous)
 
 
 def ema(values, span):
@@ -103,6 +106,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_conf_scale = {}  # per-symbol confidence scale at entry time
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -174,11 +178,16 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Confidence-weighted sizing: scale position by vote margin (stateless noise dampening)
+            _vote_margin = abs(bull_votes - bear_votes)
+            _conf_scale = CONF_SIZE_FLOOR + (CONF_SIZE_CEIL - CONF_SIZE_FLOOR) * min(1.0, (_vote_margin - 1.0) / 6.0)
+            _entry_size = size * _conf_scale
+
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC
+                    target = _entry_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC
+                    target = -_entry_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -187,12 +196,12 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up (no vote confirmation needed)
-                # Rationale: vote check during accumulation is a noise channel.
-                # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Position accumulation: deterministic scale-up with entry confidence
+                # Entry confidence reduces target size for ambiguous entries
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = size if current_pos > 0 else -size
+                    _stored_conf = self.entry_conf_scale.get(symbol, 1.0)
+                    full_target = (size * _stored_conf) if current_pos > 0 else -(size * _stored_conf)
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -230,10 +239,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf_scale):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.entry_conf_scale[symbol] = _conf_scale
 
         return signals
