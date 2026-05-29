@@ -5,7 +5,7 @@ from prepare import Signal, PortfolioState, BarData
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
-MED_WINDOW_MIN = 11  # raised from 8: longer min window stabilizes crash/bull/rally trade patterns
+MED_WINDOW_MIN = 10  # raised from 8: longer min window stabilizes crash/bull trade patterns
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 SHORT_WINDOW = 8
