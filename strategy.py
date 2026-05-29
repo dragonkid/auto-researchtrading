@@ -48,7 +48,7 @@ HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.30  # widened from 0.25: less noise-sensitive trailing stop
+PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.0625  # between 0.062 (too low composite) and 0.0635 (crash DD blown)
@@ -181,7 +181,10 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
+                    # Require at least 2 voters to agree with meanrev direction (filter pure-RSI noise entries)
+                    _mr_dir_votes = bull_votes if rsi < MEANREV_RSI_OVERSOLD else bear_votes
+                    if _mr_dir_votes >= 2:
+                        target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
