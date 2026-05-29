@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 44  # widened from 49: reduce noise sensitivity near neutral RSI
+MEANREV_RSI_OVERBOUGHT = 56  # widened from 51: require stronger RSI signal for meanrev
 
 # Vote / cooldown
 MIN_VOTES = 4
@@ -94,7 +94,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.38  # reduced from 0.43: less first-bar noise exposure
+ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
@@ -179,7 +179,8 @@ class Strategy:
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
-                # Mean-reversion path removed: RSI 49/51 near neutral is noise-sensitive
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
