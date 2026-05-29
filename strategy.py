@@ -133,7 +133,10 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log(_hl2[-LINREG_PERIOD:]))
+            # Lagged linreg (1-bar shift) for slope confirmation exit
+            _lr_lag = linregress(np.arange(LINREG_PERIOD), np.log(_hl2[-LINREG_PERIOD - 1:-1]))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -196,9 +199,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit (2-bar confirmation: both current AND lagged slope must be adverse)
+                # Single-bar slope near ±0.0003 is noise-sensitive; requiring 2 consecutive bars
+                # eliminates single-bar noise flips at the exit boundary.
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003 and _lr_lag.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003 and _lr_lag.slope > 0.0003)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
