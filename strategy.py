@@ -84,6 +84,12 @@ FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Continuous voter scoring: each voter contributes distance from threshold
+# Buffer = fraction of threshold used for linear ramp (wider = more gradual)
+VOTER_BUFFER_FRAC = 0.5  # each voter ramps linearly within 50% of its threshold
+SCORE_ENTRY_THRESH = 2.0  # continuous score threshold for entry (replaces MIN_VOTES=3)
+SCORE_FLIP_THRESH = 2.0   # continuous score threshold for flip
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -155,6 +161,22 @@ class Strategy:
             bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
             bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
+            # Continuous voter score: linear ramp from each voter's distance to threshold
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            _ema_cross_val = (_ef - _es) / _es  # normalized EMA cross distance
+
+            # Per-voter: clamp((value - threshold) / buffer, -1, +1) for bull direction
+            _buf = VOTER_BUFFER_FRAC
+            _v1 = max(-1.0, min(1.0, (ret_short - dyn_threshold) / (dyn_threshold * _buf + 1e-10)))  # bull: ret > thresh
+            _v2 = max(-1.0, min(1.0, _ema_cross_val / (0.001 * _buf + 1e-10)))  # bull: ef > es
+            _v3 = max(-1.0, min(1.0, (rsi - _rsi_thresh) / (3.0 * _buf)))  # bull: rsi > thresh (3 RSI points buffer)
+            _v4 = max(-1.0, min(1.0, (_macd_val - 0.0003) / (0.0003 * _buf + 1e-10)))  # bull: macd > 0.0003
+            _v5 = max(-1.0, min(1.0, (_lr.slope - 0.00015) / (0.00015 * _buf + 1e-10)))  # bull: slope > 0.00015
+            _v6 = max(-1.0, min(1.0, (_ema_slope_val - 0.0005) / (0.0005 * _buf + 1e-10)))  # bull: ema_slope > 0.0005
+            _cont_score = _v1 + _v2 + _v3 + _v4 + _v5 + _v6  # range [-6, +6]
+
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
@@ -176,9 +198,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if _cont_score >= SCORE_ENTRY_THRESH and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and _cont_score > 0)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _cont_score <= -SCORE_ENTRY_THRESH and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and _cont_score < 0)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -221,8 +243,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: continuous score + trend_avg sign, vol-scaled
+                if not in_cooldown and ((current_pos > 0 and _cont_score <= -SCORE_FLIP_THRESH and trend_avg < 0) or (current_pos < 0 and _cont_score >= SCORE_FLIP_THRESH and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
