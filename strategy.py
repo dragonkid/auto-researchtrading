@@ -152,39 +152,9 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters with continuous confidence scoring (sigmoid ramp around thresholds)
-            # Each voter contributes 0-1 continuously instead of binary 0/1
-            # Ramp width = 40% of threshold → signals near boundary contribute ~0.5
-            # This eliminates hard-boundary noise flips
-            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            def _sig_ramp(val, thresh, width):
-                """Sigmoid-like ramp: 0 at thresh-width, 0.5 at thresh, 1 at thresh+width"""
-                x = (val - thresh) / max(width, 1e-10)
-                return max(0.0, min(1.0, 0.5 + 0.5 * x))
-
-            # Ramp widths: 40% of each voter's threshold (tunable)
-            _rw_ret = dyn_threshold * 0.4
-            _rw_ema_cross = abs(_es) * 0.0008  # ~0.08% of slow EMA
-            _rw_rsi = 3.0  # RSI points
-            _rw_macd = 0.00012  # MACD histogram width
-            _rw_linreg = 0.00006  # linreg slope width
-            _rw_ema_slope = 0.0002  # EMA slope width
-
-            bull_votes = (_sig_ramp(ret_short, dyn_threshold, _rw_ret)
-                        + _sig_ramp(_ef - _es, 0, _rw_ema_cross)
-                        + _sig_ramp(rsi, _rsi_thresh, _rw_rsi)
-                        + _sig_ramp(_macd_val, 0.0003, _rw_macd)
-                        + _sig_ramp(_lr.slope, 0.00015, _rw_linreg)
-                        + _sig_ramp(_ema_slope_val, 0.0005, _rw_ema_slope))
-            bear_votes = (_sig_ramp(-ret_short, dyn_threshold, _rw_ret)
-                        + _sig_ramp(_es - _ef, 0, _rw_ema_cross)
-                        + _sig_ramp(-rsi + 100, 100 - _rsi_thresh, _rw_rsi)
-                        + _sig_ramp(-_macd_val, 0.0003, _rw_macd)
-                        + _sig_ramp(-_lr.slope, 0.00015, _rw_linreg)
-                        + _sig_ramp(-_ema_slope_val, 0.0005, _rw_ema_slope))
+            # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
+            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
