@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 45
+MEANREV_RSI_OVERBOUGHT = 55
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 MIN_VOTES = 3
@@ -187,8 +187,8 @@ class Strategy:
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (trend_avg_smooth < 0 or (abs(trend_avg_smooth) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
-                # Meanrev entry disabled: RSI thresholds 49/51 are too noise-sensitive
-                # (nearly every bar triggers, direction depends on close noise)
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
