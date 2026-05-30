@@ -81,6 +81,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: ret_vshort removed)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
+FLIP_TREND_DEADZONE = 0.004  # trend_avg must exceed this for flip (noise buffer)
+FLIP_MIN_HOLD = 2  # min bars in position before flip allowed (deterministic lockout)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -222,11 +224,13 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: hardened against noise via trend_avg deadzone + min hold lockout
+                # Two noise-immune gates: (1) trend_avg must exceed deadzone (not just sign)
+                # (2) must have held >= 2 bars (deterministic, no noise channel)
+                _flip_trend_ok = (current_pos > 0 and trend_avg < -FLIP_TREND_DEADZONE) or (current_pos < 0 and trend_avg > FLIP_TREND_DEADZONE)
+                if not in_cooldown and bars_held >= FLIP_MIN_HOLD and _flip_trend_ok and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
-                    # Low vol (calm): moderate flip
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
