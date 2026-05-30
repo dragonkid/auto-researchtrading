@@ -87,8 +87,8 @@ COOLDOWN_TREND_DECAY = 0.06
 # Vote-proportional sizing (architectural: soften MIN_VOTES boundary)
 # Position size scales with vote excess above MIN_VOTES
 # 4 votes = 70% of target, 5 = 85%, 6 = 95%, 7 = 100%
-VOTE_SIZE_BASE = 0.70  # size fraction at exactly MIN_VOTES
-VOTE_SIZE_SCALE = 0.10  # additional fraction per vote above MIN_VOTES
+VOTE_SIZE_BASE = 0.85  # size fraction at exactly MIN_VOTES (gentle reduction)
+VOTE_SIZE_SCALE = 0.05  # additional fraction per vote above MIN_VOTES (4=85%, 5=90%, 6=95%, 7=100%)
 
 
 def ema(values, span):
@@ -229,14 +229,13 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled + conditional vote-proportional)
-                # Vote-proportional on flip only in calm markets (vol_ratio < 0.8) for noise immunity
-                # In high vol (crash/trend), flip must be full-size for protection
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled, NO vote-proportional)
+                # Vote-proportional on flip was tested: improves stability massively but breaks crash DD
+                # even with vol gating (crash has calm periods where vol_ratio<0.8 temporarily)
+                # Keep flip at full size for crash protection
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_votes = bear_votes if current_pos > 0 else bull_votes
-                    _vote_frac_flip = 1.0 if vol_ratio >= 0.8 else min(1.0, VOTE_SIZE_BASE + VOTE_SIZE_SCALE * max(0, _flip_votes - FLIP_MIN_VOTES))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
-                    target = (-size if current_pos > 0 else size) * _flip_frac * _vote_frac_flip
+                    target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
