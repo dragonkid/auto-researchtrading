@@ -155,7 +155,7 @@ class Strategy:
             # EMA cross: spread gate for bear only (prevents premature bearish flips in rally)
             # Bull uses binary (fast entries); bear requires minimum spread (noise filter for flips)
             _ema_spread = (_ef - _es) / mid
-            _ema_cross_thresh = 0.00008  # noise floor for bear signals
+            _ema_cross_thresh = 0.00005  # minimal noise floor for bear signals
 
             # 6 voters (bear EMA uses spread gate; bull EMA stays binary for entry speed)
             bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
