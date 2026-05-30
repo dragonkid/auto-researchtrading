@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.065
+BASE_POSITION_SIZE = 0.070
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -79,8 +79,8 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: continuous scoring)
-MIN_VOTES = 2.7  # lower threshold for continuous scores (equivalent to binary 3)
-FLIP_MIN_VOTES = 2.7
+MIN_VOTES = 3
+FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.74  # balance between stability (needs lower) and returns (needs higher)
+VOTE_CONFIDENCE_MIN = 0.705  # same as pre-branch baseline (continuous scoring IS the confidence)
 
 
 class Strategy:
