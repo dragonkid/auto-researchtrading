@@ -8,6 +8,7 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
+SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
@@ -73,6 +74,9 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
+MEANREV_TREND_THRESHOLD = 0.05
+MEANREV_RSI_OVERSOLD = 49
+MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: continuous scoring)
 MIN_VOTES = 3
@@ -93,7 +97,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # low confidence min: continuous scoring provides noise buffer
+VOTE_CONFIDENCE_MIN = 0.82  # higher min: flip hysteresis provides stability, confidence less critical
 
 
 class Strategy:
@@ -136,8 +140,10 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for ret_short (maximum noise immunity)
+            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
@@ -215,6 +221,8 @@ class Strategy:
                     target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
