@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 LINREG_EXIT_THRESH = 0.0003    # original exit threshold
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.063  # reduced from 0.067 to control crash DD with r-value voter
+BASE_POSITION_SIZE = 0.067
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -204,9 +204,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit
-                if target != 0 and ((current_pos > 0 and _lr.slope < -LINREG_EXIT_THRESH) or (current_pos < 0 and _lr.slope > LINREG_EXIT_THRESH)):
-                    target = 0.0
+                # Linreg-slope exit: tighter threshold when r-value is low (chaotic = exit faster)
+                if target != 0:
+                    _exit_t = LINREG_EXIT_THRESH * (0.7 + 0.3 * _lr_rval)  # low r → tighter exit
+                    if (current_pos > 0 and _lr.slope < -_exit_t) or (current_pos < 0 and _lr.slope > _exit_t):
+                        target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
