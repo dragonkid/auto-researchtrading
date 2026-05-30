@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.062
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -95,7 +95,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in = less noise exposure)
+ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
 class Strategy:
@@ -156,16 +156,9 @@ class Strategy:
             bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            # Smoothed trend_avg for ENTRY gate (noise-reduced zero crossing)
-            _sc_med = (smoothed_closes[-1] - smoothed_closes[-MED2_WINDOW]) / smoothed_closes[-MED2_WINDOW]
-            _trend_weight_med = TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
-            _trend_weight_long = (1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
-            trend_avg_smooth = _trend_weight_med * _sc_med + _trend_weight_long * ret_long
-            # Raw trend_avg for FLIP gate (fast crash response)
-            _raw_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
-            trend_avg = _trend_weight_med * _raw_med + _trend_weight_long * ret_long
-            # Smoothed trend for entry gate, raw trend for flip gate
-            self.smoothed_trend[symbol] = trend_avg_smooth
+            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
+            self.smoothed_trend[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -183,9 +176,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (trend_avg_smooth > 0 or (abs(trend_avg_smooth) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (trend_avg_smooth < 0 or (abs(trend_avg_smooth) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -208,6 +201,7 @@ class Strategy:
                     target = 0.0
 
                 # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
+                # Removing ret_long guard eliminates a noise-sensitive boundary condition
                 if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
                     target = 0.0
 
