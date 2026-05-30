@@ -103,6 +103,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_bull_votes = {}  # previous bar's bull vote count per symbol
+        self.prev_bear_votes = {}  # previous bar's bear vote count per symbol
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -176,10 +178,17 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # 2-bar temporal confirmation: require votes >= MIN_VOTES on BOTH current and previous bar
+            # This doubles noise immunity of entry decision (single-bar noise flip cannot trigger entry)
+            _prev_bull = self.prev_bull_votes.get(symbol, 0)
+            _prev_bear = self.prev_bear_votes.get(symbol, 0)
+            _bull_confirmed = bull_votes >= MIN_VOTES and _prev_bull >= MIN_VOTES
+            _bear_confirmed = bear_votes >= MIN_VOTES and _prev_bear >= MIN_VOTES
+
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if _bull_confirmed and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _bear_confirmed and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -238,5 +247,9 @@ class Strategy:
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+
+            # Store current votes for next bar's temporal confirmation
+            self.prev_bull_votes[symbol] = bull_votes
+            self.prev_bear_votes[symbol] = bear_votes
 
         return signals
