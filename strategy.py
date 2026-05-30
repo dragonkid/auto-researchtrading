@@ -49,6 +49,10 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
+# Linreg exit: graduated slope threshold replaces binary -0.0003
+LINREG_EXIT_BASE = 0.00045     # wider base threshold (was 0.0003 hard)
+LINREG_EXIT_PNL_SCALE = 0.5   # reduce threshold when position is profitable (let winners run)
+LINREG_EXIT_PROFIT_FLOOR = 0.008  # positions above this pnl get wider threshold
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
@@ -199,10 +203,16 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
-                    target = 0.0
+                # Linreg-slope exit: graduated threshold based on position profitability
+                # Profitable positions get wider threshold (noise immunity for winners)
+                # Losing/marginal positions keep tighter threshold (cut losers quickly)
+                if target != 0:
+                    _exit_thresh = LINREG_EXIT_BASE
+                    if pos_pnl > LINREG_EXIT_PROFIT_FLOOR:
+                        # Scale threshold wider for profitable positions (let winners run)
+                        _exit_thresh += LINREG_EXIT_PNL_SCALE * (pos_pnl - LINREG_EXIT_PROFIT_FLOOR)
+                    if (current_pos > 0 and _lr.slope < -_exit_thresh) or (current_pos < 0 and _lr.slope > _exit_thresh):
+                        target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
