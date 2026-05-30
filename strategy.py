@@ -93,9 +93,6 @@ def ema(values, span):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
 
-# Entry confirmation (noise filter: require signal persistence for fresh entries)
-ENTRY_CONFIRM_BARS = 2  # fresh entries require signal for 2 consecutive bars
-
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
@@ -106,7 +103,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.pending_entry = {}  # {symbol: (direction, bars_confirmed)}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -179,30 +175,12 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Determine desired direction this bar
-                _want_dir = 0  # 0=no signal, 1=bull, -1=bear
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    _want_dir = 1
+                    target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    _want_dir = -1
-
-                if _want_dir != 0:
-                    # Entry confirmation: signal must persist for ENTRY_CONFIRM_BARS
-                    _prev = self.pending_entry.get(symbol, (0, 0))
-                    if _prev[0] == _want_dir:
-                        _confirmed = _prev[1] + 1
-                    else:
-                        _confirmed = 1
-                    self.pending_entry[symbol] = (_want_dir, _confirmed)
-
-                    if _confirmed >= ENTRY_CONFIRM_BARS:
-                        target = (size if _want_dir > 0 else -size) * ENTRY_INITIAL_FRAC
-                        self.pending_entry.pop(symbol, None)
-                else:
-                    # No directional signal — check meanrev, no confirmation needed (rare trigger)
-                    self.pending_entry.pop(symbol, None)
-                    if abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                        target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
+                    target = -size * ENTRY_INITIAL_FRAC
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
