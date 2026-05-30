@@ -93,7 +93,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.765  # fine-tune: between 0.76 (stab +0.0028/raw 6.94) and 0.77 (stab +0.0025/raw 6.98)
+VOTE_CONFIDENCE_MIN = 0.77  # one tick up: targeting raw just above 7.0 while maintaining stab +0.003
 
 
 class Strategy:
