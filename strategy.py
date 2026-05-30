@@ -84,10 +84,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Confidence scoring (replaces binary vote count for entry)
-CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (as fraction of threshold)
-CONFIDENCE_ENTRY_THRESHOLD = 3.0  # continuous confidence sum required for entry (replaces MIN_VOTES=4)
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -155,30 +151,8 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Binary votes (kept for flip mechanism — crash protection needs hard thresholds)
             bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.75, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
             bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.75, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
-
-            # Continuous confidence scoring for entry decisions (noise-immune: signals near threshold contribute less)
-            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _ema_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            def _conf(value, threshold):
-                """Continuous confidence: 0 at threshold, 1 at threshold*(1+MARGIN)"""
-                margin = abs(threshold) * CONFIDENCE_MARGIN if threshold != 0 else abs(value) * 0.5
-                if margin < 1e-10:
-                    return 1.0 if value > 0 else 0.0
-                return min(1.0, max(0.0, (value - threshold) / margin)) if threshold >= 0 else min(1.0, max(0.0, (threshold - value) / margin))
-
-            bull_confidence = (_conf(ret_short, dyn_threshold) + _conf(ret_vshort, dyn_threshold * 0.75) +
-                              _conf(_ef - _es, 0.0) + _conf(rsi - _rsi_thresh, 0.0) +
-                              _conf(_macd_hist, 0.0003) + _conf(_lr.slope, 0.00015) +
-                              _conf(_ema_slope, 0.0005))
-            bear_confidence = (_conf(-ret_short, dyn_threshold) + _conf(-ret_vshort, dyn_threshold * 0.75) +
-                              _conf(_es - _ef, 0.0) + _conf(_rsi_thresh - rsi, 0.0) +
-                              _conf(-_macd_hist, 0.0003) + _conf(-_lr.slope, 0.00015) +
-                              _conf(-_ema_slope, 0.0005))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -201,9 +175,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_confidence >= CONFIDENCE_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_confidence > bear_confidence)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_confidence >= CONFIDENCE_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_confidence > bull_confidence)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
