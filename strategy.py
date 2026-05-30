@@ -86,7 +86,7 @@ COOLDOWN_TREND_DECAY = 0.06
 
 # Confidence scoring (replaces binary vote count for entry)
 CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (as fraction of threshold)
-CONFIDENCE_ENTRY_MIN = 2.8  # min continuous confidence sum (on top of binary MIN_VOTES gate)
+CONFIDENCE_ENTRY_MIN = 2.2  # min continuous confidence sum (on top of binary MIN_VOTES gate)
 
 
 def ema(values, span):
