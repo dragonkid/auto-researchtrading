@@ -73,7 +73,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_DEADZONE = 0.022
+TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -157,10 +157,15 @@ class Strategy:
             bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            # Use smoothed_closes[-1] for trend_avg: reduces noise sensitivity of entry gate
+            # Smoothed trend_avg for entry gate (noise-dampened)
             _sm_ret_med = (smoothed_closes[-1] - smoothed_closes[-MED2_WINDOW]) / smoothed_closes[-MED2_WINDOW]
             _sm_ret_long = (smoothed_closes[-1] - smoothed_closes[-LONG_WINDOW]) / smoothed_closes[-LONG_WINDOW]
-            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * _sm_ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * _sm_ret_long
+            _w_med = TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
+            _w_long = (1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
+            trend_avg = _w_med * _sm_ret_med + _w_long * _sm_ret_long
+            # Raw trend_avg for flip (responsive, crash-protective)
+            _raw_ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
+            flip_trend_avg = _w_med * _raw_ret_med + _w_long * ret_long
             self.smoothed_trend[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
@@ -224,8 +229,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (votes + raw trend sign for responsiveness, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and flip_trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and flip_trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
