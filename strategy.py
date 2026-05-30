@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: continuous scoring)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
-FLIP_RELEASE_THRESH = 2.3  # current direction's votes must drop below this for flip (hysteresis)
+FLIP_RELEASE_THRESH = 2.6  # current direction's votes must drop below this for flip (mild hysteresis)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
