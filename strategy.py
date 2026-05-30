@@ -200,10 +200,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit: wider threshold (-0.0005) creates noise buffer
-                # At -0.0003, slope often oscillates near boundary with +-5bps noise
-                # At -0.0005, exit requires stronger counter-trend (reduces false exits)
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0005) or (current_pos < 0 and _lr.slope > 0.0005)):
+                # Vol-adaptive linreg exit: tight in high-vol (fast protective exit),
+                # wide in low-vol (noise buffer where slope fluctuates near zero)
+                _exit_slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
