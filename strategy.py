@@ -144,15 +144,12 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # EMA fast/slow on smoothed closes: reduces single-bar noise sensitivity
-            # without creating abstain zones or changing the binary cross mechanism
-            _ef, _es = ema(smoothed_closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(smoothed_closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            # MACD on smoothed closes: same noise reduction rationale as EMA cross
-            _ml = ema(smoothed_closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(smoothed_closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
