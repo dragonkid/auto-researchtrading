@@ -93,7 +93,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.80  # aggressive: recover raw_composite with stability buffer from hysteresis
+VOTE_CONFIDENCE_MIN = 0.725  # tight balance: just above stability threshold while approaching raw>=7.0
 
 
 class Strategy:
