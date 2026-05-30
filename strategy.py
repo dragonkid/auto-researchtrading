@@ -86,8 +86,7 @@ COOLDOWN_TREND_DECAY = 0.06
 
 # Confidence scoring (replaces binary vote count for entry)
 CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (as fraction of threshold)
-CONFIDENCE_ENTRY_THRESHOLD = 3.0  # continuous confidence sum required for entry
-CONFIDENCE_TREND_FLOOR = 0.3  # min confidence per voter when in strong trend (noise floor protection)
+CONFIDENCE_ENTRY_MIN = 2.2  # min continuous confidence sum (on top of binary MIN_VOTES gate)
 
 
 def ema(values, span):
@@ -172,28 +171,14 @@ class Strategy:
                     return 1.0 if value > 0 else 0.0
                 return min(1.0, max(0.0, (value - threshold) / margin)) if threshold >= 0 else min(1.0, max(0.0, (threshold - value) / margin))
 
-            # In strong trends, apply a confidence floor to each voter to reduce noise sensitivity
-            # (strong trends = signals more likely correct even if just past threshold)
-            _trend_str = min(abs(ret_long) / 0.10, 1.0)  # saturates at 10% move over LONG_WINDOW
-            _trend_floor = CONFIDENCE_TREND_FLOOR * _trend_str
-
-            def _conf_floored(value, threshold, is_bull_direction):
-                """Apply trend floor: in strong trends, each voter gets min confidence if past threshold"""
-                base = _conf(value, threshold)
-                if is_bull_direction and ret_long > 0 and base > 0:
-                    return max(base, _trend_floor)
-                elif not is_bull_direction and ret_long < 0 and base > 0:
-                    return max(base, _trend_floor)
-                return base
-
-            bull_confidence = (_conf_floored(ret_short, dyn_threshold, True) + _conf_floored(ret_vshort, dyn_threshold * 0.75, True) +
-                              _conf_floored(_ef - _es, 0.0, True) + _conf_floored(rsi - _rsi_thresh, 0.0, True) +
-                              _conf_floored(_macd_hist, 0.0003, True) + _conf_floored(_lr.slope, 0.00015, True) +
-                              _conf_floored(_ema_slope, 0.0005, True))
-            bear_confidence = (_conf_floored(-ret_short, dyn_threshold, False) + _conf_floored(-ret_vshort, dyn_threshold * 0.75, False) +
-                              _conf_floored(_es - _ef, 0.0, False) + _conf_floored(_rsi_thresh - rsi, 0.0, False) +
-                              _conf_floored(-_macd_hist, 0.0003, False) + _conf_floored(-_lr.slope, 0.00015, False) +
-                              _conf_floored(-_ema_slope, 0.0005, False))
+            bull_confidence = (_conf(ret_short, dyn_threshold) + _conf(ret_vshort, dyn_threshold * 0.75) +
+                              _conf(_ef - _es, 0.0) + _conf(rsi - _rsi_thresh, 0.0) +
+                              _conf(_macd_hist, 0.0003) + _conf(_lr.slope, 0.00015) +
+                              _conf(_ema_slope, 0.0005))
+            bear_confidence = (_conf(-ret_short, dyn_threshold) + _conf(-ret_vshort, dyn_threshold * 0.75) +
+                              _conf(_es - _ef, 0.0) + _conf(_rsi_thresh - rsi, 0.0) +
+                              _conf(-_macd_hist, 0.0003) + _conf(-_lr.slope, 0.00015) +
+                              _conf(-_ema_slope, 0.0005))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -216,9 +201,10 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_confidence >= CONFIDENCE_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_confidence > bear_confidence)):
+                # Hybrid gate: binary votes (fast, crash-responsive) AND confidence (noise filter)
+                if bull_votes >= MIN_VOTES and bull_confidence >= CONFIDENCE_ENTRY_MIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_confidence >= CONFIDENCE_ENTRY_THRESHOLD and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_confidence > bull_confidence)):
+                elif bear_votes >= MIN_VOTES and bear_confidence >= CONFIDENCE_ENTRY_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
