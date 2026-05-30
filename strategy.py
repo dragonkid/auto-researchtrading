@@ -83,8 +83,8 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-RET_SHORT_ABSTAIN_BASE = 0.05    # abstain zone base (low vol): 5% of threshold
-RET_SHORT_ABSTAIN_HIGH = 0.35    # abstain zone high (high vol): 35% of threshold
+RET_SHORT_ABSTAIN_BASE = 0.08    # abstain zone base (low vol): 8% of threshold
+RET_SHORT_ABSTAIN_HIGH = 0.25    # abstain zone high (high vol): 25% of threshold
 RET_SHORT_ABSTAIN_VOL_SCALE = 1.5  # vol_ratio at which margin reaches midpoint
 
 
