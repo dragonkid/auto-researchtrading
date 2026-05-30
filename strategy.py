@@ -77,7 +77,7 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters: continuous scoring)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
-FLIP_RELEASE_THRESH = 2.6  # current direction's votes must drop below this for flip (mild hysteresis)
+FLIP_RELEASE_THRESH = 2.8  # lighter hysteresis: allow more flips for returns while retaining noise buffer
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
