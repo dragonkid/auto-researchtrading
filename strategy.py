@@ -200,13 +200,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Trend-agreement-adaptive linreg exit:
-                # With-trend positions get wider threshold (noise buffer)
-                # Counter-trend positions keep tight threshold (fast protective exit)
-                _trend_agree = (1.0 if current_pos > 0 else -1.0) * ret_long
-                _trend_factor = max(0.0, min(1.0, _trend_agree / 0.04))  # saturates at 4% trend agreement
-                _exit_slope_thresh = 0.0003 + 0.00025 * _trend_factor
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                # Linreg-slope exit: slightly wider threshold (0.00035 vs 0.0003)
+                # A tiny universal buffer reduces noise-triggered exits without losing responsiveness
+                # -0.00035 means slope must be 17% more negative than before to trigger exit
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.00035) or (current_pos < 0 and _lr.slope > 0.00035)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
