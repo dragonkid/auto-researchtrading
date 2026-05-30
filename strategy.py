@@ -78,6 +78,11 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
+# R-value entry gate (architectural: filter entries in noisy/choppy conditions)
+# High r² = clean trend = voter signals reliable; low r² = noise = voters unreliable
+ENTRY_RVALUE_MIN = 0.40  # minimum abs(r_value) for trend entry (skip choppy entries)
+ENTRY_RVALUE_MEANREV_MIN = 0.0  # no r-value gate for meanrev (meanrev targets chop)
+
 # Vote / cooldown (6 voters: ret_vshort removed)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
@@ -176,9 +181,10 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                _rval_ok = abs(_lr.rvalue) >= ENTRY_RVALUE_MIN
+                if _rval_ok and bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _rval_ok and bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
