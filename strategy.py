@@ -15,7 +15,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 # Linreg R-value voter: replaces EMA slope voter (3-bar lookback was noisy)
-LINREG_R_THRESHOLD = 0.50  # r-value must exceed this for trend confirmation (0.55 too strict for rally)
+LINREG_R_THRESHOLD = 0.55  # r-value must exceed this for trend confirmation
 
 # MACD parameters
 MACD_FAST = 8
@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 LINREG_EXIT_THRESH = 0.0003    # original exit threshold
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.063  # reduced from 0.067 to control crash DD with r-value voter
+BASE_POSITION_SIZE = 0.067
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
