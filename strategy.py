@@ -84,11 +84,9 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Confidence scoring (replaces binary vote count for entry)
-CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (as fraction of threshold)
-CONFIDENCE_ENTRY_MIN = 2.5  # min continuous confidence sum for entry
-CONFIDENCE_FLIP_BASE = 2.0  # base flip confidence (scaled by vol_ratio)
-CONFIDENCE_FLIP_VOL_SCALE = 1.0  # additional confidence per unit of vol_ratio
+# Confidence scoring (noise-immune entry/flip gate)
+CONFIDENCE_ENTRY_MIN = 2.5  # min continuous confidence sum for entry (hybrid with MIN_VOTES)
+CONFIDENCE_FLIP_MIN = 2.8  # min confidence for flip (slightly higher than entry)
 
 
 def ema(values, span):
@@ -166,21 +164,34 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            def _conf(value, threshold):
-                """Continuous confidence: 0 at threshold, 1 at threshold*(1+MARGIN)"""
-                margin = abs(threshold) * CONFIDENCE_MARGIN if threshold != 0 else abs(value) * 0.5
+            def _conf_abs(value, threshold, margin):
+                """Continuous confidence with fixed absolute margin. 0 at threshold, 1 at threshold+margin."""
                 if margin < 1e-10:
-                    return 1.0 if value > 0 else 0.0
-                return min(1.0, max(0.0, (value - threshold) / margin)) if threshold >= 0 else min(1.0, max(0.0, (threshold - value) / margin))
+                    return 1.0 if value > threshold else 0.0
+                return min(1.0, max(0.0, (value - threshold) / margin))
 
-            bull_confidence = (_conf(ret_short, dyn_threshold) + _conf(ret_vshort, dyn_threshold * 0.75) +
-                              _conf(_ef - _es, 0.0) + _conf(rsi - _rsi_thresh, 0.0) +
-                              _conf(_macd_hist, 0.0003) + _conf(_lr.slope, 0.00015) +
-                              _conf(_ema_slope, 0.0005))
-            bear_confidence = (_conf(-ret_short, dyn_threshold) + _conf(-ret_vshort, dyn_threshold * 0.75) +
-                              _conf(_es - _ef, 0.0) + _conf(_rsi_thresh - rsi, 0.0) +
-                              _conf(-_macd_hist, 0.0003) + _conf(-_lr.slope, 0.00015) +
-                              _conf(-_ema_slope, 0.0005))
+            # Each voter has a fixed noise-aware margin:
+            # ret_short/ret_vshort: margin = dyn_threshold (signal must be 2x threshold for full confidence)
+            # EMA cross: margin = mid * 0.001 (needs ~0.1% spread for full confidence)
+            # RSI: margin = 5.0 (needs 5 RSI points past center for full confidence)
+            # MACD: margin = 0.0003 (same as threshold — needs 2x for full confidence)
+            # Linreg slope: margin = 0.00015 (needs 2x threshold)
+            # EMA slope: margin = 0.0005 (needs 2x threshold)
+            _ema_spread = (_ef - _es) / mid  # normalize to price-relative
+            bull_confidence = (_conf_abs(ret_short, dyn_threshold, dyn_threshold) +
+                              _conf_abs(ret_vshort, dyn_threshold * 0.75, dyn_threshold * 0.75) +
+                              _conf_abs(_ema_spread, 0.0, 0.001) +
+                              _conf_abs(rsi, _rsi_thresh, 5.0) +
+                              _conf_abs(_macd_hist, 0.0003, 0.0003) +
+                              _conf_abs(_lr.slope, 0.00015, 0.00015) +
+                              _conf_abs(_ema_slope, 0.0005, 0.0005))
+            bear_confidence = (_conf_abs(-ret_short, dyn_threshold, dyn_threshold) +
+                              _conf_abs(-ret_vshort, dyn_threshold * 0.75, dyn_threshold * 0.75) +
+                              _conf_abs(-_ema_spread, 0.0, 0.001) +
+                              _conf_abs(_rsi_thresh - rsi, 0.0, 5.0) +
+                              _conf_abs(-_macd_hist, 0.0003, 0.0003) +
+                              _conf_abs(-_lr.slope, 0.00015, 0.00015) +
+                              _conf_abs(-_ema_slope, 0.0005, 0.0005))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -249,10 +260,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (binary votes + trend_avg sign + vol-scaled confidence gate)
+                # Flip mechanism (binary votes + trend_avg sign + confidence gate)
                 _flip_conf = bear_confidence if current_pos > 0 else bull_confidence
-                _flip_conf_min = CONFIDENCE_FLIP_BASE + CONFIDENCE_FLIP_VOL_SCALE * min(vol_ratio, 2.0)
-                if not in_cooldown and _flip_conf >= _flip_conf_min and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                if not in_cooldown and _flip_conf >= CONFIDENCE_FLIP_MIN and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
