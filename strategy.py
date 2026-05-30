@@ -14,8 +14,8 @@ LONG_WINDOW = 20
 # EMA parameters
 EMA_FAST = 3
 EMA_SLOW = 21
-# Linreg R-value voter: replaces EMA slope voter (3-bar lookback was noisy)
-LINREG_R_THRESHOLD = 0.55  # r-value must exceed this for trend confirmation
+EMA_SLOPE_PERIOD = 22
+EMA_SLOPE_LOOKBACK = 3
 
 # MACD parameters
 MACD_FAST = 8
@@ -50,7 +50,8 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 # Linreg exit: graduated slope threshold replaces binary -0.0003
-LINREG_EXIT_THRESH = 0.0003    # original exit threshold
+LINREG_EXIT_THRESH = 0.0003    # original exit threshold (wider didn't help stability)
+LINREG_EXIT_PERIOD = 20        # longer period for exit linreg (more bars = less per-bar noise impact)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
@@ -115,7 +116,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, LINREG_PERIOD + 5) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -151,13 +152,10 @@ class Strategy:
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # Replace EMA slope voter with linreg r-value voter (uses all 16 bars, not just 3)
-            # r-value measures trend consistency across the full window, robust to single-bar noise
-            _lr_rval = abs(_lr.rvalue)  # 0=no trend, 1=perfect trend
-
-            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.75, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, _lr.slope > 0 and _lr_rval > LINREG_R_THRESHOLD])
-            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.75, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, _lr.slope < 0 and _lr_rval > LINREG_R_THRESHOLD])
+            bull_votes = sum([ret_short > dyn_threshold, ret_vshort > dyn_threshold * 0.75, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, ret_vshort < -dyn_threshold * 0.75, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -204,9 +202,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit
-                if target != 0 and ((current_pos > 0 and _lr.slope < -LINREG_EXIT_THRESH) or (current_pos < 0 and _lr.slope > LINREG_EXIT_THRESH)):
-                    target = 0.0
+                # Linreg-slope exit: use longer-period linreg for less per-bar noise sensitivity
+                if target != 0:
+                    _lr_exit = linregress(np.arange(LINREG_EXIT_PERIOD), np.log((bd.history["high"].values[-LINREG_EXIT_PERIOD:] + bd.history["low"].values[-LINREG_EXIT_PERIOD:]) / 2.0))
+                    if (current_pos > 0 and _lr_exit.slope < -LINREG_EXIT_THRESH) or (current_pos < 0 and _lr_exit.slope > LINREG_EXIT_THRESH):
+                        target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
