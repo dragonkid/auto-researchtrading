@@ -16,7 +16,7 @@ EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-EMA_CROSS_DEADZONE = 0.0012  # EMA cross voter abstains when |spread| < this (noise zone ~2.5bps)
+EMA_CROSS_DEADZONE = 0.0004  # EMA cross voter abstains when |spread| < this (minimal deadzone)
 
 # MACD parameters
 MACD_FAST = 8
