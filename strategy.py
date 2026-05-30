@@ -81,7 +81,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: ret_vshort removed)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
-FLIP_MARGIN_MIN = 2  # flip requires vote margin >= 2 (e.g., 4 bull vs <=2 bear)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -227,10 +226,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + margin + trend_avg sign, vol-scaled, confidence-sized)
-                _flip_bull = not in_cooldown and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and (bull_votes - bear_votes) >= FLIP_MARGIN_MIN and trend_avg > 0
-                _flip_bear = not in_cooldown and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and (bear_votes - bull_votes) >= FLIP_MARGIN_MIN and trend_avg < 0
-                if _flip_bull or _flip_bear:
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
