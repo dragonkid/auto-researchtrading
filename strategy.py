@@ -153,9 +153,41 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # 6 voters with continuous confidence scoring
+            # Each voter: sigmoid-like mapping from signal distance to [0,1]
+            # Bull score = clamp((signal - threshold) / bandwidth + 0.5, 0, 1)
+            # Bear score = clamp((-signal - threshold) / bandwidth + 0.5, 0, 1)
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+
+            # Bandwidths: how far past threshold before full confidence (tuned to ~2x noise level)
+            _bw_ret = dyn_threshold * 0.5  # ret_short bandwidth
+            _bw_ema = max(abs(_es) * 0.001, 1e-8)  # EMA cross bandwidth (~0.1% of slow EMA)
+            _bw_rsi = 3.0  # RSI bandwidth (3 points past threshold = full confidence)
+            _bw_macd = 0.0003  # MACD histogram bandwidth
+            _bw_lr = 0.00015  # linreg slope bandwidth
+            _bw_easlope = 0.0005  # EMA slope bandwidth
+
+            def _voter_score(val, thresh, bw):
+                return max(0.0, min(1.0, (val - thresh) / bw + 0.5))
+
+            _v1_bull = _voter_score(ret_short, dyn_threshold, _bw_ret)
+            _v2_bull = _voter_score(_ef - _es, 0.0, _bw_ema)
+            _v3_bull = _voter_score(rsi, _rsi_thresh, _bw_rsi)
+            _v4_bull = _voter_score(_macd_val, 0.0003, _bw_macd)
+            _v5_bull = _voter_score(_lr.slope, 0.00015, _bw_lr)
+            _v6_bull = _voter_score(_ema_slope_val, 0.0005, _bw_easlope)
+
+            _v1_bear = _voter_score(-ret_short, dyn_threshold, _bw_ret)
+            _v2_bear = _voter_score(_es - _ef, 0.0, _bw_ema)
+            _v3_bear = _voter_score(-rsi + 100, 100 - _rsi_thresh, _bw_rsi)
+            _v4_bear = _voter_score(-_macd_val, 0.0003, _bw_macd)
+            _v5_bear = _voter_score(-_lr.slope, 0.00015, _bw_lr)
+            _v6_bear = _voter_score(-_ema_slope_val, 0.0005, _bw_easlope)
+
+            bull_votes = _v1_bull + _v2_bull + _v3_bull + _v4_bull + _v5_bull + _v6_bull
+            bear_votes = _v1_bear + _v2_bear + _v3_bear + _v4_bear + _v5_bear + _v6_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
