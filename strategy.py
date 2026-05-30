@@ -210,9 +210,9 @@ class Strategy:
                     self.linreg_exit_count[symbol] = self.linreg_exit_count.get(symbol, 0) + 1
                 else:
                     self.linreg_exit_count[symbol] = 0
-                # Strong reversal (2x threshold): immediate exit. Weak: need 2 bars.
+                # Smooth confirmation scaling: 2 bars at threshold, 1 bar at 2.5x threshold
                 _slope_strength = abs(_lr.slope) / _exit_slope_thresh  # 1.0 at threshold, 2.0+ = strong
-                _confirm_needed = 2 if _slope_strength < 1.8 else 1
+                _confirm_needed = 2.0 - min(1.0, max(0.0, (_slope_strength - 1.0) / 1.5))
                 if target != 0 and self.linreg_exit_count.get(symbol, 0) >= _confirm_needed:
                     target = 0.0
 
