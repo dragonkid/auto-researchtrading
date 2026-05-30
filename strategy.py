@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
+MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further (stability gain +0.001)
 
 # Linear regression
 LINREG_PERIOD = 16
@@ -199,9 +199,14 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit with vote-consensus assist (architectural: fusion exit)
+                # Pure slope exit uses fixed threshold 0.0003 (noise-sensitive single boundary)
+                # Vote-consensus assist: lower the slope threshold when opposing votes confirm reversal
+                # This makes exit decisions depend on multiple signals, reducing single-point noise
+                _opposing_votes = bear_votes if current_pos > 0 else bull_votes
+                _slope_against = (_lr.slope < 0 and current_pos > 0) or (_lr.slope > 0 and current_pos < 0)
+                _slope_threshold = 0.0003 if _opposing_votes < 3 else 0.00015  # halved threshold when consensus confirms
+                if target != 0 and _slope_against and abs(_lr.slope) > _slope_threshold:
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
