@@ -155,8 +155,8 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            # ret_short voter: ternary with vol-adaptive abstain zone
-            _abstain_margin = RET_SHORT_ABSTAIN_BASE + (RET_SHORT_ABSTAIN_HIGH - RET_SHORT_ABSTAIN_BASE) * min(1.0, vol_ratio / RET_SHORT_ABSTAIN_VOL_SCALE)
+            # ret_short voter: ternary with vol-adaptive abstain zone (power curve for sideways-safe)
+            _abstain_margin = RET_SHORT_ABSTAIN_BASE + (RET_SHORT_ABSTAIN_HIGH - RET_SHORT_ABSTAIN_BASE) * min(1.0, vol_ratio / RET_SHORT_ABSTAIN_VOL_SCALE) ** 2.0
             _ret_short_bull_thresh = dyn_threshold * (1.0 + _abstain_margin)
             _ret_short_bear_thresh = dyn_threshold * (1.0 + _abstain_margin)
             bull_votes = sum([ret_short > _ret_short_bull_thresh, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
