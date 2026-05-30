@@ -43,7 +43,9 @@ RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
 # Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
-MAX_HOLD_BARS = 12  # hard max hold (noise-immune: deterministic from entry)
+HOLD_DECAY_START = 6   # bars after which exit pressure begins
+HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
+MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -210,9 +212,15 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Simple max-hold exit (noise-immune: bars_held is deterministic from entry)
-                if target != 0 and bars_held >= 12:
-                    target = 0.0
+                # Momentum-decay exit (soft time pressure, slope-extended)
+                if target != 0 and bars_held > HOLD_DECAY_START:
+                    # Slope agreement: does linreg slope support position direction?
+                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
+                    # Extra hold time when slope strongly agrees
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    if bars_held >= _effective_max:
+                        target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
