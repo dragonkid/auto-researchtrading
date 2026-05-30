@@ -81,7 +81,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: continuous scoring)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
-FLIP_RELEASE_THRESH = 2.3  # current direction's votes must drop below this for flip (hysteresis)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -163,7 +162,7 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Bandwidths: how far past threshold before full confidence (narrow = sharper transition)
-            _bw_ret = dyn_threshold * 0.3  # ret_short bandwidth (tighter)
+            _bw_ret = dyn_threshold * 0.5  # ret_short bandwidth (wider to reduce sideways noise)
             _bw_ema = max(abs(_es) * 0.0005, 1e-8)  # EMA cross bandwidth (~0.05% of slow EMA)
             _bw_rsi = 2.0  # RSI bandwidth (2 points past threshold = full confidence)
             _bw_macd = 0.00015  # MACD histogram bandwidth (tighter)
@@ -260,10 +259,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism with hysteresis (votes + release + trend_avg, vol-scaled, confidence-sized)
-                _flip_ok_bear = not in_cooldown and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bull_votes < FLIP_RELEASE_THRESH and trend_avg < 0
-                _flip_ok_bull = not in_cooldown and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bear_votes < FLIP_RELEASE_THRESH and trend_avg > 0
-                if _flip_ok_bear or _flip_ok_bull:
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
