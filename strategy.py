@@ -200,9 +200,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: tight in high-vol (fast protective exit),
-                # wide in low-vol (noise buffer where slope fluctuates near zero)
-                _exit_slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))
+                # Vol-adaptive linreg exit: only widen in very calm conditions (vol_ratio < 0.7)
+                # Above 0.7 (sideways/crash/rally): keep tight 0.0003 for responsiveness
+                # Below 0.7 (calm bull): widen to 0.0005 for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
