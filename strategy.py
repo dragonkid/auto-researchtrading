@@ -223,7 +223,10 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Asymmetric flip threshold: require magnitude in calm (noise buffer), sign-only in volatile (crash protection)
+                _flip_trend_thresh = TREND_GATE_DEADZONE * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.5))
+                _flip_trend_ok = (current_pos > 0 and trend_avg < -_flip_trend_thresh) or (current_pos < 0 and trend_avg > _flip_trend_thresh)
+                if not in_cooldown and _flip_trend_ok and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
