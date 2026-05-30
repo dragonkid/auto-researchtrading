@@ -229,11 +229,14 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled, NO vote-proportional)
-                # Flips must remain full-size for crash protection (proportional flip = weak protection)
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled + conditional vote-proportional)
+                # Vote-proportional on flip only in calm markets (vol_ratio < 0.8) for noise immunity
+                # In high vol (crash/trend), flip must be full-size for protection
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    _flip_votes = bear_votes if current_pos > 0 else bull_votes
+                    _vote_frac_flip = 1.0 if vol_ratio >= 0.8 else min(1.0, VOTE_SIZE_BASE + VOTE_SIZE_SCALE * max(0, _flip_votes - FLIP_MIN_VOTES))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
-                    target = (-size if current_pos > 0 else size) * _flip_frac
+                    target = (-size if current_pos > 0 else size) * _flip_frac * _vote_frac_flip
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
