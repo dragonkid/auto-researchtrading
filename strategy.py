@@ -16,6 +16,7 @@ EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
+EMA_CROSS_HALFLIFE = 0.002  # spread at which EMA cross voter is 50% confidence
 
 # MACD parameters
 MACD_FAST = 8
@@ -152,8 +153,22 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # EMA cross voter: continuous sigmoid instead of binary (reduces noise at crossover)
+            _ema_spread = (_ef - _es) / _es
+            _ema_bull_conf = min(1.0, max(0.0, _ema_spread / EMA_CROSS_HALFLIFE)) if _ema_spread > 0 else 0.0
+            _ema_bear_conf = min(1.0, max(0.0, -_ema_spread / EMA_CROSS_HALFLIFE)) if _ema_spread < 0 else 0.0
+            bull_votes = ret_short > dyn_threshold
+            bull_votes += _ema_bull_conf
+            bull_votes += (rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0))
+            bull_votes += ((_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003)
+            bull_votes += (_lr.slope > 0.00015)
+            bull_votes += ((_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005)
+            bear_votes = ret_short < -dyn_threshold
+            bear_votes += _ema_bear_conf
+            bear_votes += (rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0))
+            bear_votes += ((_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003)
+            bear_votes += (_lr.slope < -0.00015)
+            bear_votes += ((_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
