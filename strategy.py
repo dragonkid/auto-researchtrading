@@ -84,12 +84,6 @@ FLIP_MIN_VOTES = 4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Vote-proportional sizing (architectural: soften MIN_VOTES boundary)
-# Position size scales with vote excess above MIN_VOTES
-# 4 votes = 70% of target, 5 = 85%, 6 = 95%, 7 = 100%
-VOTE_SIZE_BASE = 0.70  # size fraction at exactly MIN_VOTES
-VOTE_SIZE_SCALE = 0.10  # additional fraction per vote above MIN_VOTES
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -181,13 +175,10 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Vote-proportional sizing: scale initial size by vote excess
-                _vote_frac_bull = min(1.0, VOTE_SIZE_BASE + VOTE_SIZE_SCALE * max(0, bull_votes - MIN_VOTES))
-                _vote_frac_bear = min(1.0, VOTE_SIZE_BASE + VOTE_SIZE_SCALE * max(0, bear_votes - MIN_VOTES))
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC * _vote_frac_bull
+                    target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC * _vote_frac_bear
+                    target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -229,14 +220,12 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled + vote-proportional)
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
-                    _flip_votes = bear_votes if current_pos > 0 else bull_votes
-                    _vote_frac_flip = min(1.0, VOTE_SIZE_BASE + VOTE_SIZE_SCALE * max(0, _flip_votes - FLIP_MIN_VOTES))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
-                    target = (-size if current_pos > 0 else size) * _flip_frac * _vote_frac_flip
+                    target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
