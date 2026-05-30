@@ -86,6 +86,7 @@ COOLDOWN_TREND_DECAY = 0.06
 RET_SHORT_ABSTAIN_BASE = 0.05    # abstain zone base (low vol): 5% of threshold
 RET_SHORT_ABSTAIN_HIGH = 0.35    # abstain zone high (high vol): 35% of threshold
 RET_SHORT_ABSTAIN_VOL_SCALE = 1.5  # vol_ratio at which margin reaches midpoint
+FLIP_TREND_MARGIN = 0.003  # flip requires trend_avg beyond this margin (not just sign change)
 
 
 def ema(values, span):
@@ -228,8 +229,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg margin, vol-scaled accumulation)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < -FLIP_TREND_MARGIN) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > FLIP_TREND_MARGIN)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
