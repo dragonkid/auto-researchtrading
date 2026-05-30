@@ -165,7 +165,8 @@ class Strategy:
             _bw_easlope = 0.0003  # EMA slope bandwidth (tighter)
 
             def _voter_score(val, thresh, bw):
-                return max(0.0, min(1.0, (val - thresh) / bw + 0.5))
+                _raw = max(0.0, min(1.0, (val - thresh) / bw + 0.5))
+                return _raw ** 0.8  # concave: boosts intermediate scores (0.5->0.57, 0.75->0.80)
 
             _v1_bull = _voter_score(ret_short, dyn_threshold, _bw_ret)
             _v2_bull = _voter_score(_ef - _es, 0.0, _bw_ema)
