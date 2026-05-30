@@ -201,18 +201,19 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit with vol-adaptive confirmation (hysteresis)
-                # In high vol: require 2 consecutive bars of reversal (filters noise)
-                # In low vol: require 1 bar (original behavior, avoids counter-state noise)
-                # Transition: smoothly scale confirmation bars with vol_ratio
-                _slope_reversed = (current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)
+                # Linreg-slope exit with magnitude-adaptive confirmation (hysteresis)
+                # Near threshold (weak reversal): require 2 bars → filters noise flips
+                # Strong reversal: exit immediately → preserves crash protection
+                _exit_slope_thresh = 0.0003
+                _slope_reversed = (current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)
                 if _slope_reversed:
                     self.linreg_exit_count[symbol] = self.linreg_exit_count.get(symbol, 0) + 1
                 else:
                     self.linreg_exit_count[symbol] = 0
-                # Confirmation requirement: 1 in calm (vol_ratio<0.8), smoothly up to 2 in high vol (vol_ratio>1.5)
-                _confirm_bars = 1.0 + min(1.0, max(0.0, (vol_ratio - 0.8) / 0.7))
-                if target != 0 and self.linreg_exit_count.get(symbol, 0) >= _confirm_bars:
+                # Strong reversal (2x threshold): immediate exit. Weak: need 2 bars.
+                _slope_strength = abs(_lr.slope) / _exit_slope_thresh  # 1.0 at threshold, 2.0+ = strong
+                _confirm_needed = 2 if _slope_strength < 1.8 else 1
+                if target != 0 and self.linreg_exit_count.get(symbol, 0) >= _confirm_needed:
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
