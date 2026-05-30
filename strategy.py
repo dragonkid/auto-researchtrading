@@ -16,7 +16,6 @@ EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
-EMA_CROSS_DEADZONE = 0.0004  # EMA cross voter abstains when |spread| < this (minimal deadzone)
 
 # MACD parameters
 MACD_FAST = 8
@@ -160,12 +159,8 @@ class Strategy:
             _abstain_margin = RET_SHORT_ABSTAIN_BASE + (RET_SHORT_ABSTAIN_HIGH - RET_SHORT_ABSTAIN_BASE) * min(1.0, vol_ratio / RET_SHORT_ABSTAIN_VOL_SCALE) ** 2.0
             _ret_short_bull_thresh = dyn_threshold * (1.0 + _abstain_margin)
             _ret_short_bear_thresh = dyn_threshold * (1.0 + _abstain_margin)
-            # EMA cross voter: deadzone-based abstain (noise ~2.5bps propagates through EMA(3))
-            _ema_spread = (_ef - _es) / _es
-            _ema_cross_bull = _ema_spread > EMA_CROSS_DEADZONE
-            _ema_cross_bear = _ema_spread < -EMA_CROSS_DEADZONE
-            bull_votes = sum([ret_short > _ret_short_bull_thresh, _ema_cross_bull, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -_ret_short_bear_thresh, _ema_cross_bear, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            bull_votes = sum([ret_short > _ret_short_bull_thresh, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -_ret_short_bear_thresh, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
