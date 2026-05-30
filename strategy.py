@@ -87,8 +87,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # Confidence scoring (replaces binary vote count for entry)
 CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (as fraction of threshold)
 CONFIDENCE_ENTRY_MIN = 2.5  # min continuous confidence sum for entry
-CONFIDENCE_FLIP_BASE = 2.0  # base flip confidence (scaled by vol_ratio)
-CONFIDENCE_FLIP_VOL_SCALE = 1.0  # additional confidence per unit of vol_ratio
+CONFIDENCE_FLIP_MIN = 3.0  # min continuous confidence sum for flip (higher: flips are costlier)
 
 
 def ema(values, span):
@@ -249,10 +248,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (binary votes + trend_avg sign + vol-scaled confidence gate)
+                # Flip mechanism (binary votes + trend_avg sign + confidence gate for noise immunity)
                 _flip_conf = bear_confidence if current_pos > 0 else bull_confidence
-                _flip_conf_min = CONFIDENCE_FLIP_BASE + CONFIDENCE_FLIP_VOL_SCALE * min(vol_ratio, 2.0)
-                if not in_cooldown and _flip_conf >= _flip_conf_min and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                if not in_cooldown and _flip_conf >= CONFIDENCE_FLIP_MIN and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
