@@ -200,9 +200,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit: wider threshold (-0.0005) creates noise buffer
+                # At -0.0003, slope often oscillates near boundary with +-5bps noise
+                # At -0.0005, exit requires stronger counter-trend (reduces false exits)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0005) or (current_pos < 0 and _lr.slope > 0.0005)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
