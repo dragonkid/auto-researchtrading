@@ -50,7 +50,9 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 # Linreg exit: graduated slope threshold replaces binary -0.0003
-LINREG_EXIT_THRESH = 0.00035   # slightly wider than original 0.0003 (fixed, no conditional widening)
+LINREG_EXIT_BASE = 0.00034     # minimal widening (halfway between original 0.0003 and 0.00038)
+LINREG_EXIT_PNL_SCALE = 0.3   # conservative profit-scaled widening
+LINREG_EXIT_PROFIT_FLOOR = 0.012  # only very profitable positions get widened (was 0.010)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
@@ -201,10 +203,17 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit: fixed threshold slightly wider than original
-                # Eliminates conditional noise channels (pnl-based widening was itself noise-sensitive)
-                if target != 0 and ((current_pos > 0 and _lr.slope < -LINREG_EXIT_THRESH) or (current_pos < 0 and _lr.slope > LINREG_EXIT_THRESH)):
-                    target = 0.0
+                # Linreg-slope exit: graduated threshold based on position profitability
+                # In trending markets: wider threshold (let winners run through noise)
+                # In sideways markets: tighter threshold (cut quickly before reversal)
+                if target != 0:
+                    # Blend between tight (sideways) and wide (trending) based on trend strength
+                    _exit_thresh = 0.0003 + (LINREG_EXIT_BASE - 0.0003) * rsi_trend_str
+                    if pos_pnl > LINREG_EXIT_PROFIT_FLOOR:
+                        # Only widen for profit when trending (sideways profits are fleeting)
+                        _exit_thresh += LINREG_EXIT_PNL_SCALE * (pos_pnl - LINREG_EXIT_PROFIT_FLOOR) * rsi_trend_str
+                    if (current_pos > 0 and _lr.slope < -_exit_thresh) or (current_pos < 0 and _lr.slope > _exit_thresh):
+                        target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
