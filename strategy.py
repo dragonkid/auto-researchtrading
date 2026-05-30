@@ -176,9 +176,14 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Entry gate: replace noisy trend_avg zero-crossing with robust alternatives
+                # Option A: vote majority (bull > bear already implies trend alignment)
+                # Option B: linreg slope confirms direction (16-bar HL2, very noise-stable)
+                _bull_gate = bull_votes > bear_votes or _lr.slope > 0.00015
+                _bear_gate = bear_votes > bull_votes or _lr.slope < -0.00015
+                if bull_votes >= MIN_VOTES and _bull_gate:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_gate:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -221,8 +226,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (votes + linreg slope confirmation, vol-scaled accumulation)
+                # Replace trend_avg < 0 with linreg slope for noise-stable flip confirmation
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _lr.slope < -0.00010) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _lr.slope > 0.00010)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
