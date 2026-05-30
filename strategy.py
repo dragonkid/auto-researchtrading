@@ -229,12 +229,11 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: vol-adaptive vote threshold for noise immunity
-                # In high vol (crash/trend): FLIP_MIN_VOTES=4 for fast protection
-                # In low vol (sideways): require 5 votes to filter noise-triggered flips
-                # This targets the primary stability mechanism: flip divergence at vote boundary
-                _flip_min = FLIP_MIN_VOTES if vol_ratio >= 0.9 else FLIP_MIN_VOTES + 1
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled, NO vote-proportional)
+                # Vote-proportional on flip was tested: improves stability massively but breaks crash DD
+                # even with vol gating (crash has calm periods where vol_ratio<0.8 temporarily)
+                # Keep flip at full size for crash protection
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
