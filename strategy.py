@@ -103,7 +103,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.linreg_exit_count = {}  # bars slope has been reversed
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -201,19 +200,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit with magnitude-adaptive confirmation (hysteresis)
-                # Near threshold (weak reversal): require 2 bars → filters noise flips
-                # Strong reversal: exit immediately → preserves crash protection
-                _exit_slope_thresh = 0.0003
-                _slope_reversed = (current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)
-                if _slope_reversed:
-                    self.linreg_exit_count[symbol] = self.linreg_exit_count.get(symbol, 0) + 1
-                else:
-                    self.linreg_exit_count[symbol] = 0
-                # Smooth confirmation scaling: 2 bars at threshold, 1 bar at 2.5x threshold
-                _slope_strength = abs(_lr.slope) / _exit_slope_thresh  # 1.0 at threshold, 2.0+ = strong
-                _confirm_needed = 2.0 - min(1.0, max(0.0, (_slope_strength - 1.0) / 1.5))
-                if target != 0 and self.linreg_exit_count.get(symbol, 0) >= _confirm_needed:
+                # Linreg-slope exit with widened threshold (0.0004 vs 0.0003)
+                # Wider threshold absorbs ±5bps noise effect on 16-bar linreg (~0.0001 slope perturbation)
+                # No state variable needed — stateless is inherently more noise-immune
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0004) or (current_pos < 0 and _lr.slope > 0.0004)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -242,7 +232,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.linreg_exit_count):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
