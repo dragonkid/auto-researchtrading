@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 45
-MEANREV_RSI_OVERBOUGHT = 55
+MEANREV_RSI_OVERSOLD = 49
+MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 MIN_VOTES = 3
@@ -207,8 +207,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit (slightly wider threshold for noise margin)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.00035) or (current_pos < 0 and _lr.slope > 0.00035)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
