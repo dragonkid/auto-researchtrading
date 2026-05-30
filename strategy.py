@@ -99,7 +99,7 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 # Vote-confidence sizing: marginal entries (3 votes) get smaller position than strong (5-6)
 # This reduces the portfolio-value IMPACT of noise flipping a 3-vote entry to non-entry
-VOTE_CONFIDENCE_MIN = 0.82  # 3 votes → 82% of target size
+VOTE_CONFIDENCE_MIN = 0.88  # 3 votes → 88% of target size
 VOTE_CONFIDENCE_MAX = 1.0   # 6 votes → 100% of target size
 
 
