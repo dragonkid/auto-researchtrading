@@ -50,7 +50,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.068
+BASE_POSITION_SIZE = 0.070
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -100,7 +100,7 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # Binary step at the decision boundary: reduces impact of 3↔2 noise flips
 # Vote-confidence sizing: scale position by vote strength (MIN→82%, 6→100%)
 # Reduces portfolio-value IMPACT of noise flipping a marginal entry to non-entry
-VOTE_CONFIDENCE_MIN = 0.82  # MIN_VOTES (3) → 82% of target size
+VOTE_CONFIDENCE_MIN = 0.87  # MIN_VOTES (3) → 87% of target size
 VOTE_CONFIDENCE_MAX = 1.0   # 6 votes → 100% of target size
 
 
