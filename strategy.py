@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.82  # continuous scoring already encodes confidence; less reduction needed
 
 
 class Strategy:
@@ -209,9 +209,10 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (3 votes) to 1.0 (6 votes)
+            # Vote-confidence sizing: use continuous score directly as confidence
+            # With continuous scoring, vote sum naturally encodes confidence (3.0=marginal, 6.0=maximum)
             _active_votes = max(bull_votes, bear_votes)
-            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6 - MIN_VOTES)))
+            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
