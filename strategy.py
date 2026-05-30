@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
+MACD_SIGNAL = 8  # widened from 4->6->7->8 (stability +0.001 from smoother histogram)
 
 # Linear regression
 LINREG_PERIOD = 16
@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.067
+BASE_POSITION_SIZE = 0.055  # reduced from 0.067 to control DD with vote-proportional sizing
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -87,8 +87,8 @@ COOLDOWN_TREND_DECAY = 0.06
 # Vote-proportional sizing (architectural: soften MIN_VOTES boundary)
 # Position size scales with vote excess above MIN_VOTES
 # 4 votes = 70% of target, 5 = 85%, 6 = 95%, 7 = 100%
-VOTE_SIZE_BASE = 0.85  # size fraction at exactly MIN_VOTES (gentle reduction)
-VOTE_SIZE_SCALE = 0.05  # additional fraction per vote above MIN_VOTES (4=85%, 5=90%, 6=95%, 7=100%)
+VOTE_SIZE_BASE = 0.70  # size fraction at exactly MIN_VOTES
+VOTE_SIZE_SCALE = 0.10  # additional fraction per vote above MIN_VOTES (4=70%, 5=80%, 6=90%, 7=100%)
 
 
 def ema(values, span):
@@ -229,14 +229,13 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: vol-adaptive vote threshold for noise immunity
-                # In high vol (crash/trend): FLIP_MIN_VOTES=4 for fast protection
-                # In low vol (sideways): require 5 votes to filter noise-triggered flips
-                # This targets the primary stability mechanism: flip divergence at vote boundary
-                _flip_min = FLIP_MIN_VOTES if vol_ratio >= 0.9 else FLIP_MIN_VOTES + 1
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min and trend_avg > 0)):
+                # Flip mechanism (4 votes + trend_avg sign, vol-scaled + vote-proportional)
+                # Full vote-proportional gives +0.006 stability. Crash DD fix via reduced SIZE.
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    _flip_votes = bear_votes if current_pos > 0 else bull_votes
+                    _vote_frac_flip = min(1.0, VOTE_SIZE_BASE + VOTE_SIZE_SCALE * max(0, _flip_votes - FLIP_MIN_VOTES))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
-                    target = (-size if current_pos > 0 else size) * _flip_frac
+                    target = (-size if current_pos > 0 else size) * _flip_frac * _vote_frac_flip
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
