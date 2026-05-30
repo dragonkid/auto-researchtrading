@@ -84,9 +84,6 @@ FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Soft-vote ramp: narrow transition zone around threshold (10% of threshold value)
-SOFT_VOTE_RAMP = 0.10  # half-width of ramp as fraction of threshold
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -95,14 +92,6 @@ def ema(values, span):
     for i in range(1, len(values)):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
-
-
-def soft_vote(value, threshold, ramp_frac=SOFT_VOTE_RAMP):
-    """Smooth vote: 0 below (thresh - ramp), 1 above (thresh + ramp), linear between."""
-    ramp = abs(threshold) * ramp_frac
-    if ramp < 1e-10:
-        return 1.0 if value > threshold else 0.0
-    return max(0.0, min(1.0, (value - threshold + ramp) / (2.0 * ramp)))
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
@@ -163,13 +152,9 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters with narrow soft-vote ramps (reduces noise sensitivity at decision boundary)
-            _rsi_thresh_bull = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _rsi_thresh_bear = _rsi_thresh_bull  # same threshold, flipped direction
-            _macd_val = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            bull_votes = (soft_vote(ret_short, dyn_threshold) + soft_vote(_ef - _es, 0.0) + soft_vote(rsi, _rsi_thresh_bull) + soft_vote(_macd_val, 0.0003) + soft_vote(_lr.slope, 0.00015) + soft_vote(_ema_slope_val, 0.0005))
-            bear_votes = (soft_vote(-ret_short, dyn_threshold) + soft_vote(_es - _ef, 0.0) + soft_vote(-rsi, -_rsi_thresh_bear) + soft_vote(-_macd_val, 0.0003) + soft_vote(-_lr.slope, 0.00015) + soft_vote(-_ema_slope_val, 0.0005))
+            # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
+            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
