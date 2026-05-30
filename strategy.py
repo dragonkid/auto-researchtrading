@@ -81,6 +81,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: ret_vshort removed)
 MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
+FLIP_CALM_VOTES = 4  # stricter flip in calm markets (hysteresis: harder to reverse than to enter)
+FLIP_VOL_THRESHOLD = 0.8  # vol_ratio below this uses FLIP_CALM_VOTES
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -221,8 +223,11 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism with vol-adaptive hysteresis
+                # In calm markets (vol_ratio < threshold), require stronger consensus to flip
+                # This reduces noise-sensitive reversals without hurting crash protection
+                _flip_thresh = FLIP_CALM_VOTES if vol_ratio < FLIP_VOL_THRESHOLD else FLIP_MIN_VOTES
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_thresh and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_thresh and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
