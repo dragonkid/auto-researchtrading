@@ -78,9 +78,9 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
-MIN_VOTES = 3
-FLIP_MIN_VOTES = 3
+# Vote / cooldown (6 voters: continuous scoring)
+MIN_VOTES = 2.7  # lower threshold for continuous scores (equivalent to binary 3)
+FLIP_MIN_VOTES = 2.7
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -164,7 +164,7 @@ class Strategy:
             # Bandwidths: how far past threshold before full confidence (narrow = sharper transition)
             _bw_ret = dyn_threshold * 0.3  # ret_short bandwidth (tighter)
             _bw_ema = max(abs(_es) * 0.0005, 1e-8)  # EMA cross bandwidth (~0.05% of slow EMA)
-            _bw_rsi = 4.0  # RSI bandwidth (wider for sideways where RSI hovers near 50)
+            _bw_rsi = 2.0  # RSI bandwidth (2 points past threshold = full confidence)
             _bw_macd = 0.00015  # MACD histogram bandwidth (tighter)
             _bw_lr = 0.0001  # linreg slope bandwidth (tighter)
             _bw_easlope = 0.0003  # EMA slope bandwidth (tighter)
