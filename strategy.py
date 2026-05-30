@@ -118,8 +118,8 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # 2-bar EMA smoothed closes for ret_short/ret_vshort voter inputs (noise reduction)
-            _smooth_alpha = 2.0 / 3.0  # span=2 EMA
+            # 3-bar EMA smoothed closes for ret_short voter inputs (increased noise reduction)
+            _smooth_alpha = 2.0 / 4.0  # span=3 EMA (was span=2)
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
@@ -200,10 +200,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit: slightly wider threshold (0.00035 vs 0.0003)
-                # A tiny universal buffer reduces noise-triggered exits without losing responsiveness
-                # -0.00035 means slope must be 17% more negative than before to trigger exit
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.00035) or (current_pos < 0 and _lr.slope > 0.00035)):
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
