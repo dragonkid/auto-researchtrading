@@ -97,12 +97,19 @@ def ema(values, span):
 ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
+# Vote-consensus entry scaling (architectural: soften MIN_VOTES boundary)
+# At exactly MIN_VOTES: start at VOTE_SCALE_BASE fraction of full size
+# Each additional vote adds VOTE_SCALE_PER_VOTE, capped at 1.0
+VOTE_SCALE_BASE = 0.70
+VOTE_SCALE_PER_VOTE = 0.10
+
 
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_vote_scale = {}  # vote-consensus scaling for accumulation
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -173,12 +180,15 @@ class Strategy:
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
+            _vote_scale = 1.0  # default for flip/meanrev entries
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC
+                    _vote_scale = min(1.0, VOTE_SCALE_BASE + (bull_votes - MIN_VOTES) * VOTE_SCALE_PER_VOTE)
+                    target = size * ENTRY_INITIAL_FRAC * _vote_scale
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC
+                    _vote_scale = min(1.0, VOTE_SCALE_BASE + (bear_votes - MIN_VOTES) * VOTE_SCALE_PER_VOTE)
+                    target = -size * ENTRY_INITIAL_FRAC * _vote_scale
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -190,8 +200,10 @@ class Strategy:
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Vote-consensus scaling persists through accumulation (initial confidence preserved)
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    _vs = self.entry_vote_scale.get(symbol, 1.0)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC * _vs + (1.0 - ENTRY_INITIAL_FRAC * _vs) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
@@ -230,10 +242,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_vote_scale):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    # Store vote_scale for accumulation (flip uses full scale=1.0)
+                    self.entry_vote_scale[symbol] = _vote_scale if current_pos == 0 and not in_cooldown and (bull_votes >= MIN_VOTES or bear_votes >= MIN_VOTES) else 1.0
 
         return signals
