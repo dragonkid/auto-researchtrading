@@ -204,13 +204,14 @@ class Strategy:
                     target = 0.0
 
                 # Linreg-slope exit: graduated threshold based on position profitability
-                # Profitable positions get wider threshold (noise immunity for winners)
-                # Losing/marginal positions keep tighter threshold (cut losers quickly)
+                # In trending markets: wider threshold (let winners run through noise)
+                # In sideways markets: tighter threshold (cut quickly before reversal)
                 if target != 0:
-                    _exit_thresh = LINREG_EXIT_BASE
+                    # Blend between tight (sideways) and wide (trending) based on trend strength
+                    _exit_thresh = 0.0003 + (LINREG_EXIT_BASE - 0.0003) * rsi_trend_str
                     if pos_pnl > LINREG_EXIT_PROFIT_FLOOR:
-                        # Scale threshold wider for profitable positions (let winners run)
-                        _exit_thresh += LINREG_EXIT_PNL_SCALE * (pos_pnl - LINREG_EXIT_PROFIT_FLOOR)
+                        # Only widen for profit when trending (sideways profits are fleeting)
+                        _exit_thresh += LINREG_EXIT_PNL_SCALE * (pos_pnl - LINREG_EXIT_PROFIT_FLOOR) * rsi_trend_str
                     if (current_pos > 0 and _lr.slope < -_exit_thresh) or (current_pos < 0 and _lr.slope > _exit_thresh):
                         target = 0.0
 
