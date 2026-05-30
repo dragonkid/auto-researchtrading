@@ -144,9 +144,10 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # Short linreg slope (8-bar) replaces EMA cross voter for noise immunity
-            # EMA cross = single-point comparison (noisy); linreg = multi-point fit (stable)
-            _lr_short = linregress(np.arange(8), np.log(smoothed_closes[-8:]))
+            # Vol-adaptive short linreg: shorter in sideways (fast reversal), longer in crash (noise buffer)
+            # vol_ratio < 0.7: 5 bars; vol_ratio > 1.2: 9 bars; linear interpolation between
+            _lr_short_window = int(round(5 + 4 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))))
+            _lr_short = linregress(np.arange(_lr_short_window), np.log(smoothed_closes[-_lr_short_window:]))
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
