@@ -78,9 +78,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
-MIN_VOTES = 3
-FLIP_MIN_VOTES = 3
+# Soft voting parameters (continuous 0-1 per voter instead of binary)
+SOFT_VOTE_STEEPNESS = 3.0  # sigmoid steepness per voter (3=gradual, 10=sharp/binary-like)
+MIN_SCORE = 2.5  # entry threshold (replaces MIN_VOTES=3; soft scores sum to ~3 when binary)
+FLIP_MIN_SCORE = 2.5  # flip threshold
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -151,9 +152,34 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # 6 soft voters: continuous [0,1] scores via sigmoid around each threshold
+            # Eliminates discrete vote-count boundary noise (2->3 flip)
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            _ema_diff = _ef - _es
+
+            # Soft scoring: sigmoid(steepness * (value - threshold) / scale)
+            # Scale normalizes the distance so steepness is comparable across voters
+            def _soft(val, thresh, scale):
+                x = SOFT_VOTE_STEEPNESS * (val - thresh) / max(abs(scale), 1e-10)
+                return 1.0 / (1.0 + np.exp(-x))
+
+            bull_score = (_soft(ret_short, dyn_threshold, dyn_threshold)
+                         + _soft(_ema_diff, 0.0, abs(_es) * 0.001)
+                         + _soft(rsi, _rsi_thresh, 5.0)
+                         + _soft(_macd_hist, 0.0003, 0.0003)
+                         + _soft(_lr.slope, 0.00015, 0.00015)
+                         + _soft(_ema_slope, 0.0005, 0.0005))
+            bear_score = (_soft(-ret_short, dyn_threshold, dyn_threshold)
+                         + _soft(-_ema_diff, 0.0, abs(_es) * 0.001)
+                         + _soft(-rsi + 100, 100 - _rsi_thresh, 5.0)
+                         + _soft(-_macd_hist, 0.0003, 0.0003)
+                         + _soft(-_lr.slope, 0.00015, 0.00015)
+                         + _soft(-_ema_slope, 0.0005, 0.0005))
+            # For compatibility with existing logic, create integer aliases
+            bull_votes = int(bull_score >= MIN_SCORE)  # used only in meanrev gate
+            bear_votes = int(bear_score >= MIN_SCORE)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -176,9 +202,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_score >= MIN_SCORE and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_score > bear_score)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_score >= MIN_SCORE and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_score > bull_score)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -221,8 +247,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (soft score threshold + trend_avg sign, vol-scaled accumulation)
+                if not in_cooldown and ((current_pos > 0 and bear_score >= FLIP_MIN_SCORE and trend_avg < 0) or (current_pos < 0 and bull_score >= FLIP_MIN_SCORE and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
