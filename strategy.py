@@ -50,9 +50,9 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 # Linreg exit: graduated slope threshold replaces binary -0.0003
-LINREG_EXIT_BASE = 0.00034     # minimal widening (halfway between original 0.0003 and 0.00038)
-LINREG_EXIT_PNL_SCALE = 0.3   # conservative profit-scaled widening
-LINREG_EXIT_PROFIT_FLOOR = 0.012  # only very profitable positions get widened (was 0.010)
+LINREG_EXIT_BASE = 0.00038     # mild widening in trends (was 0.0003 hard, 0.00045 too wide)
+LINREG_EXIT_PNL_SCALE = 0.4   # profit-scaled widening in trends (reduced from 0.5)
+LINREG_EXIT_PROFIT_FLOOR = 0.010  # higher floor: only clearly profitable positions get wider (was 0.008)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
