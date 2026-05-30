@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.074
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -97,10 +97,10 @@ def ema(values, span):
 ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
-# Vote-confidence sizing: marginal entries (3 votes) get smaller position than strong (5-6)
-# This reduces the portfolio-value IMPACT of noise flipping a 3-vote entry to non-entry
-VOTE_CONFIDENCE_MIN = 0.82  # 3 votes → 82% of target size
-VOTE_CONFIDENCE_MAX = 1.0   # 6 votes → 100% of target size
+# Vote-confidence sizing: only marginal entries (exactly MIN_VOTES) get reduced size
+# Binary step at the decision boundary: reduces impact of 3↔2 noise flips
+VOTE_CONFIDENCE_MARGINAL = 0.82  # exactly MIN_VOTES → 82% of target size
+# 4+ votes → full size (no gradient — avoids regime-biased return penalty)
 
 
 class Strategy:
@@ -183,9 +183,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Vote-confidence sizing: scale position by vote strength (3→65%, 6→100%)
+                # Vote-confidence sizing: only marginal (exactly 3) entries get reduced size
                 _entry_votes = max(bull_votes, bear_votes)
-                _vote_conf = VOTE_CONFIDENCE_MIN + (VOTE_CONFIDENCE_MAX - VOTE_CONFIDENCE_MIN) * min(1.0, (_entry_votes - MIN_VOTES) / 3.0)
+                _vote_conf = VOTE_CONFIDENCE_MARGINAL if _entry_votes == MIN_VOTES else 1.0
                 _conf_size = size * _vote_conf
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
@@ -240,7 +240,7 @@ class Strategy:
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
                     _flip_votes = bear_votes if current_pos > 0 else bull_votes
-                    _flip_conf = VOTE_CONFIDENCE_MIN + (VOTE_CONFIDENCE_MAX - VOTE_CONFIDENCE_MIN) * min(1.0, (_flip_votes - FLIP_MIN_VOTES) / 3.0)
+                    _flip_conf = VOTE_CONFIDENCE_MARGINAL if _flip_votes == FLIP_MIN_VOTES else 1.0
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size * _flip_conf if current_pos > 0 else size * _flip_conf) * _flip_frac
 
@@ -252,7 +252,7 @@ class Strategy:
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    _new_conf = VOTE_CONFIDENCE_MIN + (VOTE_CONFIDENCE_MAX - VOTE_CONFIDENCE_MIN) * min(1.0, (max(bull_votes, bear_votes) - MIN_VOTES) / 3.0)
+                    _new_conf = VOTE_CONFIDENCE_MARGINAL if max(bull_votes, bear_votes) == MIN_VOTES else 1.0
                     self.entry_vote_conf[symbol] = _new_conf
 
         return signals
