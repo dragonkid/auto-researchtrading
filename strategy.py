@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.82  # continuous scoring already encodes confidence; less reduction needed
+VOTE_CONFIDENCE_MIN = 0.74  # balance between stability (needs lower) and returns (needs higher)
 
 
 class Strategy:
