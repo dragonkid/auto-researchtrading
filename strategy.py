@@ -20,7 +20,7 @@ EMA_SLOPE_LOOKBACK = 3
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
-MACD_SIGNAL = 7  # widened from 4->6->7 to smooth MACD histogram further
+MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram (proven +0.001 stab)
 
 # Linear regression
 LINREG_PERIOD = 16
@@ -85,8 +85,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Confidence scoring (noise-immune entry gate, binary votes for flip)
-CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (for non-smoothed voters)
-CONFIDENCE_MARGIN_SMOOTH = 0.3  # smaller margin for pre-smoothed signals (ret_short/ret_vshort use 5-bar median)
+CONFIDENCE_MARGIN = 0.5  # how far past threshold = full confidence (as fraction of threshold)
 CONFIDENCE_ENTRY_THRESHOLD = 3.0  # continuous confidence sum required for entry
 
 
@@ -165,20 +164,18 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            def _conf(value, threshold, use_smooth_margin=False):
-                """Continuous confidence: 0 at threshold, 1 at threshold*(1+margin)"""
-                _m = CONFIDENCE_MARGIN_SMOOTH if use_smooth_margin else CONFIDENCE_MARGIN
-                margin = abs(threshold) * _m if threshold != 0 else abs(value) * 0.5
+            def _conf(value, threshold):
+                """Continuous confidence: 0 at threshold, 1 at threshold*(1+MARGIN)"""
+                margin = abs(threshold) * CONFIDENCE_MARGIN if threshold != 0 else abs(value) * 0.5
                 if margin < 1e-10:
                     return 1.0 if value > 0 else 0.0
                 return min(1.0, max(0.0, (value - threshold) / margin)) if threshold >= 0 else min(1.0, max(0.0, (threshold - value) / margin))
 
-            # ret_short/ret_vshort use smoothed (5-bar median) inputs → smaller margin
-            bull_confidence = (_conf(ret_short, dyn_threshold, True) + _conf(ret_vshort, dyn_threshold * 0.75, True) +
+            bull_confidence = (_conf(ret_short, dyn_threshold) + _conf(ret_vshort, dyn_threshold * 0.75) +
                               _conf(_ef - _es, 0.0) + _conf(rsi - _rsi_thresh, 0.0) +
                               _conf(_macd_hist, 0.0003) + _conf(_lr.slope, 0.00015) +
                               _conf(_ema_slope, 0.0005))
-            bear_confidence = (_conf(-ret_short, dyn_threshold, True) + _conf(-ret_vshort, dyn_threshold * 0.75, True) +
+            bear_confidence = (_conf(-ret_short, dyn_threshold) + _conf(-ret_vshort, dyn_threshold * 0.75) +
                               _conf(_es - _ef, 0.0) + _conf(_rsi_thresh - rsi, 0.0) +
                               _conf(-_macd_hist, 0.0003) + _conf(-_lr.slope, 0.00015) +
                               _conf(-_ema_slope, 0.0005))
