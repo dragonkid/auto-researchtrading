@@ -133,7 +133,10 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            # Linreg on 3-bar EMA smoothed HL2 (reduce noise input to slope)
+            _hl2_raw = (bd.history["high"].values[-(LINREG_PERIOD + 3):] + bd.history["low"].values[-(LINREG_PERIOD + 3):]) / 2.0
+            _hl2_smooth = ema(_hl2_raw, 3)[-LINREG_PERIOD:]
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log(_hl2_smooth))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -200,10 +203,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit with widened threshold (0.0004 vs 0.0003)
-                # Wider threshold absorbs ±5bps noise effect on 16-bar linreg (~0.0001 slope perturbation)
-                # No state variable needed — stateless is inherently more noise-immune
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0004) or (current_pos < 0 and _lr.slope > 0.0004)):
+                # Linreg-slope exit (original threshold, noise reduced via smoothed HL2 input)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
