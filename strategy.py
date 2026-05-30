@@ -84,6 +84,11 @@ FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# EMA vote accumulator (replaces per-bar vote counting for entry/flip decisions)
+VOTE_ACCUM_ALPHA = 0.5  # EMA decay (span ~3 bars): smooths single-bar flips
+VOTE_ACCUM_ENTRY_THRESH = 1.5  # accumulated net votes needed for entry (~3 votes sustained 2 bars)
+VOTE_ACCUM_FLIP_THRESH = 1.5  # accumulated opposing votes for flip
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -103,6 +108,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.vote_accum = {}  # per-symbol EMA-accumulated net vote score
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -160,6 +166,11 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
+            # EMA vote accumulator: smooth net votes over time to resist single-bar flips
+            net_vote = bull_votes - bear_votes  # range: [-6, +6]
+            prev_accum = self.vote_accum.get(symbol, 0.0)
+            self.vote_accum[symbol] = VOTE_ACCUM_ALPHA * net_vote + (1.0 - VOTE_ACCUM_ALPHA) * prev_accum
+
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -176,9 +187,10 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                _accum = self.vote_accum[symbol]
+                if _accum >= VOTE_ACCUM_ENTRY_THRESH and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _accum <= -VOTE_ACCUM_ENTRY_THRESH and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -221,8 +233,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (4 votes + trend_avg sign, vol-scaled accumulation)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: accumulated opposing votes + trend_avg sign
+                _accum = self.vote_accum[symbol]
+                if not in_cooldown and ((current_pos > 0 and _accum <= -VOTE_ACCUM_FLIP_THRESH and trend_avg < 0) or (current_pos < 0 and _accum >= VOTE_ACCUM_FLIP_THRESH and trend_avg > 0)):
                     # In high vol (crash/trend), flip is full size for protection
                     # In low vol (sideways), flip is partial to reduce noise impact
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.2))
