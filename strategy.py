@@ -84,6 +84,10 @@ FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Flip hysteresis: require stronger signal to flip than to enter
+# Release threshold = ratio of opposing votes to same-direction votes needed to flip
+FLIP_RELEASE_THRESH = 2.5  # opposing must be 2.5x current-direction votes (e.g., 5 vs 2)
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -227,7 +231,11 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip hysteresis: opposing votes must exceed same-direction votes by FLIP_RELEASE_THRESH ratio
+                _same_votes = bull_votes if current_pos > 0 else bear_votes
+                _opp_votes = bear_votes if current_pos > 0 else bull_votes
+                _flip_hysteresis_ok = _opp_votes >= FLIP_MIN_VOTES and (_same_votes == 0 or _opp_votes / max(_same_votes, 0.5) >= FLIP_RELEASE_THRESH)
+                if not in_cooldown and _flip_hysteresis_ok and ((current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
