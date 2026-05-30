@@ -153,9 +153,10 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # EMA cross: spread-magnitude gate (noise buffer when EMAs near-equal)
-            # Vol-adaptive threshold: shrinks in calm (sideways) so voter still participates
+            # Fixed tiny threshold: just enough to filter zero-crossing noise without
+            # causing voter abstention in sideways/crash calm periods
             _ema_spread = (_ef - _es) / mid
-            _ema_cross_thresh = 0.0003 * max(0.5, min(1.5, vol_ratio))  # 0.00015 in calm, 0.00045 in volatile
+            _ema_cross_thresh = 0.00008  # ~1.6x typical 5bps noise impact on EMA spread
 
             # 6 voters (EMA cross now requires minimum spread magnitude)
             bull_votes = sum([ret_short > dyn_threshold, _ema_spread > _ema_cross_thresh, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
