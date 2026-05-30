@@ -97,12 +97,18 @@ def ema(values, span):
 ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
+# Vote-confidence sizing: marginal entries (3 votes) get smaller position than strong (5-6)
+# This reduces the portfolio-value IMPACT of noise flipping a 3-vote entry to non-entry
+VOTE_CONFIDENCE_MIN = 0.65  # 3 votes → 65% of target size
+VOTE_CONFIDENCE_MAX = 1.0   # 6 votes → 100% of target size
+
 
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_vote_conf = {}  # store vote confidence at entry for scale-up
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -177,10 +183,14 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
+                # Vote-confidence sizing: scale position by vote strength (3→65%, 6→100%)
+                _entry_votes = max(bull_votes, bear_votes)
+                _vote_conf = VOTE_CONFIDENCE_MIN + (VOTE_CONFIDENCE_MAX - VOTE_CONFIDENCE_MIN) * min(1.0, (_entry_votes - MIN_VOTES) / 3.0)
+                _conf_size = size * _vote_conf
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC
+                    target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -192,9 +202,11 @@ class Strategy:
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Use stored vote confidence to maintain proportional sizing
+                _stored_conf = self.entry_vote_conf.get(symbol, 1.0)
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = size if current_pos > 0 else -size
+                    full_target = (size * _stored_conf) if current_pos > 0 else (-size * _stored_conf)
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -222,21 +234,25 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                # Flip mechanism (votes + trend_avg sign, vol-scaled + vote confidence)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
+                    _flip_votes = bear_votes if current_pos > 0 else bull_votes
+                    _flip_conf = VOTE_CONFIDENCE_MIN + (VOTE_CONFIDENCE_MAX - VOTE_CONFIDENCE_MIN) * min(1.0, (_flip_votes - FLIP_MIN_VOTES) / 3.0)
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-size if current_pos > 0 else size) * _flip_frac
+                    target = (-size * _flip_conf if current_pos > 0 else size * _flip_conf) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_vote_conf):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    _new_conf = VOTE_CONFIDENCE_MIN + (VOTE_CONFIDENCE_MAX - VOTE_CONFIDENCE_MIN) * min(1.0, (max(bull_votes, bear_votes) - MIN_VOTES) / 3.0)
+                    self.entry_vote_conf[symbol] = _new_conf
 
         return signals
