@@ -15,7 +15,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 4  # widened from 3: longer comparison window reduces noise sensitivity
+EMA_SLOPE_LOOKBACK = 3
 
 # MACD parameters
 MACD_FAST = 8
@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.065
+BASE_POSITION_SIZE = 0.060  # reduced from 0.065: smaller noise-driven trades reduce DD variance
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
