@@ -50,8 +50,7 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 # Linreg exit: graduated slope threshold replaces binary -0.0003
-LINREG_EXIT_THRESH = 0.0003    # original exit threshold (wider didn't help stability)
-LINREG_EXIT_PERIOD = 20        # longer period for exit linreg (more bars = less per-bar noise impact)
+LINREG_EXIT_THRESH = 0.00035   # slightly wider than original 0.0003 (fixed, no conditional widening)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.067
@@ -202,11 +201,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit: use longer-period linreg for less per-bar noise sensitivity
-                if target != 0:
-                    _lr_exit = linregress(np.arange(LINREG_EXIT_PERIOD), np.log((bd.history["high"].values[-LINREG_EXIT_PERIOD:] + bd.history["low"].values[-LINREG_EXIT_PERIOD:]) / 2.0))
-                    if (current_pos > 0 and _lr_exit.slope < -LINREG_EXIT_THRESH) or (current_pos < 0 and _lr_exit.slope > LINREG_EXIT_THRESH):
-                        target = 0.0
+                # Linreg-slope exit: fixed threshold slightly wider than original
+                # Eliminates conditional noise channels (pnl-based widening was itself noise-sensitive)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -LINREG_EXIT_THRESH) or (current_pos < 0 and _lr.slope > LINREG_EXIT_THRESH)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
