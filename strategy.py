@@ -97,7 +97,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.82  # higher min: flip hysteresis provides stability, confidence less critical
+VOTE_CONFIDENCE_MIN = 0.705  # low confidence min: continuous scoring provides noise buffer
 
 
 class Strategy:
