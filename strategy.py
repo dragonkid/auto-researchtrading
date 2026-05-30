@@ -103,6 +103,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.linreg_exit_count = {}  # bars slope has been reversed
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -200,9 +201,15 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Linreg-slope exit (simplified: no ret_long guard, pure slope reversal)
-                # Removing ret_long guard eliminates a noise-sensitive boundary condition
-                if target != 0 and ((current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)):
+                # Linreg-slope exit with 2-bar confirmation (hysteresis)
+                # Single-bar slope reversal is noise-sensitive at threshold boundary.
+                # Require slope to stay reversed for 2 bars before exit triggers.
+                _slope_reversed = (current_pos > 0 and _lr.slope < -0.0003) or (current_pos < 0 and _lr.slope > 0.0003)
+                if _slope_reversed:
+                    self.linreg_exit_count[symbol] = self.linreg_exit_count.get(symbol, 0) + 1
+                else:
+                    self.linreg_exit_count[symbol] = 0
+                if target != 0 and self.linreg_exit_count.get(symbol, 0) >= 2:
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -231,7 +238,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.linreg_exit_count):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
