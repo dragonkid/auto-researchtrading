@@ -73,7 +73,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_DEADZONE = 0.018
+TREND_GATE_DEADZONE = 0.022
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -157,8 +157,10 @@ class Strategy:
             bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
-            # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
+            # Use smoothed_closes[-1] for trend_avg: reduces noise sensitivity of entry gate
+            _sm_ret_med = (smoothed_closes[-1] - smoothed_closes[-MED2_WINDOW]) / smoothed_closes[-MED2_WINDOW]
+            _sm_ret_long = (smoothed_closes[-1] - smoothed_closes[-LONG_WINDOW]) / smoothed_closes[-LONG_WINDOW]
+            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * _sm_ret_med + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * _sm_ret_long
             self.smoothed_trend[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
