@@ -164,9 +164,8 @@ class Strategy:
             _w_med = TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
             _w_long = (1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
             trend_avg = _w_med * _med_ret_med + _w_long * _med_ret_long
-            # Raw trend_avg for flip (responsive, crash-protective)
-            _raw_ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
-            flip_trend_avg = _w_med * _raw_ret_med + _w_long * ret_long
+            # Median-based flip trend_avg (noise-immune yet responsive: 3-bar median)
+            flip_trend_avg = trend_avg  # same median-based computation for both
             self.smoothed_trend[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
