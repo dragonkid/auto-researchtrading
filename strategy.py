@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.76  # midpoint: continuous scoring handles noise, confidence adds mild sizing
+VOTE_CONFIDENCE_MIN = 0.705  # low confidence min: continuous scoring provides noise buffer
 
 
 class Strategy:
@@ -162,7 +162,7 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Bandwidths: how far past threshold before full confidence (narrow = sharper transition)
-            _bw_ret = dyn_threshold * 0.3  # ret_short bandwidth (tighter)
+            _bw_ret = dyn_threshold * 0.5  # ret_short bandwidth (wider to reduce sideways noise)
             _bw_ema = max(abs(_es) * 0.0005, 1e-8)  # EMA cross bandwidth (~0.05% of slow EMA)
             _bw_rsi = 2.0  # RSI bandwidth (2 points past threshold = full confidence)
             _bw_macd = 0.00015  # MACD histogram bandwidth (tighter)
