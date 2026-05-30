@@ -157,13 +157,12 @@ class Strategy:
             bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            # Median-based trend_avg for entry gate (order-statistic noise immunity)
-            _med_close = np.median(closes[-3:])  # 3-bar median of recent closes
-            _med_ret_med = (_med_close - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
-            _med_ret_long = (_med_close - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            # Smoothed trend_avg for entry gate (noise-dampened)
+            _sm_ret_med = (smoothed_closes[-1] - smoothed_closes[-MED2_WINDOW]) / smoothed_closes[-MED2_WINDOW]
+            _sm_ret_long = (smoothed_closes[-1] - smoothed_closes[-LONG_WINDOW]) / smoothed_closes[-LONG_WINDOW]
             _w_med = TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
             _w_long = (1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength
-            trend_avg = _w_med * _med_ret_med + _w_long * _med_ret_long
+            trend_avg = _w_med * _sm_ret_med + _w_long * _sm_ret_long
             # Raw trend_avg for flip (responsive, crash-protective)
             _raw_ret_med = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
             flip_trend_avg = _w_med * _raw_ret_med + _w_long * ret_long
