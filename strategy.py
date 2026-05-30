@@ -93,7 +93,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.725  # tight balance: just above stability threshold while approaching raw>=7.0
+VOTE_CONFIDENCE_MIN = 0.705  # low confidence min: continuous scoring provides noise buffer
 
 
 class Strategy:
@@ -215,6 +215,8 @@ class Strategy:
                     target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
+                elif abs(ret_long) < 0.04 and (rsi < 42 or rsi > 58):
+                    target = (size if rsi < 42 else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
