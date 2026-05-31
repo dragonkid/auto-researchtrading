@@ -230,11 +230,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, narrowed vol-adaptive fraction)
-                # Range [0.65, 0.95] instead of [0.55, 1.0] — reduces noise impact of vol changes
+                # Flip mechanism (votes + trend_avg sign, fixed 85% for noise stability + crash protection)
+                # Fixed at 0.85 removes vol_ratio->frac noise channel while near-full reversal protects crash
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_frac = 0.65 + 0.30 * min(1.0, vol_ratio / 1.5)
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * 0.85
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
