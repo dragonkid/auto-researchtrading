@@ -230,10 +230,13 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                # Flip mechanism (votes + trend_avg sign, margin-dampened + vol-scaled, confidence-sized)
+                # Margin-dampened: low-margin flips (noisy, ambiguous) get 75% size, high-margin get full
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    _flip_margin = abs(bear_votes - bull_votes)
+                    _margin_damp = 0.75 + 0.25 * min(1.0, max(0.0, (_flip_margin - 1) / 3.0))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac * _margin_damp
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
