@@ -203,9 +203,10 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (threshold) to 1.0 (6.0)
+            # Discretized vote-confidence sizing (bracket noise immunity)
+            # Brackets: [2.8-3.5) -> 0.75, [3.5-4.5) -> 0.88, [4.5+] -> 1.0
             _active_votes = max(bull_votes, bear_votes)
-            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
+            _vote_conf = 0.75 if _active_votes < 3.5 else (0.88 if _active_votes < 4.5 else 1.0)
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
