@@ -136,7 +136,8 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            adaptive_med = 14  # fixed wider window: removes vol->window noise channel
+            # Narrowed adaptive window [12,16]: removes most vol->window noise while preserving some adaptivity
+            adaptive_med = max(12, min(MED_WINDOW_MAX, int(round(12 + (MED_WINDOW_MAX - 12) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
             # 5-bar median for ret_short (maximum noise immunity)
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
