@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.072
+BASE_POSITION_SIZE = 0.069
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -206,9 +206,9 @@ class Strategy:
             # Vote-confidence sizing: incorporates both vote sum AND vote margin
             _active_votes = max(bull_votes, bear_votes)
             _vote_margin = bull_votes - bear_votes if bull_votes > bear_votes else bear_votes - bull_votes
-            # Margin factor: sigmoid ramp from 0.78 (low margin) to 1.0 (high margin)
-            # Aggressive floor targets maximum stability; SIZE 0.072 compensates raw
-            _margin_factor = 0.78 + 0.22 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
+            # Margin factor: sigmoid ramp from 0.80 (low margin) to 1.0 (high margin)
+            # Moderately aggressive floor; SIZE 0.069 compensates raw
+            _margin_factor = 0.80 + 0.20 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf * _margin_factor
 
