@@ -104,6 +104,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_bull_votes = {}
+        self.prev_bear_votes = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -157,6 +159,14 @@ class Strategy:
             bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
             bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
+            # Vote persistence: confirmed votes = min(current, previous) for entry/flip decisions
+            _prev_bull = self.prev_bull_votes.get(symbol, 0)
+            _prev_bear = self.prev_bear_votes.get(symbol, 0)
+            _confirmed_bull = min(bull_votes, _prev_bull)
+            _confirmed_bear = min(bear_votes, _prev_bear)
+            self.prev_bull_votes[symbol] = bull_votes
+            self.prev_bear_votes[symbol] = bear_votes
+
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
@@ -183,9 +193,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if _confirmed_bull >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _confirmed_bear >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -226,8 +236,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (confirmed votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and _confirmed_bear >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and _confirmed_bull >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
