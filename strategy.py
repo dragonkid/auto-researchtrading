@@ -7,7 +7,7 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 # Momentum windows
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
-MED2_WINDOW = 10
+MED2_WINDOW = 12
 LONG_WINDOW = 20
 
 # EMA parameters
@@ -227,12 +227,13 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (vote-dominance + trend_avg sign, vol-scaled)
-                # Vote-dominance: require flip direction to have more votes than current direction
+                # Flip mechanism (vote-dominance + trend_avg sign, margin-dampened + vol-scaled)
                 _flip_dom = (current_pos > 0 and bear_votes > bull_votes) or (current_pos < 0 and bull_votes > bear_votes)
                 if not in_cooldown and _flip_dom and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                    _flip_margin = abs(bear_votes - bull_votes)
+                    _margin_damp = 0.92 if _flip_margin <= 1 else 1.0
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac * _margin_damp
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
