@@ -103,11 +103,16 @@ ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
 
+# Temporal vote confirmation: require prior bar's vote to exceed soft threshold
+VOTE_CONFIRM_THRESHOLD = 2.5  # prior bar must exceed this (lower than MIN_VOTES)
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_bull_votes = {}  # store prior bar's vote sums per symbol
+        self.prev_bear_votes = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -183,6 +188,15 @@ class Strategy:
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
             bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
+            # Temporal vote confirmation: check if previous bar also had agreement
+            _prev_bull = self.prev_bull_votes.get(symbol, 0.0)
+            _prev_bear = self.prev_bear_votes.get(symbol, 0.0)
+            _bull_confirmed = bull_votes >= MIN_VOTES and _prev_bull >= VOTE_CONFIRM_THRESHOLD
+            _bear_confirmed = bear_votes >= MIN_VOTES and _prev_bear >= VOTE_CONFIRM_THRESHOLD
+            # Store current votes for next bar's confirmation
+            self.prev_bull_votes[symbol] = bull_votes
+            self.prev_bear_votes[symbol] = bear_votes
+
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
@@ -209,9 +223,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if _bull_confirmed and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _bear_confirmed and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -252,8 +266,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: temporal confirmation + trend_avg sign + vol-scaled
+                _flip_bear_conf = bear_votes >= FLIP_MIN_VOTES and _prev_bear >= VOTE_CONFIRM_THRESHOLD
+                _flip_bull_conf = bull_votes >= FLIP_MIN_VOTES and _prev_bull >= VOTE_CONFIRM_THRESHOLD
+                if not in_cooldown and ((current_pos > 0 and _flip_bear_conf and trend_avg < 0) or (current_pos < 0 and _flip_bull_conf and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
