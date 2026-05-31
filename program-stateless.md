@@ -67,7 +67,7 @@ For each experiment:
    An experiment qualifies as `keep` if ALL of the following are met:
    - `min_stability` improved by **at least +0.003** vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **6.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
+   - `raw_composite` ≥ **7.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
 
    **Absolute DD caps (hard ceiling, never changes):**
    - bull_2021: ≤ 7.8%
@@ -75,7 +75,7 @@ For each experiment:
    - sideways: ≤ 5.6%
    - rally_2024: ≤ 6.0%
 
-   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 6.0. Do NOT discard experiments solely because composite decreased.
+   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 7.0. Do NOT discard experiments solely because composite decreased.
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
 
@@ -213,8 +213,8 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 6.0 and DD caps are not violated
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 6.0
+- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 7.0 and DD caps are not violated
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.0
 
 ## Stability improvement approaches (priority when min_stability < 0.90)
 
