@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.068
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -206,9 +206,9 @@ class Strategy:
             # Vote-confidence sizing: incorporates both vote sum AND vote margin
             _active_votes = max(bull_votes, bear_votes)
             _vote_margin = bull_votes - bear_votes if bull_votes > bear_votes else bear_votes - bull_votes
-            # Margin factor: sigmoid ramp from 0.80 (low margin) to 1.0 (high margin)
-            # Moderately aggressive floor; SIZE 0.069 compensates raw
-            _margin_factor = 0.80 + 0.20 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
+            # Margin factor: sigmoid ramp from 0.88 (low margin) to 1.0 (high margin)
+            # Mild reduction for uncertain entries; combined with exit widening for stab
+            _margin_factor = 0.88 + 0.12 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf * _margin_factor
 
@@ -235,8 +235,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit: widened base (0.0004) for noise buffer + calm boost
+                _exit_slope_thresh = 0.0004 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
