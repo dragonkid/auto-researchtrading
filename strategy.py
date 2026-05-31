@@ -237,16 +237,7 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Early exit for calm+trendless: when slope strongly disagrees after 4+ bars
-                # This recovers the protective exit speed of the removed hard linreg threshold
-                # for sideways conditions only (requires BOTH weak trend AND calm vol)
-                if target != 0 and bars_held >= 4:
-                    _slope_against = (current_pos > 0 and _lr.slope < -0.0002) or (current_pos < 0 and _lr.slope > 0.0002)
-                    _is_calm_trendless = abs(ret_long) < 0.04 and vol_ratio < 0.85
-                    if _slope_against and _is_calm_trendless:
-                        target = 0.0
-
-                # Unified slope-aware exit: slope modulates hold time
+                # Unified slope-aware exit: no hard threshold, slope modulates hold time
                 # Penalty conditioned on BOTH vol AND trend strength:
                 # - Sideways (low vol + weak trend): strong penalty → faster exits
                 # - Rally/Bull (strong trend regardless of vol): mild penalty → patient exits
