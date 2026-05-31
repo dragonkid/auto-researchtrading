@@ -49,7 +49,7 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_BASE = -0.024   # base stop level (scaled by vol_ratio)
 STOP_LOSS_VOL_SCALE = 0.6  # aggressive widening in volatile regimes (more raw headroom)
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
+PEAK_PROFIT_GIVEBACK = 0.30  # wider giveback tolerance: less noise-triggered trailing exits
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -146,9 +146,7 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # EMA fast uses smoothed closes (noise reduction), slow uses raw (responsiveness)
-            _ef = ema(smoothed_closes[-(EMA_SLOW+10):], EMA_FAST)[-1]
-            _es = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
