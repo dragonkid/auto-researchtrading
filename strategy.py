@@ -87,7 +87,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
-VOTE_SIGMOID_SCALE = 0.13
+VOTE_SIGMOID_SCALE = 0.12
 
 
 def ema(values, span):
