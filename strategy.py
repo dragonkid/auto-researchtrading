@@ -96,7 +96,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC_BASE = 0.55  # base first-bar fraction
-ENTRY_FRAC_VOL_FLOOR = 0.51    # slightly lower for +0.003 stab target
+ENTRY_FRAC_VOL_FLOOR = 0.515   # calibrated: target stab +0.003 with raw just above 7.0
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
