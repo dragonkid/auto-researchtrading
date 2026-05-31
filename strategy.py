@@ -124,7 +124,8 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            # Lagged vol: exclude current bar to prevent noise feedback loop (close perturb → vol change → alpha change → signal change)
+            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 2:-2]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
@@ -160,8 +161,7 @@ class Strategy:
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_sig = ema(_ml, MACD_SIGNAL)
-            _macd_hist = ((_ml[-1] - _macd_sig[-1]) + (_ml[-2] - _macd_sig[-2])) / (2.0 * mid)  # 2-bar avg for noise immunity
+            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
