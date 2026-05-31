@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.735  # 3-vote entries sized at 73.5%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.74  # 3-vote entries sized at 74%, scaling to 100% at 6 votes
 FLIP_CONF_MULT = 0.99  # flips sized at 99% of entry confidence (reduce flip noise amplification)
 
 
