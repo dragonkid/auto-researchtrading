@@ -137,7 +137,7 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            adaptive_med = 14  # fixed wider window: removes vol->window noise channel
+            adaptive_med = 12  # fixed window: removes vol->window noise channel, balanced responsiveness
 
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
@@ -230,13 +230,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, margin-dampened + vol-scaled, confidence-sized)
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_margin = abs(bear_votes - bull_votes)
-                    _damp_floor = 0.90 + 0.07 * min(1.0, max(0.0, (vol_ratio - 0.8) / 0.7))
-                    _margin_damp = _damp_floor + (1.0 - _damp_floor) * min(1.0, max(0.0, (_flip_margin - 1) / 3.0))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac * _margin_damp
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
