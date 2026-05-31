@@ -101,7 +101,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.69  # 3-vote entries sized at 69%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
 
 class Strategy:
@@ -160,7 +160,8 @@ class Strategy:
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _macd_sig = ema(_ml, MACD_SIGNAL)
+            _macd_hist = ((_ml[-1] - _macd_sig[-1]) + (_ml[-2] - _macd_sig[-2])) / (2.0 * mid)  # 2-bar avg for noise immunity
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
@@ -259,8 +260,8 @@ class Strategy:
                     _vote_margin = (bear_votes - bull_votes) if current_pos > 0 else (bull_votes - bear_votes)
                     _margin_conf = min(1.0, max(0.0, _vote_margin / FLIP_CONFIDENCE_SCALE))
                     _base_flip = ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)
-                    # Floor at 0.73 — higher floor preserves raw while CONF_MIN reduction provides stability
-                    _flip_frac = 0.73 + (_base_flip - 0.73) * _margin_conf
+                    # Floor at 0.67 — balances stability from confidence modulation with sufficient flip commitment
+                    _flip_frac = 0.67 + (_base_flip - 0.67) * _margin_conf
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
