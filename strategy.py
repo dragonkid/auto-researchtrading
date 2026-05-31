@@ -51,10 +51,10 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.070
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
-CROSS_ASSET_FIXED_BOOST = 0.0  # disabled: was a noise channel (sizing independent of signal quality)
+CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
@@ -226,8 +226,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign + vote-dominance, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes > bull_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes > bear_votes and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
