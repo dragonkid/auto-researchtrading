@@ -56,7 +56,7 @@ BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
-HIGH_VOTE_BOOST_MULT = 1.12  # reduced: smaller overall positions for stability
+HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
 VOL_CONFIRM_FLOOR = 0.98
@@ -96,7 +96,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC_BASE = 0.55  # base first-bar fraction
-ENTRY_FRAC_VOL_FLOOR = 0.52    # keep floor moderate
+ENTRY_FRAC_VOL_FLOOR = 0.505   # between 0.50 (stab+0.0034/raw6.62) and 0.52 (stab+0.0026/raw7.07)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
@@ -184,8 +184,8 @@ class Strategy:
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6 - MIN_VOTES)))
             _conf_size = size * _vote_conf
 
-            # Vol-adaptive entry fraction: smaller first bar only in very calm (noise is relatively larger)
-            _entry_frac = ENTRY_FRAC_VOL_FLOOR + (ENTRY_INITIAL_FRAC_BASE - ENTRY_FRAC_VOL_FLOOR) * min(1.0, max(0.0, (vol_ratio - 0.5) / 0.4))
+            # Vol-adaptive entry fraction: smaller first bar in calm (where noise is relatively larger)
+            _entry_frac = ENTRY_FRAC_VOL_FLOOR + (ENTRY_INITIAL_FRAC_BASE - ENTRY_FRAC_VOL_FLOOR) * min(1.0, max(0.0, (vol_ratio - 0.5) / 0.7))
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
