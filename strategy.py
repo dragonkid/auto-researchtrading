@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.85  # 3-vote entries sized at 85%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
 
 class Strategy:
@@ -230,11 +230,11 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-adaptive margin-dampened, confidence-sized)
-                # Vol-adaptive dampening: calm = stronger damping (0.80), volatile = weaker (0.95) for crash protection
+                # Flip mechanism (votes + trend_avg sign, margin-dampened, confidence-sized)
+                # Margin-dampened: low-margin flips (noisy) get 90% in calm or 97% in volatile; high-margin gets full
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_margin = abs(bear_votes - bull_votes)
-                    _damp_floor = 0.80 + 0.15 * min(1.0, max(0.0, (vol_ratio - 0.8) / 0.7))
+                    _damp_floor = 0.90 + 0.07 * min(1.0, max(0.0, (vol_ratio - 0.8) / 0.7))
                     _margin_damp = _damp_floor + (1.0 - _damp_floor) * min(1.0, max(0.0, (_flip_margin - 1) / 3.0))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac * _margin_damp
