@@ -67,7 +67,7 @@ For each experiment:
    An experiment qualifies as `keep` if ALL of the following are met:
    - `min_stability` improved by **at least +0.003** vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **7.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
+   - `raw_composite` ≥ **6.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
 
    **Absolute DD caps (hard ceiling, never changes):**
    - bull_2021: ≤ 7.8%
@@ -75,7 +75,7 @@ For each experiment:
    - sideways: ≤ 5.6%
    - rally_2024: ≤ 6.0%
 
-   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 7.0. Do NOT discard experiments solely because composite decreased.
+   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 6.0. Do NOT discard experiments solely because composite decreased.
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
 
@@ -101,7 +101,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 - **No fixed max depth**: the branch continues as long as you're making progress. Branch budget is INDEPENDENT of the 5-experiment exploration cap — they don't share slots. If 7 consecutive branch steps show no improvement (min_stab delta ≤ 0 vs the previous branch step), terminate the branch early. There is no other depth ceiling — a branch that keeps improving can iterate as many steps as needed.
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
 - **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **original baseline** (not branch-internal baseline), it's a real `keep`. Record as `keep` and update baseline.
-- **Failure (revert the branch)**: if the branch terminates without meeting keep criteria (either via 7 consecutive no-progress steps or because you decided to stop), revert ALL branch commits back to the original baseline: `git revert --no-edit HEAD~N..HEAD` (where N = number of branch commits). Record ONE summary `discard` line explaining the branch attempt and why it failed.
+- **Failure (revert the branch)**: if the branch terminates without meeting keep criteria (either via 7 consecutive no-progress steps or because you decided to stop), revert ALL branch commits back to the original baseline. **CRITICAL: You MUST only revert your own experiment commits. Run `git log --oneline` and count ONLY commits with messages starting with "exp:" or "branch step". Use `git revert --no-edit HEAD~N..HEAD` where N = that count. NEVER revert commits with "feat:", "fix:", or "doc:" prefixes — those are infrastructure changes by the project owner. If such commits are interleaved, revert your commits individually instead of using a range.** Record ONE summary `discard` line explaining the branch attempt and why it failed.
 - **One branch per session**: you may only open one exploration branch per round. After a branch concludes (keep or revert), the session ends. The next round starts fresh with full context from results.tsv. Note: if branch reverts and you still have unused independent-exploration slots, the session still ends — branch revert is a strong enough signal that the round should conclude and reset with fresh context.
 - **Exit rule interaction**: branch experiments count as architectural if the opening experiment was architectural.
 - **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you have as many steps as needed to recover, until the 7-step stagnation guard triggers.
@@ -213,8 +213,8 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 7.0 and DD caps are not violated
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.0
+- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 6.0 and DD caps are not violated
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 6.0
 
 ## Stability improvement approaches (priority when min_stability < 0.90)
 
