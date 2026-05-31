@@ -79,11 +79,9 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
-# Continuous entry ramp: replaces hard threshold with smooth sigmoid sizing
-ENTRY_RAMP_CENTER = 2.8   # vote sum at which entry reaches 50% of full size
-ENTRY_RAMP_WIDTH = 0.5    # controls transition steepness (wider = more gradual)
-ENTRY_RAMP_FLOOR = 0.15   # minimum entry fraction (below this, don't enter)
-FLIP_RAMP_CENTER = 2.8    # same for flips
+# Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
+MIN_VOTES = 2.8
+FLIP_MIN_VOTES = 2.8
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -205,19 +203,16 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Continuous entry ramp: sigmoid function of vote strength (no hard threshold)
-            # entry_frac smoothly scales from ~0 (low votes) to ~1 (high votes)
-            _bull_entry_frac = 1.0 / (1.0 + np.exp(-(bull_votes - ENTRY_RAMP_CENTER) / ENTRY_RAMP_WIDTH))
-            _bear_entry_frac = 1.0 / (1.0 + np.exp(-(bear_votes - ENTRY_RAMP_CENTER) / ENTRY_RAMP_WIDTH))
-            # Scale confidence-adjusted size by entry ramp (replaces both MIN_VOTES threshold AND vote_conf)
-            _bull_size = size * _bull_entry_frac
-            _bear_size = size * _bear_entry_frac
+            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (threshold) to 1.0 (6.0)
+            _active_votes = max(bull_votes, bear_votes)
+            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
+            _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if _bull_entry_frac >= ENTRY_RAMP_FLOOR and bull_votes > bear_votes and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = _bull_size * ENTRY_INITIAL_FRAC
-                elif _bear_entry_frac >= ENTRY_RAMP_FLOOR and bear_votes > bull_votes and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -_bear_size * ENTRY_INITIAL_FRAC
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    target = _conf_size * ENTRY_INITIAL_FRAC
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -226,10 +221,10 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up using ramp-sized target
+                # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = _bull_size if current_pos > 0 else -_bear_size
+                    full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -257,12 +252,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: continuous ramp (no hard threshold) + trend_avg sign + vol-scaled
-                _flip_ramp = 1.0 / (1.0 + np.exp(-(bear_votes - FLIP_RAMP_CENTER) / ENTRY_RAMP_WIDTH)) if current_pos > 0 else 1.0 / (1.0 + np.exp(-(bull_votes - FLIP_RAMP_CENTER) / ENTRY_RAMP_WIDTH))
-                if not in_cooldown and _flip_ramp >= ENTRY_RAMP_FLOOR and ((current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    _flip_size = size * _flip_ramp
-                    target = (-_flip_size if current_pos > 0 else _flip_size) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
