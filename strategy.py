@@ -206,8 +206,8 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Vol-scaled stop-loss: wider when vol_ratio > 0.6 (covers moderate vol too)
-                _stop_level = STOP_LOSS_BASE * (1.0 + STOP_LOSS_VOL_SCALE * max(0.0, vol_ratio - 0.6))
+                # Vol-scaled stop-loss: wider in volatile regimes (less noise-triggered)
+                _stop_level = STOP_LOSS_BASE * (1.0 + STOP_LOSS_VOL_SCALE * max(0.0, vol_ratio - 0.8))
                 if pos_pnl < _stop_level:
                     target = 0.0
 
