@@ -119,12 +119,7 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # Median-of-subwindows vol: robust to single-bar noise perturbation
-            _log_rets = np.diff(np.log(closes[-VOL_LOOKBACK - 7:-1]))
-            _vol_sub1 = np.std(_log_rets[-12:])
-            _vol_sub2 = np.std(_log_rets[-18:-6])
-            _vol_sub3 = np.std(_log_rets[-24:-12])
-            realized_vol = max(np.median([_vol_sub1, _vol_sub2, _vol_sub3]), 1e-6)
+            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
