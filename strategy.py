@@ -82,7 +82,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
 MIN_VOTES = 2.8
 FLIP_MIN_VOTES = 2.8
-FLIP_CONFIDENCE_SCALE = 1.5  # vote margin at which flip fraction reaches full vol-scaled value (lower=steeper ramp)
+FLIP_CONFIDENCE_SCALE = 1.2  # vote margin at which flip fraction reaches full vol-scaled value (lower=steeper ramp)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
