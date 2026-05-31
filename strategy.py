@@ -15,7 +15,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 4
+EMA_SLOPE_LOOKBACK = 3
 
 # MACD parameters
 MACD_FAST = 8
@@ -96,7 +96,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.76  # balanced for raw>=7.0 with vote-dominance stability
+VOTE_CONFIDENCE_MIN = 0.745  # fine-tuned: 0.76 gave stab+0.0022/raw 7.08, need slightly more stab
 
 
 class Strategy:
