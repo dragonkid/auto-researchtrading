@@ -34,7 +34,7 @@ TARGET_VOL = 0.015
 BASE_THRESHOLD = 0.005
 DYN_THRESHOLD_FLOOR = 0.00475
 DYN_THRESHOLD_CEIL = 0.012
-TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends
+TREND_THRESHOLD_SCALE = 0.20       # max threshold reduction in trends (conservative for rally stability)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
 # RSI voter
@@ -223,7 +223,7 @@ class Strategy:
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
-            if abs(target - current_pos) > 0.5:
+            if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
