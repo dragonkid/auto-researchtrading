@@ -86,7 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
-VOTE_SIGMOID_SCALE = 0.14
+VOTE_SIGMOID_SCALE = 0.15
 
 
 def ema(values, span):
@@ -237,16 +237,23 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit: wider threshold in volatile (protects crash trends from false exits)
+                # Calm: 0.0003-0.0005 (same as before). Volatile: up to 0.0007 (harder to trigger in crash)
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3)) + 0.0002 * max(0.0, min(1.0, (vol_ratio - 1.0) / 0.5))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
-                # Momentum-decay exit (soft time pressure, slope-extended)
+                # Momentum-decay exit with trend-aware slope modulation
+                # In trending regimes: agreeing slope extends hold (more patient)
+                # In sideways/calm: adverse slope accelerates exit via penalty
                 if target != 0 and bars_held > HOLD_DECAY_START:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
                     _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    # Trend-gated adverse penalty: stronger when trendless
+                    _trend_weakness = max(0.0, 1.0 - min(abs(ret_long) / 0.08, 1.0))
+                    _penalty_mult = 1.0 + 0.55 * _trend_weakness
+                    _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_penalty_mult)
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _slope_mod
                     if bars_held >= _effective_max:
                         target = 0.0
 
