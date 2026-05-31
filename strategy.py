@@ -237,29 +237,21 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Early exit for calm+trendless: when slope strongly disagrees after 4+ bars
-                # Recovers protective exit speed for sideways (requires BOTH weak trend AND calm vol)
-                if target != 0 and bars_held >= 4:
-                    _slope_against = (current_pos > 0 and _lr.slope < -0.0002) or (current_pos < 0 and _lr.slope > 0.0002)
-                    _is_calm_trendless = abs(ret_long) < 0.04 and vol_ratio < 0.85
-                    if _slope_against and _is_calm_trendless:
-                        target = 0.0
+                # Vol-adaptive linreg exit: standard hard exit (preserved for sideways/rally raw)
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                    target = 0.0
 
-                # Unified slope-aware exit: slope modulates hold time
-                # Penalty conditioned on BOTH vol AND trend strength:
-                # - Sideways (low vol + weak trend): strong penalty → faster exits
-                # - Rally/Bull (strong trend regardless of vol): mild penalty → patient exits
-                # - Crash (high vol): mild penalty → patient exits for strong trends
+                # Momentum-decay exit with trend-aware slope modulation
+                # In trending regimes: agreeing slope extends hold (more patient)
+                # In sideways/calm: adverse slope accelerates exit via penalty
                 if target != 0 and bars_held > HOLD_DECAY_START:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
                     _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
-                    # Trend weakness factor: 1.0 in sideways, 0.0 in strong trends
+                    # Trend-gated adverse penalty: stronger when trendless
                     _trend_weakness = max(0.0, 1.0 - min(abs(ret_long) / 0.08, 1.0))
-                    # Vol-calm factor: 1.0 when vol_ratio < 0.6, 0.0 when vol_ratio > 1.0
-                    _vol_calm = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.4))
-                    # Combined: only strong when BOTH calm and trendless (reduced from 2.5 for raw recovery)
-                    _vol_penalty_scale = 1.0 + 1.8 * _vol_calm * _trend_weakness
-                    _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_vol_penalty_scale)
+                    _penalty_mult = 1.0 + 1.0 * _trend_weakness
+                    _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_penalty_mult)
                     _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _slope_mod
                     if bars_held >= _effective_max:
                         target = 0.0
