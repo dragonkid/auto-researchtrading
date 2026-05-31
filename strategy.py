@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.067
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -206,9 +206,9 @@ class Strategy:
             # Vote-confidence sizing: incorporates both vote sum AND vote margin
             _active_votes = max(bull_votes, bear_votes)
             _vote_margin = bull_votes - bear_votes if bull_votes > bear_votes else bear_votes - bull_votes
-            # Margin factor: sigmoid ramp from 0.82 (low margin) to 1.0 (high margin)
-            # Combined with flip margin gate for dual stability coverage
-            _margin_factor = 0.82 + 0.18 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
+            # Margin factor: sigmoid ramp from 0.88 (low margin) to 1.0 (high margin)
+            # Mild reduction for uncertain entries; combined with exit widening for stab
+            _margin_factor = 0.88 + 0.12 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf * _margin_factor
 
@@ -256,8 +256,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: requires opposing margin >= 0.3 + trend_avg sign + vol-scaled
-                _flip_margin_ok = (current_pos > 0 and bear_votes - bull_votes >= 0.3) or (current_pos < 0 and bull_votes - bear_votes >= 0.3)
+                # Flip mechanism: requires opposing margin >= 0.15 + trend_avg sign + vol-scaled
+                _flip_margin_ok = (current_pos > 0 and bear_votes - bull_votes >= 0.15) or (current_pos < 0 and bull_votes - bear_votes >= 0.15)
                 if not in_cooldown and _flip_margin_ok and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
