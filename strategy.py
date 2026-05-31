@@ -238,21 +238,16 @@ class Strategy:
                         target = 0.0
 
                 # Unified slope-aware exit: no hard threshold, slope modulates hold time
-                # Penalty conditioned on BOTH vol AND trend strength:
-                # - Sideways (low vol + weak trend): strong penalty → faster exits
-                # - Rally/Bull (strong trend regardless of vol): mild penalty → patient exits
-                # - Crash (high vol): mild penalty → patient exits for strong trends
-                if target != 0 and bars_held > HOLD_DECAY_START:
+                # In calm (low vol_ratio): adverse slope strongly reduces hold time (protects sideways/rally)
+                # In volatile (high vol_ratio): adverse slope effect is mild (protects crash trends)
+                _decay_start_adj = HOLD_DECAY_START - max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                if target != 0 and bars_held > _decay_start_adj:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
-                    # Trend weakness factor: 1.0 in sideways, 0.0 in strong trends
-                    _trend_weakness = max(0.0, 1.0 - min(abs(ret_long) / 0.08, 1.0))
-                    # Vol-calm factor: 1.0 when vol_ratio < 0.6, 0.0 when vol_ratio > 1.0
-                    _vol_calm = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.4))
-                    # Combined: only strong when BOTH calm and trendless
-                    _vol_penalty_scale = 1.0 + 2.5 * _vol_calm * _trend_weakness
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0005)
+                    # Vol-adaptive penalty: much stronger in calm markets (sideways/rally protection)
+                    _vol_penalty_scale = 1.0 + 3.5 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.4))
                     _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_vol_penalty_scale)
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _slope_mod
+                    _effective_max = _decay_start_adj + (1.0 / HOLD_DECAY_RATE) + _slope_mod
                     if bars_held >= _effective_max:
                         target = 0.0
 
