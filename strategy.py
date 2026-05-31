@@ -78,15 +78,19 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
+# Vote / cooldown (7 voters: 6 price-based + 1 funding rate)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.8
-FLIP_MIN_VOTES = 2.8
+MIN_VOTES = 3.3
+FLIP_MIN_VOTES = 3.3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
-VOTE_SIGMOID_SCALE = 0.13
+# Sigmoid voting scale (wider = gentler transition, more stability)
+VOTE_SIGMOID_SCALE = 0.15
+
+# Funding rate voter parameters
+FUNDING_LOOKBACK = 24  # hours of funding rate to average
+FUNDING_THRESH = 0.0001  # threshold for directional signal (positive = bearish pressure)
 
 
 def ema(values, span):
@@ -162,6 +166,10 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
+            # Funding rate voter: contrarian signal (high funding = crowd long = bearish pressure)
+            _funding_vals = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
+            _avg_funding = np.mean(_funding_vals) if len(_funding_vals) >= FUNDING_LOOKBACK else 0.0
+
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -170,6 +178,7 @@ class Strategy:
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-_avg_funding - FUNDING_THRESH) / (FUNDING_THRESH * VOTE_SIGMOID_SCALE),  # negative funding = bullish
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -178,6 +187,7 @@ class Strategy:
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (_avg_funding - FUNDING_THRESH) / (FUNDING_THRESH * VOTE_SIGMOID_SCALE),  # positive funding = bearish
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
@@ -203,9 +213,9 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (threshold) to 1.0 (6.0)
+            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (threshold) to 1.0 (7.0)
             _active_votes = max(bull_votes, bear_votes)
-            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
+            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (7.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
