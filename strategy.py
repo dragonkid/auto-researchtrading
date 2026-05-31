@@ -47,7 +47,7 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_BASE = -0.024   # base stop level (scaled by vol_ratio)
-STOP_LOSS_VOL_SCALE = 0.4  # how much vol_ratio widens stop (stop = base * (1 + scale*max(0,vol_ratio-0.8)))
+STOP_LOSS_VOL_SCALE = 0.6  # aggressive widening in volatile regimes (more raw headroom)
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
@@ -136,13 +136,7 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            # Smoothed linreg: average slope of [t-17:t-1] and [t-16:t] to reduce last-bar noise
-            _hl2 = np.log((bd.history["high"].values[-(LINREG_PERIOD+1):] + bd.history["low"].values[-(LINREG_PERIOD+1):]) / 2.0)
-            _lr1 = linregress(np.arange(LINREG_PERIOD), _hl2[1:])
-            _lr0 = linregress(np.arange(LINREG_PERIOD), _hl2[:-1])
-            class _LR:
-                slope = (_lr1.slope + _lr0.slope) / 2.0
-            _lr = _LR()
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
