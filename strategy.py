@@ -250,7 +250,7 @@ class Strategy:
                     _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
                     # Trend-gated adverse penalty: stronger when trendless
                     _trend_weakness = max(0.0, 1.0 - min(abs(ret_long) / 0.08, 1.0))
-                    _penalty_mult = 1.0 + 0.4 * _trend_weakness
+                    _penalty_mult = 1.0 + 0.7 * _trend_weakness
                     _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_penalty_mult)
                     _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _slope_mod
                     if bars_held >= _effective_max:
