@@ -50,7 +50,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.066
+BASE_POSITION_SIZE = 0.071
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -162,7 +162,7 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * HIGH_VOTE_BOOST_MULT
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
@@ -197,8 +197,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: slightly wider base + widen in calm for noise buffer
-                _exit_slope_thresh = 0.00035 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
