@@ -86,12 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
-VOTE_SIGMOID_SCALE = 0.15
-
-# Per-voter reliability weights (sum=6.0 to preserve threshold compatibility)
-# Higher weight for noise-immune voters (linreg: 16-bar HL2 regression, ema_slope: 22-bar EMA)
-# Lower weight for noise-sensitive voters (ret_short: single-bar smoothed close, RSI: short diff window)
-VOTER_WEIGHTS = [0.85, 1.0, 0.85, 1.0, 1.15, 1.15]  # [ret_short, ema_cross, rsi, macd, linreg, ema_slope]
+VOTE_SIGMOID_SCALE = 0.13
 
 
 def ema(values, span):
@@ -185,8 +180,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(w / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for w, d in zip(VOTER_WEIGHTS, _voter_deltas_bull))
-            bear_votes = sum(w / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for w, d in zip(VOTER_WEIGHTS, _voter_deltas_bear))
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
