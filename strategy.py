@@ -240,13 +240,14 @@ class Strategy:
                 # Unified slope-aware exit: no hard threshold, slope modulates hold time
                 # In calm (low vol_ratio): adverse slope strongly reduces hold time (protects sideways/rally)
                 # In volatile (high vol_ratio): adverse slope effect is mild (protects crash trends)
-                if target != 0 and bars_held > HOLD_DECAY_START:
+                _decay_start_adj = HOLD_DECAY_START - max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                if target != 0 and bars_held > _decay_start_adj:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
-                    # Vol-adaptive penalty: stronger in calm markets (sideways/rally protection)
-                    _vol_penalty_scale = 1.0 + 2.0 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5))
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0005)
+                    # Vol-adaptive penalty: much stronger in calm markets (sideways/rally protection)
+                    _vol_penalty_scale = 1.0 + 3.5 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.4))
                     _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_vol_penalty_scale)
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _slope_mod
+                    _effective_max = _decay_start_adj + (1.0 / HOLD_DECAY_RATE) + _slope_mod
                     if bars_held >= _effective_max:
                         target = 0.0
 
