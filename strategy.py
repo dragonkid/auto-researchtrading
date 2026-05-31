@@ -56,7 +56,7 @@ BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
-HIGH_VOTE_BOOST_MULT = 1.12  # reduced: smaller overall positions for stability
+HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
 VOL_CONFIRM_FLOOR = 0.98
@@ -96,7 +96,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC_BASE = 0.55  # base first-bar fraction
-ENTRY_FRAC_VOL_FLOOR = 0.52    # keep floor moderate
+ENTRY_FRAC_VOL_FLOOR = 0.515   # calibrated for stab/raw balance
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
