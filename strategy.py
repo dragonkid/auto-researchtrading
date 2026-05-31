@@ -46,8 +46,7 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-STOP_LOSS_BASE = -0.024   # base stop level (scaled by vol_ratio)
-STOP_LOSS_VOL_SCALE = 0.4  # how much vol_ratio widens stop (stop = base * (1 + scale*max(0,vol_ratio-0.8)))
+STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
@@ -206,9 +205,8 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Vol-scaled stop-loss: wider in volatile regimes (less noise-triggered)
-                _stop_level = STOP_LOSS_BASE * (1.0 + STOP_LOSS_VOL_SCALE * max(0.0, vol_ratio - 0.8))
-                if pos_pnl < _stop_level:
+                # Stop-loss exit (noise-immune: anchored to entry_price)
+                if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
