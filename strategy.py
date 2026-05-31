@@ -126,9 +126,13 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Stateless median-based momentum (no EMA state propagation under noise)
-            # Current price reference: 3-bar median (robust to single-bar 5bps perturbation)
-            _current_med = np.median(closes[-3:])
+            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
+            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            smoothed_closes = np.empty_like(closes, dtype=float)
+            smoothed_closes[0] = closes[0]
+            for _si in range(1, len(closes)):
+                smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
@@ -139,11 +143,11 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 3-bar median references at lookback points (stateless, noise-immune)
-            _med_ref_short = np.median(closes[-SHORT_WINDOW - 1: -SHORT_WINDOW + 2])
-            _med_ref_med = np.median(closes[-adaptive_med - 1: -adaptive_med + 2])
-            ret_vshort = (_current_med - _med_ref_short) / _med_ref_short
-            ret_short = (_current_med - _med_ref_med) / _med_ref_med
+            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
+            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
