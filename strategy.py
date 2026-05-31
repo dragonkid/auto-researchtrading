@@ -26,7 +26,7 @@ MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 LINREG_PERIOD = 16
 
 # Volatility parameters
-VOL_LOOKBACK = 28
+VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
 VOL_LONG_LOOKBACK = 36
 TARGET_VOL = 0.015
