@@ -34,7 +34,7 @@ TARGET_VOL = 0.015
 BASE_THRESHOLD = 0.005
 DYN_THRESHOLD_FLOOR = 0.00475
 DYN_THRESHOLD_CEIL = 0.012
-TREND_THRESHOLD_SCALE = 0.20       # max threshold reduction in trends (conservative for rally stability)
+TREND_THRESHOLD_SCALE = 0.25       # max threshold reduction in trends (reduced from 0.32 for wider buffer in rally)
 TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 
 # RSI voter
@@ -50,7 +50,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.071
+BASE_POSITION_SIZE = 0.074
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -218,9 +218,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                # Flip mechanism (votes + trend_avg sign, capped fraction for stability)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
+                    _flip_frac = min(0.92, ENTRY_INITIAL_FRAC + (0.92 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
