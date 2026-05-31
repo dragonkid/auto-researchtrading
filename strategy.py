@@ -101,7 +101,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.73  # 3-vote entries sized at 73%, scaling to 100% at 6 votes
 
 
 class Strategy:
@@ -259,8 +259,8 @@ class Strategy:
                     _vote_margin = (bear_votes - bull_votes) if current_pos > 0 else (bull_votes - bear_votes)
                     _margin_conf = min(1.0, max(0.0, _vote_margin / FLIP_CONFIDENCE_SCALE))
                     _base_flip = ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)
-                    # Floor at 0.67 — balances stability from confidence modulation with sufficient flip commitment
-                    _flip_frac = 0.67 + (_base_flip - 0.67) * _margin_conf
+                    # Floor at 0.65 — balances stability from confidence modulation with sufficient flip commitment
+                    _flip_frac = 0.65 + (_base_flip - 0.65) * _margin_conf
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
