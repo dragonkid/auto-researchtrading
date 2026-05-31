@@ -48,7 +48,7 @@ HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.20
+PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -205,8 +205,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: wider threshold for noise reduction
-                _exit_slope_thresh = 0.0005 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
