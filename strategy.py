@@ -108,6 +108,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_vote_margin = {}  # vote confidence at entry, modulates exit patience
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -231,8 +232,12 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vote-margin-adaptive linreg exit: high-confidence entries get wider threshold (more patient)
+                # Low-confidence entries (barely above MIN_VOTES) exit faster on adverse slope
+                _entry_margin = self.entry_vote_margin.get(symbol, 0.5)
+                # margin range [0,1] maps to threshold multiplier [0.7, 1.3]
+                _margin_factor = 0.7 + 0.6 * _entry_margin
+                _exit_slope_thresh = (0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * _margin_factor
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
@@ -260,10 +265,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_vote_margin):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    # Store normalized vote margin: (active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)
+                    self.entry_vote_margin[symbol] = max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
 
         return signals
