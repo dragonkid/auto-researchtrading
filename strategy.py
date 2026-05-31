@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.068
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -237,13 +237,16 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Early exit for calm+trendless: when slope strongly disagrees after 4+ bars
-                # Recovers protective exit speed for sideways (requires BOTH weak trend AND calm vol)
-                if target != 0 and bars_held >= 4:
-                    _slope_against = (current_pos > 0 and _lr.slope < -0.0002) or (current_pos < 0 and _lr.slope > 0.0002)
+                # Two-tier early exit for calm+trendless conditions:
+                # Tier 1 (bar 3+): very strong adverse slope in very calm trendless markets
+                # Tier 2 (bar 5+): moderate adverse slope in calm trendless markets
+                if target != 0 and bars_held >= 3:
                     _is_calm_trendless = abs(ret_long) < 0.04 and vol_ratio < 0.85
-                    if _slope_against and _is_calm_trendless:
-                        target = 0.0
+                    if _is_calm_trendless:
+                        _slope_strongly_against = (current_pos > 0 and _lr.slope < -0.0004) or (current_pos < 0 and _lr.slope > 0.0004)
+                        _slope_against = (current_pos > 0 and _lr.slope < -0.0002) or (current_pos < 0 and _lr.slope > 0.0002)
+                        if _slope_strongly_against or (bars_held >= 5 and _slope_against):
+                            target = 0.0
 
                 # Unified slope-aware exit: slope modulates hold time
                 # Penalty conditioned on BOTH vol AND trend strength:
