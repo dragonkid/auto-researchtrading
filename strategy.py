@@ -15,7 +15,7 @@ LONG_WINDOW = 20
 EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
-EMA_SLOPE_LOOKBACK = 5
+EMA_SLOPE_LOOKBACK = 3
 
 # MACD parameters
 MACD_FAST = 8
@@ -154,8 +154,8 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0008])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0008])
+            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -228,9 +228,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (vote-dominance + trend_avg sign, vol-scaled, confidence-sized)
-                # Require opposing votes > same-direction to eliminate ambiguous flips
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes > bull_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes > bear_votes and trend_avg > 0)):
+                # Flip mechanism (vote-dominance + trend_avg sign with deadzone, vol-scaled, confidence-sized)
+                # Require opposing votes > same-direction AND trend_avg clearly against position
+                _flip_trend_dz = TREND_GATE_DEADZONE * 0.5  # require trend to be clearly flipped, not just noise
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes > bull_votes and trend_avg < -_flip_trend_dz) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes > bear_votes and trend_avg > _flip_trend_dz)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
