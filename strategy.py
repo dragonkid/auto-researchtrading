@@ -228,9 +228,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (vote-dominance + trend_avg sign with micro-deadzone, vol-scaled, confidence-sized)
+                # Flip mechanism (vote-dominance + trend_avg sign with deadzone, vol-scaled, confidence-sized)
                 # Require opposing votes > same-direction AND trend_avg clearly against position
-                _flip_trend_dz = 0.002  # tiny deadzone to filter only the noisiest trend_avg near zero
+                _flip_trend_dz = TREND_GATE_DEADZONE * 0.5  # require trend to be clearly flipped, not just noise
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes > bull_votes and trend_avg < -_flip_trend_dz) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes > bear_votes and trend_avg > _flip_trend_dz)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
