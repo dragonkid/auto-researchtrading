@@ -124,9 +124,9 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
-            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
-            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            # Vol-adaptive smoothing: more in calm (span~3.2), less in choppy (span~2)
+            # vol_ratio < 0.7 (calm): alpha=0.47 (span~3.2); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
+            _smooth_alpha = 0.47 + 0.20 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
@@ -184,8 +184,8 @@ class Strategy:
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6 - MIN_VOTES)))
             _conf_size = size * _vote_conf
 
-            # Vol-adaptive entry fraction: smaller first bar only in very calm (noise is relatively larger)
-            _entry_frac = ENTRY_FRAC_VOL_FLOOR + (ENTRY_INITIAL_FRAC_BASE - ENTRY_FRAC_VOL_FLOOR) * min(1.0, max(0.0, (vol_ratio - 0.5) / 0.4))
+            # Vol-adaptive entry fraction: smaller first bar in calm (where noise is relatively larger)
+            _entry_frac = ENTRY_FRAC_VOL_FLOOR + (ENTRY_INITIAL_FRAC_BASE - ENTRY_FRAC_VOL_FLOOR) * min(1.0, max(0.0, (vol_ratio - 0.5) / 0.7))
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
