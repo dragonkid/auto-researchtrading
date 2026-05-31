@@ -82,7 +82,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
 MIN_VOTES = 2.8
 FLIP_MIN_VOTES = 2.8
-FLIP_CONFIDENCE_SCALE = 2.0  # vote margin at which flip fraction reaches full vol-scaled value
+FLIP_CONFIDENCE_SCALE = 1.5  # vote margin at which flip fraction reaches full vol-scaled value (lower=steeper ramp)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -259,7 +259,8 @@ class Strategy:
                     _vote_margin = (bear_votes - bull_votes) if current_pos > 0 else (bull_votes - bear_votes)
                     _margin_conf = min(1.0, max(0.0, _vote_margin / FLIP_CONFIDENCE_SCALE))
                     _base_flip = ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)
-                    _flip_frac = ENTRY_INITIAL_FRAC + (_base_flip - ENTRY_INITIAL_FRAC) * _margin_conf
+                    # Floor at 0.70 so even uncertain flips still commit meaningfully
+                    _flip_frac = 0.70 + (_base_flip - 0.70) * _margin_conf
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
