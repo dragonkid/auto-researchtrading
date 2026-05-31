@@ -252,11 +252,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign + linreg confirmation, vol-scaled)
-                # Linreg-confirmed flips use lower vote threshold (noise-immune confirmation)
-                _linreg_confirms_flip = (current_pos > 0 and _lr.slope < -0.0004) or (current_pos < 0 and _lr.slope > 0.0004)
-                _flip_thresh = FLIP_MIN_VOTES - 0.3 * (1.0 if _linreg_confirms_flip else 0.0)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_thresh and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_thresh and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
