@@ -231,19 +231,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Multi-evidence slope exit: requires agreement across 3 lookback windows
-                # Each window votes independently; exit only when 2+ agree on adverse slope
-                # This eliminates the single-point threshold noise sensitivity
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _hl2_vals = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _slope_votes = 0
-                for _sp in (12, 16, 24):
-                    _sp_lr = linregress(np.arange(_sp), np.log(_hl2_vals[-_sp:]))
-                    if current_pos > 0 and _sp_lr.slope < -_exit_slope_thresh:
-                        _slope_votes += 1
-                    elif current_pos < 0 and _sp_lr.slope > _exit_slope_thresh:
-                        _slope_votes += 1
-                if target != 0 and _slope_votes >= 2:
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
