@@ -136,8 +136,7 @@ class Strategy:
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            # Narrowed adaptive window [12,16]: removes most vol->window noise while preserving some adaptivity
-            adaptive_med = max(12, min(MED_WINDOW_MAX, int(round(12 + (MED_WINDOW_MAX - 12) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
+            adaptive_med = 14  # fixed wider window: removes vol->window noise channel
 
             # 5-bar median for ret_short (maximum noise immunity)
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
@@ -228,9 +227,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, ultra-light margin-dampened + vol-scaled)
-                # Only dampen minimum-margin flips (margin=1) to 92% — all others get full size
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (vote-dominance + trend_avg sign, ultra-light margin-dampened + vol-scaled)
+                # Vote-dominance: require flip direction to have more votes than current direction
+                _flip_dom = (current_pos > 0 and bear_votes > bull_votes) or (current_pos < 0 and bull_votes > bear_votes)
+                if not in_cooldown and _flip_dom and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_margin = abs(bear_votes - bull_votes)
                     _margin_damp = 0.92 if _flip_margin <= 1 else 1.0
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
