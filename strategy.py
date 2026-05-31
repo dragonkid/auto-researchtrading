@@ -52,7 +52,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.065
+BASE_POSITION_SIZE = 0.070  # larger increase to push raw above 7.0
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -95,8 +95,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC_BASE = 0.55  # base first-bar fraction
-ENTRY_FRAC_VOL_FLOOR = 0.45    # minimum FRAC in very calm conditions (noise-protective)
+ENTRY_INITIAL_FRAC = 0.52  # lower for stability
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
@@ -184,16 +183,13 @@ class Strategy:
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6 - MIN_VOTES)))
             _conf_size = size * _vote_conf
 
-            # Vol-adaptive entry fraction: smaller first bar in calm (where noise is relatively larger)
-            _entry_frac = ENTRY_FRAC_VOL_FLOOR + (ENTRY_INITIAL_FRAC_BASE - ENTRY_FRAC_VOL_FLOOR) * min(1.0, max(0.0, (vol_ratio - 0.5) / 0.7))
-
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = _conf_size * _entry_frac
+                    target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -_conf_size * _entry_frac
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -202,7 +198,7 @@ class Strategy:
 
                 # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, _entry_frac + (1.0 - _entry_frac) * bars_held / ENTRY_FULL_BARS)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
@@ -234,7 +230,7 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_frac = min(1.0, _entry_frac + (1.0 - _entry_frac) * min(1.0, vol_ratio / 1.5))
+                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
