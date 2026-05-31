@@ -259,8 +259,8 @@ class Strategy:
                     _vote_margin = (bear_votes - bull_votes) if current_pos > 0 else (bull_votes - bear_votes)
                     _margin_conf = min(1.0, max(0.0, _vote_margin / FLIP_CONFIDENCE_SCALE))
                     _base_flip = ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)
-                    # Floor at 0.70 so even uncertain flips still commit meaningfully
-                    _flip_frac = 0.70 + (_base_flip - 0.70) * _margin_conf
+                    # Floor at 0.62 so uncertain flips still commit but with reduced noise
+                    _flip_frac = 0.62 + (_base_flip - 0.62) * _margin_conf
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
