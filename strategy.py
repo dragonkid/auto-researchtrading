@@ -88,7 +88,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
 VOTE_SIGMOID_SCALE = 0.15
 # Per-voter sigmoid scales: aggressive widening for noise-sensitive, narrowing for noise-immune
-# Creates 2.1x ratio: noisy voters contribute ~0.5 unless very clear signal
+# Creates 2x ratio: noisy voters contribute ~0.5 unless very clear signal
 VOTER_SCALES = [0.22, 0.22, 0.22, 0.11, 0.11, 0.11]  # [ret_short, ema_cross, rsi, macd, linreg, ema_slope]
 
 
@@ -154,7 +154,8 @@ class Strategy:
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Derive rsi_trend_str from linreg slope (noise-immune: 16-bar HL2 regression)
-            rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
+            # Scale 50x to match ret_long magnitude range (slope ~0.001 -> trend_str ~0.5)
+            rsi_trend_str = min(abs(_lr.slope) * 50.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
