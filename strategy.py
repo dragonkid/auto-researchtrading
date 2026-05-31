@@ -86,7 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
-VOTE_SIGMOID_SCALE = 0.16
+VOTE_SIGMOID_SCALE = 0.15
 
 
 def ema(values, span):
@@ -242,11 +242,13 @@ class Strategy:
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
-                # Momentum-decay exit (soft time pressure, slope-extended)
+                # Momentum-decay exit with mild trend-aware adverse penalty
                 if target != 0 and bars_held > HOLD_DECAY_START:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
                     _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    _trend_weakness = max(0.0, 1.0 - min(abs(ret_long) / 0.08, 1.0))
+                    _slope_mod = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -0.3 * _trend_weakness)
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _slope_mod
                     if bars_held >= _effective_max:
                         target = 0.0
 
