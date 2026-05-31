@@ -203,10 +203,14 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (threshold) to 1.0 (6.0)
+            # Vote-confidence sizing: incorporates both vote sum AND vote margin
             _active_votes = max(bull_votes, bear_votes)
+            _vote_margin = bull_votes - bear_votes if bull_votes > bear_votes else bear_votes - bull_votes
+            # Margin factor: sigmoid ramp from 0.75 (low margin) to 1.0 (high margin)
+            # margin=0.5 → ~0.80, margin=1.5 → ~0.93, margin=3.0 → ~1.0
+            _margin_factor = 0.75 + 0.25 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
-            _conf_size = size * _vote_conf
+            _conf_size = size * _vote_conf * _margin_factor
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
