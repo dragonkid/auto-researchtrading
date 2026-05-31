@@ -23,7 +23,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
 # Linear regression
-LINREG_PERIOD = 16
+LINREG_PERIOD = 20
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
 MIN_VOTES = 2.8
-FLIP_MIN_VOTES = 2.9
+FLIP_MIN_VOTES = 2.8
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
