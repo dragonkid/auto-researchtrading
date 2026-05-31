@@ -206,9 +206,9 @@ class Strategy:
             # Vote-confidence sizing: incorporates both vote sum AND vote margin
             _active_votes = max(bull_votes, bear_votes)
             _vote_margin = bull_votes - bear_votes if bull_votes > bear_votes else bear_votes - bull_votes
-            # Margin factor: sigmoid ramp from 0.85 (low margin) to 1.0 (high margin)
-            # Centered at margin=1.2: moderate reduction for uncertain entries
-            _margin_factor = 0.85 + 0.15 / (1.0 + np.exp(-(_vote_margin - 1.2) / 0.5))
+            # Margin factor: sigmoid ramp from 0.88 (low margin) to 1.0 (high margin)
+            # Centered at margin=0.8: most entries (margin>1) get near-full sizing
+            _margin_factor = 0.88 + 0.12 / (1.0 + np.exp(-(_vote_margin - 0.8) / 0.4))
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf * _margin_factor
 
