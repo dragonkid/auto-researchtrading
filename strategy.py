@@ -97,7 +97,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.67  # lower min sizing to reduce noise impact of 3-vote entries
+VOTE_CONFIDENCE_MIN = 0.69  # mild reduction: less noise from 3-vote entries while preserving raw
 
 
 class Strategy:
