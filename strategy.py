@@ -84,6 +84,9 @@ FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Continuous vote weighting (sigmoid transition width)
+VOTE_SIGMOID_SCALE = 0.35  # width of transition zone relative to each voter's threshold
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -153,9 +156,30 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            # 6 voters with continuous sigmoid weighting (noise-immune: smooth transitions at boundaries)
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            _ema_spread = (_ef - _es) / _es
+
+            # Voter signals: (value, threshold) pairs — positive value > threshold = bullish
+            _voter_vals = [
+                (ret_short, dyn_threshold, dyn_threshold * VOTE_SIGMOID_SCALE),
+                (_ema_spread, 0.0, 0.001 * VOTE_SIGMOID_SCALE),
+                (rsi - _rsi_thresh, 0.0, 3.0 * VOTE_SIGMOID_SCALE),
+                (_macd_hist, 0.0003, 0.0003 * VOTE_SIGMOID_SCALE),
+                (_lr.slope, 0.00015, 0.00015 * VOTE_SIGMOID_SCALE),
+                (_ema_slope_val, 0.0005, 0.0005 * VOTE_SIGMOID_SCALE),
+            ]
+
+            # Continuous bull/bear scores via sigmoid: weight = 1/(1+exp(-x/scale))
+            bull_votes = 0.0
+            bear_votes = 0.0
+            for _val, _thresh, _scale in _voter_vals:
+                _bull_x = (_val - _thresh) / max(_scale, 1e-10)
+                _bear_x = (-_val - _thresh) / max(_scale, 1e-10)
+                bull_votes += 1.0 / (1.0 + np.exp(-max(-10, min(10, _bull_x))))
+                bear_votes += 1.0 / (1.0 + np.exp(-max(-10, min(10, _bear_x))))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -177,9 +201,9 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (3 votes) to 1.0 (6 votes)
+            # Vote-confidence sizing: linear scale from VOTE_CONFIDENCE_MIN (3.0 score) to 1.0 (6.0 score)
             _active_votes = max(bull_votes, bear_votes)
-            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6 - MIN_VOTES)))
+            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - float(MIN_VOTES)) / (6.0 - float(MIN_VOTES))))
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
