@@ -242,12 +242,14 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Momentum exhaustion exit (price-derived, no entry-state dependency)
-                # Exit when linreg slope has decayed to near-zero and doesn't support position
-                if target != 0:
+                # Momentum-decay exit (soft time pressure, slope-extended)
+                if target != 0 and bars_held > HOLD_DECAY_START:
+                    # Slope agreement: does linreg slope support position direction?
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _exhaustion_thresh = 0.00008  # slope below this = momentum exhausted
-                    if not _slope_agrees and abs(_lr.slope) < _exhaustion_thresh:
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
+                    # Extra hold time when slope strongly agrees
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    if bars_held >= _effective_max:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
