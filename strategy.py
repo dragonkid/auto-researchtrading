@@ -104,7 +104,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.exit_slope_count = {}  # consecutive bars with slope against position
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -206,14 +205,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: require 2 consecutive bars against position (noise reduction)
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_against = (current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)
-                if _slope_against:
-                    self.exit_slope_count[symbol] = self.exit_slope_count.get(symbol, 0) + 1
-                else:
-                    self.exit_slope_count[symbol] = 0
-                if target != 0 and self.exit_slope_count.get(symbol, 0) >= 2:
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -240,7 +234,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.exit_slope_count):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
