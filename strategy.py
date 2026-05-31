@@ -47,7 +47,7 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_BASE = -0.024   # base stop level (scaled by vol_ratio)
-STOP_LOSS_VOL_SCALE = 0.6  # aggressive widening in volatile regimes (more raw headroom)
+STOP_LOSS_VOL_SCALE = 1.0  # very aggressive: stop = -2.4% * (1 + vol_ratio-0.8) in volatile
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
