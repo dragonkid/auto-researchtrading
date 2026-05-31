@@ -23,7 +23,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
 # Linear regression
-LINREG_PERIOD = 20
+LINREG_PERIOD = 16
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -168,7 +168,7 @@ class Strategy:
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (_lr.slope - 0.00020) / (0.00020 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0005) / (0.0005 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
@@ -176,7 +176,7 @@ class Strategy:
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (-_lr.slope - 0.00020) / (0.00020 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0005) / (0.0005 * VOTE_SIGMOID_SCALE),
             ]
 
