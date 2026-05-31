@@ -83,7 +83,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 MIN_VOTES = 2.8
 FLIP_MIN_VOTES = 2.8
 FLIP_CONFIDENCE_SCALE = 1.0  # vote margin at which flip fraction reaches full vol-scaled value (lower=steeper ramp)
-ENTRY_NET_MARGIN = 0.5  # bull_votes - bear_votes must exceed this for directional entry
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -102,7 +101,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.68  # 3-vote entries sized at 68%, scaling to 100% at 6 votes
 
 
 class Strategy:
@@ -211,9 +210,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and bull_votes - bear_votes >= ENTRY_NET_MARGIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and bear_votes - bull_votes >= ENTRY_NET_MARGIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
