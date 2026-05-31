@@ -89,7 +89,7 @@ COOLDOWN_TREND_DECAY = 0.06
 VOTE_SIGMOID_SCALE = 0.15
 # Per-voter sigmoid scales: aggressive widening for noise-sensitive, narrowing for noise-immune
 # Creates 2.1x ratio: noisy voters contribute ~0.5 unless very clear signal
-VOTER_SCALES = [0.22, 0.22, 0.22, 0.11, 0.11, 0.11]  # [ret_short, ema_cross, rsi, macd, linreg, ema_slope]
+VOTER_SCALES = [0.22, 0.22, 0.22, 0.10, 0.10, 0.10]  # [ret_short, ema_cross, rsi, macd, linreg, ema_slope]
 
 
 def ema(values, span):
