@@ -162,9 +162,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Cooldown removed: vote-dominance flip gate provides equivalent protection
-            # against noise-triggered re-entries (requires bear>bull or bull>bear to flip)
-            in_cooldown = False
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -228,9 +226,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (vote-dominance + trend_avg sign, vol-scaled, confidence-sized)
-                # Require opposing votes > same-direction to eliminate ambiguous flips
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and bear_votes > bull_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and bull_votes > bear_votes and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
