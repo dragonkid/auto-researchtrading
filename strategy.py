@@ -101,7 +101,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.69  # 3-vote entries sized at 69%, scaling to 100% at 6 votes
+VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
 
 class Strategy:
@@ -153,7 +153,7 @@ class Strategy:
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            _rd = np.diff(closes[-8:])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
@@ -259,8 +259,8 @@ class Strategy:
                     _vote_margin = (bear_votes - bull_votes) if current_pos > 0 else (bull_votes - bear_votes)
                     _margin_conf = min(1.0, max(0.0, _vote_margin / FLIP_CONFIDENCE_SCALE))
                     _base_flip = ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)
-                    # Floor at 0.73 — higher floor preserves raw while CONF_MIN reduction provides stability
-                    _flip_frac = 0.73 + (_base_flip - 0.73) * _margin_conf
+                    # Floor at 0.67 — balances stability from confidence modulation with sufficient flip commitment
+                    _flip_frac = 0.67 + (_base_flip - 0.67) * _margin_conf
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
