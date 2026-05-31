@@ -124,7 +124,8 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            # Lagged vol: exclude current bar to prevent noise feedback loop (close perturb → vol change → alpha change → signal change)
+            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 2:-2]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
@@ -233,17 +234,9 @@ class Strategy:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                # Slope exit uses sigmoid partial-exit when slope is near boundary (noise reduction)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_for_exit = -_lr.slope if current_pos > 0 else _lr.slope
-                if target != 0 and _slope_for_exit > _exit_slope_thresh:
-                    # How decisively does slope signal exit? Sigmoid ramp from threshold to 2x threshold
-                    _exit_decisiveness = min(1.0, (_slope_for_exit - _exit_slope_thresh) / _exit_slope_thresh)
-                    if _exit_decisiveness > 0.5:
-                        target = 0.0
-                    else:
-                        # Partial exit: reduce position proportionally to exit signal strength
-                        target = current_pos * (1.0 - _exit_decisiveness * 1.5)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
