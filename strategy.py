@@ -46,7 +46,7 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-STOP_LOSS_PCT = -0.018
+STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
@@ -230,10 +230,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, fixed fraction for noise stability)
-                # Fixed at ENTRY_INITIAL_FRAC removes vol_ratio->frac noise channel
+                # Flip mechanism (votes + trend_avg sign, fixed 85% for noise stability + crash protection)
+                # Fixed at 0.85 removes vol_ratio->frac noise channel while near-full reversal protects crash
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * ENTRY_INITIAL_FRAC
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * 0.85
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
