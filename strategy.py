@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.074
+BASE_POSITION_SIZE = 0.072
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.0
@@ -97,7 +97,7 @@ def ema(values, span):
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.725  # 3-vote entries sized at 72.5%, scaling to 100% at 6 votes
-FLIP_CONF_MULT = 0.97  # flips sized at 97% of entry confidence (reduce flip noise amplification)
+FLIP_CONF_MULT = 0.985  # flips sized at 98.5% of entry confidence (reduce flip noise amplification)
 
 
 class Strategy:
