@@ -207,8 +207,8 @@ class Strategy:
             _active_votes = max(bull_votes, bear_votes)
             _vote_margin = bull_votes - bear_votes if bull_votes > bear_votes else bear_votes - bull_votes
             # Margin factor: sigmoid ramp from 0.88 (low margin) to 1.0 (high margin)
-            # Centered at margin=0.8: most entries (margin>1) get near-full sizing
-            _margin_factor = 0.88 + 0.12 / (1.0 + np.exp(-(_vote_margin - 0.8) / 0.4))
+            # margin=0.5 → ~0.89, margin=1.5 → ~0.94, margin=3.0 → ~1.0
+            _margin_factor = 0.88 + 0.12 / (1.0 + np.exp(-(_vote_margin - 1.5) / 0.6))
             _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
             _conf_size = size * _vote_conf * _margin_factor
 
