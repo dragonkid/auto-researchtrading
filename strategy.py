@@ -96,7 +96,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC_BASE = 0.55  # base first-bar fraction
-ENTRY_FRAC_VOL_FLOOR = 0.515   # calibrated for stab/raw balance
+ENTRY_FRAC_VOL_FLOOR = 0.51    # slightly lower for +0.003 stab target
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
@@ -124,9 +124,9 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Vol-adaptive smoothing: more in calm (span~3.2), less in choppy (span~2)
-            # vol_ratio < 0.7 (calm): alpha=0.47 (span~3.2); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
-            _smooth_alpha = 0.47 + 0.20 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
+            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
@@ -206,8 +206,8 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Vol-scaled stop-loss: wider in volatile regimes (less noise-triggered)
-                _stop_level = STOP_LOSS_BASE * (1.0 + STOP_LOSS_VOL_SCALE * max(0.0, vol_ratio - 0.8))
+                # Vol-scaled stop-loss: wider when vol_ratio > 0.6 (covers moderate vol too)
+                _stop_level = STOP_LOSS_BASE * (1.0 + STOP_LOSS_VOL_SCALE * max(0.0, vol_ratio - 0.6))
                 if pos_pnl < _stop_level:
                     target = 0.0
 
