@@ -87,7 +87,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (narrow = steep transition, preserves decisiveness)
-VOTE_SIGMOID_SCALE = 0.12
+VOTE_SIGMOID_SCALE = 0.13
 
 
 def ema(values, span):
@@ -233,9 +233,17 @@ class Strategy:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Slope exit uses sigmoid partial-exit when slope is near boundary (noise reduction)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
-                    target = 0.0
+                _slope_for_exit = -_lr.slope if current_pos > 0 else _lr.slope
+                if target != 0 and _slope_for_exit > _exit_slope_thresh:
+                    # How decisively does slope signal exit? Sigmoid ramp from threshold to 2x threshold
+                    _exit_decisiveness = min(1.0, (_slope_for_exit - _exit_slope_thresh) / _exit_slope_thresh)
+                    if _exit_decisiveness > 0.5:
+                        target = 0.0
+                    else:
+                        # Partial exit: reduce position proportionally to exit signal strength
+                        target = current_pos * (1.0 - _exit_decisiveness * 1.5)
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
