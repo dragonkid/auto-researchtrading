@@ -195,20 +195,18 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: scale-up only if linreg slope confirms direction
+                # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
-                    _slope_confirms = (current_pos > 0 and _lr.slope > 0) or (current_pos < 0 and _lr.slope < 0)
-                    if _slope_confirms:
-                        scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                        full_target = _conf_size if current_pos > 0 else -_conf_size
-                        target = full_target * scale_frac
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    full_target = _conf_size if current_pos > 0 else -_conf_size
+                    target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: wider base + widen in calm for noise buffer
-                _exit_slope_thresh = 0.0004 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
