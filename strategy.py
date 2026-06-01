@@ -8,7 +8,6 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
-SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
@@ -80,7 +79,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.66
+MIN_VOTES = 2.65
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -105,7 +104,6 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
 class Strategy:
@@ -148,10 +146,8 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
-            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
+            # 5-bar median for momentum signal (maximum noise immunity)
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
@@ -171,15 +167,15 @@ class Strategy:
             # MACD + EMA slope use vol-adaptive wider normalization: more widening in calm (stability)
             # less widening in high-vol (preserve crash responsiveness)
             _vol_widen = 1.0 + 0.5 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))  # 1.0x at vol>=1.3, 1.5x at vol<=0.5
-            _macd_norm = 0.0003 * VOTE_SIGMOID_SCALE * _vol_widen
+            _macd_norm = 0.00035 * VOTE_SIGMOID_SCALE * _vol_widen
             _ema_slope_norm = 0.0006 * VOTE_SIGMOID_SCALE * _vol_widen
             # RSI normalization also vol-adaptive: wider in calm for less boundary sensitivity
-            _rsi_norm = (3.0 + 0.8 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))) * VOTE_SIGMOID_SCALE
+            _rsi_norm = (3.0 + 0.5 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))) * VOTE_SIGMOID_SCALE
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / _rsi_norm,
-                (_macd_hist - 0.0003) / max(_macd_norm, 1e-10),
+                (_macd_hist - 0.00035) / max(_macd_norm, 1e-10),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / max(_ema_slope_norm, 1e-10),
             ]
