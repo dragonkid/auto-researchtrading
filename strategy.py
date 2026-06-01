@@ -80,13 +80,13 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.60
-FLIP_MIN_VOTES = 2.85
+MIN_VOTES = 2.70
+FLIP_MIN_VOTES = 3.00
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
-VOTE_SIGMOID_SCALE = 0.30
+VOTE_SIGMOID_SCALE = 0.35
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
