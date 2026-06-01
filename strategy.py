@@ -49,9 +49,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
-# Gradual slope exit: sigmoid ramp from full position to zero over slope range
-# Instead of binary exit at threshold, position scales down continuously
-EXIT_SLOPE_SOFT_SCALE = 3.0  # how quickly position drops (steepness of sigmoid)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.062
@@ -244,19 +241,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Gradual slope exit: sigmoid-based position reduction (no hard boundary)
-                # Adverse slope reduces position continuously rather than binary exit
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_for_exit = -_lr.slope if current_pos > 0 else _lr.slope
-                if target != 0 and _slope_for_exit > 0:
-                    # How far past threshold: 0 = at threshold, 1+ = deep adverse
-                    _adverse_ratio = max(0.0, (_slope_for_exit - _exit_slope_thresh * 0.5) / (_exit_slope_thresh * 0.5))
-                    # Sigmoid: 0->keep full, 1->~half, 2->~90% reduction, 3+->full exit
-                    _exit_retain = 1.0 / (1.0 + np.exp(EXIT_SLOPE_SOFT_SCALE * (_adverse_ratio - 1.5)))
-                    if _exit_retain < 0.1:
-                        target = 0.0  # effectively closed
-                    else:
-                        target = current_pos * _exit_retain
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
