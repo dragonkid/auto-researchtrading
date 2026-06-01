@@ -78,10 +78,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (7 voters: 6 original + linreg R² trend confidence)
+# Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.90
-FLIP_MIN_VOTES = 3.15
+MIN_VOTES = 2.60
+FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -162,42 +162,27 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 7 voters with continuous sigmoid weighting
+            # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-
-            # Vol-adaptive normalization widening for MACD and EMA slope voters
-            # In calm conditions (vol_ratio < 0.7), widen normalization by up to 1.5x
-            # This makes these voters contribute less aggressively near their thresholds in calm markets
-            _vol_widen = 1.0 + 0.5 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.4))
-
-            # RSI sigmoid widening in calm (proven: rally stability +0.0005)
-            _rsi_widen = 1.0 + 0.5 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.4))
-
-            # 7th voter: linreg R² trend confidence (R² > 0.6 = strong trend, vote in slope direction)
-            # R² is inherently stable: computed over 16 bars of HL2, single-point noise has quadratic dampening
-            _r2_val = _lr.rvalue ** 2  # R² from the existing linregress call
-            _r2_directional = _r2_val * (1.0 if _lr.slope > 0 else -1.0)  # signed by trend direction
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE * _rsi_widen),
-                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE * _vol_widen),
+                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE * _vol_widen),
-                (_r2_directional - 0.4) / (0.3 * VOTE_SIGMOID_SCALE),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE * _rsi_widen),
-                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE * _vol_widen),
+                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE * _vol_widen),
-                (-_r2_directional - 0.4) / (0.3 * VOTE_SIGMOID_SCALE),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
