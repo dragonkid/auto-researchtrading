@@ -88,10 +88,6 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.15
 
-# Per-voter deadzone: noisy voters (ret_short, EMA_cross, RSI) get clamped to 0.5
-# within this zone. Noise-immune voters (MACD, linreg, ema_slope) use full sigmoid.
-NOISY_VOTER_DEADZONE = 0.3  # deadzone for first 3 voters only
-
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -189,22 +185,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Selective deadzone: noisy voters (idx 0-2) clamp to 0.5 within deadzone
-            # Noise-immune voters (idx 3-5) use full sigmoid — preserving their signal in sideways
-            def _vote_selective(deltas):
-                total = 0.0
-                for i, d in enumerate(deltas):
-                    if i < 3 and abs(d) < NOISY_VOTER_DEADZONE:
-                        total += 0.5  # abstain
-                    else:
-                        # For noisy voters beyond deadzone, shift to start from edge
-                        if i < 3:
-                            d = d - NOISY_VOTER_DEADZONE if d > 0 else d + NOISY_VOTER_DEADZONE
-                        total += 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))
-                return total
-
-            bull_votes = _vote_selective(_voter_deltas_bull)
-            bear_votes = _vote_selective(_voter_deltas_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
