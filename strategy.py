@@ -86,7 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
-VOTE_SIGMOID_SCALE = 0.40
+VOTE_SIGMOID_SCALE = 0.42
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
