@@ -151,8 +151,8 @@ class Strategy:
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            # 2-bar endpoint average: reduces noise impact on most sensitive voter
-            _endpoint_avg = 0.75 * smoothed_closes[-1] + 0.25 * smoothed_closes[-2]
+            # 2-bar endpoint average: halves noise impact on most sensitive voter
+            _endpoint_avg = 0.6 * smoothed_closes[-1] + 0.4 * smoothed_closes[-2]
             ret_vshort = (_endpoint_avg - _med_ref_short) / _med_ref_short
             ret_short = (_endpoint_avg - _med_ref_med) / _med_ref_med
 
