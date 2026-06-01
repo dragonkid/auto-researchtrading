@@ -269,13 +269,11 @@ class Strategy:
                 if not in_cooldown and _flip_votes >= FLIP_MIN_VOTES and _flip_trend_ok:
                     # Sigmoid flip sizing: marginal flips get reduced size in calm, full in volatile
                     _flip_margin = max(0.0, _flip_votes - FLIP_MIN_VOTES)
-                    # In high vol (>1.2), flips must be full size for protection
-                    _vol_floor = min(1.0, 0.70 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6)))
-                    _flip_gate = _vol_floor + (1.0 - _vol_floor) * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 1.5))))
+                    # Mild flip gate: 80% floor (only 20% reduction for marginal flips near threshold)
+                    _flip_gate = 0.80 + 0.20 * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 1.5))))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    # Use base size with vol-scaling only (skip noisy multipliers for stable flip sizing)
-                    _flip_base = equity * BASE_POSITION_SIZE * max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85))
-                    target = (-_flip_base * _flip_gate if current_pos > 0 else _flip_base * _flip_gate) * _flip_frac
+                    # Use confidence-sized target with mild flip gate (floor 0.80 - only 20% reduction for marginal flips)
+                    target = (-_conf_size * _flip_gate if current_pos > 0 else _conf_size * _flip_gate) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
