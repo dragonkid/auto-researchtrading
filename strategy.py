@@ -23,7 +23,7 @@ MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
 # Linear regression
-LINREG_PERIOD = 16
+LINREG_PERIOD = 24
 
 # Volatility parameters
 VOL_LOOKBACK = 24
