@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Per-voter deadzone: noisy voters (ret_short, EMA_cross, RSI) get clamped to 0.5
 # within this zone. Noise-immune voters (MACD, linreg, ema_slope) use full sigmoid.
-NOISY_VOTER_DEADZONE = 0.3  # deadzone for first 3 voters only
+NOISY_VOTER_DEADZONE = 0.2  # deadzone for first 3 voters only (reduced from 0.3 to preserve bull signal)
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
