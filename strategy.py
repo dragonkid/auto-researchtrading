@@ -135,10 +135,9 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Vol-adaptive smoothing: more in calm (span~4), less in choppy (span~2)
-            # vol_ratio < 0.7 (calm): alpha=0.40 (span~4, stronger smoothing for noise immunity)
-            # vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
-            _smooth_alpha = 0.40 + 0.27 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            # Vol-adaptive smoothing: moderate in calm (span~3), less in choppy (span~2)
+            # Restore baseline smoothing — step 13 showed MORE smoothing hurts sideways
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
@@ -190,16 +189,17 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Selective deadzone: noisy voters (idx 0-2) clamp to 0.5 within deadzone
-            # Noise-immune voters (idx 3-5) use full sigmoid — preserving their signal in sideways
+            # Selective deadzone: only ret_short and EMA_cross (idx 0-1) get deadzone
+            # RSI (idx 2) is exempt — it's the mean-reversion signal critical for sideways
+            # Noise-immune voters (idx 3-5) use full sigmoid
             def _vote_selective(deltas):
                 total = 0.0
                 for i, d in enumerate(deltas):
-                    if i < 3 and abs(d) < NOISY_VOTER_DEADZONE:
+                    if i < 2 and abs(d) < NOISY_VOTER_DEADZONE:
                         total += 0.5  # abstain
                     else:
-                        # For noisy voters beyond deadzone, shift to start from edge
-                        if i < 3:
+                        # For deadzoned voters beyond edge, shift to start from edge
+                        if i < 2:
                             d = d - NOISY_VOTER_DEADZONE if d > 0 else d + NOISY_VOTER_DEADZONE
                         total += 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))
                 return total
