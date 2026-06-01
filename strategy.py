@@ -70,11 +70,10 @@ MAX_COMBINED_VOL_LOW = 0.6
 MAX_COMBINED_VOL_HIGH = 1.2
 MAX_COMBINED_TREND_BOOST = 1.0
 
-# Trend gate (continuous: no hard binary boundary)
+# Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_ALIGNMENT_SCALE = 0.012  # trend_avg magnitude at which alignment multiplier saturates
-TREND_ALIGNMENT_FLOOR = 0.50   # minimum multiplier when trend opposes (no longer hard-blocked)
+TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -220,16 +219,10 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                # Continuous trend alignment: replaces hard binary trend_avg > 0 gate
-                # alignment_bull in [FLOOR, 1.0]: 1.0 when trend strongly agrees, FLOOR when opposes
-                _trend_val = self.smoothed_trend[symbol]
-                _trend_align_bull = TREND_ALIGNMENT_FLOOR + (1.0 - TREND_ALIGNMENT_FLOOR) * max(0.0, min(1.0, _trend_val / TREND_ALIGNMENT_SCALE))
-                _trend_align_bear = TREND_ALIGNMENT_FLOOR + (1.0 - TREND_ALIGNMENT_FLOOR) * max(0.0, min(1.0, -_trend_val / TREND_ALIGNMENT_SCALE))
-
-                if bull_votes >= MIN_VOTES and bull_votes * _trend_align_bull >= MIN_VOTES:
-                    target = _conf_size * _trend_align_bull * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and bear_votes * _trend_align_bear >= MIN_VOTES:
-                    target = -_conf_size * _trend_align_bear * ENTRY_INITIAL_FRAC
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    target = _conf_size * ENTRY_INITIAL_FRAC
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -269,11 +262,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + continuous trend alignment, vol-scaled, confidence-sized)
-                _trend_val_flip = self.smoothed_trend[symbol]
-                _flip_align_bear = TREND_ALIGNMENT_FLOOR + (1.0 - TREND_ALIGNMENT_FLOOR) * max(0.0, min(1.0, -_trend_val_flip / TREND_ALIGNMENT_SCALE))
-                _flip_align_bull = TREND_ALIGNMENT_FLOOR + (1.0 - TREND_ALIGNMENT_FLOOR) * max(0.0, min(1.0, _trend_val_flip / TREND_ALIGNMENT_SCALE))
-                if not in_cooldown and ((current_pos > 0 and bear_votes * _flip_align_bear >= FLIP_MIN_VOTES) or (current_pos < 0 and bull_votes * _flip_align_bull >= FLIP_MIN_VOTES)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
