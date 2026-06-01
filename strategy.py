@@ -88,10 +88,6 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.25
 
-# Vote-sum temporal smoothing: fast EMA on vote sums for noise dampening
-# alpha=0.7 means 30% carried from previous bar (dampens 1-bar spikes by 30%)
-VOTE_EMA_ALPHA = 0.70
-
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -117,8 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.ema_bull_votes = {}
-        self.ema_bear_votes = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -191,13 +185,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            _raw_bull = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            _raw_bear = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
-            # Temporal smoothing: EMA on vote sums dampens single-bar noise by (1-alpha)
-            bull_votes = VOTE_EMA_ALPHA * _raw_bull + (1.0 - VOTE_EMA_ALPHA) * self.ema_bull_votes.get(symbol, _raw_bull)
-            bear_votes = VOTE_EMA_ALPHA * _raw_bear + (1.0 - VOTE_EMA_ALPHA) * self.ema_bear_votes.get(symbol, _raw_bear)
-            self.ema_bull_votes[symbol] = bull_votes
-            self.ema_bear_votes[symbol] = bear_votes
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
