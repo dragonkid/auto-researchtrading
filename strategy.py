@@ -25,6 +25,10 @@ MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 # Linear regression
 LINREG_PERIOD = 16
 
+# Funding rate voter (contrarian: high funding = crowded, expect mean-reversion)
+FUNDING_LOOKBACK = 8  # 8 bars = ~8 hours of funding data averaged
+FUNDING_THRESHOLD = 0.0001  # neutral zone: abs(avg_funding) < this = abstain
+
 # Volatility parameters
 VOL_LOOKBACK = 24
 VOL_SHORT_LOOKBACK = 12
@@ -78,10 +82,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
+# Vote / cooldown (7 voters: 6 original + funding rate contrarian)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.8
-FLIP_MIN_VOTES = 2.8
+MIN_VOTES = 3.3
+FLIP_MIN_VOTES = 3.3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -167,7 +171,16 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
+            # Funding rate: contrarian signal (noise-immune — not derived from close price)
+            # Positive funding = longs pay shorts (crowded long → bearish contrarian)
+            # Negative funding = shorts pay longs (crowded short → bullish contrarian)
+            _funding_vals = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
+            _avg_funding = np.mean(_funding_vals[~np.isnan(_funding_vals)]) if len(_funding_vals) > 0 else 0.0
+            if np.isnan(_avg_funding):
+                _avg_funding = 0.0
+
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
+            # 7 voters: 6 original + funding rate contrarian
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
@@ -175,6 +188,7 @@ class Strategy:
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-_avg_funding - FUNDING_THRESHOLD) / (FUNDING_THRESHOLD * VOTE_SIGMOID_SCALE),  # contrarian: negative funding = bullish
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -183,6 +197,7 @@ class Strategy:
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (_avg_funding - FUNDING_THRESHOLD) / (FUNDING_THRESHOLD * VOTE_SIGMOID_SCALE),  # contrarian: positive funding = bearish
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
