@@ -103,7 +103,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
+ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (more commitment, less scale-in noise)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
@@ -133,7 +133,7 @@ class Strategy:
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
-            _smooth_alpha = 0.45 + 0.22 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
