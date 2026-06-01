@@ -86,7 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
-VOTE_SIGMOID_SCALE = 0.17
+VOTE_SIGMOID_SCALE = 0.15
 
 # Per-voter deadzone: noisy voters (ret_short, EMA_cross, RSI) get clamped to 0.5
 # within this zone. Noise-immune voters (MACD, linreg, ema_slope) use full sigmoid.
@@ -135,9 +135,10 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
-            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
-            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            # Vol-adaptive smoothing: more in calm (span~4), less in choppy (span~2)
+            # vol_ratio < 0.7 (calm): alpha=0.40 (span~4, stronger smoothing for noise immunity)
+            # vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
+            _smooth_alpha = 0.40 + 0.27 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
