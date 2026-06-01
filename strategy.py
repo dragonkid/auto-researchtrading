@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Per-voter deadzone: noisy voters (ret_short, EMA_cross, RSI) get clamped to 0.5
 # within this zone. Noise-immune voters (MACD, linreg, ema_slope) use full sigmoid.
-NOISY_VOTER_DEADZONE = 0.2  # deadzone for first 3 voters (crash noise filtering)
+NOISY_VOTER_DEADZONE = 0.0  # DISABLED for this test — isolate initial_frac effect
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
@@ -107,8 +107,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (back to baseline)
-ENTRY_FULL_BARS = 3  # bars to reach full position (slower = more confirmation before full commitment)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (reduced from 0.55 for stability + DD safety)
+ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
 
