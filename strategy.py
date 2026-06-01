@@ -42,10 +42,11 @@ TREND_THRESHOLD_DECAY = 0.14       # abs(ret_long) at which reduction saturates
 RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
-# Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
-HOLD_DECAY_START = 6   # bars after which exit pressure begins
-HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
-MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
+# Exit parameters (continuous pressure + slope + peak-profit + stop-loss)
+HOLD_PRESSURE_CENTER = 8.0  # sigmoid center: 50% pressure at this bar count
+HOLD_PRESSURE_SCALE = 2.5   # sigmoid steepness (wider = smoother transition)
+HOLD_SLOPE_EXTEND = 3.0     # center shift when slope strongly agrees with position
+HOLD_EXIT_THRESHOLD = 0.85  # pressure level at which exit fires (< 1.0 = never reaches hard cutoff)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -252,14 +253,15 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Momentum-decay exit (soft time pressure, slope-extended)
-                if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Slope agreement: does linreg slope support position direction?
+                # Continuous pressure exit (sigmoid replaces hard bar thresholds)
+                if target != 0:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
-                    # Extra hold time when slope strongly agrees
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                    if bars_held >= _effective_max:
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
+                    # Shift center later when slope agrees (hold longer in trends)
+                    _pressure_center = HOLD_PRESSURE_CENTER + HOLD_SLOPE_EXTEND * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    # Continuous sigmoid pressure: 0 at early bars, ~1 at late bars
+                    _exit_pressure = 1.0 / (1.0 + np.exp(-((bars_held - _pressure_center) / HOLD_PRESSURE_SCALE)))
+                    if _exit_pressure > HOLD_EXIT_THRESHOLD:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
