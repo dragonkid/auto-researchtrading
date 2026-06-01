@@ -94,8 +94,8 @@ NOISY_VOTER_DEADZONE = 0.2  # deadzone for first 3 voters (crash noise filtering
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.40  # wider transition for stability (was 0.35)
-ENTRY_GATE_FLOOR = 0.45  # higher floor to compensate for wider scale's raw reduction (was 0.40)
+ENTRY_GATE_SCALE = 0.42  # wider transition for stability (was 0.35)
+ENTRY_GATE_FLOOR = 0.47  # higher floor to compensate for wider scale's raw reduction (was 0.40)
 
 
 def ema(values, span):
