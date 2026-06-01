@@ -241,10 +241,17 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Continuous linreg exit: smooth ramp from full position to exit over slope range
+                # Instead of binary exit at threshold, position decays linearly from threshold to 2x threshold
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
-                    target = 0.0
+                _exit_slope_range = _exit_slope_thresh * 1.0  # exit completes at 2x threshold
+                if target != 0:
+                    _slope_for_exit = -_lr.slope if current_pos > 0 else _lr.slope
+                    if _slope_for_exit > _exit_slope_thresh:
+                        _exit_frac = min(1.0, (_slope_for_exit - _exit_slope_thresh) / _exit_slope_range)
+                        target = target * (1.0 - _exit_frac)
+                        if abs(target) < 1.0:
+                            target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
