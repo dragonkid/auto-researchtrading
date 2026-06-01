@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.62
+MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -242,7 +242,7 @@ class Strategy:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _exit_slope_thresh = 0.0004 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
