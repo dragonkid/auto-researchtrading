@@ -54,7 +54,6 @@ PEAK_PROFIT_GIVEBACK = 0.25
 BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
-CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
 VOL_CONFIRM_BASE = 24
@@ -166,9 +165,9 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Vol-adaptive normalization widening for noise reduction in calm markets
+            # Vol-adaptive normalization widening: MACD and RSI get wider normalization in calm markets
+            # This makes them less sensitive to small fluctuations when vol is low (sideways bottleneck)
             _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.5))  # 1.0 at vol>=0.8, up to 1.4 at vol<=0.3
-            _ema_vol_widen = 1.0 + 0.6 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.5))  # stronger for EMA slope: up to 1.6x
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
@@ -177,7 +176,7 @@ class Strategy:
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE * _ema_vol_widen),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE * _vol_widen),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -185,7 +184,7 @@ class Strategy:
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE * _ema_vol_widen),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE * _vol_widen),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
@@ -204,7 +203,7 @@ class Strategy:
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
@@ -214,17 +213,19 @@ class Strategy:
             # Vote-margin sizing: hard entry gate + smooth position scaling above threshold
             # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
             # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
+            # Vol-adaptive entry threshold: higher consensus required in calm markets (more noise-sensitive)
+            _min_votes_eff = MIN_VOTES + 0.03 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.5))
             # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
-            _margin_above = max(0.0, _active_votes - MIN_VOTES)
+            _margin_above = max(0.0, _active_votes - _min_votes_eff)
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= _min_votes_eff and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= _min_votes_eff and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
