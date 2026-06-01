@@ -85,11 +85,8 @@ FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Confidence-weighted signal fusion (replaces sigmoid voting)
-# Each voter contributes tanh(delta) with self-weighting: boundary voters suppress themselves
-VOTE_SIGMOID_SCALE = 0.25  # controls transition sharpness (still used for delta normalization)
-CONF_ENTRY_THRESH = 0.38  # confidence threshold for entry (replaces MIN_VOTES)
-CONF_FLIP_THRESH = 0.52  # confidence threshold for flip (replaces FLIP_MIN_VOTES)
+# Sigmoid voting scale (wider = gentler per-voter transition for stability)
+VOTE_SIGMOID_SCALE = 0.25
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
@@ -188,15 +185,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Confidence-weighted fusion: tanh saturates contribution, |tanh| self-weights
-            # Voters near boundary (delta~0) contribute ~0 weight AND ~0 signal
-            # Voters far from boundary contribute full weight with saturated signal
-            _bull_conf = sum(np.tanh(max(-4.0, min(4.0, d))) for d in _voter_deltas_bull) / 6.0
-            _bear_conf = sum(np.tanh(max(-4.0, min(4.0, d))) for d in _voter_deltas_bear) / 6.0
-
-            # Map confidence to equivalent vote scale for compatibility with sizing/gate logic
-            bull_votes = MIN_VOTES + (_bull_conf - CONF_ENTRY_THRESH) / (1.0 - CONF_ENTRY_THRESH) * (6.0 - MIN_VOTES) if _bull_conf > 0 else 0.0
-            bear_votes = MIN_VOTES + (_bear_conf - CONF_ENTRY_THRESH) / (1.0 - CONF_ENTRY_THRESH) * (6.0 - MIN_VOTES) if _bear_conf > 0 else 0.0
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -272,9 +262,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (confidence + trend_avg sign, vol-scaled, confidence-sized)
-                _flip_thresh_votes = MIN_VOTES + (CONF_FLIP_THRESH - CONF_ENTRY_THRESH) / (1.0 - CONF_ENTRY_THRESH) * (6.0 - MIN_VOTES)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_thresh_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_thresh_votes and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
