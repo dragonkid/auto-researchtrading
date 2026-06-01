@@ -78,10 +78,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (5 voters: EMA slope removed as redundant with linreg)
+# Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.15
-FLIP_MIN_VOTES = 2.40
+MIN_VOTES = 2.60
+FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -168,13 +168,13 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # 5 voters: ret_short, EMA cross, RSI, MACD, linreg slope (EMA slope removed)
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -182,6 +182,7 @@ class Strategy:
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
