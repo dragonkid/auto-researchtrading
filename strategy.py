@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
 ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES
 
 
@@ -172,25 +172,22 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter sigmoid scales: moderate differentiation for noise/signal balance
-            # ret_short (voter 0): noise handled by vol-conditional endpoint → keep base scale
-            # EMA_cross (voter 1), RSI (voter 2): single-point sensitive → slightly wider
-            # MACD/linreg/ema_slope (voters 3-5): multi-bar, inherently stable → slightly steeper
+            # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * 0.18, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * 0.18),
-                (_macd_hist - 0.0003) / (0.0003 * 0.12),
-                (_lr.slope - 0.00015) / (0.00015 * 0.12),
-                (_ema_slope_val - 0.0006) / (0.0006 * 0.12),
+                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
+                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * 0.18, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * 0.18),
-                (-_macd_hist - 0.0003) / (0.0003 * 0.12),
-                (-_lr.slope - 0.00015) / (0.00015 * 0.12),
-                (-_ema_slope_val - 0.0006) / (0.0006 * 0.12),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
+                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
