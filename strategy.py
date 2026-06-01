@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.055
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -88,10 +88,10 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.15
 
-# Entry gate: soft sigmoid replaces hard MIN_VOTES threshold
-# Center at MIN_VOTES, scale determines how soft the boundary is
-ENTRY_GATE_SCALE = 0.20  # votes units; narrower = sharper transition (less weak entry leakage)
-ENTRY_GATE_MIN = 0.40  # minimum gate value to actually enter (blocks votes < ~2.6)
+# Entry gate: sigmoid-based position scaling above MIN_VOTES
+# Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
+ENTRY_GATE_SCALE = 0.25  # how quickly sizing grows above threshold
+ENTRY_GATE_FLOOR = 0.55  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -208,18 +208,20 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Continuous entry sizing: soft sigmoid gate replaces hard MIN_VOTES threshold
-            # Entry size scales continuously from ~0 (far below threshold) to full (far above)
-            # This eliminates the binary decision boundary that causes noise sensitivity
+            # Vote-margin sizing: hard entry gate + smooth position scaling above threshold
+            # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
+            # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
+            # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
-            _entry_gate = 1.0 / (1.0 + np.exp(-((_active_votes - MIN_VOTES) / ENTRY_GATE_SCALE)))
-            _vote_conf = VOTE_CONFIDENCE_MIN + (1.0 - VOTE_CONFIDENCE_MIN) * max(0.0, min(1.0, (_active_votes - MIN_VOTES) / (6.0 - MIN_VOTES)))
-            _conf_size = size * _vote_conf * _entry_gate
+            _margin_above = max(0.0, _active_votes - MIN_VOTES)
+            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
+            _vote_conf = _gate_sizing
+            _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes > bear_votes and _entry_gate >= ENTRY_GATE_MIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes > bull_votes and _entry_gate >= ENTRY_GATE_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -261,12 +263,9 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                # Use soft gate for flip too: must have sufficient opposing vote strength
-                _flip_votes = bear_votes if current_pos > 0 else bull_votes
-                _flip_gate = 1.0 / (1.0 + np.exp(-((_flip_votes - FLIP_MIN_VOTES) / ENTRY_GATE_SCALE)))
-                if not in_cooldown and _flip_gate >= ENTRY_GATE_MIN and ((current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac * _flip_gate
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
