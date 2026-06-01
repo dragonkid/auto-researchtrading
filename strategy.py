@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.39  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.37  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -174,11 +174,9 @@ class Strategy:
             _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (1.1 - vol_ratio) / 0.7))
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # EMA cross gets milder widening (0.5x coefficient) since it's faster/more useful
-            _ema_cross_widen = 1.0 + 0.2 * max(0.0, min(1.0, (1.1 - vol_ratio) / 0.7))
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE * _ema_cross_widen, 1e-10),
+                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -186,7 +184,7 @@ class Strategy:
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE * _ema_cross_widen, 1e-10),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE * _vol_widen),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
