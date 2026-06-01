@@ -87,9 +87,6 @@ COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.30
-# Soft abstain: widen sigmoid near decision boundary (delta~0) for noise immunity
-ABSTAIN_MULT = 1.5   # how much wider near boundary (1.5 = 2.5x total scale at delta=0)
-ABSTAIN_WIDTH = 1.5  # how far from boundary the widening extends (in normalized delta units)
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
@@ -188,16 +185,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Apply soft abstain: widen sigmoid near decision boundary for noise immunity
-            # Near delta=0, effective scale is 2.5x wider → votes pushed toward 0.5
-            def _soft_vote(d):
-                _abs_d = abs(d)
-                _widen = 1.0 + ABSTAIN_MULT * np.exp(-(_abs_d * _abs_d) / (ABSTAIN_WIDTH * ABSTAIN_WIDTH))
-                _eff_d = d / _widen
-                return 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, _eff_d))))
-
-            bull_votes = sum(_soft_vote(d) for d in _voter_deltas_bull)
-            bear_votes = sum(_soft_vote(d) for d in _voter_deltas_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
