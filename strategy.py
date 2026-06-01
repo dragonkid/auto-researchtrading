@@ -113,6 +113,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.smoothed_exit_slope = {}  # EMA-smoothed linreg slope for exit decisions
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -241,9 +242,14 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit with EMA-smoothed slope (reduces exit noise sensitivity)
+                # Smooth the exit slope to require sustained adverse direction before triggering
+                _exit_alpha = 0.4  # balance between responsiveness and noise immunity
+                _prev_slope = self.smoothed_exit_slope.get(symbol, _lr.slope)
+                _smooth_slope = _exit_alpha * _lr.slope + (1.0 - _exit_alpha) * _prev_slope
+                self.smoothed_exit_slope[symbol] = _smooth_slope
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _smooth_slope < -_exit_slope_thresh) or (current_pos < 0 and _smooth_slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -254,9 +260,9 @@ class Strategy:
 
                 # Momentum-decay exit (soft time pressure, slope-extended)
                 if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Slope agreement: does linreg slope support position direction?
-                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
+                    # Slope agreement: use smoothed slope for consistency with exit logic
+                    _slope_agrees = (_smooth_slope > 0 and current_pos > 0) or (_smooth_slope < 0 and current_pos < 0)
+                    _slope_strength = min(1.0, abs(_smooth_slope) / 0.0006)  # normalized slope magnitude
                     # Extra hold time when slope strongly agrees
                     _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                     if bars_held >= _effective_max:
