@@ -229,8 +229,6 @@ class Strategy:
                     target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
-                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -243,10 +241,8 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Vol-adaptive stop-loss: wider (more lenient) in calm markets only
-                # calm (vol<0.5): -0.030 (6% wider), moderate-to-high (vol>0.8): -0.024 (unchanged)
-                _stop_widen = -0.006 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.3))
-                if pos_pnl < STOP_LOSS_PCT + _stop_widen:
+                # Stop-loss exit (noise-immune: anchored to entry_price)
+                if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
