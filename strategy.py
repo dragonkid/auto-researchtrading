@@ -262,10 +262,17 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: sigmoid-gated sizing + trend margin (reduce noise at boundaries)
+                # Trend margin: require trend_avg to exceed a minimum magnitude (not just sign)
+                _trend_margin = 0.003  # trend_avg must exceed this to confirm flip direction
+                _flip_trend_ok = (current_pos > 0 and trend_avg < -_trend_margin) or (current_pos < 0 and trend_avg > _trend_margin)
+                _flip_votes = bear_votes if current_pos > 0 else bull_votes
+                if not in_cooldown and _flip_votes >= FLIP_MIN_VOTES and _flip_trend_ok:
+                    # Sigmoid flip sizing: weak flips get smaller positions (noise immunity at boundary)
+                    _flip_margin = max(0.0, _flip_votes - FLIP_MIN_VOTES)
+                    _flip_gate = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 2.0))))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
+                    target = (-_conf_size * _flip_gate if current_pos > 0 else _conf_size * _flip_gate) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
