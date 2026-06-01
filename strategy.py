@@ -50,6 +50,10 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
+# Sigmoid exit gate: smooth exit probability instead of hard threshold
+EXIT_SLOPE_SIGMOID_SCALE = 0.30  # wider = more gradual exit transition (stability)
+EXIT_SLOPE_BASE_THRESH = 0.0004  # base threshold shifted up slightly for noise buffer
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
@@ -241,10 +245,14 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
-                    target = 0.0
+                # Sigmoid-gated linreg exit: smooth transition instead of hard threshold
+                _exit_slope_thresh = EXIT_SLOPE_BASE_THRESH + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                if target != 0:
+                    _slope_against = (-_lr.slope if current_pos > 0 else _lr.slope)
+                    _exit_delta = (_slope_against - _exit_slope_thresh) / max(_exit_slope_thresh * EXIT_SLOPE_SIGMOID_SCALE, 1e-10)
+                    _exit_prob = 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, _exit_delta))))
+                    if _exit_prob > 0.65:  # exit when sigmoid confidence exceeds threshold
+                        target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
