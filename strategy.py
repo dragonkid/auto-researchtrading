@@ -92,7 +92,8 @@ VOTE_SIGMOID_SCALE = 0.15
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (baseline)
 ENTRY_GATE_FLOOR = 0.40  # baseline floor
-ENTRY_GATE_CENTER = 2.15  # sigmoid center (slightly above baseline 2.0)
+ENTRY_GATE_CENTER_BASE = 2.0  # sigmoid center base (higher = more conservative sizing)
+ENTRY_GATE_CENTER_VOL_BOOST = 0.4  # extra center in low-vol (sideways) for noise protection
 
 
 def ema(values, span):
@@ -215,7 +216,10 @@ class Strategy:
             # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
-            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - ENTRY_GATE_CENTER))))
+            # Vol-adaptive center: higher in calm (more conservative) for noise protection
+            _vol_center_factor = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5))  # 1.0 when vol_ratio<=0.5, 0.0 when vol_ratio>=1.0
+            _gate_center = ENTRY_GATE_CENTER_BASE + ENTRY_GATE_CENTER_VOL_BOOST * _vol_center_factor
+            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - _gate_center))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
