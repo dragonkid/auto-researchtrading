@@ -89,9 +89,10 @@ COOLDOWN_TREND_DECAY = 0.06
 VOTE_SIGMOID_SCALE = 0.25
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
-# Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES
+# Steep gate: borderline entries get VERY small size (stability) while confident entries get full size (raw)
+# This breaks the Pareto trap by targeting sizing reduction specifically at noise-boundary entries
+ENTRY_GATE_SCALE = 0.18  # steep ramp: transitions quickly from floor to full
+ENTRY_GATE_FLOOR = 0.28  # very low floor for noise-marginal entries
 
 
 def ema(values, span):
