@@ -93,7 +93,7 @@ VOTE_SIGMOID_SCALE = 0.15
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (baseline)
 ENTRY_GATE_FLOOR = 0.40  # baseline floor
 ENTRY_GATE_CENTER_BASE = 2.0  # sigmoid center base (higher = more conservative sizing)
-ENTRY_GATE_CENTER_VOL_BOOST = 0.25  # extra center in low-vol (sideways) for noise protection
+ENTRY_GATE_CENTER_VOL_BOOST = 0.4  # extra center in low-vol (sideways) for noise protection
 
 
 def ema(values, span):
