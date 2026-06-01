@@ -108,11 +108,18 @@ ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
+# Per-voter hysteresis: once activated (sigmoid>HYST_ON), stays active until sigmoid<HYST_OFF
+HYST_ON = 0.60   # activation threshold (sigmoid output)
+HYST_OFF = 0.40  # deactivation threshold
+
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.voter_state_bull = {}  # {symbol: [bool]*6} per-voter active state
+        self.voter_state_bear = {}  # {symbol: [bool]*6}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -185,8 +192,34 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Compute raw sigmoid values per voter
+            _bull_sigs = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
+            _bear_sigs = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
+
+            # Apply hysteresis: use stored state to determine effective vote
+            _prev_bull = self.voter_state_bull.get(symbol, [False] * 6)
+            _prev_bear = self.voter_state_bear.get(symbol, [False] * 6)
+            _new_bull_state = []
+            _new_bear_state = []
+            bull_votes = 0.0
+            bear_votes = 0.0
+            for _vi in range(6):
+                # Bull voter hysteresis
+                if _prev_bull[_vi]:
+                    _b_active = _bull_sigs[_vi] >= HYST_OFF
+                else:
+                    _b_active = _bull_sigs[_vi] >= HYST_ON
+                _new_bull_state.append(_b_active)
+                bull_votes += _bull_sigs[_vi] if _b_active else min(_bull_sigs[_vi], HYST_OFF)
+                # Bear voter hysteresis
+                if _prev_bear[_vi]:
+                    _br_active = _bear_sigs[_vi] >= HYST_OFF
+                else:
+                    _br_active = _bear_sigs[_vi] >= HYST_ON
+                _new_bear_state.append(_br_active)
+                bear_votes += _bear_sigs[_vi] if _br_active else min(_bear_sigs[_vi], HYST_OFF)
+            self.voter_state_bull[symbol] = _new_bull_state
+            self.voter_state_bear[symbol] = _new_bear_state
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
