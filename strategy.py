@@ -241,20 +241,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Slope-persistence linreg exit: require 2-of-3 overlapping windows to confirm adverse slope
-                # This prevents single-bar noise from triggering premature exits
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _lr_cur = _lr.slope  # bars [-16:]
-                _lr_lag1 = linregress(np.arange(LINREG_PERIOD), np.log(_hl2[-(LINREG_PERIOD+1):-1])).slope  # bars [-17:-1]
-                _lr_lag2 = linregress(np.arange(LINREG_PERIOD), np.log(_hl2[-(LINREG_PERIOD+2):-2])).slope  # bars [-18:-2]
-                if target != 0:
-                    if current_pos > 0:
-                        _adverse_count = int(_lr_cur < -_exit_slope_thresh) + int(_lr_lag1 < -_exit_slope_thresh) + int(_lr_lag2 < -_exit_slope_thresh)
-                    else:
-                        _adverse_count = int(_lr_cur > _exit_slope_thresh) + int(_lr_lag1 > _exit_slope_thresh) + int(_lr_lag2 > _exit_slope_thresh)
-                    if _adverse_count >= 2:
-                        target = 0.0
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
