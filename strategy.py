@@ -273,8 +273,7 @@ class Strategy:
                     _vol_floor = min(1.0, 0.70 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6)))
                     _flip_gate = _vol_floor + (1.0 - _vol_floor) * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 1.5))))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    # Use raw size for flips (not confidence-reduced) — flips are protective, need full size
-                    target = (-size * _flip_gate if current_pos > 0 else size * _flip_gate) * _flip_frac
+                    target = (-_conf_size * _flip_gate if current_pos > 0 else _conf_size * _flip_gate) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
