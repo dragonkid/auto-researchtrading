@@ -171,7 +171,7 @@ class Strategy:
             # in calm-to-moderate markets. Two-segment linear: max 1.4x at vol<0.4,
             # tapering to 1.0 at vol=1.1 (covers rally's typical ~0.8-1.0 range).
             # Does NOT touch linreg or ret_short (already multi-bar aggregated).
-            _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (1.1 - vol_ratio) / 0.7))
+            _vol_widen = 1.0 + 0.5 * max(0.0, min(1.0, (1.1 - vol_ratio) / 0.7))
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
