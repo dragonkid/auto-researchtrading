@@ -92,6 +92,10 @@ VOTE_SIGMOID_SCALE = 0.15
 # within this zone. Noise-immune voters (MACD, linreg, ema_slope) use full sigmoid.
 NOISY_VOTER_DEADZONE = 0.2  # deadzone for first 3 voters only (optimal from step 2)
 
+# Per-voter sigmoid scales: wider for noisy voters, steeper for noise-immune
+# This stacks with deadzone: deadzone handles near-threshold, scales handle transition slope
+VOTER_SCALES = [0.22, 0.22, 0.22, 0.11, 0.11, 0.11]  # noisy: wider, stable: steeper
+
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -107,7 +111,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.45  # first bar: 45% of target (reduced for stability — less noise exposure on entry bar)
+ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
@@ -171,22 +175,22 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter: (signal_value - threshold) normalized by voter-specific scale
+            # Per-voter: (signal_value - threshold) normalized by per-voter scale
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
-                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (ret_short - dyn_threshold) / max(dyn_threshold * VOTER_SCALES[0], 1e-10),
+                (_ef - _es) / max(abs(_es) * 0.001 * VOTER_SCALES[1], 1e-10),
+                (rsi - _rsi_thresh) / (3.0 * VOTER_SCALES[2]),
+                (_macd_hist - 0.0003) / (0.0003 * VOTER_SCALES[3]),
+                (_lr.slope - 0.00015) / (0.00015 * VOTER_SCALES[4]),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTER_SCALES[5]),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
-                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTER_SCALES[0], 1e-10),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTER_SCALES[1], 1e-10),
+                (-rsi + _rsi_thresh) / (3.0 * VOTER_SCALES[2]),
+                (-_macd_hist - 0.0003) / (0.0003 * VOTER_SCALES[3]),
+                (-_lr.slope - 0.00015) / (0.00015 * VOTER_SCALES[4]),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTER_SCALES[5]),
             ]
 
             # Selective deadzone: noisy voters (idx 0-2) clamp to 0.5 within deadzone
