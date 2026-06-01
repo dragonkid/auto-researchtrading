@@ -24,7 +24,6 @@ MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
 # Linear regression
 LINREG_PERIOD = 16
-LINREG_EXIT_PERIOD = 24  # longer window for exit slope (more noise-immune)
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -146,7 +145,6 @@ class Strategy:
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-            _lr_exit = linregress(np.arange(LINREG_EXIT_PERIOD), np.log((bd.history["high"].values[-LINREG_EXIT_PERIOD:] + bd.history["low"].values[-LINREG_EXIT_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -243,9 +241,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit using LONGER window (24-bar) for noise immunity
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr_exit.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr_exit.slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -254,11 +252,11 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Momentum-decay exit (soft time pressure, slope-extended) using exit linreg
+                # Momentum-decay exit (soft time pressure, slope-extended)
                 if target != 0 and bars_held > HOLD_DECAY_START:
                     # Slope agreement: does linreg slope support position direction?
-                    _slope_agrees = (_lr_exit.slope > 0 and current_pos > 0) or (_lr_exit.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr_exit.slope) / 0.0006)  # normalized slope magnitude
+                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
                     # Extra hold time when slope strongly agrees
                     _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                     if bars_held >= _effective_max:
