@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.060
+BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -172,26 +172,25 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter sigmoid scales: targeted wider scale only for voters NOT already noise-reduced
+            # Per-voter sigmoid scales: moderate differentiation for noise/signal balance
             # ret_short (voter 0): noise handled by vol-conditional endpoint → keep base scale
-            # EMA_cross (voter 1): single-point sensitive, no other noise reduction → wider
-            # RSI (voter 2): short-window sensitive → wider
-            # MACD/linreg/ema_slope (voters 3-5): multi-bar, inherently stable → steeper
+            # EMA_cross (voter 1), RSI (voter 2): single-point sensitive → slightly wider
+            # MACD/linreg/ema_slope (voters 3-5): multi-bar, inherently stable → slightly steeper
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * 0.22, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * 0.22),
-                (_macd_hist - 0.0003) / (0.0003 * 0.11),
-                (_lr.slope - 0.00015) / (0.00015 * 0.11),
-                (_ema_slope_val - 0.0006) / (0.0006 * 0.11),
+                (_ef - _es) / max(abs(_es) * 0.001 * 0.18, 1e-10),
+                (rsi - _rsi_thresh) / (3.0 * 0.18),
+                (_macd_hist - 0.0003) / (0.0003 * 0.12),
+                (_lr.slope - 0.00015) / (0.00015 * 0.12),
+                (_ema_slope_val - 0.0006) / (0.0006 * 0.12),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * 0.22, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * 0.22),
-                (-_macd_hist - 0.0003) / (0.0003 * 0.11),
-                (-_lr.slope - 0.00015) / (0.00015 * 0.11),
-                (-_ema_slope_val - 0.0006) / (0.0006 * 0.11),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * 0.18, 1e-10),
+                (-rsi + _rsi_thresh) / (3.0 * 0.18),
+                (-_macd_hist - 0.0003) / (0.0003 * 0.12),
+                (-_lr.slope - 0.00015) / (0.00015 * 0.12),
+                (-_ema_slope_val - 0.0006) / (0.0006 * 0.12),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
