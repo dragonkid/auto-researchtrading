@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.062
+BASE_POSITION_SIZE = 0.057
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
 MIN_VOTES = 2.8
-FLIP_MIN_VOTES = 3.2
+FLIP_MIN_VOTES = 2.8
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -262,11 +262,14 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, confidence-sized via entry gate)
-                # Entry gate already attenuates borderline positions — no additional flip gate needed
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: sigmoid-gated sizing (reduce noise at vote boundary)
+                _flip_votes = bear_votes if current_pos > 0 else bull_votes
+                _flip_trend_ok = (current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)
+                if not in_cooldown and _flip_votes >= FLIP_MIN_VOTES and _flip_trend_ok:
+                    _flip_margin = max(0.0, _flip_votes - FLIP_MIN_VOTES)
+                    _flip_gate = 0.70 + 0.30 * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 1.5))))
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
+                    target = (-_conf_size * _flip_gate if current_pos > 0 else _conf_size * _flip_gate) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
