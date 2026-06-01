@@ -174,7 +174,7 @@ class Strategy:
             _macd_norm = 0.0003 * VOTE_SIGMOID_SCALE * _vol_widen
             _ema_slope_norm = 0.0006 * VOTE_SIGMOID_SCALE * _vol_widen
             # RSI normalization also vol-adaptive: wider in calm for less boundary sensitivity
-            _rsi_norm = (3.0 + 0.5 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))) * VOTE_SIGMOID_SCALE
+            _rsi_norm = (3.0 + 0.8 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))) * VOTE_SIGMOID_SCALE
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
