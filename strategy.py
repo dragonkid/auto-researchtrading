@@ -241,12 +241,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: requires EMA slope confirmation (dual-signal exit)
-                # Linreg slope (16-bar curvature) must agree with EMA slope (22-bar trend change)
-                # This eliminates exits triggered by single-signal noise at the linreg boundary
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _ema_slope_adverse = (_ema_slope_val < -0.0002 and current_pos > 0) or (_ema_slope_val > 0.0002 and current_pos < 0)
-                if target != 0 and _ema_slope_adverse and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
