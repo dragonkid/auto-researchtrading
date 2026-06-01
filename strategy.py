@@ -88,6 +88,11 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.25
 
+# Voter weight tiers: stable signals get higher weight, noisy signals get lower weight
+# Order: ret_short, EMA_cross, RSI, MACD, linreg_slope, EMA_slope
+# Stable (linreg, EMA_slope, EMA_cross) = 1.15x; Noisy (ret_short, RSI, MACD) = 0.85x
+VOTER_WEIGHTS = [0.85, 1.15, 0.85, 0.85, 1.15, 1.15]  # sum=6.0 (unchanged total)
+
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -185,8 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            bull_votes = sum(w / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for w, d in zip(VOTER_WEIGHTS, _voter_deltas_bull))
+            bear_votes = sum(w / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for w, d in zip(VOTER_WEIGHTS, _voter_deltas_bear))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
