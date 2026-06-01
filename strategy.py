@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.30
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_SCALE = 0.34  # slightly steeper for raw recovery
 ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES
 
 
@@ -103,7 +103,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.52  # first bar: 52% of target (maximum noise reduction within raw budget)
+ENTRY_INITIAL_FRAC = 0.525  # first bar: 52.5% of target (calibrated noise reduction)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 
 
