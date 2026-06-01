@@ -170,7 +170,7 @@ class Strategy:
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD + EMA slope use vol-adaptive wider normalization: more widening in calm (stability)
             # less widening in high-vol (preserve crash responsiveness)
-            _vol_widen = 1.0 + 0.5 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))  # 1.0x at vol>=1.3, 1.5x at vol<=0.5
+            _vol_widen = 1.0 + 0.6 * max(0.0, min(1.0, (1.5 - vol_ratio) / 1.0))  # 1.0x at vol>=1.5, 1.6x at vol<=0.5
             _macd_norm = 0.0003 * VOTE_SIGMOID_SCALE * _vol_widen
             _ema_slope_norm = 0.0006 * VOTE_SIGMOID_SCALE * _vol_widen
             _voter_deltas_bull = [
