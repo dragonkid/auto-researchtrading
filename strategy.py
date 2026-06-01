@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.30
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.34  # slightly steeper for raw recovery
+ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
 ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES
 
 
@@ -168,7 +168,7 @@ class Strategy:
 
             # Vol-adaptive normalization widening: MACD and RSI get wider normalization in calm markets
             # This makes them less sensitive to small fluctuations when vol is low (sideways bottleneck)
-            _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.5))  # 1.0 at vol>=0.8, up to 1.4 at vol<=0.3
+            _vol_widen = 1.0 + 0.35 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.6))  # 1.0 at vol>=1.0, up to 1.35 at vol<=0.4
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
