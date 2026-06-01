@@ -151,9 +151,11 @@ class Strategy:
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            # Use 2-bar mean of most recent smoothed values instead of single endpoint
-            # This halves the noise contribution of close[-1] (from 100% to ~50% via smoothing + avg)
-            _endpoint = (smoothed_closes[-1] + smoothed_closes[-2]) * 0.5
+            # Vol-conditional endpoint: blend 2-bar mean (noise-immune) with single point (responsive)
+            # High vol (>1.0): favor 2-bar mean (noise reduction matters, fast moves make lag negligible)
+            # Low vol (<0.7): favor single point (responsiveness matters in choppy/sideways)
+            _avg_weight = max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))  # 0 at vol<=0.7, 1 at vol>=1.3
+            _endpoint = smoothed_closes[-1] * (1.0 - _avg_weight * 0.5) + smoothed_closes[-2] * (_avg_weight * 0.5)
             ret_vshort = (_endpoint - _med_ref_short) / _med_ref_short
             ret_short = (_endpoint - _med_ref_med) / _med_ref_med
 
