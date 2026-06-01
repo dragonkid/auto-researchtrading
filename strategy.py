@@ -262,16 +262,11 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: drawdown-adaptive gate (full size when protecting, attenuated when profitable)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_votes = bear_votes if current_pos > 0 else bull_votes
-                    _flip_margin = max(0.0, _flip_votes - FLIP_MIN_VOTES)
-                    # When in drawdown (pos_pnl < -1.5%), flip at full size for protection
-                    # When profitable, apply noise-reducing gate (floor 0.70)
-                    _in_drawdown = pos_pnl < -0.015
-                    _flip_gate = 1.0 if _in_drawdown else 0.70 + 0.30 * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 1.5))))
+                # Flip mechanism: with anti-whipsaw cooldown (prevent rapid flip oscillation)
+                _flip_cooldown = (self.bar_count - self.entry_bar.get(symbol, 0)) < 2  # min 2 bars before flip
+                if not in_cooldown and not _flip_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-_conf_size * _flip_gate if current_pos > 0 else _conf_size * _flip_gate) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
