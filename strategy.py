@@ -168,9 +168,9 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # MACD and EMA slope use 2x wider normalization (uncertainty zone) to reduce noise sensitivity
-            _macd_norm = 0.0003 * VOTE_SIGMOID_SCALE * 2.0
-            _ema_slope_norm = 0.0006 * VOTE_SIGMOID_SCALE * 2.0
+            # MACD and EMA slope use wider normalization (uncertainty zone) to reduce noise sensitivity
+            _macd_norm = 0.0003 * VOTE_SIGMOID_SCALE * 1.5
+            _ema_slope_norm = 0.0006 * VOTE_SIGMOID_SCALE * 1.5
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
