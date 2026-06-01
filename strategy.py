@@ -153,8 +153,9 @@ class Strategy:
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
             # Vol-conditional endpoint: blend 2-bar mean (noise-immune) with single point (responsive)
             # High vol (>1.3): full 50/50 average (noise reduction critical, fast moves make lag negligible)
-            # Low vol (<0.7): pure single point (responsiveness matters in choppy/sideways)
-            _avg_weight = max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))  # 0 at vol<=0.7, 1 at vol>=1.3
+            # Low vol (<0.5): pure single point (responsiveness critical in very calm markets)
+            # Between: linear ramp applies partial averaging
+            _avg_weight = max(0.0, min(1.0, (vol_ratio - 0.5) / 0.8))  # 0 at vol<=0.5, 1 at vol>=1.3
             _endpoint = smoothed_closes[-1] * (1.0 - _avg_weight * 0.5) + smoothed_closes[-2] * (_avg_weight * 0.5)
             ret_vshort = (_endpoint - _med_ref_short) / _med_ref_short
             ret_short = (_endpoint - _med_ref_med) / _med_ref_med
@@ -172,26 +173,22 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter sigmoid scales: wider for noisy voters (flatter near boundary, less flip-prone)
-            # Noisy: ret_short, EMA_cross, RSI (price-derived, single-point sensitive)
-            # Stable: MACD, linreg, ema_slope (multi-bar indicators, inherently smooth)
-            _NOISY_SCALE = 0.20   # wider → gentler transition → less flip sensitivity
-            _STABLE_SCALE = 0.11  # steeper → more decisive → preserves signal quality
+            # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * _NOISY_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * _NOISY_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * _NOISY_SCALE),
-                (_macd_hist - 0.0003) / (0.0003 * _STABLE_SCALE),
-                (_lr.slope - 0.00015) / (0.00015 * _STABLE_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * _STABLE_SCALE),
+                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
+                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * _NOISY_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * _NOISY_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * _NOISY_SCALE),
-                (-_macd_hist - 0.0003) / (0.0003 * _STABLE_SCALE),
-                (-_lr.slope - 0.00015) / (0.00015 * _STABLE_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * _STABLE_SCALE),
+                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
+                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
