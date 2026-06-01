@@ -91,8 +91,8 @@ VOTE_SIGMOID_SCALE = 0.15
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (baseline)
-ENTRY_GATE_FLOOR = 0.38  # slightly below baseline 0.40 for reduced boundary PnL variance
-ENTRY_GATE_CENTER = 2.0  # sigmoid center (baseline)
+ENTRY_GATE_FLOOR = 0.40  # baseline floor
+ENTRY_GATE_CENTER = 2.2  # sigmoid center (higher = requires more margin for full size, baseline was 2.0)
 
 
 def ema(values, span):
@@ -104,7 +104,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.58  # first bar: 58% of target (slightly larger for raw boost)
+ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
