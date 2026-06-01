@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.25
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.46  # minimum sizing fraction at exactly MIN_VOTES (lower = less impact from noise entries)
+ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES (lower = less impact from noise entries)
 
 
 def ema(values, span):
