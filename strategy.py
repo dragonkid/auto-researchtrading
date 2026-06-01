@@ -113,9 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.prev_bull_votes = {}
-        self.prev_bear_votes = {}
-        self.prev_trend_sign = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -221,25 +218,10 @@ class Strategy:
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
-            # Temporal confirmation: entry requires votes passing threshold on both current AND previous bar
-            # This filters single-bar noise spikes without reducing position size
-            _prev_bull = self.prev_bull_votes.get(symbol, 0.0)
-            _prev_bear = self.prev_bear_votes.get(symbol, 0.0)
-            _prev_tsign = self.prev_trend_sign.get(symbol, 0.0)
-            # Store current for next bar
-            self.prev_bull_votes[symbol] = bull_votes
-            self.prev_bear_votes[symbol] = bear_votes
-            self.prev_trend_sign[symbol] = 1.0 if self.smoothed_trend[symbol] > 0 else (-1.0 if self.smoothed_trend[symbol] < 0 else 0.0)
-
-            # Confirmation threshold slightly lower than MIN_VOTES (allow mild weakening on confirm bar)
-            _confirm_thresh = MIN_VOTES - 0.10
-
             if current_pos == 0 and not in_cooldown:
-                _bull_confirmed = bull_votes >= MIN_VOTES and _prev_bull >= _confirm_thresh
-                _bear_confirmed = bear_votes >= MIN_VOTES and _prev_bear >= _confirm_thresh
-                if _bull_confirmed and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif _bear_confirmed and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
