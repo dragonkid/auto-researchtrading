@@ -88,6 +88,11 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.25
 
+# Adaptive normalization: use recent signal MAD as normalization scale
+# Blends fixed scale with MAD-based scale for smoother transitions
+ADAPTIVE_NORM_LOOKBACK = 24  # bars of history for MAD computation
+ADAPTIVE_NORM_BLEND = 0.50   # 0=pure fixed, 1=pure adaptive
+
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -167,22 +172,42 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
+            # Adaptive normalization: compute MAD of recent signal values for MACD/linreg/EMA slope
+            # This widens the sigmoid transition when signals are volatile (fewer boundary crossings)
+            _n_adapt = ADAPTIVE_NORM_LOOKBACK
+            _macd_series = (ema(_ml[-_n_adapt - MACD_SIGNAL:], MACD_SIGNAL)[-_n_adapt:])
+            _macd_hist_series = (_ml[-_n_adapt:] - _macd_series) / closes[-_n_adapt:]
+            _macd_mad = max(np.median(np.abs(_macd_hist_series - np.median(_macd_hist_series))), 1e-6)
+            _macd_norm = (1.0 - ADAPTIVE_NORM_BLEND) * (0.0003 * VOTE_SIGMOID_SCALE) + ADAPTIVE_NORM_BLEND * _macd_mad
+
+            # Linreg slope: compute slopes over rolling windows
+            _hl2_log = np.log((bd.history["high"].values[-_n_adapt - LINREG_PERIOD:] + bd.history["low"].values[-_n_adapt - LINREG_PERIOD:]) / 2.0)
+            _slopes = np.array([linregress(np.arange(LINREG_PERIOD), _hl2_log[i:i+LINREG_PERIOD]).slope for i in range(_n_adapt)])
+            _slope_mad = max(np.median(np.abs(_slopes - np.median(_slopes))), 1e-8)
+            _slope_norm = (1.0 - ADAPTIVE_NORM_BLEND) * (0.00015 * VOTE_SIGMOID_SCALE) + ADAPTIVE_NORM_BLEND * _slope_mad
+
+            # EMA slope: compute over rolling windows
+            _ea_full = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + _n_adapt + 5):], EMA_SLOPE_PERIOD)
+            _ema_slopes = np.array([(_ea_full[-(i+1)] - _ea_full[-(i+EMA_SLOPE_LOOKBACK)]) / _ea_full[-(i+EMA_SLOPE_LOOKBACK)] for i in range(_n_adapt)])
+            _ema_slope_mad = max(np.median(np.abs(_ema_slopes - np.median(_ema_slopes))), 1e-8)
+            _ema_slope_norm = (1.0 - ADAPTIVE_NORM_BLEND) * (0.0006 * VOTE_SIGMOID_SCALE) + ADAPTIVE_NORM_BLEND * _ema_slope_mad
+
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
-                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (_macd_hist - 0.0003) / max(_macd_norm, 1e-10),
+                (_lr.slope - 0.00015) / max(_slope_norm, 1e-10),
+                (_ema_slope_val - 0.0006) / max(_ema_slope_norm, 1e-10),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
-                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-_macd_hist - 0.0003) / max(_macd_norm, 1e-10),
+                (-_lr.slope - 0.00015) / max(_slope_norm, 1e-10),
+                (-_ema_slope_val - 0.0006) / max(_ema_slope_norm, 1e-10),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
