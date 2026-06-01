@@ -241,16 +241,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Bars-held-scaled linreg exit: threshold relaxes with holding time
-                # Early bars: high threshold (noise-immune, only strong reversals trigger exit)
-                # Later bars: low threshold (protective, easy to exit stale positions)
-                # bars_held is deterministic (noise-free), so the ramp itself adds no noise
-                _exit_base_thresh = 0.0003
-                _exit_early_boost = 0.0004  # extra threshold for bars 1-3 (noise protection)
-                _bars_factor = max(0.0, 1.0 - (bars_held - 1) / 4.0)  # 1.0 at bar 1, 0.0 at bar 5+
-                _exit_slope_thresh = _exit_base_thresh + _exit_early_boost * _bars_factor
-                # Vol buffer in calm (same as before)
-                _exit_slope_thresh += 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
