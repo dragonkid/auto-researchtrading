@@ -167,11 +167,11 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Vol-adaptive normalization widening: in calm markets (vol_ratio < 0.7),
-            # widen MACD/RSI/EMA slope thresholds by up to 1.4x so they require stronger moves
-            # to fire, reducing noise-sensitive boundary crossings during low-vol periods.
+            # Vol-adaptive normalization widening: widen MACD/RSI/EMA slope denominators
+            # in calm-to-moderate markets. Two-segment linear: max 1.4x at vol<0.4,
+            # tapering to 1.0 at vol=1.1 (covers rally's typical ~0.8-1.0 range).
             # Does NOT touch linreg or ret_short (already multi-bar aggregated).
-            _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+            _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (1.1 - vol_ratio) / 0.7))
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
