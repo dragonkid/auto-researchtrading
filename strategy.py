@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.65
+MIN_VOTES = 2.66
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -90,8 +90,8 @@ VOTE_SIGMOID_SCALE = 0.25
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.30  # how quickly sizing grows above threshold (steeper = bigger positions for high confidence)
-ENTRY_GATE_FLOOR = 0.43  # minimum sizing fraction at exactly MIN_VOTES (lower = less impact from noise entries)
+ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
