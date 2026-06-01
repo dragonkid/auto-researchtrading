@@ -208,18 +208,12 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-margin sizing: hard entry gate + certainty-weighted position scaling
-            # DECISION: uses all sigmoid votes (responsive, all 6 boundaries)
-            # SIZING: counts only "certain" voters (delta far from threshold → noise-immune)
+            # Vote-margin sizing: hard entry gate + smooth position scaling above threshold
+            # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
+            # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
+            # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
-            _is_bull_active = bull_votes >= bear_votes
-            _active_deltas = _voter_deltas_bull if _is_bull_active else _voter_deltas_bear
-            # Count voters with |delta| > certainty threshold (well past their boundary)
-            _CERTAINTY_THRESH = 2.0  # delta > 2.0 means signal is 2x its threshold → unlikely to flip from 5bps noise
-            _certain_count = sum(1.0 for d in _active_deltas if d > _CERTAINTY_THRESH)
-            # Sizing uses certain count instead of raw vote sum (decouples noise from size)
-            _sizing_votes = max(_certain_count, _active_votes * 0.5)  # floor at half raw votes to avoid zero sizing
-            _margin_above = max(0.0, _sizing_votes - MIN_VOTES * 0.5)  # threshold proportional to vote scale
+            _margin_above = max(0.0, _active_votes - MIN_VOTES)
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
