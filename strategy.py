@@ -241,20 +241,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Soft linreg exit: sigmoid-attenuated position reduction as slope worsens
-                # Instead of binary exit at threshold, scale position down proportionally
-                # This makes noise at threshold produce small position changes vs binary flip
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_against = (-_lr.slope if current_pos > 0 else _lr.slope)
-                if target != 0 and _slope_against > _exit_slope_thresh * 0.5:
-                    # How far past half-threshold: 0 at 0.5*thresh, 1 at 2*thresh
-                    _exit_pressure = min(1.0, (_slope_against - _exit_slope_thresh * 0.5) / (_exit_slope_thresh * 1.5))
-                    # Reduce position: at pressure=0.5 (=threshold), reduce by 60%; at pressure=1.0, full exit
-                    _exit_factor = 1.0 - _exit_pressure
-                    if _exit_factor < 0.15:
-                        target = 0.0
-                    else:
-                        target = current_pos * _exit_factor
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
