@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.30
+SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -93,7 +93,7 @@ VOTE_SIGMOID_SCALE = 0.15
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (baseline)
 ENTRY_GATE_FLOOR = 0.40  # baseline floor
 ENTRY_GATE_CENTER_BASE = 2.0  # sigmoid center base (higher = more conservative sizing)
-ENTRY_GATE_CENTER_VOL_BOOST = 0.25  # extra center in low-vol (sideways) for noise protection
+ENTRY_GATE_CENTER_VOL_BOOST = 0.15  # extra center in low-vol (sideways) for noise protection
 
 
 def ema(values, span):
