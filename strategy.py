@@ -241,9 +241,13 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Confidence-gated linreg exit: only exit when slope is statistically significant
+                # _lr.stderr_slope measures regression quality; high stderr = noisy slope = don't trust
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                _slope_snr = abs(_lr.slope) / max(_lr.stderr, 1e-10)  # signal-to-noise of slope
+                _slope_confidence = min(1.0, _slope_snr / 3.0)  # saturates at SNR=3 (strong signal)
+                _effective_exit_thresh = _exit_slope_thresh / max(0.5, _slope_confidence)  # widen when uncertain
+                if target != 0 and _slope_confidence > 0.4 and ((current_pos > 0 and _lr.slope < -_effective_exit_thresh) or (current_pos < 0 and _lr.slope > _effective_exit_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
