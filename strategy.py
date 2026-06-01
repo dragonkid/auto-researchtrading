@@ -103,7 +103,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.53  # first bar: 53% of target
+ENTRY_INITIAL_FRAC = 0.54  # first bar: 54% of target (close to baseline for raw/DD compliance)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
@@ -151,8 +151,13 @@ class Strategy:
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
-            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            # Vol-conditional endpoint: blend 2-bar mean (noise-immune) with single point (responsive)
+            # High vol (>1.3): full 50/50 average (noise reduction critical, fast moves make lag negligible)
+            # Low vol (<0.7): pure single point (responsiveness matters in choppy/sideways)
+            _avg_weight = max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))  # 0 at vol<=0.7, 1 at vol>=1.3
+            _endpoint = smoothed_closes[-1] * (1.0 - _avg_weight * 0.5) + smoothed_closes[-2] * (_avg_weight * 0.5)
+            ret_vshort = (_endpoint - _med_ref_short) / _med_ref_short
+            ret_short = (_endpoint - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
