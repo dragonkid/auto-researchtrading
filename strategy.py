@@ -103,9 +103,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.53  # first bar: 53% of target (mild noise reduction vs 55%)
+ENTRY_INITIAL_FRAC = 0.535  # first bar: 53.5% of target (calibrated for raw>=7.0)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
 class Strategy:
