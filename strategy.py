@@ -88,10 +88,6 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.15
 
-# Voter abstention: deadzone where voter contributes exactly 0.5 (noise-immune)
-# Expressed as fraction of voter-specific normalization — within this zone, vote = 0.5
-VOTER_DEADZONE_FRAC = 0.4  # if |normalized_delta| < this, voter abstains (contributes 0.5)
-
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -189,16 +185,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Voter with deadzone abstention: within VOTER_DEADZONE_FRAC, output is exactly 0.5
-            def _vote_with_deadzone(d):
-                if abs(d) < VOTER_DEADZONE_FRAC:
-                    return 0.5  # abstain — noise in this zone has zero effect
-                # Shift sigmoid to start from deadzone edge (continuous at boundary)
-                _shifted = d - VOTER_DEADZONE_FRAC if d > 0 else d + VOTER_DEADZONE_FRAC
-                return 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, _shifted))))
-
-            bull_votes = sum(_vote_with_deadzone(d) for d in _voter_deltas_bull)
-            bear_votes = sum(_vote_with_deadzone(d) for d in _voter_deltas_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
