@@ -86,7 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
-VOTE_SIGMOID_SCALE = 0.17
+VOTE_SIGMOID_SCALE = 0.15
 
 # Per-voter deadzone: noisy voters (ret_short, EMA_cross, RSI) get clamped to 0.5
 # within this zone. Noise-immune voters (MACD, linreg, ema_slope) use full sigmoid.
@@ -94,8 +94,8 @@ NOISY_VOTER_DEADZONE = 0.2  # deadzone for first 3 voters (crash noise filtering
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.40  # wider transition for stability (was 0.35)
-ENTRY_GATE_FLOOR = 0.45  # higher floor to compensate for wider scale's raw reduction (was 0.40)
+ENTRY_GATE_SCALE = 0.42  # wider transition for stability (was 0.35)
+ENTRY_GATE_FLOOR = 0.47  # higher floor to compensate for wider scale's raw reduction (was 0.40)
 
 
 def ema(values, span):
