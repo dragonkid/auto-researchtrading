@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.25
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.42  # minimum sizing fraction at exactly MIN_VOTES (lower = less impact from noise entries)
+ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -173,11 +173,12 @@ class Strategy:
             _vol_widen = 1.0 + 0.5 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))  # 1.0x at vol>=1.3, 1.5x at vol<=0.5
             _macd_norm = 0.0003 * VOTE_SIGMOID_SCALE * _vol_widen
             _ema_slope_norm = 0.0006 * VOTE_SIGMOID_SCALE * _vol_widen
-            # RSI normalization also vol-adaptive: wider in calm for less boundary sensitivity
+            # RSI + EMA cross normalization also vol-adaptive: wider in calm for less boundary sensitivity
             _rsi_norm = (3.0 + 0.5 * max(0.0, min(1.0, (1.3 - vol_ratio) / 0.8))) * VOTE_SIGMOID_SCALE
+            _ema_cross_norm = abs(_es) * 0.001 * VOTE_SIGMOID_SCALE * _vol_widen
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (_ef - _es) / max(_ema_cross_norm, 1e-10),
                 (rsi - _rsi_thresh) / _rsi_norm,
                 (_macd_hist - 0.0003) / max(_macd_norm, 1e-10),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -185,7 +186,7 @@ class Strategy:
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-(_ef - _es)) / max(_ema_cross_norm, 1e-10),
                 (-rsi + _rsi_thresh) / _rsi_norm,
                 (-_macd_hist - 0.0003) / max(_macd_norm, 1e-10),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
