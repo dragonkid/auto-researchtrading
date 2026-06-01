@@ -90,7 +90,8 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Entry gate: soft sigmoid replaces hard MIN_VOTES threshold
 # Center at MIN_VOTES, scale determines how soft the boundary is
-ENTRY_GATE_SCALE = 0.4  # votes units; at ±0.4 from threshold, gate is ~73%/27%
+ENTRY_GATE_SCALE = 0.20  # votes units; narrower = sharper transition (less weak entry leakage)
+ENTRY_GATE_MIN = 0.40  # minimum gate value to actually enter (blocks votes < ~2.6)
 
 
 def ema(values, span):
@@ -216,9 +217,9 @@ class Strategy:
             _conf_size = size * _vote_conf * _entry_gate
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes > bear_votes and _conf_size > size * 0.10 and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes > bear_votes and _entry_gate >= ENTRY_GATE_MIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes > bull_votes and _conf_size > size * 0.10 and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes > bull_votes and _entry_gate >= ENTRY_GATE_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -263,7 +264,7 @@ class Strategy:
                 # Use soft gate for flip too: must have sufficient opposing vote strength
                 _flip_votes = bear_votes if current_pos > 0 else bull_votes
                 _flip_gate = 1.0 / (1.0 + np.exp(-((_flip_votes - FLIP_MIN_VOTES) / ENTRY_GATE_SCALE)))
-                if not in_cooldown and _flip_gate > 0.3 and ((current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)):
+                if not in_cooldown and _flip_gate >= ENTRY_GATE_MIN and ((current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac * _flip_gate
 
