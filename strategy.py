@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.15
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.25  # how quickly sizing grows above threshold
-ENTRY_GATE_FLOOR = 0.30  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -155,8 +155,8 @@ class Strategy:
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
-            rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
+            # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
+            rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
