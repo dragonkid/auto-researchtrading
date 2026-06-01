@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.50  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_SCALE = 0.25  # how quickly sizing grows above threshold (steeper = more boundary attenuation)
 ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES
 
 
