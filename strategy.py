@@ -103,7 +103,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.70  # first bar: 70% of target (faster commitment to recover raw from wider gate)
+ENTRY_INITIAL_FRAC = 0.60  # first bar: 60% of target (moderate between stab and raw recovery)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
