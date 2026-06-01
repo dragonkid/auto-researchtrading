@@ -264,7 +264,7 @@ class Strategy:
 
                 # Flip mechanism: sigmoid-gated sizing + trend margin (reduce noise at boundaries)
                 # Trend margin: require trend_avg to exceed a minimum magnitude (not just sign)
-                _trend_margin = 0.001  # trend_avg must exceed this to confirm flip direction
+                _trend_margin = 0.003  # trend_avg must exceed this to confirm flip direction
                 _flip_trend_ok = (current_pos > 0 and trend_avg < -_trend_margin) or (current_pos < 0 and trend_avg > _trend_margin)
                 _flip_votes = bear_votes if current_pos > 0 else bull_votes
                 if not in_cooldown and _flip_votes >= FLIP_MIN_VOTES and _flip_trend_ok:
