@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_SCALE = 0.25  # how quickly sizing grows above threshold (steeper = more boundary attenuation)
 ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES
 
 
@@ -151,10 +151,8 @@ class Strategy:
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            # 2-bar endpoint average: reduces noise impact on most sensitive voter
-            _endpoint_avg = 0.75 * smoothed_closes[-1] + 0.25 * smoothed_closes[-2]
-            ret_vshort = (_endpoint_avg - _med_ref_short) / _med_ref_short
-            ret_short = (_endpoint_avg - _med_ref_med) / _med_ref_med
+            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
+            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
