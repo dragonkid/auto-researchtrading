@@ -243,8 +243,10 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Stop-loss exit (noise-immune: anchored to entry_price)
-                if pos_pnl < STOP_LOSS_PCT:
+                # Vol-adaptive stop-loss: wider (more lenient) in calm markets only
+                # calm (vol<0.5): -0.030 (6% wider), moderate-to-high (vol>0.8): -0.024 (unchanged)
+                _stop_widen = -0.006 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.3))
+                if pos_pnl < STOP_LOSS_PCT + _stop_widen:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
