@@ -187,6 +187,10 @@ class Strategy:
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
             bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Composite mean of clipped deltas for flip confirmation (noise-immune: no per-voter sigmoid)
+            _CLIP = 3.0
+            _bull_mean_delta = sum(max(-_CLIP, min(_CLIP, d)) for d in _voter_deltas_bull) / 6.0
+            _bear_mean_delta = sum(max(-_CLIP, min(_CLIP, d)) for d in _voter_deltas_bear) / 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -262,8 +266,12 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: requires vote count + composite mean delta confirmation
+                # Composite mean eliminates per-voter sigmoid boundaries from flip decision
+                _FLIP_COMPOSITE_THRESH = 0.3  # mean delta must exceed this (noise-immune: averaged over 6 signals)
+                _flip_bull_ok = bull_votes >= FLIP_MIN_VOTES and _bull_mean_delta > _FLIP_COMPOSITE_THRESH
+                _flip_bear_ok = bear_votes >= FLIP_MIN_VOTES and _bear_mean_delta > _FLIP_COMPOSITE_THRESH
+                if not in_cooldown and ((current_pos > 0 and _flip_bear_ok and trend_avg < 0) or (current_pos < 0 and _flip_bull_ok and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
