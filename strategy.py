@@ -262,18 +262,11 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: sigmoid-gated sizing (reduce noise at vote boundary only)
-                # No trend margin — flips are protective, must not be blocked
-                _flip_votes = bear_votes if current_pos > 0 else bull_votes
-                _flip_trend_ok = (current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)
-                if not in_cooldown and _flip_votes >= FLIP_MIN_VOTES and _flip_trend_ok:
-                    # Sigmoid flip sizing: marginal flips get reduced size in calm, full in volatile
-                    _flip_margin = max(0.0, _flip_votes - FLIP_MIN_VOTES)
-                    # Mild flip gate: 80% floor (only 20% reduction for marginal flips near threshold)
-                    _flip_gate = 0.80 + 0.20 * (1.0 / (1.0 + np.exp(-(_flip_margin / ENTRY_GATE_SCALE - 1.5))))
+                # Flip mechanism (votes + trend_avg sign, confidence-sized via entry gate)
+                # Entry gate already attenuates borderline positions — no additional flip gate needed
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    # Use confidence-sized target with mild flip gate (floor 0.80 - only 20% reduction for marginal flips)
-                    target = (-_conf_size * _flip_gate if current_pos > 0 else _conf_size * _flip_gate) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
