@@ -12,7 +12,7 @@ SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
-EMA_FAST = 4
+EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_SCALE = 0.37  # how quickly sizing grows above threshold (wider = smoother transition)
 ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES
 
 
