@@ -167,34 +167,26 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter normalized deltas (signal_value - threshold) / scale
+            # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001, 1e-10),
-                (rsi - _rsi_thresh) / 3.0,
-                (_macd_hist - 0.0003) / 0.0003,
-                (_lr.slope - 0.00015) / 0.00015,
-                (_ema_slope_val - 0.0006) / 0.0006,
+                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
+                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001, 1e-10),
-                (-rsi + _rsi_thresh) / 3.0,
-                (-_macd_hist - 0.0003) / 0.0003,
-                (-_lr.slope - 0.00015) / 0.00015,
-                (-_ema_slope_val - 0.0006) / 0.0006,
+                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
+                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Composite scoring: mean of clipped normalized deltas, single sigmoid decision
-            # Each voter contributes proportionally (1/6th). No individual sigmoid boundaries.
-            _COMPOSITE_CLIP = 3.0  # clip individual deltas to prevent one voter dominating
-            _bull_composite = sum(max(-_COMPOSITE_CLIP, min(_COMPOSITE_CLIP, d)) for d in _voter_deltas_bull) / 6.0
-            _bear_composite = sum(max(-_COMPOSITE_CLIP, min(_COMPOSITE_CLIP, d)) for d in _voter_deltas_bear) / 6.0
-            # Map composite to vote-equivalent: sigmoid scaled to [0, 6] range for compatibility
-            # Threshold at composite=0 maps to 3.0 (half), positive composites give >3.0
-            _COMPOSITE_SCALE = 0.8  # steepness of the single sigmoid
-            bull_votes = 6.0 / (1.0 + np.exp(-_bull_composite / _COMPOSITE_SCALE))
-            bear_votes = 6.0 / (1.0 + np.exp(-_bear_composite / _COMPOSITE_SCALE))
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
