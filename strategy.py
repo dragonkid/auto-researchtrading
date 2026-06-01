@@ -53,7 +53,7 @@ PEAK_PROFIT_GIVEBACK = 0.25
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.50
+SIDEWAYS_BOOST_MAX = 0.30
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 VOL_CONFIRM_LOOKBACK = 12
@@ -92,9 +92,8 @@ VOTE_SIGMOID_SCALE = 0.15
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (baseline)
 ENTRY_GATE_FLOOR = 0.40  # baseline floor
-ENTRY_GATE_CENTER_BASE = 2.0  # sigmoid center (baseline)
-# Vol-adaptive vote threshold: require more agreement in calm (noise-dominated) conditions
-MIN_VOTES_CALM_BOOST = 0.2  # extra votes required when vol_ratio < 0.7
+ENTRY_GATE_CENTER_BASE = 2.0  # sigmoid center base (higher = more conservative sizing)
+ENTRY_GATE_CENTER_VOL_BOOST = 0.25  # extra center in low-vol (sideways) for noise protection
 
 
 def ema(values, span):
@@ -216,18 +215,18 @@ class Strategy:
             # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
             # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
-            # Vol-adaptive MIN_VOTES: require more agreement in calm conditions
-            _vol_calm_factor = max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))  # 1.0 when vol<=0.4, 0.0 when vol>=0.7
-            _eff_min_votes = MIN_VOTES + MIN_VOTES_CALM_BOOST * _vol_calm_factor
-            _margin_above = max(0.0, _active_votes - _eff_min_votes)
-            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - ENTRY_GATE_CENTER_BASE))))
+            _margin_above = max(0.0, _active_votes - MIN_VOTES)
+            # Vol-adaptive center: higher in calm (more conservative) for noise protection
+            _vol_center_factor = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5))  # 1.0 when vol_ratio<=0.5, 0.0 when vol_ratio>=1.0
+            _gate_center = ENTRY_GATE_CENTER_BASE + ENTRY_GATE_CENTER_VOL_BOOST * _vol_center_factor
+            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - _gate_center))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= _eff_min_votes and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= _eff_min_votes and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -269,7 +268,7 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _eff_min_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= _eff_min_votes and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
