@@ -94,8 +94,8 @@ NOISY_VOTER_DEADZONE = 0.2  # deadzone for first 3 voters (crash noise filtering
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.40  # wider transition for stability (was 0.35)
-ENTRY_GATE_FLOOR = 0.45  # higher floor to compensate for wider scale's raw reduction (was 0.40)
+ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -107,8 +107,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (larger commitment on confirmed entry)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
+ENTRY_INITIAL_FRAC = 0.55  # first bar: 55% of target (back to baseline)
+ENTRY_FULL_BARS = 3  # bars to reach full position (slower = more confirmation before full commitment)
 VOTE_CONFIDENCE_MIN = 0.705  # 3-vote entries sized at 70.5%, scaling to 100% at 6 votes
 
 
