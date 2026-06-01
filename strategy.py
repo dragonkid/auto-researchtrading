@@ -14,7 +14,7 @@ LONG_WINDOW = 20
 # EMA parameters
 EMA_FAST = 3
 EMA_SLOW = 21
-EMA_SLOPE_PERIOD = 26
+EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
 
 # MACD parameters
@@ -168,7 +168,7 @@ class Strategy:
 
             # Vol-adaptive normalization widening: MACD and RSI get wider normalization in calm markets
             # This makes them less sensitive to small fluctuations when vol is low (sideways bottleneck)
-            _vol_widen = 1.0 + 0.4 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.5))  # 1.0 at vol>=0.8, up to 1.4 at vol<=0.3
+            _vol_widen = 1.0 + 0.35 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.6))  # 1.0 at vol>=1.0, up to 1.35 at vol<=0.4
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
