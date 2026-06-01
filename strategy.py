@@ -90,9 +90,8 @@ VOTE_SIGMOID_SCALE = 0.15
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (back to baseline)
-ENTRY_GATE_FLOOR = 0.35  # slightly below original 0.40
-ENTRY_GATE_CENTER = 2.5  # sigmoid center (higher = requires more margin for full size, baseline was 2.0)
+ENTRY_GATE_SCALE = 0.30  # how quickly sizing grows above threshold
+ENTRY_GATE_FLOOR = 0.35  # slightly below original 0.40: less PnL from noise-triggered marginal entries
 
 
 def ema(values, span):
@@ -215,7 +214,7 @@ class Strategy:
             # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
-            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - ENTRY_GATE_CENTER))))
+            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
