@@ -79,9 +79,12 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
-# Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.60
-FLIP_MIN_VOTES = 2.85
+# Top-K voting: only the K most decisive voters contribute to the sum
+# This excludes the weakest (most noise-sensitive) voters dynamically
+TOP_K_VOTERS = 4  # use top 4 of 6 voters (ignore 2 least decisive)
+# MIN_VOTES threshold adjusted for 4-voter sum (max=4.0 instead of 6.0)
+MIN_VOTES = 1.80  # ~45% of max (equivalent to 2.60/6.0 = 43% for old system)
+FLIP_MIN_VOTES = 2.00  # ~50% of max (equivalent to 2.85/6.0 = 47.5%)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -90,7 +93,7 @@ VOTE_SIGMOID_SCALE = 0.30
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_SCALE = 0.25  # how quickly sizing grows above threshold (scaled for 4-voter sum range)
 ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
 
 
@@ -190,8 +193,11 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Top-K voting: compute all sigmoid outputs, then sum only the K highest
+            _all_bull = sorted([1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull], reverse=True)
+            _all_bear = sorted([1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear], reverse=True)
+            bull_votes = sum(_all_bull[:TOP_K_VOTERS])
+            bear_votes = sum(_all_bear[:TOP_K_VOTERS])
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
