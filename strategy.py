@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.058
+BASE_POSITION_SIZE = 0.0595
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.63
+MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -90,8 +90,8 @@ VOTE_SIGMOID_SCALE = 0.30
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.38  # original scale: smoother transition for stability
-ENTRY_GATE_FLOOR = 0.40  # lower for stability
+ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -102,16 +102,15 @@ def ema(values, span):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
 
-# Position entry: single-bar entry (removes bar-2 scale-up noise channel)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target
-ENTRY_FULL_BARS = 2  # bars to reach full position (original baseline value)
+# Position accumulation (build position over bars)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
+ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.entry_conf = {}  # store entry confidence for exit threshold widening
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -247,11 +246,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm + widen for low-confidence entries
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                # Low-confidence entries get wider exit threshold (less noise-sensitive exit)
-                _entry_c = self.entry_conf.get(symbol, 0.7)
-                _exit_slope_thresh *= 1.0 + 1.0 * max(0.0, 1.0 - _entry_c / 0.7)
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
@@ -279,11 +275,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.entry_conf[symbol] = _vote_conf
 
         return signals
