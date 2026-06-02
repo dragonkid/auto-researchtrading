@@ -190,15 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Abstain-zone voting: if a voter's sigmoid output is within [0.45, 0.55]
-            # (i.e., signal is too close to threshold to be decisive), clamp to 0.5 (neutral).
-            # This prevents near-boundary voters from contributing directional noise.
-            _ABSTAIN_LO, _ABSTAIN_HI = 0.45, 0.55
-            def _vote_with_abstain(delta):
-                v = 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, delta))))
-                return 0.5 if _ABSTAIN_LO < v < _ABSTAIN_HI else v
-            bull_votes = sum(_vote_with_abstain(d) for d in _voter_deltas_bull)
-            bear_votes = sum(_vote_with_abstain(d) for d in _voter_deltas_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
