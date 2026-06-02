@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.21
+BASE_POSITION_SIZE = 0.18
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -206,7 +206,7 @@ class Strategy:
             _trend_boost = 1.0 + 0.8 * min(abs(ret_long) / 0.10, 1.0)  # moderate trend boost
             combined_mult = _vol_scale * _trend_boost
             # Vol-aware hard cap: tighter in high vol to protect crash DD
-            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.35, 3.5 - 2.15 * min(1.0, (vol_ratio - 1.0) / 1.0))
+            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.6, 3.5 - 1.9 * min(1.0, (vol_ratio - 1.0) / 1.0))
             combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
