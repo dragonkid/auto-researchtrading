@@ -157,7 +157,8 @@ class Strategy:
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            # Use smoothed_closes for RSI to reduce per-bar noise sensitivity
+            _rd = np.diff(smoothed_closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             # MACD from HL2 for voter decorrelation: HL2 receives ~50% perturbation vs close
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
@@ -173,10 +174,12 @@ class Strategy:
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            # RSI voter uses wider sigmoid scale (5.0) since it has high noise sensitivity from short lookback
+            _rsi_sig_scale = 5.0
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (rsi - _rsi_thresh) / (_rsi_sig_scale * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
@@ -184,7 +187,7 @@ class Strategy:
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (-rsi + _rsi_thresh) / (_rsi_sig_scale * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
