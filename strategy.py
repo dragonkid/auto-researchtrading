@@ -46,12 +46,12 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-STOP_LOSS_PCT = -0.020  # tighter stop to cap crash DD when SIZE is increased
+STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0620  # slightly larger to recover raw from GATE_FLOOR reduction
+BASE_POSITION_SIZE = 0.0595
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.63
+MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -90,8 +90,8 @@ VOTE_SIGMOID_SCALE = 0.30
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.42  # wider = smoother sizing transition above threshold
-ENTRY_GATE_FLOOR = 0.38  # smaller at boundary = less noise sensitivity
+ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
+ENTRY_GATE_FLOOR = 0.45  # keep original floor for raw preservation
 
 
 def ema(values, span):
@@ -148,11 +148,14 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            # 5-bar median reference + 3-bar median current level for noise immunity
+            # 3-bar median of current values: single-bar perturbation cannot change the median
+            # (median of 3 values is immune to one outlier)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
-            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            _current_level = np.median(smoothed_closes[-3:])  # noise-immune current price level
+            ret_vshort = (_current_level - _med_ref_short) / _med_ref_short
+            ret_short = (_current_level - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
