@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.19
+BASE_POSITION_SIZE = 0.22
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -204,7 +204,7 @@ class Strategy:
             _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
             _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)
             combined_mult = _vol_scale * _trend_boost
-            _vol_cap = 4.5 if vol_ratio < 0.8 else max(1.5, 4.5 - 3.0 * min(1.0, (vol_ratio - 0.8) / 1.2))
+            _vol_cap = 3.0 if vol_ratio < 0.8 else max(1.1, 3.0 - 1.9 * min(1.0, (vol_ratio - 0.8) / 1.0))
             combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
