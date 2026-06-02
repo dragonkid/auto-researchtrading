@@ -113,6 +113,11 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        # Architectural: lock entry-bar conf_size for the lifetime of the position.
+        # Currently _conf_size is recomputed every bar from current votes/multipliers,
+        # which means held positions are continuously resized by noise-sensitive inputs
+        # (vote magnitudes, combined_mult, calm_boost). Locking removes this noise channel.
+        self.locked_conf_size = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -236,10 +241,13 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up using confidence-sized target
+                # Use locked entry-bar size (noise-immune) for accumulation/flip decisions
+                _locked_size = self.locked_conf_size.get(symbol, _conf_size)
+
+                # Position accumulation: deterministic scale-up using LOCKED entry-bar size
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = _conf_size if current_pos > 0 else -_conf_size
+                    full_target = _locked_size if current_pos > 0 else -_locked_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -267,7 +275,7 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                # Flip mechanism: use CURRENT _conf_size (flip is a fresh entry, not held-position resize)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
@@ -275,10 +283,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.locked_conf_size):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.locked_conf_size[symbol] = _conf_size
 
         return signals
