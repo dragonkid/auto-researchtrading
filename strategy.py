@@ -154,15 +154,10 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # EMA cross from HL2: receives ~50% noise perturbation vs close
-            _hl2_ema = (bd.history["high"].values[-(EMA_SLOW+10):] + bd.history["low"].values[-(EMA_SLOW+10):]) / 2.0
-            _ef, _es = ema(_hl2_ema, EMA_FAST)[-1], ema(_hl2_ema, EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
-            # RSI from HL2: receives ~50% noise perturbation vs close-based RSI
-            _hl2_rsi = (bd.history["high"].values[-(int(round(6 + 2 * rsi_trend_str)) + 2):] + bd.history["low"].values[-(int(round(6 + 2 * rsi_trend_str)) + 2):]) / 2.0
-            _rd = np.diff(_hl2_rsi)
-            _rd = _rd[-(int(round(6 + 2 * rsi_trend_str))):]
+            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             # MACD from HL2 for voter decorrelation: HL2 receives ~50% perturbation vs close
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
