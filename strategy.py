@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0595
+BASE_POSITION_SIZE = 0.0640  # increased to compensate for smaller initial FRAC (0.35 vs 0.50)
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -102,10 +102,12 @@ def ema(values, span):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
 
-# Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
+# Position accumulation: vote-confirmed scale-up
+# Bar 1: small initial position (noise-immune)
+# Bar 2+: scale to full ONLY if votes still confirm direction
+ENTRY_INITIAL_FRAC = 0.35  # first bar: 35% of target (smaller = more noise resilient)
+ENTRY_FULL_BARS = 2  # bars to reach full position
+ENTRY_CONFIRM_THRESHOLD = 2.20  # votes needed on bar 2 to scale up (lower than entry = easier confirm)
 
 
 class Strategy:
@@ -236,9 +238,15 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up using confidence-sized target
+                # Position accumulation: vote-confirmed scale-up
+                # Only scale up if direction-aligned votes still confirm
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    _dir_votes = bull_votes if current_pos > 0 else bear_votes
+                    _confirmed = _dir_votes >= ENTRY_CONFIRM_THRESHOLD
+                    if _confirmed:
+                        scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    else:
+                        scale_frac = ENTRY_INITIAL_FRAC  # hold at initial size, don't scale up
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
