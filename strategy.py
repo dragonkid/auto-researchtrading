@@ -78,15 +78,16 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
-# Fixed per-voter weights based on signal noise immunity (static, not data-dependent)
-# Voters using more bars / longer windows are more noise-immune → higher weight
-# Order: [ret_short, EMA_cross, RSI, MACD, linreg_slope, EMA_slope]
-VOTER_WEIGHTS = [0.90, 1.00, 0.95, 1.00, 1.10, 1.05]  # sum=6.00; no normalization needed
-# Mild differentiation: linreg=1.10, EMA_slope=1.05, EMA_cross=MACD=1.00, RSI=0.95, ret_short=0.90
-# ret_short slightly reduced (most noise-sensitive), linreg slightly boosted (most noise-immune)
-MIN_VOTES = 2.60
-FLIP_MIN_VOTES = 2.85
+# Vote / cooldown (6 voters in 2 tiers: fast-response + slow-confirmation)
+# Entry requires BOTH tiers to agree: fast >= FAST_MIN AND slow >= SLOW_MIN
+# Fast tier (ret_short, EMA_cross, RSI): responsive, noise-sensitive
+# Slow tier (MACD, linreg_slope, EMA_slope): stable, noise-immune
+FAST_TIER_MIN = 1.40  # out of 3.0 max (~47%)
+SLOW_TIER_MIN = 1.50  # out of 3.0 max (~50%) — slightly higher for stability
+FLIP_FAST_MIN = 1.50  # higher bar for flips
+FLIP_SLOW_MIN = 1.60  # higher bar for flips
+MIN_VOTES = 2.60  # kept for entry gate sizing (uses max tier sum * 2)
+FLIP_MIN_VOTES = 2.85  # not directly used in new tier logic
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -195,14 +196,20 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Fixed-weight voting: weight by signal noise immunity (static, no data dependence)
+            # 2-tier voting: fast tier (0,1,2) + slow tier (3,4,5)
             _raw_bull = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
             _raw_bear = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
-            # Normalize weights so max possible sum = 6.0 (preserves MIN_VOTES semantics)
-            _w_sum = sum(VOTER_WEIGHTS)
-            _norm = 6.0 / _w_sum
-            bull_votes = sum(_raw_bull[i] * VOTER_WEIGHTS[i] * _norm for i in range(6))
-            bear_votes = sum(_raw_bear[i] * VOTER_WEIGHTS[i] * _norm for i in range(6))
+            _fast_bull = _raw_bull[0] + _raw_bull[1] + _raw_bull[2]  # ret_short + EMA_cross + RSI
+            _slow_bull = _raw_bull[3] + _raw_bull[4] + _raw_bull[5]  # MACD + linreg + EMA_slope
+            _fast_bear = _raw_bear[0] + _raw_bear[1] + _raw_bear[2]
+            _slow_bear = _raw_bear[3] + _raw_bear[4] + _raw_bear[5]
+            # Entry requires both tiers; vote sum for sizing = combined
+            _bull_entry_ok = (_fast_bull >= FAST_TIER_MIN and _slow_bull >= SLOW_TIER_MIN)
+            _bear_entry_ok = (_fast_bear >= FAST_TIER_MIN and _slow_bear >= SLOW_TIER_MIN)
+            _bull_flip_ok = (_fast_bull >= FLIP_FAST_MIN and _slow_bull >= FLIP_SLOW_MIN)
+            _bear_flip_ok = (_fast_bear >= FLIP_FAST_MIN and _slow_bear >= FLIP_SLOW_MIN)
+            bull_votes = _fast_bull + _slow_bull  # full 6-voter sum for sizing
+            bear_votes = _fast_bear + _slow_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -235,9 +242,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if _bull_entry_ok and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _bear_entry_ok and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -278,8 +285,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (2-tier votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and _bear_flip_ok and trend_avg < 0) or (current_pos < 0 and _bull_flip_ok and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
