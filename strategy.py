@@ -172,7 +172,7 @@ class Strategy:
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD gets wider scale (histogram near zero in sideways = noise-sensitive)
-            _macd_sig_scale = 0.50  # wider: reduces MACD jitter in sideways (histogram near zero)
+            _macd_sig_scale = 0.40  # same as VOTE_SIGMOID_SCALE (no per-voter differentiation)
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
