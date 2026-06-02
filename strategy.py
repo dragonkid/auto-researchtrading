@@ -88,6 +88,11 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.30
 
+# Adaptive sigmoid: near-boundary signals get wider sigmoid (less flip-prone)
+# Voters far from threshold keep narrow sigmoid (full decisiveness)
+SIGMOID_NEAR_ZONE = 2.0  # abs(delta) below this = "near boundary"
+SIGMOID_NEAR_SCALE = 2.5  # widen factor for near-boundary voters
+
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -190,8 +195,20 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Adaptive sigmoid: near-boundary voters get compressed (wider effective sigmoid)
+            # This makes votes near threshold contribute ~0.5 (neutral), reducing flip sensitivity
+            def _adaptive_sigmoid(delta):
+                # How far from boundary (in sigmoid-scale units)
+                _abs_d = abs(delta)
+                # Near boundary: compress delta to reduce vote decisiveness
+                if _abs_d < SIGMOID_NEAR_ZONE:
+                    # Smoothly scale delta toward 0 as it approaches boundary
+                    _compress = 1.0 / (1.0 + (SIGMOID_NEAR_SCALE - 1.0) * (1.0 - _abs_d / SIGMOID_NEAR_ZONE))
+                    delta = delta * _compress
+                return 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, delta))))
+
+            bull_votes = sum(_adaptive_sigmoid(d) for d in _voter_deltas_bull)
+            bear_votes = sum(_adaptive_sigmoid(d) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
