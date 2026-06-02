@@ -100,7 +100,7 @@ VOTER_SCALES = [
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.42  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.52  # minimum sizing fraction at exactly MIN_VOTES (higher for raw recovery)
+ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES (raised to recover raw)
 
 
 def ema(values, span):
@@ -112,7 +112,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% (stability from smaller first-bar exposure)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
@@ -273,8 +273,9 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: votes + trend_avg + slope confirmation (reduces noise-driven flips)
+                _slope_confirms_flip = (current_pos > 0 and _lr.slope < -0.00005) or (current_pos < 0 and _lr.slope > 0.00005)
+                if not in_cooldown and _slope_confirms_flip and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
