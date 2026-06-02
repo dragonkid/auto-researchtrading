@@ -105,7 +105,6 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
 class Strategy:
@@ -154,6 +153,9 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
+            # Funding rate voter: 24-bar mean funding rate (positive = crowd long, bearish contrarian)
+            _fr_vals = bd.history["funding_rate"].values[-24:]
+            _fr_mean = np.mean(_fr_vals) if len(_fr_vals) >= 24 else 0.0
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
@@ -173,9 +175,12 @@ class Strategy:
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            # Funding rate voter: negative funding = crowd short = contrarian bullish
+            # Threshold 0.00002 (~0.002% per hour = mild directional bias)
+            _fr_thresh = 0.00002
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-_fr_mean - _fr_thresh) / (_fr_thresh * VOTE_SIGMOID_SCALE),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -183,7 +188,7 @@ class Strategy:
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (_fr_mean - _fr_thresh) / (_fr_thresh * VOTE_SIGMOID_SCALE),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
