@@ -22,9 +22,8 @@ MACD_FAST = 8
 MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
-# Linear regression (dual-timeframe: 16-bar trend + 8-bar momentum)
+# Linear regression
 LINREG_PERIOD = 16
-LINREG_SHORT_PERIOD = 8
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -155,9 +154,6 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # Short-period linreg slope (replaces EMA cross for noise immunity)
-            _hl2_short_lr = (bd.history["high"].values[-LINREG_SHORT_PERIOD:] + bd.history["low"].values[-LINREG_SHORT_PERIOD:]) / 2.0
-            _lr_short = linregress(np.arange(LINREG_SHORT_PERIOD), np.log(_hl2_short_lr))
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
@@ -177,12 +173,9 @@ class Strategy:
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
-            # Voter 2 (index 1): short linreg slope (8-bar HL2) replaces EMA cross
-            # Noise: 5bps perturbation on one bar -> 0.5*5bps/8 = 0.3bps slope change
-            # vs EMA cross: 50% weight on latest bar -> 2.5bps direct delta change
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_lr_short.slope - 0.00020) / (0.00020 * VOTE_SIGMOID_SCALE),
+                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -190,7 +183,7 @@ class Strategy:
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-_lr_short.slope - 0.00020) / (0.00020 * VOTE_SIGMOID_SCALE),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
