@@ -63,12 +63,6 @@ VOL_CONFIRM_CAP = 1.10
 STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
-# Funding rate sizing (contrarian: extreme funding = reduce that side's sizing)
-FUNDING_LOOKBACK = 8  # bars to average funding over
-FUNDING_SCALE = 15.0  # sensitivity: abs(avg_fund) * SCALE determines multiplier strength
-FUNDING_FLOOR = 0.88  # minimum multiplier (when funding strongly against position)
-FUNDING_CAP = 1.12  # maximum multiplier (when funding strongly supports position)
-
 # Combined mult cap
 MAX_COMBINED_MULT_HIGH_VOL = 2.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
@@ -211,13 +205,6 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
-            # Funding rate multiplier: contrarian signal (noise-immune: test doesn't perturb funding)
-            # Negative funding = shorts pay longs → crowded shorts → boost longs, reduce shorts
-            _funding_rates = bd.history["funding_rate"].values[-FUNDING_LOOKBACK:]
-            _avg_funding = np.mean(_funding_rates) if len(_funding_rates) >= FUNDING_LOOKBACK else 0.0
-            # funding_mult applied directionally later (at entry/flip)
-            _funding_long_mult = max(FUNDING_FLOOR, min(FUNDING_CAP, 1.0 - _avg_funding * FUNDING_SCALE))
-            _funding_short_mult = max(FUNDING_FLOOR, min(FUNDING_CAP, 1.0 + _avg_funding * FUNDING_SCALE))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
@@ -238,12 +225,11 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = _conf_size * _funding_long_mult * ENTRY_INITIAL_FRAC
+                    target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -_conf_size * _funding_short_mult * ENTRY_INITIAL_FRAC
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    _mr_fund = _funding_long_mult if rsi < MEANREV_RSI_OVERSOLD else _funding_short_mult
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _mr_fund * ENTRY_INITIAL_FRAC
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -253,8 +239,7 @@ class Strategy:
                 # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    _dir_fund = _funding_long_mult if current_pos > 0 else _funding_short_mult
-                    full_target = _conf_size * _dir_fund if current_pos > 0 else -_conf_size * _dir_fund
+                    full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -285,8 +270,7 @@ class Strategy:
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    _flip_fund = _funding_short_mult if current_pos > 0 else _funding_long_mult
-                    target = (-_conf_size * _flip_fund if current_pos > 0 else _conf_size * _flip_fund) * _flip_frac
+                    target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
