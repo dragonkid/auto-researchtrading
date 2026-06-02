@@ -113,8 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.prev_bull_votes = {}  # previous bar's bull votes for persistence gate
-        self.prev_bear_votes = {}  # previous bar's bear votes for persistence gate
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -225,15 +223,10 @@ class Strategy:
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
-            # Multi-bar vote persistence: previous bar must also have shown agreement
-            # This filters single-bar noise spikes that push votes above threshold
-            _prev_bull_ok = self.prev_bull_votes.get(symbol, 0.0) >= (MIN_VOTES - 0.35)
-            _prev_bear_ok = self.prev_bear_votes.get(symbol, 0.0) >= (MIN_VOTES - 0.35)
-
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and _prev_bull_ok and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _prev_bear_ok and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -278,10 +271,6 @@ class Strategy:
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
-
-            # Store current votes for next bar's persistence check
-            self.prev_bull_votes[symbol] = bull_votes
-            self.prev_bear_votes[symbol] = bear_votes
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
