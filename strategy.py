@@ -173,8 +173,14 @@ class Strategy:
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            # Funding rate voter (noise-immune: not perturbed by close noise test)
+            # 8-bar average funding rate as momentum signal (positive = bullish consensus)
+            _fr_vals = bd.history["funding_rate"].values[-8:]
+            _fr_avg = np.mean(_fr_vals) if len(_fr_vals) >= 8 else 0.0
+            _fr_threshold = 0.00005  # ~0.5 bps per hour, mild directional bias
+            _fr_scale = 0.40  # wider scale for gentler transitions
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (_fr_avg - _fr_threshold) / (_fr_threshold * _fr_scale),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
@@ -182,7 +188,7 @@ class Strategy:
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (-_fr_avg - _fr_threshold) / (_fr_threshold * _fr_scale),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
