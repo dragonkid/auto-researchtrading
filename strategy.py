@@ -73,7 +73,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_DEADZONE = 0.030  # even wider: more rally entries bypass noisy trend_avg sign check
+TREND_GATE_DEADZONE = 0.018  # back to baseline
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -172,7 +172,7 @@ class Strategy:
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD gets wider scale (histogram near zero in sideways = noise-sensitive)
-            _macd_sig_scale = 0.50  # wider: reduces MACD jitter in sideways (histogram near zero)
+            _macd_sig_scale = 0.40  # same as VOTE_SIGMOID_SCALE
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
@@ -224,7 +224,8 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             # Vol-adaptive initial fraction (noise-immune: vol_ratio from 24-bar historical)
-            _entry_frac = ENTRY_FRAC_CALM + (ENTRY_FRAC_VOLATILE - ENTRY_FRAC_CALM) * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
+            # Wider transition zone (0.5-1.5) for smoother FRAC interpolation
+            _entry_frac = ENTRY_FRAC_CALM + (ENTRY_FRAC_VOLATILE - ENTRY_FRAC_CALM) * max(0.0, min(1.0, (vol_ratio - 0.5) / 1.0))
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
