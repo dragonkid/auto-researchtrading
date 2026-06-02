@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.63
+MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -205,17 +205,16 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
-            # 3-tier stepped strength scale with wide-gap boundaries
-            # Boundaries at 0.7x and 1.6x dyn_threshold (even FURTHER from entry at 1.0x)
-            # so +-5bps noise at entry point stays within middle tier
+            # Sigmoid-blended 2-tier strength scale: flat middle (noise-immune) + smooth transitions
+            # Only ONE transition at 1.3x threshold (far from entry at 1.0x) avoids boundary noise
             _abs_ret = abs(ret_short)
             _strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0))
-            if _abs_ret < 0.7 * dyn_threshold:
-                _raw_strength = 0.8
-            elif _abs_ret < 1.6 * dyn_threshold:
-                _raw_strength = 1.2
-            else:
-                _raw_strength = 1.6
+            # Smooth transition from 0.9 (weak) to 1.5 (strong) centered at 1.3x threshold
+            # Width = 0.4x threshold means +-5bps (<<0.4x) barely moves the sigmoid
+            _str_center = 1.3 * dyn_threshold
+            _str_width = 0.4 * dyn_threshold
+            _str_sigmoid = 1.0 / (1.0 + np.exp(-(_abs_ret - _str_center) / max(_str_width, 1e-10)))
+            _raw_strength = 0.9 + 0.6 * _str_sigmoid  # range [0.9, 1.5]
             strength_scale = max(_strength_floor, _raw_strength)
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
