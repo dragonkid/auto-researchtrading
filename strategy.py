@@ -205,16 +205,17 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
-            # Sigmoid-blended 2-tier strength scale: flat middle (noise-immune) + smooth transitions
-            # Only ONE transition at 1.3x threshold (far from entry at 1.0x) avoids boundary noise
+            # 3-tier stepped strength scale: noise immunity via wide steps
+            # Boundaries at 0.8x and 1.5x dyn_threshold are far from entry boundary (1.0x)
+            # so +-5bps noise at entry point stays within same tier (constant sizing)
             _abs_ret = abs(ret_short)
             _strength_floor = 0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0))
-            # Smooth transition from 0.9 (weak) to 1.5 (strong) centered at 1.3x threshold
-            # Width = 0.4x threshold means +-5bps (<<0.4x) barely moves the sigmoid
-            _str_center = 1.3 * dyn_threshold
-            _str_width = 0.4 * dyn_threshold
-            _str_sigmoid = 1.0 / (1.0 + np.exp(-(_abs_ret - _str_center) / max(_str_width, 1e-10)))
-            _raw_strength = 0.9 + 0.6 * _str_sigmoid  # range [0.9, 1.5]
+            if _abs_ret < 0.8 * dyn_threshold:
+                _raw_strength = 0.8
+            elif _abs_ret < 1.5 * dyn_threshold:
+                _raw_strength = 1.2
+            else:
+                _raw_strength = min(2.0, 1.6)
             strength_scale = max(_strength_floor, _raw_strength)
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
