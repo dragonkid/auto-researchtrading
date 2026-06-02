@@ -80,21 +80,21 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.45
-FLIP_MIN_VOTES = 2.70
+MIN_VOTES = 2.60
+FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Per-voter sigmoid scales (noise-weighted ensemble)
-# Further widen noise-sensitive voters — effectively downweighting them
+# Widen noise-sensitive voters more aggressively for stability
 VOTE_SIGMOID_SCALE = 0.30       # default / baseline reference
 VOTER_SCALES = [
-    0.48,   # ret_short (momentum): near-abstain (contributes ~0.4-0.6 votes)
-    0.30,   # EMA cross: baseline (fast EMA is needed for timing)
-    0.50,   # RSI: near-abstain (short window = most noise-sensitive)
+    0.40,   # ret_short (momentum): wider — smoothed but uses single recent bar
+    0.30,   # EMA cross: baseline
+    0.42,   # RSI: widest — short adaptive window, most noise-sensitive voter
     0.40,   # MACD: keep wide (was 0.40 in old code)
-    0.30,   # linreg slope: baseline (trend confirmation)
-    0.30,   # EMA slope: baseline (trend confirmation)
+    0.30,   # linreg slope: baseline
+    0.30,   # EMA slope: baseline
 ]
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
