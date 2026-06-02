@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.063
+BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.35
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.36  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.39  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -103,7 +103,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (moderate initial for noise resilience)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
@@ -243,9 +243,9 @@ class Strategy:
                     target = 0.0
 
                 # Confidence-scaled linreg exit: low-confidence entries get wider threshold
-                # High confidence (1.0) → base threshold; low confidence (0.39) → 1.3x threshold
+                # High confidence (1.0) → base threshold; low confidence (0.39) → 1.5x threshold
                 _conf_at_entry = self.entry_conf.get(symbol, 1.0)
-                _exit_widen = 1.0 + 0.5 * (1.0 - _conf_at_entry)  # range [1.0, 1.3]
+                _exit_widen = 1.0 + 0.8 * (1.0 - _conf_at_entry)  # range [1.0, 1.49]
                 _exit_slope_thresh = (0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * _exit_widen
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
