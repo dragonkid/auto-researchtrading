@@ -246,8 +246,16 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # R²-gated linreg exit: require slope reversal AND poor trend fit
+                # High R² + adverse slope = strong reversal → exit immediately
+                # Low R² + adverse slope = noisy flat → also exit (no reason to hold)
+                # The key insight: widen threshold when R² is HIGH (strong opposing trend is just
+                # starting — slope barely crossed but R² confirms it's real)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # R² confirmation: when R² > 0.5, the slope is statistically meaningful
+                # Scale exit threshold DOWN by R² to be MORE aggressive exiting when trend is confirmed adverse
+                _r2_factor = 1.0 - 0.3 * max(0.0, min(1.0, (_lr.rvalue ** 2 - 0.3) / 0.5))
+                _exit_slope_thresh *= _r2_factor
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
