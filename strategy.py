@@ -113,6 +113,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_conf = {}  # store entry vote confidence for hold duration scaling
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -257,13 +258,17 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Momentum-decay exit (soft time pressure, slope-extended)
-                if target != 0 and bars_held > HOLD_DECAY_START:
+                # Confidence-adaptive momentum-decay exit (strong entries hold longer)
+                # Entry confidence scales hold duration: high confidence = +2 bars, low = -1 bar
+                _entry_conf_norm = min(1.0, max(0.0, (self.entry_conf.get(symbol, 0.5) - 0.3) / 0.5))
+                _conf_hold_adj = -1.0 + 3.0 * _entry_conf_norm  # range [-1, +2]
+                _adj_decay_start = max(4, HOLD_DECAY_START + _conf_hold_adj)
+                if target != 0 and bars_held > _adj_decay_start:
                     # Slope agreement: does linreg slope support position direction?
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
                     _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
                     # Extra hold time when slope strongly agrees
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    _effective_max = _adj_decay_start + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                     if bars_held >= _effective_max:
                         target = 0.0
 
@@ -275,10 +280,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.entry_conf[symbol] = _vote_conf
 
         return signals
