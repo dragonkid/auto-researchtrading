@@ -111,7 +111,6 @@ VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GAT
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.entry_conf = {}  # store entry confidence for deterministic scale-up
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -237,13 +236,10 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: use STORED entry confidence for deterministic scale-up
-                # This eliminates bar-2 noise sensitivity from vote recalculation
+                # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    _stored_conf = self.entry_conf.get(symbol, _vote_conf)
-                    _stored_size = size * _stored_conf
-                    full_target = _stored_size if current_pos > 0 else -_stored_size
+                    full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -279,11 +275,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.entry_conf[symbol] = _vote_conf  # lock confidence at entry
 
         return signals
