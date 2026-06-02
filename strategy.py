@@ -88,10 +88,6 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.30
 
-# Temporal persistence: blend current voter output with previous bar's output
-# Higher PERSIST = more damping of single-bar flips (noise immunity)
-VOTER_PERSIST_ALPHA = 0.30  # 30% current, 70% previous — heavy temporal smoothing
-
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -117,8 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.prev_voter_bull = {}  # per-symbol: list of 6 smoothed voter outputs (bull)
-        self.prev_voter_bear = {}  # per-symbol: list of 6 smoothed voter outputs (bear)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -196,24 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Compute raw sigmoid outputs per voter
-            _raw_bull = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
-            _raw_bear = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
-
-            # Temporal persistence: blend with previous bar's outputs (dampen flips)
-            _prev_b = self.prev_voter_bull.get(symbol)
-            _prev_r = self.prev_voter_bear.get(symbol)
-            if _prev_b is not None:
-                _smoothed_bull = [VOTER_PERSIST_ALPHA * c + (1.0 - VOTER_PERSIST_ALPHA) * p for c, p in zip(_raw_bull, _prev_b)]
-                _smoothed_bear = [VOTER_PERSIST_ALPHA * c + (1.0 - VOTER_PERSIST_ALPHA) * p for c, p in zip(_raw_bear, _prev_r)]
-            else:
-                _smoothed_bull = _raw_bull
-                _smoothed_bear = _raw_bear
-            self.prev_voter_bull[symbol] = _smoothed_bull
-            self.prev_voter_bear[symbol] = _smoothed_bear
-
-            bull_votes = sum(_smoothed_bull)
-            bear_votes = sum(_smoothed_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
