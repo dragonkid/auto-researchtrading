@@ -203,10 +203,10 @@ class Strategy:
             # Simplified sizing: vol-scaling only (removes noise-sensitive calm/sideways/strength chains)
             # Combined_mult reduced to: vol_scale * trend_boost (2 factors vs 7)
             _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
-            _trend_boost = 1.0 + 0.8 * min(abs(ret_long) / 0.10, 1.0)  # moderate trend boost
+            _trend_boost = 1.0 + 1.2 * min(abs(ret_long) / 0.10, 1.0)  # stronger trend boost for returns
             combined_mult = _vol_scale * _trend_boost
             # Vol-aware hard cap: tighter in high vol to protect crash DD
-            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.6, 3.5 - 1.9 * min(1.0, (vol_ratio - 1.0) / 1.0))
+            _vol_cap = 4.0 if vol_ratio < 1.0 else max(1.8, 4.0 - 2.2 * min(1.0, (vol_ratio - 1.0) / 1.0))
             combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
