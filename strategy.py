@@ -242,30 +242,41 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Stop-loss exit (noise-immune: anchored to entry_price)
-                if pos_pnl < STOP_LOSS_PCT:
-                    target = 0.0
+                # Unified exit urgency: combines all exit signals into one score
+                # Exit when urgency >= 1.0 (multiple weak signals or one strong signal)
+                # This reduces 4 independent binary boundaries to 1 combined threshold
+                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Component 1: Stop-loss (hard floor, grows rapidly below STOP_LOSS_PCT)
+                _stop_urgency = max(0.0, (STOP_LOSS_PCT - pos_pnl) / abs(STOP_LOSS_PCT)) * 2.0
+                # Ensure hard stop at 2x stop level regardless
+                if pos_pnl < STOP_LOSS_PCT * 1.5:
+                    _stop_urgency = 2.0
+
+                # Component 2: Adverse slope (linreg against position)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
-                    target = 0.0
+                _signed_slope = _lr.slope if current_pos > 0 else -_lr.slope
+                _slope_urgency = max(0.0, (-_signed_slope - _exit_slope_thresh * 0.3) / (_exit_slope_thresh * 0.7))
 
-                # Peak-profit trailing exit (noise-immune: anchored to entry_price)
-                if target != 0:
-                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                        target = 0.0
-
-                # Momentum-decay exit (soft time pressure, slope-extended)
-                if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Slope agreement: does linreg slope support position direction?
+                # Component 3: Time decay (pressure builds after HOLD_DECAY_START)
+                _time_urgency = 0.0
+                if bars_held > HOLD_DECAY_START:
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
-                    # Extra hold time when slope strongly agrees
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                    if bars_held >= _effective_max:
-                        target = 0.0
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
+                    _effective_start = HOLD_DECAY_START + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    _time_urgency = max(0.0, (bars_held - _effective_start) * HOLD_DECAY_RATE)
+
+                # Component 4: Peak-profit giveback
+                _giveback_urgency = 0.0
+                _peak_thresh = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                if self.peak_pnl[symbol] > _peak_thresh:
+                    _giveback_frac = (self.peak_pnl[symbol] - pos_pnl) / max(self.peak_pnl[symbol], 1e-10)
+                    _giveback_urgency = max(0.0, (_giveback_frac - PEAK_PROFIT_GIVEBACK * 0.5) / (PEAK_PROFIT_GIVEBACK * 0.5))
+
+                # Combined urgency: weighted sum (each component scales 0 to ~1-2)
+                _exit_urgency = _stop_urgency + _slope_urgency * 0.7 + _time_urgency * 0.6 + _giveback_urgency * 0.5
+                if _exit_urgency >= 1.0:
+                    target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
