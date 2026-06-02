@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0595
+BASE_POSITION_SIZE = 0.055
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.35  # minimum sizing fraction at exactly MIN_VOTES (lower = less noise from boundary entries)
+ENTRY_GATE_FLOOR = 0.40  # balanced: lower than original 0.45 for stability, higher than 0.35 for raw
 
 
 def ema(values, span):
