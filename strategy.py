@@ -200,11 +200,12 @@ class Strategy:
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
-            # Simplified sizing: steep vol-scaling to protect crash while boosting calm
-            _vol_scale = max(0.25, min(2.5, (TARGET_VOL / realized_vol) ** 1.15))
+            # Simplified sizing: vol-scaling only (removes noise-sensitive calm/sideways/strength chains)
+            _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
             _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)
             combined_mult = _vol_scale * _trend_boost
-            combined_mult = min(combined_mult, 4.0)
+            _vol_cap = 3.0 if vol_ratio < 0.8 else max(1.1, 3.0 - 1.9 * min(1.0, (vol_ratio - 0.8) / 1.0))
+            combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
