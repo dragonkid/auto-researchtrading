@@ -16,6 +16,7 @@ EMA_FAST = 3
 EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
+EMA_SLOPE_LOOKBACK_LONG = 5  # second temporal scale for vote averaging
 
 # MACD parameters
 MACD_FAST = 8
@@ -24,6 +25,7 @@ MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
 # Linear regression
 LINREG_PERIOD = 16
+LINREG_PERIOD_LONG = 24  # second temporal scale for vote averaging
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -145,6 +147,7 @@ class Strategy:
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _lr_long = linregress(np.arange(LINREG_PERIOD_LONG), np.log((bd.history["high"].values[-LINREG_PERIOD_LONG:] + bd.history["low"].values[-LINREG_PERIOD_LONG:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -162,36 +165,58 @@ class Strategy:
             # MACD from HL2 for voter decorrelation: HL2 receives ~50% perturbation vs close
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
             _ml = ema(_hl2_macd, MACD_FAST) - ema(_hl2_macd, MACD_SLOW)
-            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK_LONG + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            _ema_slope_val_long = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK_LONG]) / _ea[-EMA_SLOPE_LOOKBACK_LONG]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
-            _voter_deltas_bull = [
+
+            # Temporal vote blending: linreg and EMA slope voters use average of
+            # short and long lookback sigmoid outputs for noise decorrelation
+            def _sigmoid(x):
+                return 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, x))))
+
+            # Linreg voter: average of 16-bar and 24-bar slope sigmoids
+            _lr_delta_bull = (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE)
+            _lr_long_delta_bull = (_lr_long.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE)
+            _lr_vote_bull = 0.5 * (_sigmoid(_lr_delta_bull) + _sigmoid(_lr_long_delta_bull))
+
+            _lr_delta_bear = (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE)
+            _lr_long_delta_bear = (-_lr_long.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE)
+            _lr_vote_bear = 0.5 * (_sigmoid(_lr_delta_bear) + _sigmoid(_lr_long_delta_bear))
+
+            # EMA slope voter: average of 3-bar and 5-bar lookback sigmoids
+            _ema_delta_bull = (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE)
+            _ema_long_delta_bull = (_ema_slope_val_long - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE)
+            _ema_vote_bull = 0.5 * (_sigmoid(_ema_delta_bull) + _sigmoid(_ema_long_delta_bull))
+
+            _ema_delta_bear = (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE)
+            _ema_long_delta_bear = (-_ema_slope_val_long - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE)
+            _ema_vote_bear = 0.5 * (_sigmoid(_ema_delta_bear) + _sigmoid(_ema_long_delta_bear))
+
+            # Remaining 4 voters computed as before (sigmoid from delta)
+            _voter_deltas_bull_4 = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
-            _voter_deltas_bear = [
+            _voter_deltas_bear_4 = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            bull_votes = sum(_sigmoid(d) for d in _voter_deltas_bull_4) + _lr_vote_bull + _ema_vote_bull
+            bear_votes = sum(_sigmoid(d) for d in _voter_deltas_bear_4) + _lr_vote_bear + _ema_vote_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
