@@ -90,7 +90,7 @@ VOTE_SIGMOID_SCALE = 0.30
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
-ENTRY_GATE_SCALE = 0.42  # wider = smoother sizing transition above threshold (reduces noise at boundary)
+ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
 ENTRY_GATE_FLOOR = 0.45  # keep original floor for raw preservation
 
 
@@ -148,11 +148,14 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            # 5-bar median reference + 3-bar median current level for noise immunity
+            # 3-bar median of current values: single-bar perturbation cannot change the median
+            # (median of 3 values is immune to one outlier)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
-            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            _current_level = np.median(smoothed_closes[-3:])  # noise-immune current price level
+            ret_vshort = (_current_level - _med_ref_short) / _med_ref_short
+            ret_short = (_current_level - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
