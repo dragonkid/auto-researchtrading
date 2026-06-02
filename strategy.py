@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.40
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.35  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.39  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.42  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -173,7 +173,7 @@ class Strategy:
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (_lr.slope - 0.00020) / (0.00020 * VOTE_SIGMOID_SCALE),
+                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
@@ -181,7 +181,7 @@ class Strategy:
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (-_lr.slope - 0.00020) / (0.00020 * VOTE_SIGMOID_SCALE),
+                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
