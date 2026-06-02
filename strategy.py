@@ -246,9 +246,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Dual-signal exit: require BOTH linreg slope AND EMA slope to confirm exit direction
+                # Decorrelated signals reduce single-bar noise sensitivity at exit boundary
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                _ema_exit_agrees = (current_pos > 0 and _ema_slope_val < -0.0003) or (current_pos < 0 and _ema_slope_val > 0.0003)
+                if target != 0 and _ema_exit_agrees and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
