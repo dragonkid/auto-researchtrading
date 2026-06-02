@@ -252,14 +252,9 @@ class Strategy:
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
-                # Slope-adaptive giveback: widen when linreg slope agrees with position direction
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    _slope_pos_agree = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_mag = min(1.0, abs(_lr.slope) / 0.0008)  # normalized 0-1
-                    # When slope agrees strongly, allow up to 40% giveback (vs 25% base)
-                    _adaptive_giveback = PEAK_PROFIT_GIVEBACK + 0.15 * _slope_mag * (1.0 if _slope_pos_agree else 0.0)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * _adaptive_giveback:
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
                 # Momentum-decay exit (soft time pressure, slope-extended)
