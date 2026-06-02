@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.70  # higher floor = larger positions at threshold (raw recovery)
 
 
 def ema(values, span):
@@ -200,14 +200,11 @@ class Strategy:
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
-            # Simplified sizing: vol-scaling + low-vol calm boost (3 factors vs original 7)
+            # Simplified sizing: vol-scaling only (removes noise-sensitive calm/sideways/strength chains)
             _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
-            _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)  # mild trend boost
-            # Calm boost: in low vol (vol_ratio < 0.8), positions can be larger (lower DD risk)
-            _calm = 1.0 + 0.6 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.3))
-            combined_mult = _vol_scale * _trend_boost * _calm
-            # Vol-aware hard cap: tighter in high vol to protect crash DD
-            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.5, 3.5 - 2.0 * min(1.0, (vol_ratio - 1.0) / 1.0))
+            _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)
+            combined_mult = _vol_scale * _trend_boost
+            _vol_cap = 3.0 if vol_ratio < 1.0 else max(1.5, 3.0 - 1.5 * min(1.0, (vol_ratio - 1.0) / 1.0))
             combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
