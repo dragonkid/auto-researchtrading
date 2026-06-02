@@ -50,6 +50,11 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
+# R-squared exit gating: widen exit threshold when linreg fit is poor (noisy slope estimate)
+EXIT_R2_WIDEN_FLOOR = 0.30   # r² below this = maximum threshold widening
+EXIT_R2_WIDEN_CEIL = 0.70    # r² above this = no widening (slope is reliable)
+EXIT_R2_WIDEN_FACTOR = 1.8   # max exit threshold multiplier when r² is low
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.062
 CALM_BOOST_MAX = 0.8
@@ -241,8 +246,12 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit with r²-gating: widen threshold when slope estimate is noisy
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # R² gating: low r² means slope is unreliable, widen threshold to avoid noise exits
+                _r2 = _lr.rvalue ** 2
+                _r2_factor = 1.0 + (EXIT_R2_WIDEN_FACTOR - 1.0) * max(0.0, min(1.0, (EXIT_R2_WIDEN_CEIL - _r2) / (EXIT_R2_WIDEN_CEIL - EXIT_R2_WIDEN_FLOOR)))
+                _exit_slope_thresh *= _r2_factor
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
