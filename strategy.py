@@ -82,9 +82,9 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Fixed per-voter weights based on signal noise immunity (static, not data-dependent)
 # Voters using more bars / longer windows are more noise-immune → higher weight
 # Order: [ret_short, EMA_cross, RSI, MACD, linreg_slope, EMA_slope]
-VOTER_WEIGHTS = [0.90, 1.00, 0.95, 1.00, 1.10, 1.05]  # sum=6.00; no normalization needed
-# Mild differentiation: linreg=1.10, EMA_slope=1.05, EMA_cross=MACD=1.00, RSI=0.95, ret_short=0.90
-# ret_short slightly reduced (most noise-sensitive), linreg slightly boosted (most noise-immune)
+VOTER_WEIGHTS = [0.75, 1.00, 0.90, 0.95, 1.15, 1.00]  # sum=5.75; normalized to 6.0 range
+# Linreg(16 bars of HL2)=1.15, EMA_cross(3vs21)=1.00 (fast tracking crucial for DD protection)
+# EMA_slope(22 bars)=1.00, MACD(HL2+EMA)=0.95, RSI(6-8 bars)=0.90, ret_short(smoothed)=0.75
 MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
