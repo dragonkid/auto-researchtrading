@@ -88,10 +88,9 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.30
 
-# Entry gate: quadratic ramp position scaling above MIN_VOTES
-# Quadratic has ZERO derivative at boundary (noise-immune at entry threshold)
-# Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at GATE_FULL_MARGIN above
-ENTRY_GATE_FULL_MARGIN = 0.80  # margin above MIN_VOTES where sizing reaches 1.0
+# Entry gate: sigmoid-based position scaling above MIN_VOTES
+# Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
+ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
 ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
 
 
@@ -214,13 +213,13 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vote-margin sizing: hard entry gate + quadratic ramp above threshold
-            # Quadratic ramp has zero derivative at boundary → noise at MIN_VOTES produces
-            # negligible position size change (size ≈ FLOOR × tiny²)
+            # Vote-margin sizing: hard entry gate + smooth position scaling above threshold
+            # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
+            # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
+            # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
-            _quad_frac = min(1.0, (_margin_above / ENTRY_GATE_FULL_MARGIN) ** 2)
-            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * _quad_frac
+            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
