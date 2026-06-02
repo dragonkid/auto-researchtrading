@@ -241,9 +241,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                # Vote-based exit: exit when opposing votes show moderate conviction
+                # Uses same sigmoid voter infrastructure as entries — inherits noise immunity
+                # Lower threshold than FLIP (exit is less aggressive than reversal)
+                _exit_vote_thresh = 2.20  # ~37% of max 6.0 — moderate opposing conviction
+                if target != 0 and ((current_pos > 0 and bear_votes >= _exit_vote_thresh and _lr.slope < 0) or (current_pos < 0 and bull_votes >= _exit_vote_thresh and _lr.slope > 0)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
