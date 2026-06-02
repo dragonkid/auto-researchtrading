@@ -246,8 +246,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit: widen in calm + early-hold protection
+                # First 3 bars get 2x threshold (most noise-sensitive period)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _early_hold_mult = 1.0 + 1.0 * max(0.0, (3 - bars_held) / 3.0)
+                _exit_slope_thresh *= _early_hold_mult
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
