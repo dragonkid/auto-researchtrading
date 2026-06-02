@@ -64,7 +64,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
 # Combined mult cap
-MAX_COMBINED_MULT_HIGH_VOL = 2.5
+MAX_COMBINED_MULT_HIGH_VOL = 2.3
 MAX_COMBINED_MULT_LOW_VOL = 6.5
 MAX_COMBINED_VOL_LOW = 0.6
 MAX_COMBINED_VOL_HIGH = 1.2
@@ -103,9 +103,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
+ENTRY_INITIAL_FRAC = 0.45  # first bar: 45% of target (smaller initial reduces first-bar DD)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
 class Strategy:
