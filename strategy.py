@@ -111,7 +111,6 @@ VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GAT
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.entry_conf = {}  # store entry-time vote confidence for exit threshold scaling
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -242,11 +241,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Confidence-scaled linreg exit: low-confidence entries get wider threshold
-                # High confidence (1.0) → base threshold; low confidence (0.39) → 1.5x threshold
-                _conf_at_entry = self.entry_conf.get(symbol, 1.0)
-                _exit_widen = 1.0 + 0.5 * (1.0 - _conf_at_entry)  # range [1.0, 1.3]
-                _exit_slope_thresh = (0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * _exit_widen
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
@@ -274,11 +270,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.entry_conf[symbol] = _vote_conf
 
         return signals
