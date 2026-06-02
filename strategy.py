@@ -171,11 +171,10 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # ret_short and MACD get wider scales (more noise-sensitive, need dampening)
+            # MACD gets wider scale (histogram near zero in sideways = noise-sensitive)
             _macd_sig_scale = 0.55  # wider: MACD histogram near zero in sideways
-            _ret_sig_scale = 0.48  # wider: ret_short uses current close (noisy)
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * _ret_sig_scale, 1e-10),
+                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
@@ -183,7 +182,7 @@ class Strategy:
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * _ret_sig_scale, 1e-10),
+                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
