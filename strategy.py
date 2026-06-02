@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.22
+BASE_POSITION_SIZE = 0.18
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -200,11 +200,14 @@ class Strategy:
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
-            # Simplified sizing: steep vol-scaling to protect crash while boosting calm
-            _vol_scale = max(0.25, min(2.5, (TARGET_VOL / realized_vol) ** 1.15))
-            _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)
-            combined_mult = _vol_scale * _trend_boost
-            combined_mult = min(combined_mult, 4.0)
+            # Simplified sizing: vol-scale + strength_scale (signal magnitude based, low noise)
+            _vol_scale = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85))
+            # Strength scale: boost when entry signal is strong (magnitude-based, not boundary-based)
+            _strength = min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85)
+            combined_mult = _vol_scale * max(1.0, _strength)
+            # Vol-aware hard cap
+            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.5, 3.5 - 2.0 * min(1.0, (vol_ratio - 1.0) / 1.0))
+            combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
