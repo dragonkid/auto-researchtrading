@@ -127,7 +127,7 @@ class Strategy:
 
             # Fixed smoothing alpha (removes vol_ratio dependency from smoothed_closes path)
             # vol_ratio-adaptive alpha created second-order divergence under noise
-            _smooth_alpha = 0.50
+            _smooth_alpha = 0.55
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
