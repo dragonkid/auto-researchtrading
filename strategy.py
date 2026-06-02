@@ -86,15 +86,15 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Per-voter sigmoid scales (noise-weighted ensemble)
-# Only narrow the most noise-immune voters (linreg+EMA slope) to avoid sideways regression
+# Noise-immune voters get narrower scale (more decisive), noise-sensitive keep baseline
 VOTE_SIGMOID_SCALE = 0.30       # default / baseline reference
 VOTER_SCALES = [
-    0.30,   # ret_short (momentum): baseline
-    0.30,   # EMA cross: baseline (narrowing hurts sideways)
-    0.30,   # RSI: baseline
-    0.40,   # MACD: keep slightly wide (was 0.40 in old code)
-    0.24,   # linreg slope: most noise-immune voter → narrow for decisive trending votes
-    0.26,   # EMA slope: good immunity → slightly narrow for trending
+    0.32,   # ret_short (momentum): slight widening for smoothed input
+    0.25,   # EMA cross: long EMA gives strong smoothing → narrow = decisive
+    0.30,   # RSI: keep baseline (sideways needs its signal strength)
+    0.38,   # MACD: uses HL2 but histogram is ratio-based → slightly wide
+    0.22,   # linreg slope: 16-bar HL2 regression, most noise-immune → narrow
+    0.26,   # EMA slope: 22-bar EMA, good immunity → slightly narrow
 ]
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
