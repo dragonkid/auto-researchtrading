@@ -151,14 +151,10 @@ class Strategy:
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            # Use 3-point median of recent smoothed closes as noise-robust "current" value
-            _current_med = np.median(smoothed_closes[-3:])
-            ret_vshort = (_current_med - _med_ref_short) / _med_ref_short
-            ret_short = (_current_med - _med_ref_med) / _med_ref_med
+            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
+            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            _ema_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
-            _ef = np.median(_ema_arr[-3:])  # 3-point median of fast EMA for noise robustness
-            _es = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
