@@ -246,14 +246,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit with profit-dependent threshold widening
-                # When profitable: widen exit threshold (harder to shake out by noise)
-                # When underwater: keep standard threshold (allow faster exits)
-                # Mechanism: noise at exit boundary mostly affects profitable positions
-                # because they sit near the "should I take profit or hold?" decision point
-                _exit_slope_base = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _profit_widen = 1.0 + 0.4 * max(0.0, min(1.0, pos_pnl / 0.015))  # up to 1.4x when profitable
-                _exit_slope_thresh = _exit_slope_base * _profit_widen
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
