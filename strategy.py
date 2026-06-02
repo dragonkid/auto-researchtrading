@@ -103,8 +103,8 @@ def ema(values, span):
     return result
 
 # Position entry: single-bar entry (removes bar-2 scale-up noise channel)
-ENTRY_INITIAL_FRAC = 0.60  # smaller first-bar commitment reduces per-entry noise sensitivity
-ENTRY_FULL_BARS = 1  # single-bar entry (no scale-up = no bar-2 vote recalculation noise)
+ENTRY_INITIAL_FRAC = 0.60  # immediate entry at 60% of confidence-sized target (no further scale-up)
+ENTRY_FULL_BARS = 0  # zero = accumulation block never triggers, eliminating bar-2 noise channel
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
