@@ -78,10 +78,12 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
+# Vote / cooldown (7 voters: 6 price-derived + 1 funding-rate)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.60
-FLIP_MIN_VOTES = 2.85
+# Adding funding voter dilutes each price-voter's contribution to the sum,
+# so a single price-voter flip from noise changes the sum by ~1/7 instead of ~1/6
+MIN_VOTES = 2.95  # raised from 2.60 to account for 7th voter (proportional: 2.60*7/6=3.03, slightly lower for raw)
+FLIP_MIN_VOTES = 3.20  # raised from 2.85 proportionally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -164,15 +166,25 @@ class Strategy:
             _ml = ema(_hl2_macd, MACD_FAST) - ema(_hl2_macd, MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
+            # 7 voters with continuous sigmoid weighting (6 price-derived + 1 funding rate)
+            # Funding rate voter is completely noise-immune (funding_rate is never perturbed)
+            # This dilutes each price-voter's flip impact from 1/6 to 1/7 of total sum
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+
+            # Funding rate signal: cumulative funding over last 8 bars (contrarian)
+            # Positive funding = longs paying shorts = crowded long = bearish signal
+            # Use 8-bar sum for temporal stability (single bar is noisy even without price noise)
+            _funding_rates = bd.history["funding_rate"].values[-8:]
+            _funding_sum = np.sum(_funding_rates)
+            _funding_thresh = 0.0004  # neutral zone: ±0.4bps cumulative funding
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            _funding_sig_scale = 0.50  # wider scale for funding voter (less decisive individually)
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
@@ -180,6 +192,7 @@ class Strategy:
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-_funding_sum - _funding_thresh) / (_funding_thresh * _funding_sig_scale),  # negative funding = bullish
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -188,6 +201,7 @@ class Strategy:
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (_funding_sum - _funding_thresh) / (_funding_thresh * _funding_sig_scale),  # positive funding = bearish
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
