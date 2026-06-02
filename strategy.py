@@ -86,15 +86,15 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Per-voter sigmoid scales (noise-weighted ensemble)
-# Target: widen RSI/momentum/MACD (noise-sensitive trio) while keeping trend voters decisive
+# Step 4 best: widen RSI/momentum to reduce noise, keep trend voters at baseline
 VOTE_SIGMOID_SCALE = 0.30       # default / baseline reference
 VOTER_SCALES = [
-    0.38,   # ret_short (momentum): moderate widening
-    0.30,   # EMA cross: baseline (needed for fast timing)
-    0.40,   # RSI: wider (most noise-sensitive)
-    0.42,   # MACD: slightly wider than before (reduce histogram noise contribution)
-    0.30,   # linreg slope: baseline (trend confirmation)
-    0.30,   # EMA slope: baseline (trend confirmation)
+    0.40,   # ret_short (momentum): wider — reduces noise at cost of signal contribution
+    0.30,   # EMA cross: baseline
+    0.42,   # RSI: widest — most noise-sensitive voter
+    0.40,   # MACD: keep wide (was 0.40 in old code)
+    0.30,   # linreg slope: baseline
+    0.30,   # EMA slope: baseline
 ]
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
@@ -112,7 +112,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
+ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% of target (slightly reduced for entry noise resilience)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
