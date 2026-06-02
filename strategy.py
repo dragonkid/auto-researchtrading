@@ -108,11 +108,18 @@ ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
+# Confidence-scaled exit: widen exit slope for high-conviction entries
+CONF_EXIT_WIDEN_MIN = 1.0    # exit slope multiplier at MIN_VOTES (no widening)
+CONF_EXIT_WIDEN_MAX = 1.50   # exit slope multiplier at very high votes (50% wider = more hold patience)
+CONF_EXIT_WIDEN_VOTES = 3.8  # vote level at which widening reaches max
+
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_conf_level = {}  # store entry vote confidence for exit scaling
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -226,10 +233,13 @@ class Strategy:
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
+                    self.entry_conf_level[symbol] = bull_votes
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
+                    self.entry_conf_level[symbol] = bear_votes
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
+                    self.entry_conf_level[symbol] = MIN_VOTES  # mean-rev gets default confidence
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -246,8 +256,13 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Vol-adaptive linreg exit with confidence-scaled widening
+                # High-confidence entries get wider exit threshold (more patience = fewer noise exits)
+                _exit_slope_base = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _entry_votes = self.entry_conf_level.get(symbol, MIN_VOTES)
+                _conf_frac = min(1.0, max(0.0, (_entry_votes - MIN_VOTES) / (CONF_EXIT_WIDEN_VOTES - MIN_VOTES)))
+                _exit_conf_mult = CONF_EXIT_WIDEN_MIN + (CONF_EXIT_WIDEN_MAX - CONF_EXIT_WIDEN_MIN) * _conf_frac
+                _exit_slope_thresh = _exit_slope_base * _exit_conf_mult
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
@@ -275,10 +290,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf_level):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    # For flips, store new entry confidence
+                    if current_pos != 0:
+                        self.entry_conf_level[symbol] = _active_votes
 
         return signals
