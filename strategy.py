@@ -148,15 +148,11 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for reference points (noise immunity on anchor)
+            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
-            # Median-of-3 ret_short: compute return for last 3 bars, take median
-            # Rank-order statistic is invariant to perturbation that doesn't change bar ordering
-            # This makes the ret_short VOTER signal noise-resistant at cost of 0 lag (median of concurrent values)
-            _ret_short_vals = [(smoothed_closes[-1-i] - _med_ref_med) / _med_ref_med for i in range(3)]
-            ret_short = np.median(_ret_short_vals)
+            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
