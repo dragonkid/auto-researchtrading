@@ -40,6 +40,12 @@ If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0
 
 **This rule is enforced by the exit rule below:** you cannot exit a session without having attempted at least 2 architectural changes. The escalation rule checks BOTH the current session's discards AND the tail of `results.tsv` from prior sessions — if the last 3+ results across sessions are sub-threshold discards, escalation is already active from experiment 1.
 
+### PARAMETER-SPACE SATURATION RULE
+
+If the last 5 branches (from results.tsv BRANCH SUMMARY lines) all operate within the SAME parameter space — position sizing (SIZE/FRAC/GATE_FLOOR/GATE_SCALE/CONF_MIN), sigmoid width, MIN_VOTES/FLIP_MIN_VOTES tuning — the parameter space is SATURATED. Your next experiment MUST change the DECISION ARCHITECTURE itself.
+
+"Architectural" does NOT mean "multi-variable parameter change." It means the CODE STRUCTURE changes — new functions, new control flow, new data dependencies between components. If your change can be described as "adjust parameter X from A to B" or "combine parameters X+Y+Z at different values", it is NOT architectural.
+
 ### Phase 2: Experiment loop
 
 For each experiment:
