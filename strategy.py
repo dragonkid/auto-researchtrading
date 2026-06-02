@@ -80,7 +80,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.62
+MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.90
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
