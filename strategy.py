@@ -167,25 +167,21 @@ class Strategy:
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
-            # RSI and EMA slope use wider normalization (4.5x and 0.001x) to dampen noise sensitivity
-            # These are the two noisiest close-derived voters (6-bar RSI and 3-bar EMA diff)
-            _rsi_norm = 4.5 * VOTE_SIGMOID_SCALE  # wider: each RSI point matters less
-            _ema_slope_norm = 0.001 * VOTE_SIGMOID_SCALE  # wider: requires stronger EMA move
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / _rsi_norm,
+                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (_ema_slope_norm),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / _rsi_norm,
+                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (_ema_slope_norm),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
