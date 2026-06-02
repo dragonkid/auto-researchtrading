@@ -204,7 +204,7 @@ class Strategy:
             _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
             _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)
             combined_mult = _vol_scale * _trend_boost
-            _vol_cap = 4.5 if vol_ratio < 0.8 else max(1.5, 4.5 - 3.0 * min(1.0, (vol_ratio - 0.8) / 1.2))
+            _vol_cap = 3.0 if vol_ratio < 1.0 else max(1.5, 3.0 - 1.5 * min(1.0, (vol_ratio - 1.0) / 1.0))
             combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
