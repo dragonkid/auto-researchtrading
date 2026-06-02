@@ -262,10 +262,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + weak trend gate — only block when trend strongly against)
-                _flip_trend_ok_bear = trend_avg < 0.02  # allow flip unless trend strongly bullish
-                _flip_trend_ok_bull = trend_avg > -0.02  # allow flip unless trend strongly bearish
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _flip_trend_ok_bear) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _flip_trend_ok_bull)):
+                # Flip mechanism (votes only, no trend_avg gate — removes binary boundary)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
