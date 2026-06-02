@@ -267,12 +267,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: votes + trend_avg sign + linreg slope confirmation
-                # Added: linreg slope must confirm direction reversal (noise-immune gate)
-                # This prevents flips from noise-driven momentary vote spikes
-                _flip_slope_min = 0.00025  # minimum |slope| for flip confirmation
-                _flip_slope_ok = (current_pos > 0 and _lr.slope < -_flip_slope_min) or (current_pos < 0 and _lr.slope > _flip_slope_min)
-                if not in_cooldown and _flip_slope_ok and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
