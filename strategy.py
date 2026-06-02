@@ -190,8 +190,17 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Paired-voter averaging: 3 pairs of 2 voters each
+            # Each pair averages its components, so a single-voter flip only moves sum by ~0.25
+            # Pairs chosen by signal-type similarity: (momentum, cross, oscillator)
+            # Pair 1: ret_short + linreg_slope (price momentum signals)
+            # Pair 2: EMA_cross + EMA_slope (EMA-based signals)
+            # Pair 3: RSI + MACD (oscillator signals)
+            _sig_bull = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
+            _sig_bear = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
+            # Pairs: (0,4)=ret_short+linreg, (1,5)=ema_cross+ema_slope, (2,3)=rsi+macd
+            bull_votes = ((_sig_bull[0] + _sig_bull[4]) / 2.0 + (_sig_bull[1] + _sig_bull[5]) / 2.0 + (_sig_bull[2] + _sig_bull[3]) / 2.0) * 2.0
+            bear_votes = ((_sig_bear[0] + _sig_bear[4]) / 2.0 + (_sig_bear[1] + _sig_bear[5]) / 2.0 + (_sig_bear[2] + _sig_bear[3]) / 2.0) * 2.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
