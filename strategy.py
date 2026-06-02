@@ -113,7 +113,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% (stability from smaller first-bar exposure)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
+ENTRY_FULL_BARS = 1  # bars to reach full position (immediate = fewer sizing decisions)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
