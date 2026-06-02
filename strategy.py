@@ -43,8 +43,7 @@ RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
 # Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
-HOLD_DECAY_START = 6   # bars after which exit pressure begins (for high confidence entries)
-HOLD_DECAY_START_LOW = 4  # bars for low-confidence entries (faster exit = less slope-exit exposure)
+HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
@@ -112,7 +111,6 @@ VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GAT
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        self.entry_conf = {}  # stored entry confidence for hold-timer scaling
         self.bar_count = 0
         self.smoothed_trend = {}
 
@@ -254,16 +252,13 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Momentum-decay exit (soft time pressure, slope-extended, confidence-scaled)
-                # Low-confidence entries get shorter hold timer (less exposure to noisy slope exits)
-                _entry_conf_stored = self.entry_conf.get(symbol, 0.5)
-                _hold_start = HOLD_DECAY_START_LOW + (HOLD_DECAY_START - HOLD_DECAY_START_LOW) * _entry_conf_stored
-                if target != 0 and bars_held > _hold_start:
+                # Momentum-decay exit (soft time pressure, slope-extended)
+                if target != 0 and bars_held > HOLD_DECAY_START:
                     # Slope agreement: does linreg slope support position direction?
                     _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
                     _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
                     # Extra hold time when slope strongly agrees
-                    _effective_max = _hold_start + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                     if bars_held >= _effective_max:
                         target = 0.0
 
@@ -275,11 +270,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_conf):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.entry_conf[symbol] = _vote_conf
 
         return signals
