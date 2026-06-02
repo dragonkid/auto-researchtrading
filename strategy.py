@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 47  # wider = fewer noise-sensitive MR entries
-MEANREV_RSI_OVERBOUGHT = 53
+MEANREV_RSI_OVERSOLD = 49
+MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.40  # wider for stability (noise-immune gradual voters)
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.42  # how quickly sizing grows above threshold (wider = smoother transition for stability)
-ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES (higher = more stable at boundary)
 
 
 def ema(values, span):
@@ -105,7 +105,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 # Vol-adaptive initial fraction: larger in calm (faster full-size), smaller in volatile (cautious)
 ENTRY_FRAC_CALM = 0.52   # initial frac when vol_ratio <= 0.7 (calm/sideways)
-ENTRY_FRAC_VOLATILE = 0.36  # initial frac when vol_ratio >= 1.3 (volatile/crash)
+ENTRY_FRAC_VOLATILE = 0.38  # initial frac when vol_ratio >= 1.3 (volatile/crash)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 
 
