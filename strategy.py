@@ -104,7 +104,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 # Vol-adaptive initial fraction: larger in calm (faster full-size), smaller in volatile (cautious)
-ENTRY_FRAC_CALM = 0.52   # initial frac when vol_ratio <= 0.7 (calm/sideways)
+ENTRY_FRAC_CALM = 0.51   # initial frac when vol_ratio <= 0.7 (calm/sideways) - tighter stability focus
 ENTRY_FRAC_VOLATILE = 0.38  # initial frac when vol_ratio >= 1.3 (volatile/crash)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 
