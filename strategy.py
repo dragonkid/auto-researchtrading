@@ -125,9 +125,8 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Fixed smoothing alpha (removes vol_ratio dependency from smoothed_closes path)
-            # vol_ratio-adaptive alpha created second-order divergence under noise
-            _smooth_alpha = 0.50
+            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
