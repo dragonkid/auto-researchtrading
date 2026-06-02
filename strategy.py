@@ -190,29 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Consensus-weighted voting: voters aligned with majority get amplified,
-            # lone flippers (likely noise-induced) get suppressed.
-            # Step 1: compute raw sigmoid votes
-            _bull_raw = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
-            _bear_raw = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
-            # Step 2: compute consensus direction (mean of centered votes)
-            _bull_centered = [v - 0.5 for v in _bull_raw]
-            _bear_centered = [v - 0.5 for v in _bear_raw]
-            _bull_consensus = sum(_bull_centered) / len(_bull_centered)
-            _bear_consensus = sum(_bear_centered) / len(_bear_centered)
-            # Step 3: weight each voter by alignment with consensus (same-sign = boosted, opposite = suppressed)
-            # Alignment factor: 0.7 (suppressed outlier) to 1.3 (aligned with consensus)
-            _CONSENSUS_BOOST = 0.3  # max boost/suppression magnitude
-            bull_votes = 0.0
-            for _cv, _cc in zip(_bull_centered, [_bull_consensus] * len(_bull_centered)):
-                _align = 1.0 if _cv * _cc > 0 else -1.0 if _cv * _cc < 0 else 0.0
-                _weight = 1.0 + _CONSENSUS_BOOST * _align * min(1.0, abs(_cc) / 0.15)
-                bull_votes += (_cv + 0.5) * _weight
-            bear_votes = 0.0
-            for _cv, _cc in zip(_bear_centered, [_bear_consensus] * len(_bear_centered)):
-                _align = 1.0 if _cv * _cc > 0 else -1.0 if _cv * _cc < 0 else 0.0
-                _weight = 1.0 + _CONSENSUS_BOOST * _align * min(1.0, abs(_cc) / 0.15)
-                bear_votes += (_cv + 0.5) * _weight
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
