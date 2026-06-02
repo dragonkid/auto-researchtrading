@@ -144,7 +144,11 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _hl2_lr = np.log((bd.history["high"].values[-(LINREG_PERIOD + 2):] + bd.history["low"].values[-(LINREG_PERIOD + 2):]) / 2.0)
+            _lr = linregress(np.arange(LINREG_PERIOD), _hl2_lr[-LINREG_PERIOD:])
+            # Multi-bar slope for exit: average of current + 1-bar-ago slopes (reduces single-bar sensitivity)
+            _lr_prev = linregress(np.arange(LINREG_PERIOD), _hl2_lr[-(LINREG_PERIOD + 1):-1])
+            _exit_slope = (_lr.slope + _lr_prev.slope) / 2.0
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -246,9 +250,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit using averaged 2-bar slope (noise-immune)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _exit_slope < -_exit_slope_thresh) or (current_pos < 0 and _exit_slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
