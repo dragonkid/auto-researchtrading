@@ -79,12 +79,8 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
-# Decorrelated pair architecture: split into trend (3) + momentum (3) groups
-# Entry requires BOTH groups to independently exceed their threshold
-# This reduces noise: correlated voters flipping together only affect one group
-GROUP_TREND_MIN = 1.30   # trend group threshold (EMA cross, linreg, EMA slope)
-GROUP_MOMENTUM_MIN = 1.30  # momentum group threshold (ret_short, RSI, MACD)
-MIN_VOTES = 2.60  # retained for gate sizing computation
+# Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
+MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -194,24 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Compute per-voter sigmoid scores
-            _bull_scores = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
-            _bear_scores = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
-
-            # Group A (momentum): ret_short[0], RSI[2], MACD[3]
-            # Group B (trend): EMA cross[1], linreg slope[4], EMA slope[5]
-            _bull_momentum = _bull_scores[0] + _bull_scores[2] + _bull_scores[3]
-            _bull_trend = _bull_scores[1] + _bull_scores[4] + _bull_scores[5]
-            _bear_momentum = _bear_scores[0] + _bear_scores[2] + _bear_scores[3]
-            _bear_trend = _bear_scores[1] + _bear_scores[4] + _bear_scores[5]
-
-            # Total votes for sizing (sum of all 6)
-            bull_votes = sum(_bull_scores)
-            bear_votes = sum(_bear_scores)
-
-            # Decorrelated entry gate: both groups must independently confirm
-            _bull_pair_pass = (_bull_momentum >= GROUP_MOMENTUM_MIN) and (_bull_trend >= GROUP_TREND_MIN)
-            _bear_pair_pass = (_bear_momentum >= GROUP_MOMENTUM_MIN) and (_bear_trend >= GROUP_TREND_MIN)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -244,9 +224,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if _bull_pair_pass and bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif _bear_pair_pass and bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -287,10 +267,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + pair gate + trend_avg sign, vol-scaled, confidence-sized)
-                _flip_bull_pass = _bull_pair_pass and bull_votes >= FLIP_MIN_VOTES
-                _flip_bear_pass = _bear_pair_pass and bear_votes >= FLIP_MIN_VOTES
-                if not in_cooldown and ((current_pos > 0 and _flip_bear_pass and trend_avg < 0) or (current_pos < 0 and _flip_bull_pass and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
