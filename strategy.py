@@ -22,8 +22,10 @@ MACD_FAST = 8
 MACD_SLOW = 16
 MACD_SIGNAL = 8  # widened from 4->6->7->8 to smooth MACD histogram further
 
-# Linear regression
+# Linear regression (dual-window average for noise immunity)
 LINREG_PERIOD = 16
+LINREG_PERIOD_SHORT = 14
+LINREG_PERIOD_LONG = 18
 
 # Volatility parameters
 VOL_LOOKBACK = 24
@@ -144,7 +146,12 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            # Dual-window linreg average: reduces noise sensitivity of slope estimate
+            _hl2_data = np.log((bd.history["high"].values + bd.history["low"].values) / 2.0)
+            _lr = linregress(np.arange(LINREG_PERIOD), _hl2_data[-LINREG_PERIOD:])
+            _lr_short = linregress(np.arange(LINREG_PERIOD_SHORT), _hl2_data[-LINREG_PERIOD_SHORT:])
+            _lr_long = linregress(np.arange(LINREG_PERIOD_LONG), _hl2_data[-LINREG_PERIOD_LONG:])
+            _avg_slope = (_lr_short.slope + _lr_long.slope) / 2.0
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -155,8 +162,8 @@ class Strategy:
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
-            rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
+            # Use averaged linreg slope as rsi_trend_str source (dual-window for noise immunity)
+            rsi_trend_str = min(abs(_avg_slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
@@ -168,12 +175,13 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
+            # Voter #5 uses dual-window averaged slope for noise immunity
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (_avg_slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
@@ -181,7 +189,7 @@ class Strategy:
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                (-_avg_slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
@@ -241,9 +249,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit using dual-window averaged slope for noise immunity
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _avg_slope < -_exit_slope_thresh) or (current_pos < 0 and _avg_slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -254,9 +262,9 @@ class Strategy:
 
                 # Momentum-decay exit (soft time pressure, slope-extended)
                 if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Slope agreement: does linreg slope support position direction?
-                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
+                    # Slope agreement: does averaged linreg slope support position direction?
+                    _slope_agrees = (_avg_slope > 0 and current_pos > 0) or (_avg_slope < 0 and current_pos < 0)
+                    _slope_strength = min(1.0, abs(_avg_slope) / 0.0006)  # normalized slope magnitude
                     # Extra hold time when slope strongly agrees
                     _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                     if bars_held >= _effective_max:
