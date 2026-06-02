@@ -74,8 +74,6 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
-TREND_SIGMOID_SCALE = 0.012  # controls sharpness of trend confidence; larger = more gradual
-TREND_GATE_FLOOR = 0.30  # minimum trend multiplier (allows entries even against weak trend)
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -226,15 +224,10 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                # Continuous trend gate: sigmoid maps trend_avg to [TREND_GATE_FLOOR, 1.0] multiplier
-                # Eliminates binary boundary at zero that causes noise-sensitive entry flips
-                _trend_val = self.smoothed_trend[symbol]
-                _trend_bull_conf = TREND_GATE_FLOOR + (1.0 - TREND_GATE_FLOOR) / (1.0 + np.exp(-_trend_val / TREND_SIGMOID_SCALE))
-                _trend_bear_conf = TREND_GATE_FLOOR + (1.0 - TREND_GATE_FLOOR) / (1.0 + np.exp(_trend_val / TREND_SIGMOID_SCALE))
-                if bull_votes >= MIN_VOTES and _trend_bull_conf > 0.5:
-                    target = _conf_size * ENTRY_INITIAL_FRAC * _trend_bull_conf
-                elif bear_votes >= MIN_VOTES and _trend_bear_conf > 0.5:
-                    target = -_conf_size * ENTRY_INITIAL_FRAC * _trend_bear_conf
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    target = _conf_size * ENTRY_INITIAL_FRAC
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
