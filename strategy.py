@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.058
+BASE_POSITION_SIZE = 0.0595
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -103,8 +103,8 @@ def ema(values, span):
     return result
 
 # Position entry: single-bar entry (removes bar-2 scale-up noise channel)
-ENTRY_INITIAL_FRAC = 0.50  # same as original baseline first-bar commitment
-ENTRY_FULL_BARS = 1  # faster scale-up (1 bar vs 2) = reaches full size sooner, fewer intermediate states
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target
+ENTRY_FULL_BARS = 2  # bars to reach full position (original baseline value)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
