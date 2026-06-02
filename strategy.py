@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 53
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
 MIN_VOTES = 2.63
-FLIP_MIN_VOTES = 2.92
+FLIP_MIN_VOTES = 2.88
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -113,7 +113,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.48  # first bar: 48% (stability from smaller first-bar exposure)
-ENTRY_FULL_BARS = 2  # bars to reach full position
+ENTRY_FULL_BARS = 1  # bars to reach full position (immediate = fewer sizing decisions)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
