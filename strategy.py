@@ -153,6 +153,9 @@ class Strategy:
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            # Short-window linreg slope on HL2 (8 bars) as noise-robust momentum signal
+            _hl2_short = (bd.history["high"].values[-SHORT_WINDOW:] + bd.history["low"].values[-SHORT_WINDOW:]) / 2.0
+            _lr_short = linregress(np.arange(SHORT_WINDOW), np.log(_hl2_short))
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
@@ -173,8 +176,11 @@ class Strategy:
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            # Replace ret_short voter with short linreg slope (HL2, 8-bar)
+            # Short linreg uses multi-point regression: inherently noise-robust (sqrt(N) averaging)
+            # Threshold 0.0003 matches approximate ret_short dynamics at 8-bar scale
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (_lr_short.slope - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
@@ -182,7 +188,7 @@ class Strategy:
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
+                (-_lr_short.slope - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
