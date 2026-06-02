@@ -224,10 +224,21 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -_conf_size * ENTRY_INITIAL_FRAC
+                # Continuous trend confidence: replaces boolean trend gate with smooth sizing multiplier
+                # When trend strongly agrees with direction: mult=1.0
+                # When trend disagrees: mult decays smoothly toward 0.3 (never fully blocks)
+                # This removes the discrete trend_avg > 0 boundary as a noise-sensitive decision point
+                _trend_val = self.smoothed_trend[symbol]
+                if bull_votes >= MIN_VOTES:
+                    # Trend agreement for bull: positive trend_avg = agreement
+                    _trend_agree = _trend_val / max(TREND_GATE_DEADZONE, abs(_trend_val) + 1e-10)
+                    _trend_mult = 0.3 + 0.7 * (1.0 / (1.0 + np.exp(-_trend_agree * 3.0)))
+                    target = _conf_size * ENTRY_INITIAL_FRAC * _trend_mult
+                elif bear_votes >= MIN_VOTES:
+                    # Trend agreement for bear: negative trend_avg = agreement
+                    _trend_agree = -_trend_val / max(TREND_GATE_DEADZONE, abs(_trend_val) + 1e-10)
+                    _trend_mult = 0.3 + 0.7 * (1.0 / (1.0 + np.exp(-_trend_agree * 3.0)))
+                    target = -_conf_size * ENTRY_INITIAL_FRAC * _trend_mult
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
