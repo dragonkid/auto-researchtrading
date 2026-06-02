@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.20
+BASE_POSITION_SIZE = 0.18
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -202,10 +202,12 @@ class Strategy:
 
             # Simplified sizing: vol-scaling only (removes noise-sensitive calm/sideways/strength chains)
             # Combined_mult reduced to: vol_scale * trend_boost (2 factors vs 7)
-            _vol_scale = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85))
+            _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
             _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)  # mild boost in trends
             combined_mult = _vol_scale * _trend_boost
-            combined_mult = min(combined_mult, 4.0)  # hard cap
+            # Vol-aware hard cap: tighter in high vol to protect crash DD
+            _vol_cap = 3.0 if vol_ratio < 1.0 else max(1.5, 3.0 - 1.5 * min(1.0, (vol_ratio - 1.0) / 1.0))
+            combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
