@@ -98,7 +98,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
+ENTRY_INITIAL_FRAC = 0.65  # first bar: 65% of target (faster sign establishment for stability)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 
 
