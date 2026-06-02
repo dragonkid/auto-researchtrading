@@ -190,16 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Leave-one-out robust voting: use minimum of all 5-voter subsets, scaled to 6-voter equivalent
-            # This ensures no single voter flip can be decisive for entry
-            _bull_sigmoids = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
-            _bear_sigmoids = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
-            _bull_total = sum(_bull_sigmoids)
-            _bear_total = sum(_bear_sigmoids)
-            _n_voters = len(_bull_sigmoids)
-            # Min leave-one-out sum * n/(n-1) = scaled to full-voter equivalent for same MIN_VOTES threshold
-            bull_votes = min(_bull_total - v for v in _bull_sigmoids) * _n_voters / (_n_voters - 1)
-            bear_votes = min(_bear_total - v for v in _bear_sigmoids) * _n_voters / (_n_voters - 1)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
