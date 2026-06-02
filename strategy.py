@@ -173,14 +173,13 @@ class Strategy:
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD gets wider scale (histogram near zero in sideways = noise-sensitive)
             _macd_sig_scale = 0.40  # same as VOTE_SIGMOID_SCALE
-            _ema_slope_sig = 0.55  # wider: EMA slope near zero in sideways = noise-sensitive
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * _ema_slope_sig),
+                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -188,7 +187,7 @@ class Strategy:
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * _ema_slope_sig),
+                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
