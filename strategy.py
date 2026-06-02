@@ -86,7 +86,7 @@ COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
-VOTE_SIGMOID_SCALE = 0.45  # wider for stability (noise-immune gradual voters)
+VOTE_SIGMOID_SCALE = 0.40  # wider for stability (noise-immune gradual voters)
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
@@ -227,10 +227,13 @@ class Strategy:
             # Vol-adaptive initial fraction (noise-immune: vol_ratio from 24-bar historical)
             _entry_frac = ENTRY_FRAC_CALM + (ENTRY_FRAC_VOLATILE - ENTRY_FRAC_CALM) * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
 
+            # Deadzone margin: require clear directional gap in deadzone entries (noise filter)
+            _dz_margin = 0.15  # minimum bull-bear gap for deadzone entries
+
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes + _dz_margin)):
                     target = _conf_size * _entry_frac
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes + _dz_margin)):
                     target = -_conf_size * _entry_frac
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac
