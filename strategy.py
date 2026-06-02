@@ -250,12 +250,10 @@ class Strategy:
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
-                # Peak-profit trailing exit: confidence-scaled giveback for noise protection
+                # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    # Low-confidence entries tolerate more giveback (wider trailing)
-                    _giveback_thresh = PEAK_PROFIT_GIVEBACK * (1.0 + 0.3 * (1.0 - _conf_at_entry))
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * _giveback_thresh:
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
                 # Momentum-decay exit (soft time pressure, slope-extended)
