@@ -103,8 +103,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.35  # smaller first bar = less exposure to noise-driven direction flips
-ENTRY_FULL_BARS = 3  # slower accumulation = more bars to confirm direction before full exposure
+ENTRY_INITIAL_FRAC = 1.00  # full size immediately (no accumulation = fewer noise-sensitive intermediate states)
+ENTRY_FULL_BARS = 1  # immediate full position (no multi-bar accumulation decisions)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
