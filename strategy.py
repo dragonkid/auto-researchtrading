@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0595
+BASE_POSITION_SIZE = 0.067  # increased from 0.0595 to offset slower accumulation raw cost
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -103,8 +103,10 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
+# Smaller initial fraction = less impact from noise-flipped entry decisions
+# Each noisy entry bar only commits 35% of target, limiting divergence magnitude
+ENTRY_INITIAL_FRAC = 0.35  # first bar: 35% of target (maximum noise resilience)
+ENTRY_FULL_BARS = 3  # bars to reach full position (slower accumulation for stability)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
