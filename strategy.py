@@ -79,7 +79,10 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
-# Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
+# Rank-weighted voting: voters weighted by their decisiveness rank (soft top-K)
+# Highest-delta voter gets weight 1.0, lowest gets RANK_MIN_WEIGHT
+RANK_MIN_WEIGHT = 0.40  # minimum weight for least decisive voter
+# MIN_VOTES threshold stays same (sum range 0.4+0.52+0.64+0.76+0.88+1.0=4.2 to 6.0 at all-max)
 MIN_VOTES = 2.60
 FLIP_MIN_VOTES = 2.85
 COOLDOWN_BARS = 1
@@ -190,8 +193,16 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Rank-weighted voting: sort voters by decisiveness, weight by rank
+            # Highest-delta voter gets 1.0, each subsequent gets linearly less down to RANK_MIN_WEIGHT
+            _raw_bull = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
+            _raw_bear = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
+            # Sort by distance from 0.5 (decisiveness: further from neutral = more decisive)
+            _bull_sorted = sorted(range(6), key=lambda i: abs(_raw_bull[i] - 0.5), reverse=True)
+            _bear_sorted = sorted(range(6), key=lambda i: abs(_raw_bear[i] - 0.5), reverse=True)
+            _rank_weights = [RANK_MIN_WEIGHT + (1.0 - RANK_MIN_WEIGHT) * (5 - r) / 5.0 for r in range(6)]
+            bull_votes = sum(_raw_bull[_bull_sorted[r]] * _rank_weights[r] for r in range(6))
+            bear_votes = sum(_raw_bear[_bear_sorted[r]] * _rank_weights[r] for r in range(6))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
