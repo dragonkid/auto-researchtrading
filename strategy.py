@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.057
+BASE_POSITION_SIZE = 0.058
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # original scale: smoother transition for stability
-ENTRY_GATE_FLOOR = 0.43  # compromise: stability vs raw recovery
+ENTRY_GATE_FLOOR = 0.40  # lower for stability
 
 
 def ema(values, span):
@@ -251,7 +251,7 @@ class Strategy:
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 # Low-confidence entries get wider exit threshold (less noise-sensitive exit)
                 _entry_c = self.entry_conf.get(symbol, 0.7)
-                _exit_slope_thresh *= 1.0 + 0.5 * max(0.0, 1.0 - _entry_c / 0.7)
+                _exit_slope_thresh *= 1.0 + 1.0 * max(0.0, 1.0 - _entry_c / 0.7)
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
