@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.21
+BASE_POSITION_SIZE = 0.18
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -200,13 +200,14 @@ class Strategy:
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
-            # Simplified sizing: vol-scaling only (removes noise-sensitive calm/sideways/strength chains)
-            # Combined_mult reduced to: vol_scale * trend_boost (2 factors vs 7)
+            # Simplified sizing: vol-scaling + low-vol calm boost (3 factors vs original 7)
             _vol_scale = max(0.3, min(2.0, (TARGET_VOL / realized_vol) ** 0.85))
-            _trend_boost = 1.0 + 0.8 * min(abs(ret_long) / 0.10, 1.0)  # moderate trend boost
-            combined_mult = _vol_scale * _trend_boost
+            _trend_boost = 1.0 + 0.5 * min(abs(ret_long) / 0.10, 1.0)  # mild trend boost
+            # Calm boost: in low vol (vol_ratio < 0.8), positions can be larger (lower DD risk)
+            _calm = 1.0 + 0.6 * max(0.0, min(1.0, (0.8 - vol_ratio) / 0.3))
+            combined_mult = _vol_scale * _trend_boost * _calm
             # Vol-aware hard cap: tighter in high vol to protect crash DD
-            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.35, 3.5 - 2.15 * min(1.0, (vol_ratio - 1.0) / 1.0))
+            _vol_cap = 3.5 if vol_ratio < 1.0 else max(1.5, 3.5 - 2.0 * min(1.0, (vol_ratio - 1.0) / 1.0))
             combined_mult = min(combined_mult, _vol_cap)
             size = equity * BASE_POSITION_SIZE * combined_mult
 
