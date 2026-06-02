@@ -243,9 +243,9 @@ class Strategy:
                     target = 0.0
 
                 # Confidence-scaled linreg exit: low-confidence entries get wider threshold
-                # High confidence (1.0) → base threshold; low confidence (0.39) → 1.6x threshold
+                # High confidence (1.0) → base threshold; low confidence (0.39) → 1.4x threshold
                 _conf_at_entry = self.entry_conf.get(symbol, 1.0)
-                _exit_widen = 1.0 + 1.0 * (1.0 - _conf_at_entry)  # range [1.0, 1.6]
+                _exit_widen = 1.0 + 0.7 * (1.0 - _conf_at_entry)  # range [1.0, 1.43]
                 _exit_slope_thresh = (0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * _exit_widen
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
