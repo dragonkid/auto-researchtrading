@@ -102,9 +102,9 @@ def ema(values, span):
         result[i] = alpha * values[i] + (1 - alpha) * result[i - 1]
     return result
 
-# Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
-ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
+# Position entry: single-bar full entry (removes bar-2 scale-up noise channel)
+ENTRY_INITIAL_FRAC = 0.75  # immediate entry at 75% of confidence-sized target
+ENTRY_FULL_BARS = 1  # single-bar entry (no scale-up = no bar-2 vote recalculation noise)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
