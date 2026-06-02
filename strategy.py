@@ -88,6 +88,11 @@ COOLDOWN_TREND_DECAY = 0.06
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.30
 
+# Vote EMA smoothing: temporal consistency filter (architectural)
+# Instead of single-bar vote sums, use EMA of vote sums for entry decisions
+# alpha=0.6 means current bar has 60% weight, prior has 40% -- requires 2+ bar agreement
+VOTE_EMA_ALPHA = 0.6
+
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
@@ -113,6 +118,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.vote_ema_bull = {}
+        self.vote_ema_bear = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -190,8 +197,24 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            bull_votes_raw = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes_raw = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+
+            # EMA smoothing of vote sums: temporal consistency filter
+            # Reduces noise sensitivity by requiring multi-bar agreement
+            if symbol not in self.vote_ema_bull:
+                self.vote_ema_bull[symbol] = bull_votes_raw
+                self.vote_ema_bear[symbol] = bear_votes_raw
+            else:
+                self.vote_ema_bull[symbol] = VOTE_EMA_ALPHA * bull_votes_raw + (1.0 - VOTE_EMA_ALPHA) * self.vote_ema_bull[symbol]
+                self.vote_ema_bear[symbol] = VOTE_EMA_ALPHA * bear_votes_raw + (1.0 - VOTE_EMA_ALPHA) * self.vote_ema_bear[symbol]
+
+            # Use smoothed votes for ENTRY decisions (reduces boundary noise)
+            # Use raw votes for FLIP decisions (flips need instant responsiveness)
+            bull_votes = self.vote_ema_bull[symbol]
+            bear_votes = self.vote_ema_bear[symbol]
+            bull_votes_instant = bull_votes_raw
+            bear_votes_instant = bear_votes_raw
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -267,8 +290,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (raw votes for instant responsiveness + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes_instant >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes_instant >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
