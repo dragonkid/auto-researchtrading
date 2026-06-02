@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 47
+MEANREV_RSI_OVERBOUGHT = 53
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
@@ -168,14 +168,11 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Vol-adaptive RSI widening: in calm markets, widen RSI scale to reduce noise sensitivity
-            _rsi_calm_widen = 1.0 + 0.4 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))  # 1.0-1.4x in calm
-
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * _rsi_calm_widen * VOTE_SIGMOID_SCALE),
+                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
@@ -183,7 +180,7 @@ class Strategy:
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * _rsi_calm_widen * VOTE_SIGMOID_SCALE),
+                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.0003) / (0.0003 * VOTE_SIGMOID_SCALE),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
