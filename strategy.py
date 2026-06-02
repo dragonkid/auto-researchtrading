@@ -169,29 +169,31 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
-            # This preserves decorrelation benefit while limiting false entries in crash
-            _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
-            _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
-                (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+            # Composite signal architecture: weighted sum of clipped deltas → single sigmoid
+            # Noise dilution: single noisy voter perturbed by ±5bps is diluted by 5 stable voters
+            _macd_sig_scale = 0.40
+            _deltas_bull = [
+                max(-3.0, min(3.0, (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10))),
+                max(-3.0, min(3.0, (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10))),
+                max(-3.0, min(3.0, (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE))),
+                max(-3.0, min(3.0, (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale))),
+                max(-3.0, min(3.0, (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE))),
+                max(-3.0, min(3.0, (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE))),
             ]
-            _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
-                (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+            _deltas_bear = [
+                max(-3.0, min(3.0, (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10))),
+                max(-3.0, min(3.0, (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10))),
+                max(-3.0, min(3.0, (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE))),
+                max(-3.0, min(3.0, (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale))),
+                max(-3.0, min(3.0, (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE))),
+                max(-3.0, min(3.0, (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE))),
             ]
-
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Weighted sum (equal weights) then scale to match original [0,6] range via 6*sigmoid
+            _bull_combined = sum(_deltas_bull) / 6.0  # normalized mean delta
+            _bear_combined = sum(_deltas_bear) / 6.0
+            # Map to [0,6] range for compatibility with MIN_VOTES/FLIP_MIN_VOTES thresholds
+            bull_votes = 6.0 / (1.0 + np.exp(-max(-10.0, min(10.0, _bull_combined * 3.0))))
+            bear_votes = 6.0 / (1.0 + np.exp(-max(-10.0, min(10.0, _bear_combined * 3.0))))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
