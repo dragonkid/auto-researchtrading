@@ -73,7 +73,7 @@ MAX_COMBINED_TREND_BOOST = 1.0
 # Trend gate
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
-TREND_GATE_DEADZONE = 0.025  # wider deadzone = more entries depend on vote-majority (noise-immune) rather than trend_avg sign
+TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.40  # wider for stability (noise-immune gradual voters)
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.42  # how quickly sizing grows above threshold (wider = smoother transition for stability)
-ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.48  # minimum sizing fraction at exactly MIN_VOTES (higher = more stable at boundary)
 
 
 def ema(values, span):
@@ -172,7 +172,7 @@ class Strategy:
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD gets wider scale (histogram near zero in sideways = noise-sensitive)
-            _macd_sig_scale = 0.40  # same as VOTE_SIGMOID_SCALE (no per-voter differentiation)
+            _macd_sig_scale = 0.50  # wider: MACD histogram near zero in sideways
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
@@ -226,10 +226,13 @@ class Strategy:
             # Vol-adaptive initial fraction (noise-immune: vol_ratio from 24-bar historical)
             _entry_frac = ENTRY_FRAC_CALM + (ENTRY_FRAC_VOLATILE - ENTRY_FRAC_CALM) * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
 
+            # Deadzone margin: require clear directional gap in deadzone entries (noise filter)
+            _dz_margin = 0.15  # minimum bull-bear gap for deadzone entries
+
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes + _dz_margin)):
                     target = _conf_size * _entry_frac
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes + _dz_margin)):
                     target = -_conf_size * _entry_frac
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac
