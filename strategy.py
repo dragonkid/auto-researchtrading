@@ -75,12 +75,12 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 47  # wider = fewer noise-sensitive MR entries
+MEANREV_RSI_OVERBOUGHT = 53
 
 # Vote / cooldown (6 voters: ret_vshort removed)
 # Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.65  # higher entry bar for stability
+MIN_VOTES = 2.63  # higher entry bar for stability
 FLIP_MIN_VOTES = 2.90  # higher flip bar for stability (fewer noise-driven reversals)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -105,7 +105,7 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 # Vol-adaptive initial fraction: larger in calm (faster full-size), smaller in volatile (cautious)
 ENTRY_FRAC_CALM = 0.52   # initial frac when vol_ratio <= 0.7 (calm/sideways)
-ENTRY_FRAC_VOLATILE = 0.38  # initial frac when vol_ratio >= 1.3 (volatile/crash)
+ENTRY_FRAC_VOLATILE = 0.36  # initial frac when vol_ratio >= 1.3 (volatile/crash)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 
 
