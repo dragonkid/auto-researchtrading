@@ -178,14 +178,17 @@ class Strategy:
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD uses wider sigmoid scale (0.40 vs 0.30) to reduce its vote magnitude
+            # VWAP uses wider sigmoid scale (0.50) + higher threshold (0.005) for less boundary noise
             _macd_sig_scale = 0.40
+            _vwap_sig_scale = 0.50
+            _vwap_thresh = 0.005
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
                 (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_vwap_delta - 0.003) / (0.003 * VOTE_SIGMOID_SCALE),
+                (_vwap_delta - _vwap_thresh) / (_vwap_thresh * _vwap_sig_scale),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -193,7 +196,7 @@ class Strategy:
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_vwap_delta - 0.003) / (0.003 * VOTE_SIGMOID_SCALE),
+                (-_vwap_delta - _vwap_thresh) / (_vwap_thresh * _vwap_sig_scale),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
