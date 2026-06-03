@@ -144,10 +144,7 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            # 3-bar SMA of HL2 before linreg: reduces per-point noise by ~sqrt(3)
-            _hl2_raw = (bd.history["high"].values[-(LINREG_PERIOD + 2):] + bd.history["low"].values[-(LINREG_PERIOD + 2):]) / 2.0
-            _hl2_smooth = np.convolve(_hl2_raw, np.ones(3) / 3.0, mode='valid')  # len = LINREG_PERIOD
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log(_hl2_smooth))
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
