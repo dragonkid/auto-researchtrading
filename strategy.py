@@ -158,11 +158,7 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # R2-adaptive fast EMA: longer in noisy regimes (low R2) for noise dampening
-            # High R2 (>0.6): use standard EMA_FAST=3; Low R2 (<0.2): use EMA=5 (more smoothing)
-            # R2 is noise-immune (16-pt HL2 fit), so this adaptation doesn't flip under perturbation
-            _ema_fast_adj = EMA_FAST + 2.0 * max(0.0, min(1.0, (0.5 - _r2) / 0.4))  # 3 at R2>=0.5, 5 at R2<=0.1
-            _ef, _es = ema(closes[-(EMA_SLOW+10):], _ema_fast_adj)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
