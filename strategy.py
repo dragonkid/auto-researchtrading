@@ -246,13 +246,8 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # PnL-adaptive linreg exit: profitable positions exit easily (protect gains),
-                # losing positions require stronger counter-slope (avoid noise-exit at worst point)
-                # Architectural: exit threshold is now a function of position state (PnL), not just vol
-                _base_exit_slope = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                # Scale: profit -> 0.7x threshold (easier exit), loss -> 1.5x threshold (harder exit)
-                _pnl_exit_scale = 1.0 - 0.3 * max(0.0, min(1.0, pos_pnl / 0.015)) + 0.5 * max(0.0, min(1.0, -pos_pnl / 0.015))
-                _exit_slope_thresh = _base_exit_slope * _pnl_exit_scale
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
