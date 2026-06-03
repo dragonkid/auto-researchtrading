@@ -113,6 +113,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.entry_target_size = {}  # locked target size at entry for deterministic scale-up
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -236,10 +237,12 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up using confidence-sized target
+                # Position accumulation: deterministic scale-up using LOCKED entry-time target
+                # This removes 2 bars of noise channel during accumulation phase
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = _conf_size if current_pos > 0 else -_conf_size
+                    _locked_size = self.entry_target_size.get(symbol, _conf_size)
+                    full_target = _locked_size if current_pos > 0 else -_locked_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -275,10 +278,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.entry_target_size):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.entry_target_size[symbol] = _conf_size  # lock target for scale-up
 
         return signals
