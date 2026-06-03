@@ -75,10 +75,11 @@ def _run_regime_worker(args: tuple) -> dict:
     if score > 0:
         stability = compute_signal_stability(data, result)
         stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
-        # Tiered penalty: <0.80 = 50%, 0.80-0.90 = 25%, >=0.90 = no penalty
-        if stability < 0.80:
+        # Tiered penalty: <0.75 = 50%, 0.75-0.84 = 25%, >=0.84 = no penalty
+        # Calibrated to production strategy 8569cb5 (stab=0.8466 under AR(1) noise)
+        if stability < 0.75:
             stability_factor *= 0.50
-        elif stability < 0.90:
+        elif stability < 0.84:
             stability_factor *= 0.75
         score = score * stability_factor
     else:
