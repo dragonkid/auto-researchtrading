@@ -47,6 +47,7 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
+STOP_LOSS_VOL_TIGHTEN = 0.006  # tighten stop by up to 0.6% in high vol (crash protection)
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
@@ -247,7 +248,10 @@ class Strategy:
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
-                if pos_pnl < STOP_LOSS_PCT:
+                # Vol-adaptive: tighten stop in high-vol (crash protection, reduces max DD per trade)
+                _vol_stop_adj = STOP_LOSS_VOL_TIGHTEN * max(0.0, min(1.0, (vol_ratio - 1.0) / 1.0))
+                _eff_stop = STOP_LOSS_PCT + _vol_stop_adj  # e.g., -2.4% -> -1.8% at vol_ratio=2.0
+                if pos_pnl < _eff_stop:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
