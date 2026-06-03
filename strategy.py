@@ -17,6 +17,9 @@ EMA_SLOW = 21
 EMA_SLOPE_PERIOD = 22
 EMA_SLOPE_LOOKBACK = 3
 
+# Slope acceleration (replaces EMA cross voter)
+SLOPE_ACCEL_PERIOD = 10  # shorter linreg for slope-change detection
+
 # MACD parameters
 MACD_FAST = 8
 MACD_SLOW = 16
@@ -155,6 +158,10 @@ class Strategy:
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            # Slope acceleration: linreg on recent vs older HL2 data for slope-change signal
+            _hl2_recent = (bd.history["high"].values[-SLOPE_ACCEL_PERIOD:] + bd.history["low"].values[-SLOPE_ACCEL_PERIOD:]) / 2.0
+            _lr_accel = linregress(np.arange(SLOPE_ACCEL_PERIOD), np.log(_hl2_recent))
+            _slope_accel = _lr_accel.slope - _lr.slope  # difference = acceleration (short faster than long)
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
@@ -175,7 +182,7 @@ class Strategy:
             _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (_slope_accel - 0.00008) / (0.00008 * VOTE_SIGMOID_SCALE),  # slope acceleration voter (replaces EMA cross)
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -183,7 +190,7 @@ class Strategy:
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-_slope_accel - 0.00008) / (0.00008 * VOTE_SIGMOID_SCALE),  # slope acceleration voter (replaces EMA cross)
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
