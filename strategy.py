@@ -111,6 +111,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_slope_adverse = {}  # track if linreg slope was adverse on previous bar
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -250,9 +251,13 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit with 2-bar confirmation (noise filter for exit)
+                # Require slope adverse on BOTH current and previous bar before exiting
+                # This prevents noise-induced exits that would be followed by immediate re-entry
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                _slope_adverse_now = (current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)
+                _was_adverse = self.prev_slope_adverse.get(symbol, False)
+                if target != 0 and _slope_adverse_now and _was_adverse:
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -276,12 +281,22 @@ class Strategy:
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
+            # Store slope-adverse state for next bar's 2-bar exit confirmation
+            # Uses TARGET direction (if entering/flipping) rather than current_pos
+            _pos_dir = target if target != 0 else current_pos
+            if _pos_dir != 0:
+                _exit_slope_thresh_store = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                self.prev_slope_adverse[symbol] = (_pos_dir > 0 and _lr.slope < -_exit_slope_thresh_store) or (_pos_dir < 0 and _lr.slope > _exit_slope_thresh_store)
+            else:
+                self.prev_slope_adverse[symbol] = False
+
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
+                    self.prev_slope_adverse[symbol] = False
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
