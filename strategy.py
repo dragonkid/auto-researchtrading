@@ -149,9 +149,6 @@ class Strategy:
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
-            # R2-adaptive entry widening: in very low R2 (unreliable trend), raise threshold slightly
-            # to suppress noise entries. Mild: +3% at R2=0, 0% at R2>=0.25
-            dyn_threshold *= 1.0 + 0.03 * max(0.0, 1.0 - _r2 / 0.25)
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -274,10 +271,8 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism: R2-adaptive threshold (fewer noise flips in low-R2)
-                _flip_r2_margin = 0.15 * max(0.0, 1.0 - _r2 / 0.5)  # +0.15 at R2=0, 0 at R2>=0.5
-                _flip_thresh = FLIP_MIN_VOTES + _flip_r2_margin
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_thresh and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_thresh and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
