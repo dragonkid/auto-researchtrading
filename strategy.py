@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0595
+BASE_POSITION_SIZE = 0.0598
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -138,7 +138,7 @@ class Strategy:
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
             # R²-adjusted: high fit quality (R²>0.6) reduces smoothing for faster trend tracking
             _r2 = _lr.rvalue ** 2
-            _r2_adj = 0.05 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.05 at R²≥0.8
+            _r2_adj = 0.07 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.07 at R²≥0.8
             _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5)) - _r2_adj
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
@@ -151,7 +151,7 @@ class Strategy:
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
             # R2-adaptive threshold: low R2 (noisy) widens threshold (fewer noise-triggered entries).
             # This is noise-immune because R2 (16-pt HL2 fit quality) barely changes under 5bps close perturbation.
-            _r2_thresh_adj = 1.0 + 0.06 * max(0.0, min(1.0, (0.4 - _r2) / 0.3))
+            _r2_thresh_adj = 1.0 + 0.05 * max(0.0, min(1.0, (0.35 - _r2) / 0.25))
             dyn_threshold *= _r2_thresh_adj
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
