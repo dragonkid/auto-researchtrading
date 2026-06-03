@@ -170,7 +170,9 @@ class Strategy:
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
+            # R2-adaptive MACD signal period: more smoothing in low-R2 (noisy), faster in high-R2 (trending)
+            _macd_sig_period = MACD_SIGNAL + int(round(2.0 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))))  # +2 at R2<=0.2, +0 at R2>=0.5
+            _macd_hist = (_ml[-1] - ema(_ml, _macd_sig_period)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
