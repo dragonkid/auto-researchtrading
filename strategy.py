@@ -8,7 +8,6 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
-SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
@@ -64,7 +63,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
 # Combined mult cap
-MAX_COMBINED_MULT_HIGH_VOL = 2.5
+MAX_COMBINED_MULT_HIGH_VOL = 2.4
 MAX_COMBINED_MULT_LOW_VOL = 6.5
 MAX_COMBINED_VOL_LOW = 0.6
 MAX_COMBINED_VOL_HIGH = 1.2
@@ -105,7 +104,6 @@ def ema(values, span):
 # Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
-VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
 class Strategy:
@@ -152,10 +150,8 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
-            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
+            # 5-bar median reference (maximum noise immunity, returns sacrificed for stability)
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
@@ -170,7 +166,9 @@ class Strategy:
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
+            # R2-adaptive MACD signal: +2 period in low-R2 for smoother histogram
+            _macd_sig_period = MACD_SIGNAL + int(round(2.0 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))))
+            _macd_hist = (_ml[-1] - ema(_ml, _macd_sig_period)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
