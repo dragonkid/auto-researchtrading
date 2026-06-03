@@ -204,8 +204,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Apply ret_short fast/slow consensus dampener to the first voter's contribution
-            _voter_weights = [_ret_short_consensus, 1.0, 1.0, 1.0, 1.0, 1.0]
+            # Apply ret_short fast/slow consensus dampener to ret_short AND MACD voters (both close-derived noise-prone signals)
+            _voter_weights = [_ret_short_consensus, 1.0, 1.0, _ret_short_consensus, 1.0, 1.0]
             bull_votes = sum(w * (1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))) for w, d in zip(_voter_weights, _voter_deltas_bull))
             bear_votes = sum(w * (1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))) for w, d in zip(_voter_weights, _voter_deltas_bear))
 
