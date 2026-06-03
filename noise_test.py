@@ -1,24 +1,130 @@
 """
 Signal stability via noise perturbation.
 
-Compares clean vs perturbed equity curves to measure how sensitive
-the strategy is to small data-source differences (±5 bps per bar).
+Simulates cross-exchange data-source differences using AR(1) correlated
+noise matching empirical characteristics (Binance/HL vs CryptoCompare,
+2 years of 1H data, 2024-01 ~ 2026-01).
+
+Design: conservative stress test. Parameters are intentionally more severe
+than current market conditions to ensure robustness margin.
+
+Anti-gaming: AC1 is a fixed grid across empirical range (not random, not fixed
+single value), and seeds are derived from AST hash of strategy.py (immune to
+comment/whitespace manipulation), preventing the autoresearch agent from
+overfitting to specific noise characteristics or realizations.
 """
 
+import ast
+import hashlib
 import numpy as np
+from scipy.stats import trim_mean
 
 from prepare import run_backtest, BacktestResult
 
 N_TRIALS = 20
-NOISE_BPS = 5.0
-STABILITY_THRESHOLD = 0.85
+STABILITY_THRESHOLD = 0.85  # MUST be recalibrated during verification step
+
+# Empirical parameters (conservative worst-case design)
+# STD: 2-year full sample (covers market efficiency regression)
+NOISE_CLOSE_STD_BPS = 7.0
+NOISE_HIGH_STD_BPS = 8.0
+NOISE_LOW_STD_BPS = 12.0
+
+# AC1: fixed grid across empirical range (each trial = one difficulty level)
+# All strategies face the same 20 AC1 values — enables paired comparison
+NOISE_CLOSE_AC1_GRID = np.linspace(0.70, 0.97, N_TRIALS)
+NOISE_HIGH_AC1_GRID = np.linspace(0.55, 0.83, N_TRIALS)
+NOISE_LOW_AC1_GRID = np.linspace(0.29, 0.78, N_TRIALS)
+
+CROSS_SYMBOL_CORR = 0.922  # sqrt(0.85) — achieves 0.85 cross-correlation
+
+TRIM_FRACTION = 0.1  # 10% trimmed mean (drop 2 highest + 2 lowest from 20 trials)
+
+
+def _strategy_hash():
+    """Compute deterministic hash from strategy.py AST (immune to comments/whitespace)."""
+    import os
+
+    strategy_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "strategy.py")
+    with open(strategy_path, "r") as f:
+        tree = ast.parse(f.read())
+    return int(hashlib.sha256(ast.dump(tree).encode()).hexdigest()[:16], 16)
+
+
+def _generate_ar1(n, ac1, rng):
+    """Generate AR(1) process, normalized to std=1."""
+    innovation_std = np.sqrt(1.0 - ac1**2)
+    series = np.empty(n)
+    series[0] = rng.normal(0, 1)
+    for t in range(1, n):
+        series[t] = ac1 * series[t - 1] + innovation_std * rng.normal(0, 1)
+    # Normalize to std=1 for consistent amplitude across trials
+    std = series.std()
+    if std > 1e-10:
+        series /= std
+    return series
+
+
+def _perturb_data(data, rng, trial_idx):
+    """Apply AR(1) correlated noise matching real cross-exchange differences.
+
+    AC1 values come from fixed grid (trial_idx selects the difficulty level).
+    """
+    symbols = sorted(data.keys())  # deterministic order
+    max_len = max(len(data[sym]) for sym in symbols)
+
+    # AC1 from fixed grid — same difficulty for all strategies at this trial index
+    close_ac1 = NOISE_CLOSE_AC1_GRID[trial_idx]
+    high_ac1 = NOISE_HIGH_AC1_GRID[trial_idx]
+    low_ac1 = NOISE_LOW_AC1_GRID[trial_idx]
+
+    # Spawn child seeds for reproducibility (order-independent)
+    ss = rng.bit_generator.seed_seq
+    child_seeds = ss.spawn(3 + len(symbols) * 3)
+
+    # Generate common drivers (one per price field, independent of each other)
+    common_close = _generate_ar1(max_len, close_ac1, np.random.default_rng(child_seeds[0]))
+    common_high = _generate_ar1(max_len, high_ac1, np.random.default_rng(child_seeds[1]))
+    common_low = _generate_ar1(max_len, low_ac1, np.random.default_rng(child_seeds[2]))
+
+    # Mixing weights: sqrt(ρ) for common, sqrt(1-ρ) for independent
+    # Achieves cross-symbol correlation = ρ = CROSS_SYMBOL_CORR² ≈ 0.85
+    common_weight = CROSS_SYMBOL_CORR  # sqrt(0.85) ≈ 0.922
+    indep_weight = np.sqrt(1.0 - CROSS_SYMBOL_CORR**2)  # sqrt(0.15) ≈ 0.387
+
+    result = {}
+    for i, sym in enumerate(symbols):
+        new_df = data[sym].copy()
+        n = len(new_df)
+
+        for field_idx, (field, common, ac1, std_bps) in enumerate(
+            [
+                ("close", common_close[:n], close_ac1, NOISE_CLOSE_STD_BPS),
+                ("high", common_high[:n], high_ac1, NOISE_HIGH_STD_BPS),
+                ("low", common_low[:n], low_ac1, NOISE_LOW_STD_BPS),
+            ]
+        ):
+            seed_idx = 3 + i * 3 + field_idx
+            indep_rng = np.random.default_rng(child_seeds[seed_idx])
+            independent = _generate_ar1(n, ac1, indep_rng)
+            noise = common_weight * common + indep_weight * independent
+            noise_bps = noise * std_bps / 10000.0
+            new_df[field] = new_df[field].values * (1.0 + noise_bps)
+
+        # OHLC consistency
+        new_df["high"] = np.maximum(new_df["high"].values, new_df["close"].values)
+        new_df["low"] = np.minimum(new_df["low"].values, new_df["close"].values)
+        new_df["high"] = np.maximum(new_df["high"].values, new_df["low"].values)
+
+        result[sym] = new_df
+    return result
 
 
 def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
-    """
-    Full-simulation stability via equity-curve tracking error.
+    """Stability = 1 - normalized tracking error under AR(1) correlated noise.
 
-    Returns: 1.0 (perfectly stable) to 0.0 (completely divergent).
+    Seeding is derived from strategy.py AST hash to prevent overfitting to
+    fixed noise realizations across iterations.
     """
     from strategy import Strategy
 
@@ -31,71 +137,35 @@ def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
     if clean_vol < 1e-10:
         return 1.0
 
-    tracking_errors: list[tuple[bool, float]] = []
+    # Seed from strategy AST hash — same logic = same trials, different logic = different trials
+    base_seed = _strategy_hash()
+    tracking_errors = []
 
     for trial in range(N_TRIALS):
-        rng = np.random.default_rng(42 + trial)
-        correlated = trial < N_TRIALS // 2
-        perturbed_data = _perturb_data(data, NOISE_BPS, rng, correlated=correlated)
+        rng = np.random.default_rng(base_seed + trial)
+        perturbed_data = _perturb_data(data, rng, trial)
         pert_result = run_backtest(Strategy(), perturbed_data)
-
         pert_eq = np.array(pert_result.equity_curve)
 
         if len(pert_eq) < 0.8 * len(clean_eq):
-            tracking_errors.append((correlated, 3.0 * clean_vol))
+            tracking_errors.append(3.0 * clean_vol)
             continue
 
         n = min(len(clean_eq), len(pert_eq))
         if n < 10:
             continue
 
-        pert_ret = np.diff(pert_eq[:n]) / np.where(pert_eq[:n - 1] > 0, pert_eq[:n - 1], 1.0)
-        clean_ret_aligned = clean_ret[: n - 1]
-
-        diff = clean_ret_aligned - pert_ret
-        te = diff.std()
-        tracking_errors.append((correlated, te))
+        pert_ret = np.diff(pert_eq[:n]) / np.where(
+            pert_eq[: n - 1] > 0, pert_eq[: n - 1], 1.0
+        )
+        diff = clean_ret[: n - 1] - pert_ret
+        tracking_errors.append(diff.std())
 
     if not tracking_errors:
         return 1.0
 
-    corr_tes = [te for is_corr, te in tracking_errors if is_corr]
-    iid_tes = [te for is_corr, te in tracking_errors if not is_corr]
-    mean_te = max(
-        sum(corr_tes) / len(corr_tes) if corr_tes else 0.0,
-        sum(iid_tes) / len(iid_tes) if iid_tes else 0.0,
-    )
-
+    # 10% trimmed mean: robust to extreme favorable/unfavorable noise alignments
+    te_array = np.array(tracking_errors)
+    mean_te = float(trim_mean(te_array, proportiontocut=TRIM_FRACTION))
     normalized_te = mean_te / clean_vol
     return max(0.0, min(1.0, 1.0 - normalized_te))
-
-
-def _perturb_data(data: dict, noise_bps: float, rng, *, correlated: bool = False) -> dict:
-    """Apply per-bar noise to close, high, and low independently.
-
-    Close noise is shared across symbols in correlated mode (simulates
-    market-wide microstructure shift).  High/low noise is always per-symbol
-    (intra-bar microstructure is symbol-specific).  After perturbation,
-    OHLC consistency is enforced: high >= close, low <= close, high >= low.
-    """
-    lengths = [len(df) for df in data.values()]
-    if max(lengths) - min(lengths) > 5:
-        raise ValueError(f"symbol bar count mismatch ({max(lengths) - min(lengths)}) too large for correlated noise")
-
-    max_len = max(lengths)
-    common_noise_c = rng.uniform(-noise_bps, noise_bps, size=max_len) / 10000.0 if correlated else None
-
-    result = {}
-    for sym, df in data.items():
-        new_df = df.copy()
-        n = len(new_df)
-        noise_c = common_noise_c[:n] if (correlated and common_noise_c is not None) else rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
-        noise_h = rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
-        noise_l = rng.uniform(-noise_bps, noise_bps, size=n) / 10000.0
-        new_df["close"] = new_df["close"] * (1.0 + noise_c)
-        new_df["high"] = np.maximum(new_df["high"].values * (1.0 + noise_h), new_df["close"].values)
-        new_df["low"] = np.minimum(new_df["low"].values * (1.0 + noise_l), new_df["close"].values)
-        # Ensure high >= low (rare edge case after independent perturbation)
-        new_df["high"] = np.maximum(new_df["high"].values, new_df["low"].values)
-        result[sym] = new_df
-    return result
