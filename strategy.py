@@ -279,9 +279,6 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    # Anchor entry_price to 3-bar HL2 mean for noise-immune stop/peak references
-                    # Single-bar mid is highly noise-sensitive; 3-bar HL2 mean reduces anchor variance ~3x
-                    _entry_anchor = float(np.mean((bd.history["high"].values[-3:] + bd.history["low"].values[-3:]) / 2.0))
-                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = _entry_anchor, 0.0, self.bar_count
+                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
         return signals
