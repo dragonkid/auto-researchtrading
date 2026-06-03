@@ -217,28 +217,20 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # R2-adaptive entry threshold: raise MIN_VOTES in low-R2 (noisy) environments
-            # In low R2, entries near the boundary are most likely to flip under noise
-            # By raising threshold, those marginal entries don't happen in either clean/perturbed
-            # Max uplift: +0.15 at R2=0 (threshold 2.75); zero uplift at R2>=0.5
-            _r2_thresh_adj = 0.15 * max(0.0, min(1.0, (0.5 - _r2) / 0.5))
-            _adaptive_min_votes = MIN_VOTES + _r2_thresh_adj
-            _adaptive_flip_votes = FLIP_MIN_VOTES + _r2_thresh_adj
-
             # Vote-margin sizing: hard entry gate + smooth position scaling above threshold
-            # The decision (enter/don't) is still binary at _adaptive_min_votes for signal clarity
-            # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at threshold to 1.0 at high votes
+            # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
+            # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
             # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
-            _margin_above = max(0.0, _active_votes - _adaptive_min_votes)
+            _margin_above = max(0.0, _active_votes - MIN_VOTES)
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= _adaptive_min_votes and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= _adaptive_min_votes and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -280,7 +272,7 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _adaptive_flip_votes and trend_avg < 0) or (current_pos < 0 and bull_votes >= _adaptive_flip_votes and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
