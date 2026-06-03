@@ -194,13 +194,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Vote magnitude clipping: per-voter sigmoid bounded to [0.20, 0.80]
-            # No threshold rescale: MIN_VOTES=2.60 against clipped sum max 4.8 requires more
-            # consensus (54% vs 43% baseline), filtering marginal entries. Boundary-noise impact
-            # of any single voter is bounded to 0.6 instead of nearly 1.0.
-            VOTE_CLIP_LO, VOTE_CLIP_HI = 0.20, 0.80
-            bull_votes = sum(max(VOTE_CLIP_LO, min(VOTE_CLIP_HI, 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))))) for d in _voter_deltas_bull)
-            bear_votes = sum(max(VOTE_CLIP_LO, min(VOTE_CLIP_HI, 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))))) for d in _voter_deltas_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
