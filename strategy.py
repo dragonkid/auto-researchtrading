@@ -168,30 +168,35 @@ class Strategy:
             _ml = ema(_hl2_macd, MACD_FAST) - ema(_hl2_macd, MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
+            # 6 voters with continuous sigmoid weighting
+            # R2-adaptive sigmoid scale: low R2 (noise) → wider sigmoid for gentler transitions
+            # High R2 (clear trend) → base scale for decisive entries
+            # R2 is noise-immune (16-pt HL2 linreg) so the scale itself doesn't flip under noise
+            _r2_sig_widen = 0.06 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))  # +0.06 at R2≤0.2, 0 at R2≥0.5
+            _adaptive_sig_scale = VOTE_SIGMOID_SCALE + _r2_sig_widen
+
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
-            # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
-            # This preserves decorrelation benefit while limiting false entries in crash
-            _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            # Per-voter: (signal_value - threshold) normalized by R2-adaptive scale
+            # MACD uses wider sigmoid scale to reduce its vote magnitude
+            _macd_sig_scale = _adaptive_sig_scale + 0.10  # MACD always wider than base
             _voter_deltas_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (ret_short - dyn_threshold) / max(dyn_threshold * _adaptive_sig_scale, 1e-10),
+                (_ef - _es) / max(abs(_es) * 0.001 * _adaptive_sig_scale, 1e-10),
+                (rsi - _rsi_thresh) / (3.0 * _adaptive_sig_scale),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
-                (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (_lr.slope - 0.00015) / (0.00015 * _adaptive_sig_scale),
+                (_ema_slope_val - 0.0006) / (0.0006 * _adaptive_sig_scale),
             ]
             _voter_deltas_bear = [
-                (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
-                (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
+                (-ret_short - dyn_threshold) / max(dyn_threshold * _adaptive_sig_scale, 1e-10),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * _adaptive_sig_scale, 1e-10),
+                (-rsi + _rsi_thresh) / (3.0 * _adaptive_sig_scale),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
-                (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-_lr.slope - 0.00015) / (0.00015 * _adaptive_sig_scale),
+                (-_ema_slope_val - 0.0006) / (0.0006 * _adaptive_sig_scale),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
