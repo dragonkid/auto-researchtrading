@@ -222,9 +222,7 @@ class Strategy:
             # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
             # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
             # This means noise at the boundary produces small positions (less PnL variance)
-            # R2-adaptive gate floor: very mild shrink in low-R2 (noisy) for marginal stability
-            _r2_gate_adj = 0.04 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))  # 0 at R2>=0.5, +0.04 at R2<=0.2
-            _eff_gate_floor = ENTRY_GATE_FLOOR - _r2_gate_adj  # 0.45 in trending, 0.41 in noisy
+            _eff_gate_floor = ENTRY_GATE_FLOOR  # no R2 gate on entry sizing
             _active_votes = max(bull_votes, bear_votes)
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
             _gate_sizing = _eff_gate_floor + (1.0 - _eff_gate_floor) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
@@ -250,8 +248,12 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Stop-loss exit (noise-immune: anchored to entry_price)
-                if pos_pnl < STOP_LOSS_PCT:
+                # R2-adaptive stop-loss: tighter in low-R2 (exit noisy losers faster)
+                # High R2 (trending): -2.4% (baseline) — trust trend, give room
+                # Low R2 (choppy): -2.0% — exit losing positions faster when signal is unreliable
+                _stop_r2_tight = 0.004 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))  # 0 at R2>=0.5, +0.004 at R2<=0.2
+                _eff_stop = STOP_LOSS_PCT + _stop_r2_tight  # -0.024 in trends, -0.020 in noise
+                if pos_pnl < _eff_stop:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
