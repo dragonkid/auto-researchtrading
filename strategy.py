@@ -113,6 +113,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_bull_votes = {}  # track previous bar's vote sums for 2-bar confirmation
+        self.prev_bear_votes = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -227,10 +229,20 @@ class Strategy:
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
+            # 2-bar entry confirmation: require votes >= MIN_VOTES on BOTH current and previous bar
+            # This makes entry decisions noise-immune: a single bar's perturbation cannot trigger entry
+            _prev_bull = self.prev_bull_votes.get(symbol, 0.0)
+            _prev_bear = self.prev_bear_votes.get(symbol, 0.0)
+            _bull_confirmed = bull_votes >= MIN_VOTES and _prev_bull >= MIN_VOTES
+            _bear_confirmed = bear_votes >= MIN_VOTES and _prev_bear >= MIN_VOTES
+            # Store current votes for next bar's confirmation
+            self.prev_bull_votes[symbol] = bull_votes
+            self.prev_bear_votes[symbol] = bear_votes
+
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if _bull_confirmed and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _bear_confirmed and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
