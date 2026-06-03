@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.42  # minimum sizing fraction at exactly MIN_VOTES (reduced from 0.45 for DD headroom)
+ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
 
 
 def ema(values, span):
@@ -150,8 +150,8 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
             # R2-adaptive threshold: low R2 (noisy) widens threshold (fewer noise entries).
-            # NO high-R2 narrowing (causes crash DD explosion from aggressive trending entries).
-            _r2_thresh_adj = 1.0 + 0.10 * max(0.0, min(1.0, (0.4 - _r2) / 0.3))
+            # Trigger at R2<0.35 (narrower band targets only truly noisy periods).
+            _r2_thresh_adj = 1.0 + 0.09 * max(0.0, min(1.0, (0.35 - _r2) / 0.25))
             dyn_threshold *= _r2_thresh_adj
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
