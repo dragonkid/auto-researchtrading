@@ -158,10 +158,7 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # EMA cross: 3-bar median of fast EMA for noise rejection (same pattern as ret_short median ref)
-            _ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
-            _ef = np.median(_ema_fast_arr[-3:])
-            _es = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
@@ -174,10 +171,7 @@ class Strategy:
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
-            # EMA slope: 3-bar median of current endpoint for noise rejection
-            # Reference stays at lookback distance from median center (bar -2)
-            _ea_current = np.median(_ea[-3:])
-            _ema_slope_val = (_ea_current - _ea[-(EMA_SLOPE_LOOKBACK + 1)]) / _ea[-(EMA_SLOPE_LOOKBACK + 1)]
+            _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
