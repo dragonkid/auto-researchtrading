@@ -251,10 +251,7 @@ class Strategy:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                # R2-adaptive widening: low R2 (noisy slope) widens threshold to require stronger reversal signal
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _exit_r2_widen = 1.0 + 0.4 * max(0.0, min(1.0, (0.5 - _r2) / 0.4))  # 1.0 at R²≥0.5, 1.4 at R²≤0.1
-                _exit_slope_thresh *= _exit_r2_widen
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
