@@ -152,9 +152,11 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            # R2-adaptive median width: low R2 (noise) -> wider 7-bar median, high R2 (clean trend) -> tighter 5-bar
+            # Adds noise immunity to ret_short voter input only when R2 indicates noisy regime
+            _med_half = 2 + int(round(max(0.0, min(1.0, (0.5 - _r2) / 0.4))))  # 2 at R2>=0.5, 3 at R2<=0.1
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
-            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med - _med_half: -adaptive_med + _med_half + 1])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
