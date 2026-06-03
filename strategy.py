@@ -227,10 +227,18 @@ class Strategy:
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
+            # Funding-rate entry filter: noise-immune (funding unaffected by close perturbation)
+            # Opposing funding requires higher vote confidence to enter
+            _fr = bd.history["funding_rate"].values[-1] if len(bd.history) > 0 else 0.0
+            _fr_penalty_bull = 0.15 * max(0.0, min(1.0, -_fr / 0.0003))  # penalty for going long when funding negative
+            _fr_penalty_bear = 0.15 * max(0.0, min(1.0, _fr / 0.0003))   # penalty for going short when funding positive
+            _min_votes_bull = MIN_VOTES + _fr_penalty_bull
+            _min_votes_bear = MIN_VOTES + _fr_penalty_bear
+
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= _min_votes_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= _min_votes_bear and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
