@@ -131,13 +131,18 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
-            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
-            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            # Volume-weighted smoothing: high-volume bars get stronger update weight
+            # Noise test perturbs close but NOT volume, so anchoring to high-vol bars = less noise sensitivity
+            _volumes = bd.history["volume"].values
+            _vol_mean = np.mean(_volumes[-VOL_LOOKBACK:])
+            _base_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
-                smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
+                # Scale alpha by relative volume: high vol = stronger update (more reliable bar)
+                _vol_scale = min(1.5, max(0.5, _volumes[_si] / max(_vol_mean, 1e-10)))
+                _alpha_i = min(0.85, _base_alpha * _vol_scale)
+                smoothed_closes[_si] = _alpha_i * closes[_si] + (1 - _alpha_i) * smoothed_closes[_si - 1]
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
