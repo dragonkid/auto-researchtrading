@@ -190,17 +190,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Adaptive-confidence voting: dampen uncertain (near-threshold) votes toward 0.5
-            # When |delta| < 1.5 (near boundary), the vote is pulled toward neutral (0.5)
-            # This preserves decisive signals while making boundary noise irrelevant
-            _CONF_DEADZONE = 1.5  # delta magnitude below which votes are dampened
-            def _adaptive_vote(d):
-                _sig = 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))
-                _conf = min(1.0, abs(d) / _CONF_DEADZONE)  # 0 at threshold, 1 at 1.5x scale
-                return 0.5 + (_sig - 0.5) * _conf  # pull uncertain votes toward 0.5
-
-            bull_votes = sum(_adaptive_vote(d) for d in _voter_deltas_bull)
-            bear_votes = sum(_adaptive_vote(d) for d in _voter_deltas_bear)
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
