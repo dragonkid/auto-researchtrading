@@ -106,6 +106,8 @@ class Strategy:
         # Architectural: previous-bar vote memory for two-bar entry confirmation
         self.prev_bull_votes = {}
         self.prev_bear_votes = {}
+        # Architectural: previous-bar slope memory for two-bar exit confirmation
+        self.prev_slope = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -214,9 +216,14 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
+                # Architectural: two-bar exit confirmation
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # AND require prev-bar slope agreement (decouples single-bar exit-flip noise)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                _ps = self.prev_slope.get(symbol, 0.0)
+                _exit_long = current_pos > 0 and _lr.slope < -_exit_slope_thresh and _ps < 0
+                _exit_short = current_pos < 0 and _lr.slope > _exit_slope_thresh and _ps > 0
+                if target != 0 and (_exit_long or _exit_short):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -252,8 +259,9 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
-            # Update prev-bar vote memory for next-bar two-bar confirmation
+            # Update prev-bar memory for next-bar two-bar confirmation (entry voters + exit slope)
             self.prev_bull_votes[symbol] = bull_votes
             self.prev_bear_votes[symbol] = bear_votes
+            self.prev_slope[symbol] = _lr.slope
 
         return signals
