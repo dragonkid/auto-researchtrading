@@ -161,7 +161,9 @@ class Strategy:
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            # R2-adaptive RSI window: low R2 (choppy) adds 3 bars for more averaging
+            _rsi_r2_bonus = 3.0 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))  # +3 bars at R2<=0.2, 0 at R2>=0.5
+            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str + _rsi_r2_bonus)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             # MACD from HL2 for voter decorrelation: HL2 receives ~50% perturbation vs close
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
