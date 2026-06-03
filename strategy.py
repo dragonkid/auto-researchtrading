@@ -140,7 +140,7 @@ class Strategy:
             _r2 = _lr.rvalue ** 2
             _r2_adj = 0.05 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.05 at R²≥0.8
             _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5)) - _r2_adj
-            _smooth_alpha_slow = max(0.30, _smooth_alpha - 0.12)  # parallel slower channel for consensus
+            _smooth_alpha_slow = max(0.25, _smooth_alpha - 0.18)  # parallel slower channel for consensus
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes_slow = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
