@@ -164,15 +164,12 @@ class Strategy:
             # MACD from HL2 for voter decorrelation: HL2 receives ~50% perturbation vs close
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
             _ml = ema(_hl2_macd, MACD_FAST) - ema(_hl2_macd, MACD_SLOW)
-            # VWAP-12 voter: 3-bar median of VWAP deviations (noise-immune via volume + median)
+            # VWAP-12 voter: volume-weighted average price (noise-immune via volume weights)
             _vwap_lookback = 12
-            _vwap_deltas = []
-            for _vi in range(3):
-                _vw_vols = bd.history["volume"].values[-_vwap_lookback - _vi: len(bd.history["volume"].values) - _vi if _vi > 0 else None]
-                _vw_cls = closes[-_vwap_lookback - _vi: len(closes) - _vi if _vi > 0 else None]
-                _vw = np.sum(_vw_cls * _vw_vols) / max(np.sum(_vw_vols), 1e-10)
-                _vwap_deltas.append((closes[-1 - _vi] - _vw) / _vw)
-            _vwap_delta = np.median(_vwap_deltas)  # median of 3 bars' deviations
+            _vwap_vols = bd.history["volume"].values[-_vwap_lookback:]
+            _vwap_closes = closes[-_vwap_lookback:]
+            _vwap = np.sum(_vwap_closes * _vwap_vols) / max(np.sum(_vwap_vols), 1e-10)
+            _vwap_delta = (closes[-1] - _vwap) / _vwap  # current close vs VWAP
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             # Voter 6 replaced: EMA slope -> VWAP deviation (volume-weighted = structurally noise-immune)
