@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0598
+BASE_POSITION_SIZE = 0.0594
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -138,7 +138,7 @@ class Strategy:
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
             # R²-adjusted: high fit quality (R²>0.6) reduces smoothing for faster trend tracking
             _r2 = _lr.rvalue ** 2
-            _r2_adj = 0.05 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.05 at R²≥0.8
+            _r2_adj = 0.07 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.07 at R²≥0.8
             _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5)) - _r2_adj
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
@@ -170,7 +170,9 @@ class Strategy:
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
+            # R2-adaptive MACD signal: +2 period in low-R2 for smoother histogram
+            _macd_sig_period = MACD_SIGNAL + int(round(2.0 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))))
+            _macd_hist = (_ml[-1] - ema(_ml, _macd_sig_period)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
