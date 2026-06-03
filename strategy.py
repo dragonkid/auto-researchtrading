@@ -197,6 +197,62 @@ class Strategy:
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
             bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
+            # Stateless 2-bar entry consensus: recompute votes one bar back from raw history.
+            # An entry requires both current AND prior bar to clear MIN_VOTES_PREV (slightly looser).
+            # Architectural: new function, new data dependency (current decision uses past-bar recomputation).
+            # Stateless = no carryover, so noise on a single bar perturbs only one of the two checks.
+            _hist_prev = closes[:-1]
+            if len(_hist_prev) >= max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
+                _hl_prev = bd.history["high"].values[:-1]
+                _lo_prev = bd.history["low"].values[:-1]
+                _lr_p = linregress(np.arange(LINREG_PERIOD), np.log((_hl_prev[-LINREG_PERIOD:] + _lo_prev[-LINREG_PERIOD:]) / 2.0))
+                _r2_p = _lr_p.rvalue ** 2
+                _r2_adj_p = 0.05 * max(0.0, min(1.0, (_r2_p - 0.3) / 0.5))
+                _vol_p = max(np.std(np.diff(np.log(_hist_prev[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+                _vr_p = _vol_p / TARGET_VOL
+                _alpha_p = 0.5 + 0.17 * max(0.0, min(1.0, (_vr_p - 0.7) / 0.5)) - _r2_adj_p
+                _smooth_p = np.empty_like(_hist_prev, dtype=float)
+                _smooth_p[0] = _hist_prev[0]
+                for _si in range(1, len(_hist_prev)):
+                    _smooth_p[_si] = _alpha_p * _hist_prev[_si] + (1 - _alpha_p) * _smooth_p[_si - 1]
+                _dyn_p = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, BASE_THRESHOLD * (0.10 + _vr_p * 0.90) ** 0.85))
+                _retL_p = (_hist_prev[-1] - _hist_prev[-LONG_WINDOW]) / _hist_prev[-LONG_WINDOW]
+                _dyn_p *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(_retL_p) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+                _amed_p = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(_vr_p, 0.5) - 0.5) / 1.5))))
+                _mref_p = np.median(_smooth_p[-_amed_p - 2: -_amed_p + 3])
+                _retS_p = (_smooth_p[-1] - _mref_p) / _mref_p
+                _ef_p, _es_p = ema(_hist_prev[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(_hist_prev[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+                _rstr_p = min(abs(_lr_p.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
+                _rd_p = np.diff(_hist_prev[-(int(round(6 + 2 * _rstr_p)) + 1):])
+                _rsi_p = 100 - 100 / (1 + np.mean(np.maximum(_rd_p, 0)) / max(np.mean(np.maximum(-_rd_p, 0)), 1e-10))
+                _hl2m_p = (_hl_prev[-(MACD_SLOW + MACD_SIGNAL + 5):] + _lo_prev[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
+                _ml_p = ema(_hl2m_p, MACD_FAST) - ema(_hl2m_p, MACD_SLOW)
+                _ea_p = ema(_hist_prev[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+                _rsi_th_p = 50 + RSI_TREND_BIAS * _rstr_p * (-1.0 if _retL_p > 0 else 1.0)
+                _macd_h_p = (_ml_p[-1] - ema(_ml_p, MACD_SIGNAL)[-1]) / _hl2m_p[-1]
+                _eslp_p = (_ea_p[-1] - _ea_p[-EMA_SLOPE_LOOKBACK]) / _ea_p[-EMA_SLOPE_LOOKBACK]
+                _vd_bull_p = [
+                    (_retS_p - _dyn_p) / max(_dyn_p * VOTE_SIGMOID_SCALE, 1e-10),
+                    (_ef_p - _es_p) / max(abs(_es_p) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                    (_rsi_p - _rsi_th_p) / (3.0 * VOTE_SIGMOID_SCALE),
+                    (_macd_h_p - 0.00025) / (0.00025 * _macd_sig_scale),
+                    (_lr_p.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                    (_eslp_p - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                ]
+                _vd_bear_p = [
+                    (-_retS_p - _dyn_p) / max(_dyn_p * VOTE_SIGMOID_SCALE, 1e-10),
+                    (-(_ef_p - _es_p)) / max(abs(_es_p) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                    (-_rsi_p + _rsi_th_p) / (3.0 * VOTE_SIGMOID_SCALE),
+                    (-_macd_h_p - 0.00025) / (0.00025 * _macd_sig_scale),
+                    (-_lr_p.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                    (-_eslp_p - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                ]
+                bull_votes_prev = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _vd_bull_p)
+                bear_votes_prev = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _vd_bear_p)
+            else:
+                bull_votes_prev, bear_votes_prev = bull_votes, bear_votes
+            MIN_VOTES_PREV = MIN_VOTES - 0.15  # looser threshold for prior-bar (decorrelates from current boundary)
+
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
@@ -228,9 +284,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and bull_votes_prev >= MIN_VOTES_PREV and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and bear_votes_prev >= MIN_VOTES_PREV and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
