@@ -103,7 +103,6 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-# Position accumulation (build position over bars)
 ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
@@ -139,7 +138,7 @@ class Strategy:
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
             # R²-adjusted: high fit quality (R²>0.6) reduces smoothing for faster trend tracking
             _r2 = _lr.rvalue ** 2
-            _r2_adj = 0.065 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.065 at R²≥0.8
+            _r2_adj = 0.05 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.05 at R²≥0.8
             _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5)) - _r2_adj
             smoothed_closes = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
