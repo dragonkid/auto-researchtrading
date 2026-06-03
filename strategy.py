@@ -227,12 +227,11 @@ class Strategy:
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size_raw = size * _vote_conf
-            # Vol-adaptive 2-bar averaging: smooth in calm/normal regimes for noise immunity,
-            # disable averaging entirely in high-vol regimes for instant risk-aware sizing.
-            # Smoothing weight: 0.5 (full average) when vol_ratio<=1.0, linearly to 0.0 at vol_ratio>=1.4.
+            # Asymmetric 2-bar averaging: smoothed when size GROWING (noise dampening),
+            # instant when size SHRINKING (fast risk reduction in crash/vol-spike regimes).
+            # Preserves the stability benefit of averaging while letting vol gates respond instantly.
             _prev = self.prev_conf_size.get(symbol, _conf_size_raw)
-            _smooth_w = 0.5 * max(0.0, min(1.0, (1.4 - vol_ratio) / 0.4))
-            _conf_size = (1.0 - _smooth_w) * _conf_size_raw + _smooth_w * _prev
+            _conf_size = 0.5 * (_conf_size_raw + _prev) if _conf_size_raw >= _prev else _conf_size_raw
             self.prev_conf_size[symbol] = _conf_size_raw
 
             if current_pos == 0 and not in_cooldown:
