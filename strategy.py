@@ -113,7 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.frozen_conf_size = {}  # locked _conf_size at entry-bar for stable accumulation
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -231,25 +230,20 @@ class Strategy:
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                    self.frozen_conf_size[symbol] = _conf_size
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
-                    self.frozen_conf_size[symbol] = _conf_size
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
-                    self.frozen_conf_size[symbol] = size
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: use FROZEN _conf_size from entry-bar (noise-immune scale-up)
-                # This eliminates voter/sizing noise contribution during the 2-bar accumulation window
+                # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    _frozen = self.frozen_conf_size.get(symbol, _conf_size)
-                    full_target = _frozen if current_pos > 0 else -_frozen
+                    full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
@@ -285,11 +279,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.frozen_conf_size):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.frozen_conf_size[symbol] = _conf_size
 
         return signals
