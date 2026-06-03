@@ -246,18 +246,10 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Graduated linreg exit: partial reduction near threshold, full exit at 2x
-                # Reduces noise sensitivity: boundary perturbation causes 50% cut not 100% exit
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0:
-                    _slope_against = (_lr.slope < -_exit_slope_thresh and current_pos > 0) or (_lr.slope > _exit_slope_thresh and current_pos < 0)
-                    if _slope_against:
-                        _slope_mag = abs(_lr.slope) / _exit_slope_thresh  # 1.0 at threshold, 2.0+ = full exit
-                        _exit_frac = min(1.0, 0.5 + 0.5 * (_slope_mag - 1.0))  # 50% at threshold, 100% at 2x
-                        if _exit_frac >= 0.95:
-                            target = 0.0
-                        else:
-                            target = current_pos * (1.0 - _exit_frac)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                    target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
                 if target != 0:
