@@ -173,6 +173,15 @@ class Strategy:
             _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
+            # Funding rate voter: 8-bar average funding (noise-immune: external data, not derived from close)
+            # Positive funding = longs pay shorts (bullish crowding) → contrarian bearish signal
+            # Negative funding = shorts pay longs (bearish crowding) → contrarian bullish signal
+            _fund_vals = bd.history["funding_rate"].values[-8:]
+            _avg_funding = np.mean(_fund_vals) if len(_fund_vals) >= 8 else 0.0
+            # Threshold: 0.0001 (typical hourly funding ~ 0.00008-0.0003 range)
+            _FUND_THRESH = 0.00012
+            _FUND_SCALE = 0.50  # wider sigmoid for gradual contribution
+
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
             # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
             # This preserves decorrelation benefit while limiting false entries in crash
@@ -183,7 +192,7 @@ class Strategy:
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (-_avg_funding - _FUND_THRESH) / (_FUND_THRESH * _FUND_SCALE),
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
@@ -191,7 +200,7 @@ class Strategy:
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
-                (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                (_avg_funding - _FUND_THRESH) / (_FUND_THRESH * _FUND_SCALE),
             ]
 
             bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
