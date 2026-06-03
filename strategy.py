@@ -233,12 +233,7 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Sigmoid-weighted RSI margin: stronger RSI extreme = larger position
-                    # Distance from threshold normalized; produces soft transition near 49/51 boundary
-                    _rsi_margin = (MEANREV_RSI_OVERSOLD - rsi) if rsi < MEANREV_RSI_OVERSOLD else (rsi - MEANREV_RSI_OVERBOUGHT)
-                    _mr_conf = 1.0 / (1.0 + np.exp(-(_rsi_margin / 3.0 - 1.0)))  # 0.27 at margin=0, 0.73 at margin=6
-                    _mr_size = size * (ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * _mr_conf)
-                    target = (_mr_size if rsi < MEANREV_RSI_OVERSOLD else -_mr_size) * ENTRY_INITIAL_FRAC
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
