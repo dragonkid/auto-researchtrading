@@ -213,11 +213,9 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # R2-adaptive entry threshold: raise MIN_VOTES in low-R2 (noisy) environments
-            # In low R2, entries near the boundary are most likely to flip under noise
-            # By raising threshold, those marginal entries don't happen in either clean/perturbed
-            # Max uplift: +0.06 at R2=0 (threshold 2.66); zero uplift at R2>=0.30
-            _r2_thresh_adj = 0.06 * max(0.0, min(1.0, (0.30 - _r2) / 0.30))
+            # R2-adaptive entry threshold: mild uplift in very low R2 (trendless noise)
+            # Only activates when R2 < 0.25 (strongly trendless), max uplift +0.08
+            _r2_thresh_adj = 0.08 * max(0.0, min(1.0, (0.25 - _r2) / 0.25))
             _adaptive_min_votes = MIN_VOTES + _r2_thresh_adj
             _adaptive_flip_votes = FLIP_MIN_VOTES + _r2_thresh_adj
 
