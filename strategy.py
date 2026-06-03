@@ -164,15 +164,18 @@ class Strategy:
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
             ret_short_slow = (smoothed_closes_slow[-1] - _med_ref_med_slow) / _med_ref_med_slow
             # Dual-channel consensus: dampen ret_short if fast/slow channels disagree on sign
-            # R2-conditional dampener: strong dampening (0.6) only when R2 indicates noisy regime, full signal in trending regimes
-            _r2_dampen_factor = 0.6 + 0.4 * max(0.0, min(1.0, (_r2 - 0.2) / 0.3))  # 0.6 at R2<=0.2, 1.0 at R2>=0.5
-            _ret_short_consensus = 1.0 if (ret_short * ret_short_slow >= 0) else _r2_dampen_factor
+            _ret_short_consensus = 1.0 if (ret_short * ret_short_slow >= 0) else 0.7
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            _rsi_lookback = int(round(6 + 2 * rsi_trend_str)) + 1
+            _rd = np.diff(closes[-_rsi_lookback:])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
+            # Slow-channel RSI for consensus dampener
+            _rd_slow = np.diff(smoothed_closes_slow[-_rsi_lookback:])
+            _rsi_slow = 100 - 100 / (1 + np.mean(np.maximum(_rd_slow, 0)) / max(np.mean(np.maximum(-_rd_slow, 0)), 1e-10))
+            _rsi_consensus = 1.0 if ((rsi - 50) * (_rsi_slow - 50) >= 0) else 0.7
             # MACD from HL2 for voter decorrelation: HL2 receives ~50% perturbation vs close
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
             _ml = ema(_hl2_macd, MACD_FAST) - ema(_hl2_macd, MACD_SLOW)
@@ -204,8 +207,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Apply ret_short fast/slow consensus dampener to ret_short AND MACD voters (both close-derived noise-prone signals)
-            _voter_weights = [_ret_short_consensus, 1.0, 1.0, _ret_short_consensus, 1.0, 1.0]
+            # Apply ret_short and rsi fast/slow consensus dampeners to their respective voters
+            _voter_weights = [_ret_short_consensus, 1.0, _rsi_consensus, 1.0, 1.0, 1.0]
             bull_votes = sum(w * (1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))) for w, d in zip(_voter_weights, _voter_deltas_bull))
             bear_votes = sum(w * (1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))) for w, d in zip(_voter_weights, _voter_deltas_bear))
 
