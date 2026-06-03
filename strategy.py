@@ -164,7 +164,7 @@ class Strategy:
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
             ret_short_slow = (smoothed_closes_slow[-1] - _med_ref_med_slow) / _med_ref_med_slow
             # Dual-channel consensus: dampen ret_short if fast/slow channels disagree on sign
-            _ret_short_consensus = 1.0 if (ret_short * ret_short_slow >= 0) else 0.7
+            _ret_short_consensus = 1.0 if (ret_short * ret_short_slow >= 0) else 0.85
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
