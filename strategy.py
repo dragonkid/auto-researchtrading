@@ -220,8 +220,8 @@ class Strategy:
             # R2-adaptive entry threshold: raise MIN_VOTES in low-R2 (noisy) environments
             # In low R2, entries near the boundary are most likely to flip under noise
             # By raising threshold, those marginal entries don't happen in either clean/perturbed
-            # Max uplift: +0.15 at R2=0 (threshold 2.75); zero uplift at R2>=0.5
-            _r2_thresh_adj = 0.15 * max(0.0, min(1.0, (0.5 - _r2) / 0.5))
+            # Max uplift: +0.10 at R2=0 (threshold 2.70); zero uplift at R2>=0.35
+            _r2_thresh_adj = 0.10 * max(0.0, min(1.0, (0.35 - _r2) / 0.35))
             _adaptive_min_votes = MIN_VOTES + _r2_thresh_adj
             _adaptive_flip_votes = FLIP_MIN_VOTES + _r2_thresh_adj
 
