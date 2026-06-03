@@ -108,11 +108,14 @@ ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
+FLIP_RELEASE_THRESH = 2.3  # after a flip, same-direction votes must drop below this before allowing re-flip
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.flip_released = {}  # tracks whether votes have "released" since last flip
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -267,10 +270,19 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
+                # Flip anti-oscillation: track if same-direction votes have "released" (dropped below threshold)
+                # This prevents noise-driven rapid flip-flip-flip without delaying the first flip
+                _same_dir_votes = bull_votes if current_pos > 0 else bear_votes
+                if _same_dir_votes < FLIP_RELEASE_THRESH:
+                    self.flip_released[symbol] = True
+
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Additional gate: flip_released must be True (always True for first position, prevents re-flip oscillation)
+                _flip_allowed = self.flip_released.get(symbol, True)
+                if _flip_allowed and not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
+                    self.flip_released[symbol] = False  # reset: must release again before next flip
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
@@ -278,6 +290,7 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
+                    self.flip_released.pop(symbol, None)  # reset on exit
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
