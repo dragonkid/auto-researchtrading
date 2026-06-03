@@ -49,6 +49,7 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
+EXIT_SLOPE_CONFIDENCE = 1.8  # exit when adverse slope > N * stderr (significance-based)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.0598
@@ -250,9 +251,11 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                # Significance-based linreg exit: exit when adverse slope exceeds confidence * stderr
+                # High R2 (clear trend) → small stderr → small slopes trigger exit (fast response)
+                # Low R2 (noise) → large stderr → only large slopes trigger exit (noise immune)
+                _slope_sig_thresh = max(0.0002, EXIT_SLOPE_CONFIDENCE * _lr.stderr)
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_slope_sig_thresh) or (current_pos < 0 and _lr.slope > _slope_sig_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
