@@ -194,8 +194,16 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            _bull_sigs = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
+            _bear_sigs = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
+            bull_votes = sum(_bull_sigs)
+            bear_votes = sum(_bear_sigs)
+            # Voter-consensus multiplier: higher std among same-direction voters indicates disagreement
+            # When voters disagree (high std), aggregate signal is fragile and noise-prone; reduce size.
+            # When voters agree tightly (low std), aggregate signal is robust; preserve full size.
+            # This is a continuous multiplier, not a gate — no new decision boundary introduced.
+            _active_sigs = _bull_sigs if bull_votes >= bear_votes else _bear_sigs
+            _consensus_mult = max(0.5, 1.0 - 2.5 * float(np.std(_active_sigs)))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -224,7 +232,7 @@ class Strategy:
             _active_votes = max(bull_votes, bear_votes)
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
-            _vote_conf = _gate_sizing
+            _vote_conf = _gate_sizing * _consensus_mult
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
