@@ -166,9 +166,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Extended cooldown in sideways (more buffer to filter noise-driven re-entries)
-            _cooldown_mult = COOLDOWN_BARS * cooldown_trend_strength + 2.0 * (1.0 - cooldown_trend_strength)
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < _cooldown_mult
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -217,13 +215,18 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Architectural: two-bar exit confirmation
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                # AND require prev-bar slope agreement (decouples single-bar exit-flip noise)
+                # Architectural: two-bar exit confirmation with strong-slope bypass
+                # Marginal exit (just past threshold): require prev-bar slope sign agreement (denoise)
+                # Strong exit (slope >> threshold * 2): immediate exit (preserve crash protection)
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _ps = self.prev_slope.get(symbol, 0.0)
-                _exit_long = current_pos > 0 and _lr.slope < -_exit_slope_thresh and _ps < 0
-                _exit_short = current_pos < 0 and _lr.slope > _exit_slope_thresh and _ps > 0
+                _strong_thresh = _exit_slope_thresh * 2.0
+                _exit_long = current_pos > 0 and (
+                    (_lr.slope < -_strong_thresh) or (_lr.slope < -_exit_slope_thresh and _ps < 0)
+                )
+                _exit_short = current_pos < 0 and (
+                    (_lr.slope > _strong_thresh) or (_lr.slope > _exit_slope_thresh and _ps > 0)
+                )
                 if target != 0 and (_exit_long or _exit_short):
                     target = 0.0
 
