@@ -221,12 +221,9 @@ class Strategy:
             # The decision (enter/don't) is still binary at MIN_VOTES for signal clarity
             # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
             # This means noise at the boundary produces small positions (less PnL variance)
-            # R2-adaptive gate floor: in low-R2 (noisy), floor shrinks more (less capital to uncertain entries)
-            _r2_gate_adj = 0.12 * max(0.0, min(1.0, (0.5 - _r2) / 0.3))  # 0 at R2>=0.5, +0.12 at R2<=0.2
-            _eff_gate_floor = ENTRY_GATE_FLOOR - _r2_gate_adj  # 0.45 in trending, 0.33 in noisy
             _active_votes = max(bull_votes, bear_votes)
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
-            _gate_sizing = _eff_gate_floor + (1.0 - _eff_gate_floor) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
+            _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
