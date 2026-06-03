@@ -113,7 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.stop_pending_bar = {}  # bar_count when stop condition first triggered (per-symbol)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -243,15 +242,9 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Stop-loss exit with 2-bar confirmation (architectural: new state variable)
-                # Single-bar noise spike below threshold no longer fires; requires sustained breach
+                # Stop-loss exit (noise-immune: anchored to entry_price)
                 if pos_pnl < STOP_LOSS_PCT:
-                    if symbol in self.stop_pending_bar and self.bar_count - self.stop_pending_bar[symbol] >= 1:
-                        target = 0.0
-                    elif symbol not in self.stop_pending_bar:
-                        self.stop_pending_bar[symbol] = self.bar_count
-                else:
-                    self.stop_pending_bar.pop(symbol, None)
+                    target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
@@ -282,11 +275,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.stop_pending_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self.stop_pending_bar.pop(symbol, None)
 
         return signals
