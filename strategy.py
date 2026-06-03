@@ -194,7 +194,11 @@ class Strategy:
             bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            # Trend gate using 3-bar means for both endpoints: reduces noise by sqrt(3)
+            _trend_recent = np.mean(closes[-3:])
+            _trend_ref = np.mean(closes[-MED2_WINDOW - 1: -MED2_WINDOW + 2])
+            _short_ret_smooth = (_trend_recent - _trend_ref) / _trend_ref
+            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * _short_ret_smooth + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
