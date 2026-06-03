@@ -233,7 +233,8 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             # R2-adaptive long FRAC: noise-immune control (R2 changes minimally under perturbation)
-            _r2_frac_blend = max(0.0, min(1.0, (_r2 - 0.2) / 0.5))  # 0 at R2<=0.2, 1 at R2>=0.7
+            # Tighter window: only reduce at very low R2 (pure noise, R2<0.15), full FRAC at R2>=0.4
+            _r2_frac_blend = max(0.0, min(1.0, (_r2 - 0.15) / 0.25))  # 0 at R2<=0.15, 1 at R2>=0.40
             _frac_long = ENTRY_FRAC_LONG_LOW + (ENTRY_FRAC_LONG_BASE - ENTRY_FRAC_LONG_LOW) * _r2_frac_blend
 
             if current_pos == 0 and not in_cooldown:
