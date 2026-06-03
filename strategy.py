@@ -149,10 +149,10 @@ class Strategy:
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
-            # R2-adaptive threshold: low R2 (noisy) widens threshold (fewer noise-triggered entries).
-            # High R2 does NOT narrow — that pushes crash DD over cap by encouraging aggressive trending entries.
+            # R2-adaptive threshold: high R2 (clean trend) tightens threshold (more entries),
+            # low R2 (noise) widens threshold (fewer noise-triggered entries).
             # This is noise-immune because R2 (16-pt HL2 fit quality) barely changes under 5bps close perturbation.
-            _r2_thresh_adj = 1.0 + 0.08 * max(0.0, min(1.0, (0.4 - _r2) / 0.3))
+            _r2_thresh_adj = 1.0 + 0.15 * max(0.0, min(1.0, (0.4 - _r2) / 0.3)) - 0.10 * max(0.0, min(1.0, (_r2 - 0.6) / 0.3))
             dyn_threshold *= _r2_thresh_adj
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
