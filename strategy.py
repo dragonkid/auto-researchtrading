@@ -131,8 +131,11 @@ class Strategy:
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
 
-            # Linreg on HL2 (used later for voter + exit, and here for R² smoothing control)
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            # Linreg on median-filtered HL2: 3-bar rolling median removes single-bar outliers
+            # without introducing lag (median preserves central tendency unlike SMA which shifts phase)
+            _hl2_raw = (bd.history["high"].values[-(LINREG_PERIOD + 2):] + bd.history["low"].values[-(LINREG_PERIOD + 2):]) / 2.0
+            _hl2_med = np.array([np.median(_hl2_raw[i:i+3]) for i in range(len(_hl2_raw) - 2)])
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log(_hl2_med[-LINREG_PERIOD:]))
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
@@ -149,10 +152,7 @@ class Strategy:
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
-            # R2-adaptive threshold: very low R2 (<0.25) widens threshold slightly (fewer noise entries).
-            # This is noise-immune because R2 (16-pt HL2 fit quality) barely changes under 5bps close perturbation.
-            _r2_thresh_adj = 1.0 + 0.03 * max(0.0, min(1.0, (0.25 - _r2) / 0.20))
-            dyn_threshold *= _r2_thresh_adj
+            # R2-adaptive threshold removed: marginal stab (+0.0001) but raw cost too high
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
