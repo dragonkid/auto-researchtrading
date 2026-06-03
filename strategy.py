@@ -113,8 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.prev_bull_votes = {}  # previous bar's bull vote sum per symbol
-        self.prev_bear_votes = {}  # previous bar's bear vote sum per symbol
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -229,18 +227,10 @@ class Strategy:
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
-            # Temporal vote confirmation: require previous bar also above a softer threshold
-            # This filters single-bar noise flips without state propagation (unlike EMA smoothing)
-            _prev_bull = self.prev_bull_votes.get(symbol, 0.0)
-            _prev_bear = self.prev_bear_votes.get(symbol, 0.0)
-            _CONFIRM_THRESH = MIN_VOTES - 0.30  # softer threshold for confirmation (avoids over-filtering)
-            _bull_confirmed = bull_votes >= MIN_VOTES and _prev_bull >= _CONFIRM_THRESH
-            _bear_confirmed = bear_votes >= MIN_VOTES and _prev_bear >= _CONFIRM_THRESH
-
             if current_pos == 0 and not in_cooldown:
-                if _bull_confirmed and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif _bear_confirmed and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -282,15 +272,9 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                # Flip also uses temporal confirmation for consistency
-                _FLIP_CONFIRM = FLIP_MIN_VOTES - 0.30
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _prev_bear >= _FLIP_CONFIRM and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _prev_bull >= _FLIP_CONFIRM and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
-
-            # Store votes for next bar's temporal confirmation (memory-less: just 1-bar lookback)
-            self.prev_bull_votes[symbol] = bull_votes
-            self.prev_bear_votes[symbol] = bear_votes
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
