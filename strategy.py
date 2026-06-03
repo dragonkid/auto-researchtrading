@@ -194,8 +194,20 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Voter abstention: voters within ±VOTER_ABSTAIN_CONF of 0.5 sigmoid abstain
+            # Effective MIN_VOTES scales by participation count, so abstention does not bias decisions —
+            # it removes the ambient noise contribution of low-confidence (near-boundary) voters from
+            # BOTH the votes and the threshold proportionally. This keeps decisions sensitive when at
+            # least some voters are confident, while preventing weak voters from injecting flips.
+            VOTER_ABSTAIN_CONF = 0.10  # voter sigmoid must be outside [0.40, 0.60] to participate
+            _bull_sigs = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull]
+            _bear_sigs = [1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear]
+            _bull_active = [s for s in _bull_sigs if abs(s - 0.5) >= VOTER_ABSTAIN_CONF]
+            _bear_active = [s for s in _bear_sigs if abs(s - 0.5) >= VOTER_ABSTAIN_CONF]
+            _n_bull = max(1, len(_bull_active))
+            _n_bear = max(1, len(_bear_active))
+            bull_votes = sum(_bull_active) * (6.0 / _n_bull) if _bull_active else 0.0
+            bear_votes = sum(_bear_active) * (6.0 / _n_bear) if _bear_active else 0.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
