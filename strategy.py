@@ -261,14 +261,13 @@ class Strategy:
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
                         target = 0.0
 
-                # Momentum-decay exit (soft time pressure, vote-confirmed extension)
+                # Momentum-decay exit (soft time pressure, slope-extended)
                 if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Vote agreement: do aggregated votes support position direction?
-                    # Vote sums are sigmoid-smoothed (less noise-sensitive than raw linreg slope)
-                    _vote_agrees = (current_pos > 0 and bull_votes > bear_votes) or (current_pos < 0 and bear_votes > bull_votes)
-                    _vote_margin = abs(bull_votes - bear_votes) / 6.0  # normalized [0,1]
-                    # Extra hold time when votes agree with position direction
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _vote_margin * (1.0 if _vote_agrees else 0.0)
+                    # Slope agreement: does linreg slope support position direction?
+                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
+                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
+                    # Extra hold time when slope strongly agrees
+                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                     if bars_held >= _effective_max:
                         target = 0.0
 
