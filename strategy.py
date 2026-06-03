@@ -181,15 +181,16 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: trend-adaptive two-bar confirmation
-            # In trending regimes (high abs ret_long): require previous-bar vote agreement (denoise)
-            # In sideways (low abs ret_long): relax to current-bar only (preserve entry frequency)
+            # Architectural: trend-adaptive two-bar confirmation + sideways-strict current-bar threshold
+            # In trending: require prev-bar vote agreement (denoise via temporal consensus)
+            # In sideways: tighten current-bar threshold to MIN_VOTES+1 (denoise via spatial consensus)
             _prev_bull = self.prev_bull_votes.get(symbol, 0)
             _prev_bear = self.prev_bear_votes.get(symbol, 0)
             _trend_str = min(abs(ret_long) / 0.04, 1.0)  # 0 in flat, 1 when |ret_long|>=4%
             _prev_req = MIN_VOTES - 2 + _trend_str  # 1.0 (sideways) -> 2.0 (full trend)
-            _confirmed_bull = bull_votes >= MIN_VOTES and _prev_bull >= _prev_req
-            _confirmed_bear = bear_votes >= MIN_VOTES and _prev_bear >= _prev_req
+            _curr_req = MIN_VOTES + (1.0 - _trend_str)  # 4 in flat sideways, 3 in full trend
+            _confirmed_bull = bull_votes >= _curr_req and _prev_bull >= _prev_req
+            _confirmed_bear = bear_votes >= _curr_req and _prev_bear >= _prev_req
 
             if current_pos == 0 and not in_cooldown:
                 if _confirmed_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
