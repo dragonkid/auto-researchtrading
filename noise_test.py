@@ -22,7 +22,7 @@ from scipy.stats import trim_mean
 from prepare import run_backtest, BacktestResult
 
 N_TRIALS = 20
-STABILITY_THRESHOLD = 0.84  # calibrated to production strategy 8569cb5 (0.8466)
+STABILITY_THRESHOLD = 0.80  # no-penalty zone starts at 0.80
 
 # Empirical parameters (conservative worst-case design)
 # STD: 2-year full sample (covers market efficiency regression)

@@ -75,11 +75,12 @@ def _run_regime_worker(args: tuple) -> dict:
     if score > 0:
         stability = compute_signal_stability(data, result)
         stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
-        # Tiered penalty: <0.75 = 50%, 0.75-0.84 = 25%, >=0.84 = no penalty
-        # Calibrated to production strategy 8569cb5 (stab=0.8466 under AR(1) noise)
-        if stability < 0.75:
+        # Tiered penalty: <0.70 = 50%, 0.70-0.80 = 25%, >=0.80 = no penalty
+        # Production strategy 8569cb5 has min_stab=0.778, just below no-penalty zone.
+        # raw_composite floor raised to 7.0 prevents stability-for-Sharpe tradeoffs.
+        if stability < 0.70:
             stability_factor *= 0.50
-        elif stability < 0.84:
+        elif stability < 0.80:
             stability_factor *= 0.75
         score = score * stability_factor
     else:

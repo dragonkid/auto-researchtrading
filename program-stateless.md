@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-When min_stability < 0.84: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
+When min_stability < 0.80: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
 
 ## Session protocol
 
@@ -73,7 +73,7 @@ For each experiment:
    An experiment qualifies as `keep` if ALL of the following are met:
    - `min_stability` improved by **at least +0.003** vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **6.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus).
+   - `raw_composite` ≥ **7.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus). Calibrated to production strategy baseline.
 
    **Absolute DD caps (hard ceiling, never changes):**
    - bull_2021: ≤ 7.8%
@@ -85,7 +85,7 @@ For each experiment:
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
 
-   **Composite keep path (only when min_stability ≥ 0.84):** Once stability reaches 0.84+, an alternative keep path opens: `composite_score` improved by at least +0.03 vs baseline, with no DD cap violation. This allows revenue optimization after the stability goal is achieved.
+   **Composite keep path (only when min_stability ≥ 0.80):** Once stability reaches 0.80+, an alternative keep path opens: `composite_score` improved by at least +0.03 vs baseline, with no DD cap violation. This allows revenue optimization after the stability goal is achieved.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
    If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
@@ -195,17 +195,17 @@ Search regimes (4 non-overlapping periods):
 - sideways: 2023-01 ~ 2023-12 (sideways recovery)
 - rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 
-## Primary Objective: Maximize raw_composite while maintaining stability ≥ 0.84
+## Primary Objective: Maximize raw_composite while maintaining stability ≥ 0.80
 
 The noise test uses AR(1) correlated perturbation matching real cross-exchange differences. Penalty tiers:
 
-- stability < 0.75 → 50% penalty: factor = (stab/0.84) × 0.50
-- stability 0.75–0.83 → 25% penalty: factor = (stab/0.84) × 0.75
-- stability ≥ 0.84 → no penalty: factor = stab/0.84, capped at 1.0
+- stability < 0.70 → 50% penalty: factor = (stab/0.80) × 0.50
+- stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
+- stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
 
-The production strategy (8569cb5) scores 0.8466 under this test. Your baseline should be at or above this level. Focus on maximizing raw_composite (signal quality / Sharpe) while keeping stability ≥ 0.84.
+The production strategy (8569cb5) scores min_stab=0.778 (per-regime). It is just below the no-penalty zone — giving a clear improvement target (+0.022 to reach 0.80) without being unreachably far. The raw_composite floor is set at 7.0 (production level) to prevent trading signal quality for stability.
 
-**Stability is a constraint, not the optimization target.** Keep stability ≥ 0.84 (no penalty zone) and focus on improving raw_composite. Do NOT sacrifice signal quality/Sharpe for marginal stability gains above 0.84.
+**Stability is a constraint, not the optimization target.** Keep stability ≥ 0.80 (no penalty zone) and focus on improving raw_composite. Do NOT sacrifice signal quality/Sharpe for marginal stability gains above 0.80.
 
 **Do NOT conclude that "stability requires fundamentally different architecture and is too risky."** That reasoning is a trap — it leads to endless base-performance tweaks that never close the gap. Structural changes to improve stability ARE the highest-ROI experiments available.
 
@@ -222,10 +222,10 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 6.0 and DD caps are not violated
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 6.0
+- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 7.0 and DD caps are not violated
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.0
 
-## Stability improvement approaches (when min_stability < 0.84)
+## Stability improvement approaches (when min_stability < 0.80)
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
 **HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
