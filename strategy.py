@@ -170,7 +170,10 @@ class Strategy:
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
-            _macd_hist = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / _hl2_macd[-1]
+            # R2-adaptive MACD signal period: longer in low-R2 (noisy) for smoother histogram
+            _r2_norm = max(0.0, min(1.0, (_r2 - 0.2) / 0.5))  # 0 at R2<=0.2, 1 at R2>=0.7
+            _macd_signal_eff = int(round(MACD_SIGNAL + 2.0 * (1.0 - _r2_norm)))  # 8-10 bars
+            _macd_hist = (_ml[-1] - ema(_ml, _macd_signal_eff)[-1]) / _hl2_macd[-1]
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
@@ -246,8 +249,11 @@ class Strategy:
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
-                # Stop-loss exit (noise-immune: anchored to entry_price)
-                if pos_pnl < STOP_LOSS_PCT:
+                # Vol-adaptive stop-loss: tighter in high vol (large moves = cut faster)
+                # vol_ratio > 1.3 → stop at -2.0%; vol_ratio < 0.8 → stop at -2.4% (full)
+                _vol_stop_adj = 0.004 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.5))
+                _adj_stop = STOP_LOSS_PCT + _vol_stop_adj  # tighter (less negative) in high vol
+                if pos_pnl < _adj_stop:
                     target = 0.0
 
                 # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
