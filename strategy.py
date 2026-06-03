@@ -228,17 +228,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                # Soft trend gate: sigmoid confidence replaces binary 0-crossing
-                # trend_conf ranges from -1 (strong bear) to +1 (strong bull)
-                # Near zero: neutral — entry allowed if votes dominate (bull_votes > bear_votes)
-                # The sigmoid eliminates the hard 0-boundary as a noise channel
-                _trend_conf = 2.0 / (1.0 + np.exp(-self.smoothed_trend[symbol] / (TREND_GATE_DEADZONE * 0.5))) - 1.0
-                # Entry allowed when: trend agrees (conf > 0.3) OR trend is uncertain (|conf| < 0.3) and votes dominate
-                _trend_allows_bull = _trend_conf > -0.3 and (bull_votes > bear_votes or _trend_conf > 0.3)
-                _trend_allows_bear = _trend_conf < 0.3 and (bear_votes > bull_votes or _trend_conf < -0.3)
-                if bull_votes >= MIN_VOTES and _trend_allows_bull:
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _trend_allows_bear:
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
