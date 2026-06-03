@@ -250,9 +250,12 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
+                # Vol-adaptive linreg exit using smoothed closes for noise immunity
+                # Smoothed closes already have R2-adaptive noise dampening applied;
+                # computing slope on them makes exit less sensitive to single-bar perturbation
+                _exit_lr = linregress(np.arange(LINREG_PERIOD), np.log(smoothed_closes[-LINREG_PERIOD:]))
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _exit_lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _exit_lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
