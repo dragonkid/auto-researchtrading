@@ -113,6 +113,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_conf_size = {}  # last bar's _conf_size for 2-bar averaged sizing
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -225,7 +226,11 @@ class Strategy:
             _margin_above = max(0.0, _active_votes - MIN_VOTES)
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
-            _conf_size = size * _vote_conf
+            _conf_size_raw = size * _vote_conf
+            # 2-bar averaged sizing: dampens single-bar noise impact on position size
+            # while preserving the binary entry decision at MIN_VOTES
+            _conf_size = 0.5 * (_conf_size_raw + self.prev_conf_size.get(symbol, _conf_size_raw))
+            self.prev_conf_size[symbol] = _conf_size_raw
 
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
