@@ -113,8 +113,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.prev_bull_votes = {}  # previous bar's bull vote sum (noise-immune for current bar test)
-        self.prev_bear_votes = {}  # previous bar's bear vote sum
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -196,17 +194,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            _bull_votes_now = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            _bear_votes_now = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
-            # Dual-timeframe vote averaging: current + previous bar (50/50 blend)
-            # Previous bar's votes are noise-immune for current bar's test (only one bar perturbed)
-            # A noise flip on current bar changes the average by ~0.2 instead of ~0.4
-            _prev_bull = self.prev_bull_votes.get(symbol, _bull_votes_now)
-            _prev_bear = self.prev_bear_votes.get(symbol, _bear_votes_now)
-            bull_votes = 0.5 * _bull_votes_now + 0.5 * _prev_bull
-            bear_votes = 0.5 * _bear_votes_now + 0.5 * _prev_bear
-            self.prev_bull_votes[symbol] = _bull_votes_now
-            self.prev_bear_votes[symbol] = _bear_votes_now
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
