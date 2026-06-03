@@ -46,7 +46,7 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-STOP_LOSS_PCT = -0.022
+STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
@@ -113,7 +113,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.prev_conf_size = {}      # last bar's _conf_size for 2-bar averaged accumulation
+        self.prev_conf_size = {}      # last bar's _conf_size
+        self.prev2_conf_size = {}     # 2 bars ago, for 3-bar median accumulation
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -227,10 +228,14 @@ class Strategy:
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size_raw = size * _vote_conf
-            # 2-bar avg on accumulation sizing (entry uses raw for speed).
+            # 3-bar median on accumulation sizing (entry uses raw for fast response).
+            # Median is more noise-immune than mean: a single-bar conf spike is dropped,
+            # while a sustained shift (2 of 3 bars agree) propagates. Better stability than 2-bar avg.
             _prev = self.prev_conf_size.get(symbol, _conf_size_raw)
-            _conf_size_smooth = 0.5 * (_conf_size_raw + _prev)
-            _conf_size = _conf_size_raw
+            _prev2 = self.prev2_conf_size.get(symbol, _conf_size_raw)
+            _conf_size_smooth = float(np.median([_conf_size_raw, _prev, _prev2]))
+            _conf_size = _conf_size_raw  # entry uses raw
+            self.prev2_conf_size[symbol] = _prev
             self.prev_conf_size[symbol] = _conf_size_raw
 
             if current_pos == 0 and not in_cooldown:
