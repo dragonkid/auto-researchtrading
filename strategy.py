@@ -108,11 +108,16 @@ ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
 
+VOTE_EMA_ALPHA = 0.75  # current bar weight for vote-sum EMA (1.0 = no smoothing)
+
+
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_bull_votes = {}
+        self.prev_bear_votes = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -194,8 +199,13 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            _raw_bull = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            _raw_bear = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # EMA-smoothed vote sums: reduces single-bar noise sensitivity
+            bull_votes = VOTE_EMA_ALPHA * _raw_bull + (1.0 - VOTE_EMA_ALPHA) * self.prev_bull_votes.get(symbol, _raw_bull)
+            bear_votes = VOTE_EMA_ALPHA * _raw_bear + (1.0 - VOTE_EMA_ALPHA) * self.prev_bear_votes.get(symbol, _raw_bear)
+            self.prev_bull_votes[symbol] = bull_votes
+            self.prev_bear_votes[symbol] = bear_votes
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
