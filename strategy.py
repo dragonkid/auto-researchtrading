@@ -246,11 +246,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Blended slope exit: average linreg slope (HL2, noise-immune) with EMA slope (close-based, fast)
-                # Blending reduces per-signal noise sensitivity while preserving exit speed
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _blended_slope = 0.6 * _lr.slope + 0.4 * (_ema_slope_val / 3.0)  # normalize EMA slope to per-bar units
-                if target != 0 and ((current_pos > 0 and _blended_slope < -_exit_slope_thresh) or (current_pos < 0 and _blended_slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
