@@ -93,10 +93,6 @@ VOTE_SIGMOID_SCALE = 0.30
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
 ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
 
-# Deadzone vote margin: require bull/bear vote gap to exceed this when trend is in deadzone
-# Eliminates noise-flip channel in sideways regime where votes oscillate near each other
-DEADZONE_VOTE_MARGIN = 0.40
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -232,9 +228,9 @@ class Strategy:
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes - bear_votes >= DEADZONE_VOTE_MARGIN)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes - bull_votes >= DEADZONE_VOTE_MARGIN)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
