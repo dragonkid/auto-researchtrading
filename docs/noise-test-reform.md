@@ -71,21 +71,25 @@ STD has been declining (market efficiency improving):
 NOISE_CLOSE_STD_BPS = 7.0    # 2yr conservative (actual range: 5.0-7.8)
 NOISE_HIGH_STD_BPS = 8.0     # 2yr conservative (actual range: 5.6-9.8)
 NOISE_LOW_STD_BPS = 12.0     # 2yr conservative (actual range: 6.0-19.2)
-NOISE_CLOSE_AC1_RANGE = (0.70, 0.97)   # per-trial random (empirical range)
-NOISE_HIGH_AC1_RANGE = (0.55, 0.83)    # per-trial random (empirical range)
-NOISE_LOW_AC1_RANGE = (0.29, 0.78)     # per-trial random (empirical range)
 CROSS_SYMBOL_CORR = 0.922    # sqrt(0.85) to achieve target 0.85 cross-correlation
 N_TRIALS = 20                # all AR(1) correlated (no iid trials)
+
+# AC1: fixed grid across empirical range (each trial = one difficulty level)
+NOISE_CLOSE_AC1_GRID = np.linspace(0.70, 0.97, 20)  # empirical range
+NOISE_HIGH_AC1_GRID = np.linspace(0.55, 0.83, 20)   # empirical range
+NOISE_LOW_AC1_GRID = np.linspace(0.29, 0.78, 20)    # empirical range
 ```
 
 **Anti-gaming measures:**
 
-1. **Per-trial AC1 randomization**: Each trial draws AC1 from the empirical range (uniform). This prevents the agent from tuning indicators to a specific decorrelation frequency. A strategy must be robust across the full range of observed autocorrelation structures.
+1. **Fixed AC1 grid (not random)**: Each trial uses a deterministic AC1 from evenly-spaced grid across the empirical range. All strategies face the SAME 20 difficulty levels — enabling paired comparisons and eliminating "AC1 lottery" variance. The agent cannot exploit a specific decorrelation frequency because it must pass ALL frequencies in the range.
 
-2. **Strategy-deterministic seeding**: Instead of fixed seeds (42+trial), the master seed is derived from a hash of strategy.py content. This ensures:
-   - Same strategy code → same 20 noise realizations (reproducible)
-   - Different strategy code → different noise realizations (no overfitting to specific paths)
-   - The agent cannot predict which noise paths it will face for a given modification
+2. **AST-based strategy hashing**: The master seed is derived from the AST (abstract syntax tree) of strategy.py, not raw file bytes. This means:
+   - Adding comments, whitespace, or dead code does NOT change the seed
+   - Only actual logic changes produce new noise realizations
+   - Prevents "hash shopping" by trivial code modifications
+
+3. **Restricted file**: noise_test.py is in the CANNOT-modify list (program-stateless.md), preventing the agent from weakening the test directly.
 
 ## Implementation
 
@@ -156,11 +160,13 @@ noise matching empirical characteristics (Binance/HL vs CryptoCompare,
 Design: conservative stress test. Parameters are intentionally more severe
 than current market conditions to ensure robustness margin.
 
-Anti-gaming: AC1 is randomized per trial (not fixed), and seeds are derived
-from strategy code hash (not fixed constants), preventing the autoresearch
-agent from overfitting to specific noise characteristics or realizations.
+Anti-gaming: AC1 is a fixed grid across empirical range (not random, not fixed
+single value), and seeds are derived from AST hash of strategy.py (immune to
+comment/whitespace manipulation), preventing the autoresearch agent from
+overfitting to specific noise characteristics or realizations.
 """
 
+import ast
 import hashlib
 import numpy as np
 from scipy.stats import trim_mean
@@ -175,10 +181,11 @@ NOISE_CLOSE_STD_BPS = 7.0
 NOISE_HIGH_STD_BPS = 8.0
 NOISE_LOW_STD_BPS = 12.0
 
-# AC1: randomized per trial from empirical range (prevents frequency exploitation)
-NOISE_CLOSE_AC1_RANGE = (0.70, 0.97)
-NOISE_HIGH_AC1_RANGE = (0.55, 0.83)
-NOISE_LOW_AC1_RANGE = (0.29, 0.78)
+# AC1: fixed grid across empirical range (each trial = one difficulty level)
+# All strategies face the same 20 AC1 values — enables paired comparison
+NOISE_CLOSE_AC1_GRID = np.linspace(0.70, 0.97, N_TRIALS)
+NOISE_HIGH_AC1_GRID = np.linspace(0.55, 0.83, N_TRIALS)
+NOISE_LOW_AC1_GRID = np.linspace(0.29, 0.78, N_TRIALS)
 
 CROSS_SYMBOL_CORR = 0.922   # sqrt(0.85) — achieves 0.85 cross-correlation
 
@@ -186,12 +193,12 @@ TRIM_FRACTION = 0.1  # 10% trimmed mean (drop 2 highest + 2 lowest from 20 trial
 
 
 def _strategy_hash():
-    """Compute a deterministic hash of strategy.py for seeding."""
-    import importlib.util
+    """Compute deterministic hash from strategy.py AST (immune to comments/whitespace)."""
     import os
     strategy_path = os.path.join(os.path.dirname(__file__), 'strategy.py')
-    with open(strategy_path, 'rb') as f:
-        return int(hashlib.sha256(f.read()).hexdigest()[:16], 16)
+    with open(strategy_path, 'r') as f:
+        tree = ast.parse(f.read())
+    return int(hashlib.sha256(ast.dump(tree).encode()).hexdigest()[:16], 16)
 
 
 def _generate_ar1(n, ac1, rng):
@@ -208,18 +215,18 @@ def _generate_ar1(n, ac1, rng):
     return series
 
 
-def _perturb_data(data, rng):
+def _perturb_data(data, rng, trial_idx):
     """Apply AR(1) correlated noise matching real cross-exchange differences.
     
-    AC1 values are drawn randomly per call from empirical ranges.
+    AC1 values come from fixed grid (trial_idx selects the difficulty level).
     """
     symbols = sorted(data.keys())  # deterministic order
     max_len = max(len(data[sym]) for sym in symbols)
 
-    # Draw AC1 for this trial from empirical ranges
-    close_ac1 = rng.uniform(*NOISE_CLOSE_AC1_RANGE)
-    high_ac1 = rng.uniform(*NOISE_HIGH_AC1_RANGE)
-    low_ac1 = rng.uniform(*NOISE_LOW_AC1_RANGE)
+    # AC1 from fixed grid — same difficulty for all strategies at this trial index
+    close_ac1 = NOISE_CLOSE_AC1_GRID[trial_idx]
+    high_ac1 = NOISE_HIGH_AC1_GRID[trial_idx]
+    low_ac1 = NOISE_LOW_AC1_GRID[trial_idx]
 
     # Spawn child seeds for reproducibility (order-independent)
     ss = rng.bit_generator.seed_seq
@@ -284,7 +291,7 @@ def compute_signal_stability(data, clean_result):
 
     for trial in range(N_TRIALS):
         rng = np.random.default_rng(base_seed + trial)
-        perturbed_data = _perturb_data(data, rng)
+        perturbed_data = _perturb_data(data, rng, trial)
         pert_result = run_backtest(Strategy(), perturbed_data)
         pert_eq = np.array(pert_result.equity_curve)
 
@@ -334,15 +341,16 @@ Run the new noise test on 5+ strategies with known different characteristics:
 - Compute confidence intervals on stability differences (are they statistically significant?)
 - Check that trivially stable strategies score near 1.0 (sanity check)
 
-### Step 3b: Sensitivity analysis
+### Step 3b: Per-trial difficulty analysis
 
-Since AC1 is now randomized per trial, the sensitivity analysis shifts focus:
-- Run the noise test with AC1 ranges narrowed to specific bands: [0.70-0.75], [0.80-0.85], [0.90-0.97]
-- Verify that binary > sigmoid holds across ALL bands (not just the high-AC1 range)
-- If the ranking only holds for high-AC1 bands, the reform's conclusions are fragile
-- If it holds across all bands, the conclusion is robust to the specific AC1 distribution
+Since AC1 is a fixed grid (trial 0 = AC1 0.70, trial 19 = AC1 0.97), analyze per-trial results:
+- Plot tracking error vs AC1 for both binary and sigmoid strategies
+- Verify that binary ≤ sigmoid TE across MOST grid points (not just aggregate)
+- Identify if there's a crossover point (at what AC1 does binary become better?)
+- If binary only wins at high AC1 (>0.90), the conclusion is fragile
+- If binary wins across the full range, the conclusion is robust
 
-This validates that the reform's benefits come from using correlated (non-iid) noise in general, not from a specific AC1 value.
+This is more informative than the aggregate stability score — it shows WHERE in the AC1 space the advantage lies.
 
 ### Step 4: Threshold calibration
 
@@ -371,15 +379,16 @@ This validates that the reform's benefits come from using correlated (non-iid) n
 | Aspect | Old | New |
 |--------|-----|-----|
 | Noise model | iid uniform ±5bps | AR(1) Gaussian, per-field params |
-| Time autocorrelation | None (each bar independent) | Per-trial random: close [0.70-0.97], high [0.55-0.83], low [0.29-0.78] |
+| Time autocorrelation | None (each bar independent) | Fixed grid: close [0.70-0.97], high [0.55-0.83], low [0.29-0.78] (20 levels) |
 | Cross-symbol | shared uniform noise (correlated trials) | sqrt(0.85)≈0.922 loading, achieving ρ=0.85 |
 | Amplitude | uniform ±5bps (std≈2.9bps) | Gaussian std 7/8/12 bps |
 | Distribution | Uniform | Gaussian (AR(1) innovations) |
 | Trial types | 10 correlated + 10 iid | 20 all AR(1) correlated |
 | TE aggregation | max(corr_mean, iid_mean) | 10% trimmed mean |
-| Seeding | Fixed (42+trial) | Strategy-code-hash derived (anti-gaming) |
-| AC1 | N/A (iid) | Randomized per trial from empirical range (anti-gaming) |
-| Parameter design | Single fixed value | Conservative worst-case STD + randomized AC1 |
+| Seeding | Fixed (42+trial) | AST-hash derived (immune to comments/whitespace) |
+| AC1 | N/A (iid) | Fixed grid — all strategies face same 20 difficulty levels (paired) |
+| Anti-gaming | None | AST hash + fixed grid + restricted file |
+| Parameter design | Single fixed value | Conservative worst-case STD + full-range AC1 grid |
 
 ## Deployment: New Branch
 
