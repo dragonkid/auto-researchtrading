@@ -166,7 +166,9 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
+            # Extended cooldown in sideways (more buffer to filter noise-driven re-entries)
+            _cooldown_mult = COOLDOWN_BARS * cooldown_trend_strength + 2.0 * (1.0 - cooldown_trend_strength)
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < _cooldown_mult
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -187,8 +189,8 @@ class Strategy:
             # Plus spatial bypass: current >= MIN_VOTES+1 alone qualifies (overwhelming current consensus).
             _prev_bull = self.prev_bull_votes.get(symbol, 0)
             _prev_bear = self.prev_bear_votes.get(symbol, 0)
-            _confirmed_bull = (bull_votes >= MIN_VOTES and bull_votes + _prev_bull >= 2 * MIN_VOTES - 1) or (bull_votes >= MIN_VOTES + 2)
-            _confirmed_bear = (bear_votes >= MIN_VOTES and bear_votes + _prev_bear >= 2 * MIN_VOTES - 1) or (bear_votes >= MIN_VOTES + 2)
+            _confirmed_bull = (bull_votes >= MIN_VOTES and bull_votes + _prev_bull >= 2 * MIN_VOTES - 1) or (bull_votes >= MIN_VOTES + 1)
+            _confirmed_bear = (bear_votes >= MIN_VOTES and bear_votes + _prev_bear >= 2 * MIN_VOTES - 1) or (bear_votes >= MIN_VOTES + 1)
 
             if current_pos == 0 and not in_cooldown:
                 if _confirmed_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
