@@ -158,10 +158,7 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            # EMA cross on HL2 (architectural input substitution): HL2 receives ~50% close-perturbation,
-            # decorrelating this voter from voter 1 (smoothed_closes-based) for stability.
-            _hl2_ema = (bd.history["high"].values[-(EMA_SLOW+10):] + bd.history["low"].values[-(EMA_SLOW+10):]) / 2.0
-            _ef, _es = ema(_hl2_ema, EMA_FAST)[-1], ema(_hl2_ema, EMA_SLOW)[-1]
+            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
