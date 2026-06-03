@@ -227,9 +227,10 @@ class Strategy:
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size_raw = size * _vote_conf
-            # 2-bar avg on accumulation sizing (entry uses raw for speed).
+            # Lighter 2-bar avg on accumulation sizing: 0.7 weight on current, 0.3 on prev.
+            # Reduces stability boost slightly but lets risk-aware sizing react faster.
             _prev = self.prev_conf_size.get(symbol, _conf_size_raw)
-            _conf_size_smooth = 0.5 * (_conf_size_raw + _prev)
+            _conf_size_smooth = 0.7 * _conf_size_raw + 0.3 * _prev
             _conf_size = _conf_size_raw
             self.prev_conf_size[symbol] = _conf_size_raw
 
