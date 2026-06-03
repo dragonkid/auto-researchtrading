@@ -179,12 +179,15 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: two-bar confirmation — entry requires current AND previous bar vote agreement
-            # Decouples single-bar noise from entry decisions (single noisy bar cannot trigger entry alone)
+            # Architectural: trend-adaptive two-bar confirmation
+            # In trending regimes (high abs ret_long): require previous-bar vote agreement (denoise)
+            # In sideways (low abs ret_long): relax to current-bar only (preserve entry frequency)
             _prev_bull = self.prev_bull_votes.get(symbol, 0)
             _prev_bear = self.prev_bear_votes.get(symbol, 0)
-            _confirmed_bull = bull_votes >= MIN_VOTES and _prev_bull >= MIN_VOTES - 1
-            _confirmed_bear = bear_votes >= MIN_VOTES and _prev_bear >= MIN_VOTES - 1
+            _trend_str = min(abs(ret_long) / 0.04, 1.0)  # 0 in flat, 1 when |ret_long|>=4%
+            _prev_req = MIN_VOTES - 2 + _trend_str  # 1.0 (sideways) -> 2.0 (full trend)
+            _confirmed_bull = bull_votes >= MIN_VOTES and _prev_bull >= _prev_req
+            _confirmed_bear = bear_votes >= MIN_VOTES and _prev_bear >= _prev_req
 
             if current_pos == 0 and not in_cooldown:
                 if _confirmed_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
