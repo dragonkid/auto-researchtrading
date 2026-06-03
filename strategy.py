@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0598
+BASE_POSITION_SIZE = 0.0510
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -227,12 +227,11 @@ class Strategy:
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size_raw = size * _vote_conf
-            # 2-bar averaging applied ONLY to in-position accumulation/maintenance,
-            # NOT to entry decision sizing. Entry uses raw _conf_size for full responsiveness;
-            # during the hold, prev sample dampens noise on continuing position.
+            # Vol-adaptive 2-bar averaging: full smooth in calm, none in elevated vol.
+            # Tight vol band (1.0->1.2): crash post-shock vol_ratio enters 1.2+ rapidly.
             _prev = self.prev_conf_size.get(symbol, _conf_size_raw)
-            _conf_size_smooth = 0.5 * (_conf_size_raw + _prev)
-            _conf_size = _conf_size_raw  # entry uses raw
+            _smooth_w = 0.5 * max(0.0, min(1.0, (1.2 - vol_ratio) / 0.2))
+            _conf_size = (1.0 - _smooth_w) * _conf_size_raw + _smooth_w * _prev
             self.prev_conf_size[symbol] = _conf_size_raw
 
             if current_pos == 0 and not in_cooldown:
@@ -248,11 +247,10 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up using SMOOTHED confidence-sized target
-                # (averaged conf_size dampens single-bar noise during accumulation window)
+                # Position accumulation: deterministic scale-up using confidence-sized target
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = _conf_size_smooth if current_pos > 0 else -_conf_size_smooth
+                    full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
                 # Stop-loss exit (noise-immune: anchored to entry_price)
