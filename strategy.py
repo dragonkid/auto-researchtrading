@@ -181,15 +181,14 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: temporal OR spatial consensus for entry
-            # Path A (temporal): current >= MIN_VOTES AND prev >= MIN_VOTES-1 (two-bar agreement)
-            # Path B (spatial):  current >= MIN_VOTES+1 (overwhelming current-bar consensus)
-            # Either path qualifies — boundary cases (3/3 with weak prev) need temporal confirm,
-            # strong current bars (4+) bypass to preserve responsiveness.
+            # Architectural: combined temporal-vote score for entry
+            # Sum current+prev votes; require >= 2*MIN_VOTES - 1 (i.e., 5 for 6 voters with MIN_VOTES=3)
+            # Smooth temporal denoising: 3+2, 4+1, 2+3 all qualify; isolated single-bar 3+0 doesn't.
+            # Plus spatial bypass: current >= MIN_VOTES+1 alone qualifies (overwhelming current consensus).
             _prev_bull = self.prev_bull_votes.get(symbol, 0)
             _prev_bear = self.prev_bear_votes.get(symbol, 0)
-            _confirmed_bull = (bull_votes >= MIN_VOTES and _prev_bull >= MIN_VOTES - 1) or (bull_votes >= MIN_VOTES + 1)
-            _confirmed_bear = (bear_votes >= MIN_VOTES and _prev_bear >= MIN_VOTES - 1) or (bear_votes >= MIN_VOTES + 1)
+            _confirmed_bull = (bull_votes >= MIN_VOTES and bull_votes + _prev_bull >= 2 * MIN_VOTES - 1) or (bull_votes >= MIN_VOTES + 1)
+            _confirmed_bear = (bear_votes >= MIN_VOTES and bear_votes + _prev_bear >= 2 * MIN_VOTES - 1) or (bear_votes >= MIN_VOTES + 1)
 
             if current_pos == 0 and not in_cooldown:
                 if _confirmed_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
