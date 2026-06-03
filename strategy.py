@@ -194,19 +194,8 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            # Vote magnitude clipping: per-voter sigmoid is clipped to [0.20, 0.80]
-            # This bounds how much any single voter can contribute, preventing one high-confidence
-            # voter from dominating the sum. The marginal noise impact of a near-boundary voter flip
-            # (0.3->0.7) is reduced from ~0.4 to ~0.4 still, BUT extreme-confidence voters (0.05->0.95)
-            # have their range cut from 0.9 to 0.6, smoothing the aggregate response without
-            # creating a new boundary (the clip is monotonic). Sum range: [1.2, 4.8] vs [0, 6].
-            VOTE_CLIP_LO, VOTE_CLIP_HI = 0.20, 0.80
-            bull_votes = sum(max(VOTE_CLIP_LO, min(VOTE_CLIP_HI, 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))))) for d in _voter_deltas_bull)
-            bear_votes = sum(max(VOTE_CLIP_LO, min(VOTE_CLIP_HI, 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))))) for d in _voter_deltas_bear)
-            # Adjust MIN_VOTES proportionally: the new sum max is 4.8 vs old 6.0, ratio 0.8
-            # Effective threshold scales: 2.60 * 0.8 = 2.08, FLIP 2.85 * 0.8 = 2.28
-            _min_votes_eff = MIN_VOTES * 0.8
-            _flip_min_votes_eff = FLIP_MIN_VOTES * 0.8
+            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -233,15 +222,15 @@ class Strategy:
             # But the SIZE scales smoothly from ENTRY_GATE_FLOOR at MIN_VOTES to 1.0 at high votes
             # This means noise at the boundary produces small positions (less PnL variance)
             _active_votes = max(bull_votes, bear_votes)
-            _margin_above = max(0.0, _active_votes - _min_votes_eff)
+            _margin_above = max(0.0, _active_votes - MIN_VOTES)
             _gate_sizing = ENTRY_GATE_FLOOR + (1.0 - ENTRY_GATE_FLOOR) * (1.0 / (1.0 + np.exp(-(_margin_above / ENTRY_GATE_SCALE - 2.0))))
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= _min_votes_eff and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = _conf_size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= _min_votes_eff and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -283,7 +272,7 @@ class Strategy:
                         target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_votes_eff and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_votes_eff and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
