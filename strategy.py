@@ -194,8 +194,69 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            bull_votes_now = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
+            bear_votes_now = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+
+            # Median-of-3 vote aggregation across last 3 bars (architectural noise-resistant signal fusion)
+            # The signal that flows into the SINGLE decision boundary becomes the median of 3 stateless recomputes.
+            # A single perturbed bar's vote becomes the median's outlier (rejected); only 2-of-3 corrupted bars move the signal.
+            # One boundary, one threshold -- the noise reduction comes from the signal itself, not from another check.
+            _bull_hist = [bull_votes_now]
+            _bear_hist = [bear_votes_now]
+            for _back in (1, 2):
+                _hp = closes[:-_back] if _back > 0 else closes
+                if len(_hp) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
+                    _bull_hist.append(bull_votes_now)
+                    _bear_hist.append(bear_votes_now)
+                    continue
+                _hl_p = bd.history["high"].values[:-_back]
+                _lo_p = bd.history["low"].values[:-_back]
+                _lr_p = linregress(np.arange(LINREG_PERIOD), np.log((_hl_p[-LINREG_PERIOD:] + _lo_p[-LINREG_PERIOD:]) / 2.0))
+                _r2_p = _lr_p.rvalue ** 2
+                _r2_adj_p = 0.05 * max(0.0, min(1.0, (_r2_p - 0.3) / 0.5))
+                _vol_p = max(np.std(np.diff(np.log(_hp[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+                _vr_p = _vol_p / TARGET_VOL
+                _alpha_p = 0.5 + 0.17 * max(0.0, min(1.0, (_vr_p - 0.7) / 0.5)) - _r2_adj_p
+                _smooth_p = np.empty_like(_hp, dtype=float)
+                _smooth_p[0] = _hp[0]
+                for _si in range(1, len(_hp)):
+                    _smooth_p[_si] = _alpha_p * _hp[_si] + (1 - _alpha_p) * _smooth_p[_si - 1]
+                _dyn_p = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, BASE_THRESHOLD * (0.10 + _vr_p * 0.90) ** 0.85))
+                _retL_p = (_hp[-1] - _hp[-LONG_WINDOW]) / _hp[-LONG_WINDOW]
+                _dyn_p *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(_retL_p) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+                _amed_p = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(_vr_p, 0.5) - 0.5) / 1.5))))
+                _mref_p = np.median(_smooth_p[-_amed_p - 2: -_amed_p + 3])
+                _retS_p = (_smooth_p[-1] - _mref_p) / _mref_p
+                _ef_p, _es_p = ema(_hp[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(_hp[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+                _rstr_p = min(abs(_lr_p.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
+                _rd_p = np.diff(_hp[-(int(round(6 + 2 * _rstr_p)) + 1):])
+                _rsi_p = 100 - 100 / (1 + np.mean(np.maximum(_rd_p, 0)) / max(np.mean(np.maximum(-_rd_p, 0)), 1e-10))
+                _hl2m_p = (_hl_p[-(MACD_SLOW + MACD_SIGNAL + 5):] + _lo_p[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
+                _ml_p = ema(_hl2m_p, MACD_FAST) - ema(_hl2m_p, MACD_SLOW)
+                _ea_p = ema(_hp[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+                _rsi_th_p = 50 + RSI_TREND_BIAS * _rstr_p * (-1.0 if _retL_p > 0 else 1.0)
+                _macd_h_p = (_ml_p[-1] - ema(_ml_p, MACD_SIGNAL)[-1]) / _hl2m_p[-1]
+                _eslp_p = (_ea_p[-1] - _ea_p[-EMA_SLOPE_LOOKBACK]) / _ea_p[-EMA_SLOPE_LOOKBACK]
+                _vd_bu = [
+                    (_retS_p - _dyn_p) / max(_dyn_p * VOTE_SIGMOID_SCALE, 1e-10),
+                    (_ef_p - _es_p) / max(abs(_es_p) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                    (_rsi_p - _rsi_th_p) / (3.0 * VOTE_SIGMOID_SCALE),
+                    (_macd_h_p - 0.00025) / (0.00025 * _macd_sig_scale),
+                    (_lr_p.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                    (_eslp_p - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                ]
+                _vd_be = [
+                    (-_retS_p - _dyn_p) / max(_dyn_p * VOTE_SIGMOID_SCALE, 1e-10),
+                    (-(_ef_p - _es_p)) / max(abs(_es_p) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                    (-_rsi_p + _rsi_th_p) / (3.0 * VOTE_SIGMOID_SCALE),
+                    (-_macd_h_p - 0.00025) / (0.00025 * _macd_sig_scale),
+                    (-_lr_p.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
+                    (-_eslp_p - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
+                ]
+                _bull_hist.append(sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _vd_bu))
+                _bear_hist.append(sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _vd_be))
+            bull_votes = float(np.median(_bull_hist))
+            bear_votes = float(np.median(_bear_hist))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
