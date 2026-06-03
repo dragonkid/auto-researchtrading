@@ -79,14 +79,20 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters: ret_vshort removed)
-# Continuous voting: MIN_VOTES is now a float threshold for sigmoid-weighted sums
-MIN_VOTES = 2.60
-FLIP_MIN_VOTES = 2.85
+# Dead-zone voting: MIN_VOTES recalibrated for dead-zone contributions
+# Max per-voter contribution still 1.0 at sigmoid=1.0, but drops to 0 at sigmoid<0.62
+MIN_VOTES = 1.50
+FLIP_MIN_VOTES = 1.65
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 # Sigmoid voting scale (wider = gentler per-voter transition for stability)
 VOTE_SIGMOID_SCALE = 0.30
+
+# Dead-zone voter contribution: zeros out votes near 0.5 (noise-prone middle)
+# Voter with sigmoid output within DEADZONE of 0.5 contributes 0 to vote sum
+# This means only CONFIDENT voters (far from threshold) count toward decisions
+VOTER_DEADZONE = 0.12  # |sigmoid - 0.5| < 0.12 → zero contribution
 
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
@@ -194,8 +200,18 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Dead-zone vote aggregation: sigmoid outputs near 0.5 contribute ZERO
+            # Only confident voters (far from their threshold) drive decisions
+            # This eliminates noise sensitivity from voters near decision boundary
+            def _deadzone_vote(delta):
+                s = 1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, delta))))
+                dist = abs(s - 0.5)
+                if dist < VOTER_DEADZONE:
+                    return 0.0
+                # Scale remaining contribution: maps [DEADZONE, 0.5] -> [0, 1.0]
+                return s * (dist - VOTER_DEADZONE) / (0.5 - VOTER_DEADZONE)
+            bull_votes = sum(_deadzone_vote(d) for d in _voter_deltas_bull)
+            bear_votes = sum(_deadzone_vote(d) for d in _voter_deltas_bear)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
