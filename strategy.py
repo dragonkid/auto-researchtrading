@@ -51,7 +51,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.0610
+BASE_POSITION_SIZE = 0.0598
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -104,7 +104,7 @@ def ema(values, span):
 
 # Position accumulation (build position over bars)
 # Asymmetric: longs use smaller first-bar for noise immunity, shorts keep full speed for crash protection
-ENTRY_INITIAL_FRAC_LONG = 0.45  # longs: reduced first bar (stability from smaller boundary-entry delta)
+ENTRY_INITIAL_FRAC_LONG = 0.46  # longs: mildly reduced first bar (stability from smaller boundary-entry delta)
 ENTRY_INITIAL_FRAC_SHORT = 0.50  # shorts: unchanged (crash protection needs immediate exposure)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
