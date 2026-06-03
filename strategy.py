@@ -246,12 +246,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Vol-conditioned blended exit: blend linreg with EMA slope in high-vol for noise reduction
-                # In calm markets (vol<0.8): pure linreg (fast, reliable). In volatile (vol>1.0): blend with EMA slope.
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _blend_w = max(0.0, min(0.4, 0.4 * (vol_ratio - 0.8) / 0.4))  # 0 when calm, 0.4 when vol>1.2
-                _exit_slope = (1.0 - _blend_w) * _lr.slope + _blend_w * (_ema_slope_val / 3.0)
-                if target != 0 and ((current_pos > 0 and _exit_slope < -_exit_slope_thresh) or (current_pos < 0 and _exit_slope > _exit_slope_thresh)):
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
