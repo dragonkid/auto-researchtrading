@@ -170,12 +170,12 @@ class Strategy:
             _ema_slope_val = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
 
             # Per-voter: (signal_value - threshold) normalized by voter-specific scale
-            # MACD uses wider sigmoid scale (0.50 vs 0.30) to reduce its vote magnitude
-            # This preserves decorrelation benefit while limiting false entries in crash
-            _macd_sig_scale = 0.40  # wider than VOTE_SIGMOID_SCALE to reduce MACD voter weight
+            # MACD and EMA cross use wider sigmoid scales to reduce noise-sensitive vote magnitude
+            _macd_sig_scale = 0.40  # wider to reduce MACD voter weight
+            _cross_sig_scale = 0.50  # EMA(3) is noisiest voter; wider scale dampens flip magnitude
             _voter_deltas_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (_ef - _es) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (_ef - _es) / max(abs(_es) * 0.001 * _cross_sig_scale, 1e-10),
                 (rsi - _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -183,7 +183,7 @@ class Strategy:
             ]
             _voter_deltas_bear = [
                 (-ret_short - dyn_threshold) / max(dyn_threshold * VOTE_SIGMOID_SCALE, 1e-10),
-                (-(_ef - _es)) / max(abs(_es) * 0.001 * VOTE_SIGMOID_SCALE, 1e-10),
+                (-(_ef - _es)) / max(abs(_es) * 0.001 * _cross_sig_scale, 1e-10),
                 (-rsi + _rsi_thresh) / (3.0 * VOTE_SIGMOID_SCALE),
                 (-_macd_hist - 0.00025) / (0.00025 * _macd_sig_scale),
                 (-_lr.slope - 0.00015) / (0.00015 * VOTE_SIGMOID_SCALE),
@@ -213,11 +213,8 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # R2-adaptive entry threshold: mild uplift in very low R2 (trendless noise)
-            # Only activates when R2 < 0.25 (strongly trendless), max uplift +0.08
-            _r2_thresh_adj = 0.08 * max(0.0, min(1.0, (0.25 - _r2) / 0.25))
-            _adaptive_min_votes = MIN_VOTES + _r2_thresh_adj
-            _adaptive_flip_votes = FLIP_MIN_VOTES + _r2_thresh_adj
+            _adaptive_min_votes = MIN_VOTES
+            _adaptive_flip_votes = FLIP_MIN_VOTES
 
             # Vote-margin sizing: hard entry gate + smooth position scaling above threshold
             # The decision (enter/don't) is still binary at _adaptive_min_votes for signal clarity
