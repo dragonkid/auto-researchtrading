@@ -271,8 +271,12 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism: R2-adaptive threshold (architectural: new R2→flip data dependency)
+                # Low R2 (unreliable trend) → raise flip threshold to suppress noise flips
+                # High R2 (clean trend) → keep current threshold (flip is trustworthy)
+                _flip_r2_margin = 0.15 * max(0.0, 1.0 - _r2 / 0.5)  # +0.15 at R2=0, 0 at R2≥0.5
+                _flip_thresh = FLIP_MIN_VOTES + _flip_r2_margin
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_thresh and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_thresh and trend_avg > 0)):
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
