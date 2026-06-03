@@ -165,11 +165,12 @@ class Strategy:
             _hl2_macd = (bd.history["high"].values[-(MACD_SLOW + MACD_SIGNAL + 5):] + bd.history["low"].values[-(MACD_SLOW + MACD_SIGNAL + 5):]) / 2.0
             _ml = ema(_hl2_macd, MACD_FAST) - ema(_hl2_macd, MACD_SLOW)
             # VWAP-12 voter: volume-weighted average price (noise-immune via volume weights)
+            # Uses smoothed close as comparison point for additional noise dampening
             _vwap_lookback = 12
             _vwap_vols = bd.history["volume"].values[-_vwap_lookback:]
             _vwap_closes = closes[-_vwap_lookback:]
             _vwap = np.sum(_vwap_closes * _vwap_vols) / max(np.sum(_vwap_vols), 1e-10)
-            _vwap_delta = (closes[-1] - _vwap) / _vwap  # current close vs VWAP
+            _vwap_delta = (smoothed_closes[-1] - _vwap) / _vwap  # smoothed close vs VWAP
 
             # 6 voters with continuous sigmoid weighting (narrow scale for noise immunity at boundaries)
             # Voter 6 replaced: EMA slope -> VWAP deviation (volume-weighted = structurally noise-immune)
