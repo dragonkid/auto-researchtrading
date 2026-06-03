@@ -140,10 +140,14 @@ class Strategy:
             _r2 = _lr.rvalue ** 2
             _r2_adj = 0.05 * max(0.0, min(1.0, (_r2 - 0.3) / 0.5))  # 0 at R²≤0.3, +0.05 at R²≥0.8
             _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5)) - _r2_adj
+            _smooth_alpha_slow = max(0.30, _smooth_alpha - 0.12)  # parallel slower channel for consensus
             smoothed_closes = np.empty_like(closes, dtype=float)
+            smoothed_closes_slow = np.empty_like(closes, dtype=float)
             smoothed_closes[0] = closes[0]
+            smoothed_closes_slow[0] = closes[0]
             for _si in range(1, len(closes)):
                 smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
+                smoothed_closes_slow[_si] = _smooth_alpha_slow * closes[_si] + (1 - _smooth_alpha_slow) * smoothed_closes_slow[_si - 1]
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
@@ -155,8 +159,12 @@ class Strategy:
             # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            _med_ref_med_slow = np.median(smoothed_closes_slow[-adaptive_med - 2: -adaptive_med + 3])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            ret_short_slow = (smoothed_closes_slow[-1] - _med_ref_med_slow) / _med_ref_med_slow
+            # Dual-channel consensus: dampen ret_short if fast/slow channels disagree on sign
+            _ret_short_consensus = 1.0 if (ret_short * ret_short_slow >= 0) else 0.5
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
@@ -194,8 +202,10 @@ class Strategy:
                 (-_ema_slope_val - 0.0006) / (0.0006 * VOTE_SIGMOID_SCALE),
             ]
 
-            bull_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bull)
-            bear_votes = sum(1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d)))) for d in _voter_deltas_bear)
+            # Apply ret_short fast/slow consensus dampener to the first voter's contribution
+            _voter_weights = [_ret_short_consensus, 1.0, 1.0, 1.0, 1.0, 1.0]
+            bull_votes = sum(w * (1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))) for w, d in zip(_voter_weights, _voter_deltas_bull))
+            bear_votes = sum(w * (1.0 / (1.0 + np.exp(-max(-10.0, min(10.0, d))))) for w, d in zip(_voter_weights, _voter_deltas_bear))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
