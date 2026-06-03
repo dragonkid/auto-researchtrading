@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.40  # minimum sizing fraction at exactly MIN_VOTES (reduced for stability)
 
 
 def ema(values, span):
@@ -103,12 +103,8 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-# Directional asymmetry: longs use R2-adaptive first-bar sizing for noise immunity in low-trend environments
-# High R2 (clear trend): FRAC stays at 0.50 (full speed, high confidence entry)
-# Low R2 (noisy): FRAC reduces to 0.43 (smaller initial = less noise-driven size delta)
-ENTRY_INITIAL_FRAC_SHORT = 0.50  # shorts: always unchanged (crash protection needs immediate exposure)
-ENTRY_FRAC_LONG_BASE = 0.50     # longs in high-R2 (confident): full speed
-ENTRY_FRAC_LONG_LOW = 0.43      # longs in low-R2 (noisy): reduced for stability
+# Position accumulation (build position over bars)
+ENTRY_INITIAL_FRAC = 0.50  # first bar: 50% of target (moderate initial for noise resilience)
 ENTRY_FULL_BARS = 2  # bars to reach full position (faster scale-in)
 VOTE_CONFIDENCE_MIN = 0.705  # dead code - actual sizing controlled by ENTRY_GATE_FLOOR
 
@@ -232,19 +228,13 @@ class Strategy:
             _vote_conf = _gate_sizing
             _conf_size = size * _vote_conf
 
-            # R2-adaptive long FRAC: noise-immune control (R2 changes minimally under perturbation)
-            # Tighter window: only reduce at very low R2 (pure noise, R2<0.15), full FRAC at R2>=0.4
-            _r2_frac_blend = max(0.0, min(1.0, (_r2 - 0.15) / 0.25))  # 0 at R2<=0.15, 1 at R2>=0.40
-            _frac_long = ENTRY_FRAC_LONG_LOW + (ENTRY_FRAC_LONG_BASE - ENTRY_FRAC_LONG_LOW) * _r2_frac_blend
-
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = _conf_size * _frac_long
+                    target = _conf_size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -_conf_size * ENTRY_INITIAL_FRAC_SHORT
+                    target = -_conf_size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    _mr_frac = _frac_long if rsi < MEANREV_RSI_OVERSOLD else ENTRY_INITIAL_FRAC_SHORT
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _mr_frac
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -252,9 +242,8 @@ class Strategy:
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
                 # Position accumulation: deterministic scale-up using confidence-sized target
-                _entry_frac = ENTRY_INITIAL_FRAC_SHORT if current_pos < 0 else _frac_long
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, _entry_frac + (1.0 - _entry_frac) * bars_held / ENTRY_FULL_BARS)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = _conf_size if current_pos > 0 else -_conf_size
                     target = full_target * scale_frac
 
@@ -285,8 +274,7 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled, confidence-sized)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
-                    _flip_base = ENTRY_INITIAL_FRAC_SHORT if current_pos > 0 else _frac_long
-                    _flip_frac = min(1.0, _flip_base + (1.0 - _flip_base) * min(1.0, vol_ratio / 1.5))
+                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-_conf_size if current_pos > 0 else _conf_size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
