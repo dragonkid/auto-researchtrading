@@ -64,7 +64,7 @@ STRENGTH_FLOOR_SIDEWAYS = 2.6
 STRENGTH_FLOOR_DECAY = 0.12
 
 # Combined mult cap
-MAX_COMBINED_MULT_HIGH_VOL = 2.35
+MAX_COMBINED_MULT_HIGH_VOL = 2.5
 MAX_COMBINED_MULT_LOW_VOL = 6.5
 MAX_COMBINED_VOL_LOW = 0.6
 MAX_COMBINED_VOL_HIGH = 1.2
@@ -91,7 +91,7 @@ VOTE_SIGMOID_SCALE = 0.30
 # Entry gate: sigmoid-based position scaling above MIN_VOTES
 # Position size scales from GATE_FLOOR at MIN_VOTES to 1.0 at high confidence
 ENTRY_GATE_SCALE = 0.38  # how quickly sizing grows above threshold (wider = smoother transition)
-ENTRY_GATE_FLOOR = 0.45  # minimum sizing fraction at exactly MIN_VOTES
+ENTRY_GATE_FLOOR = 0.43  # minimum sizing fraction at exactly MIN_VOTES (reduced to compensate for accumulation smoothing)
 
 
 def ema(values, span):
