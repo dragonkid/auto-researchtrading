@@ -158,7 +158,11 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ema_fast_arr = ema(closes[-(EMA_SLOW+10):], EMA_FAST)
+            _ema_slow_arr = ema(closes[-(EMA_SLOW+10):], EMA_SLOW)
+            # Median-filter last 3 bars of fast EMA for noise immunity at cross boundary
+            _ef = np.median(_ema_fast_arr[-3:])
+            _es = _ema_slow_arr[-1]
             # Use linreg slope as rsi_trend_str source (noise-immune vs ret_long_lagged)
             rsi_trend_str = min(abs(_lr.slope) * 16.0 / RSI_TREND_BIAS_DECAY, 1.0)
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
