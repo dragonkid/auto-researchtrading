@@ -276,12 +276,12 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled). Continuous ramp on flips
-                # with HIGHER floor [1.4, 2.0] -> [0, 1] — flips need stronger conviction than
-                # entries to fire. Removes binary 1.5 boundary while preventing low-conviction
-                # flips that hurt returns.
-                _flip_bull_scale = max(0.0, min(1.0, (_bull_strong - 1.4) / 0.6))
-                _flip_bear_scale = max(0.0, min(1.0, (_bear_strong - 1.4) / 0.6))
+                # Flip mechanism (votes + trend_avg sign, vol-scaled). Apply continuous strong-sum
+                # ramp to flips too — removes binary STRONG_WEIGHT_MIN=1.5 boundary on flips,
+                # making flip size proportional to opposite-side conviction. Flips fired by
+                # marginal-conviction signals are now small (low impact); strong flips full size.
+                _flip_bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
+                _flip_bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
                 _flip_scale = _flip_bear_scale if current_pos > 0 else _flip_bull_scale
                 if not in_cooldown and _flip_scale > 0 and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # High vol (crash): full flip for protection
