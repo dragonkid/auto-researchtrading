@@ -138,6 +138,13 @@ class Strategy:
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            # Architectural: second linreg slope on wider window (24 vs 16). Voter requires
+            # BOTH slopes agree in direction; common-mode noise that flips one window is
+            # filtered. Exit-pressure path still uses _lr only — voter and exit decoupled.
+            _LINREG_PERIOD_WIDE = 24
+            _lr_wide = linregress(np.arange(_LINREG_PERIOD_WIDE), np.log((bd.history["high"].values[-_LINREG_PERIOD_WIDE:] + bd.history["low"].values[-_LINREG_PERIOD_WIDE:]) / 2.0))
+            # Effective voter slope: min-magnitude of the two if same sign, 0 if opposite
+            _lr_eff_slope = (np.sign(_lr.slope) * min(abs(_lr.slope), abs(_lr_wide.slope))) if (_lr.slope * _lr_wide.slope > 0) else 0.0
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -167,7 +174,7 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
+                (_lr_eff_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
