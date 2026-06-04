@@ -82,8 +82,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
-FLIP_MIN_VOTES = 2.5
+MIN_VOTES = 2.4  # lowered to compensate for weighted vote gate (was 2.5 with uniform weights)
+FLIP_MIN_VOTES = 2.4
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
