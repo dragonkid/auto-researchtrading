@@ -106,6 +106,9 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        # Prior-bar strong-sum state for 2-bar consistency check on entries
+        self.prev_bull_strong = {}
+        self.prev_bear_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -211,9 +214,13 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # 2-bar consistency: require prior-bar strong-sum also met threshold (relaxed to 1.2)
+                # Filters single-bar noise spikes that would trigger borderline entries.
+                _prev_bull_ok = self.prev_bull_strong.get(symbol, 0.0) >= 1.2
+                _prev_bear_ok = self.prev_bear_strong.get(symbol, 0.0) >= 1.2
+                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and _prev_bull_ok and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and _prev_bear_ok and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -270,6 +277,10 @@ class Strategy:
                     # Low vol (calm): moderate flip
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
+
+            # Update prior-bar strong-sum state (after entry decision uses prior values)
+            self.prev_bull_strong[symbol] = _bull_strong
+            self.prev_bear_strong[symbol] = _bear_strong
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
