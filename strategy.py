@@ -107,6 +107,7 @@ class Strategy:
         self.bar_count = 0
         self.smoothed_trend = {}
         self.smoothed_dyn_threshold = {}
+        self.smoothed_realized_vol = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -123,6 +124,11 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            # Light asymmetric smoothing on realized_vol: clamp upward spikes.
+            _prev_rv = self.smoothed_realized_vol.get(symbol, realized_vol)
+            if realized_vol > _prev_rv:
+                realized_vol = 0.5 * realized_vol + 0.5 * _prev_rv
+            self.smoothed_realized_vol[symbol] = realized_vol
             vol_ratio = realized_vol / TARGET_VOL
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
@@ -178,7 +184,7 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00015,
+                (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
