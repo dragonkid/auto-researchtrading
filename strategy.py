@@ -177,11 +177,13 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Strong-consensus weighted sum: each voter contributes max(0, 2*(conf-0.5)).
-            # Smooth replacement for binary count: voter at conf=0.65 -> 0.30, conf=0.85 -> 0.70.
-            # Eliminates the hard noise boundary at conf=STRONG_CONF.
-            _bull_strong = sum(max(0.0, 2.0 * (c - 0.5)) for c in _bull_confs)
-            _bear_strong = sum(max(0.0, 2.0 * (c - 0.5)) for c in _bear_confs)
+            # Strong-consensus weighted sum with abstain zone: voters with conf in [0.4, 0.6]
+            # contribute 0 to both bull and bear strong-sums (they're undecided — noise lives here).
+            # Architectural: removes uncertain voters from the gate at the source rather than
+            # downstream-clipping. Voters need to clear conf>=0.6 to push their side.
+            # Contribution above zone: linear ramp (c-0.6)*2.5 — saturates at 1.0 when c=1.0.
+            _bull_strong = sum(max(0.0, (c - 0.6) * 2.5) for c in _bull_confs)
+            _bear_strong = sum(max(0.0, (c - 0.6) * 2.5) for c in _bear_confs)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
