@@ -289,8 +289,13 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled).
+                # Architectural: require strict directional dominance (new side strong-sum
+                # exceeds opposite by margin 0.4). Prevents flips when signals are near-tied
+                # (boundary-noisy), where a noise tick could reverse the implied direction.
+                # Genuine flips have one side dominant; this filters the marginal cases only.
+                _flip_margin = 0.4
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and _bear_strong - _bull_strong >= _flip_margin and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and _bull_strong - _bear_strong >= _flip_margin and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
