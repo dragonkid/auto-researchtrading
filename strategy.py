@@ -242,11 +242,10 @@ class Strategy:
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
-                # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
-                # high vol (crash) -> wide band (absorbs larger noise excursions).
-                # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
-                _stop_abs = abs(STOP_LOSS_PCT)
+                # Architectural: stop-loss as smooth pressure source. Vol-adaptive STOP center:
+                # low vol (rally) -> deeper stop (pos relaxes, fewer premature exits on noise);
+                # high vol (crash) -> tighter stop (noise-aware exit). |STOP| varies 0.024 -> 0.030.
+                _stop_abs = abs(STOP_LOSS_PCT) * (1.0 + 0.25 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
