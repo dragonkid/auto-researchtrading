@@ -107,7 +107,6 @@ class Strategy:
         self.bar_count = 0
         self.smoothed_trend = {}
         self.smoothed_dyn_threshold = {}
-        self.smoothed_vol_ratio = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -125,10 +124,6 @@ class Strategy:
             mid = bd.close
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             vol_ratio = realized_vol / TARGET_VOL
-            # Smooth vol_ratio (enters dyn_threshold, combined_mult, calm_boost, smooth_alpha — common driver).
-            _prev_vr = self.smoothed_vol_ratio.get(symbol, vol_ratio)
-            vol_ratio = 0.5 * vol_ratio + 0.5 * _prev_vr
-            self.smoothed_vol_ratio[symbol] = vol_ratio
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
@@ -145,12 +140,12 @@ class Strategy:
             # EMA-smooth dyn_threshold across bars: dampens common-mode noise driving all voter boundaries.
             # A close-price perturbation moves realized_vol -> dyn_threshold -> all 6 voter thresholds simultaneously.
             # Smoothing the threshold dampens this correlated noise without changing voter logic.
-            # Asymmetric smoothing — heavy on rises (block spike-up), moderate on drops.
+            # Asymmetric smoothing: very heavy on rises, light on drops.
             _prev_thresh = self.smoothed_dyn_threshold.get(symbol, dyn_threshold)
             if dyn_threshold > _prev_thresh:
-                dyn_threshold = 0.3 * dyn_threshold + 0.7 * _prev_thresh
+                dyn_threshold = 0.2 * dyn_threshold + 0.8 * _prev_thresh
             else:
-                dyn_threshold = 0.5 * dyn_threshold + 0.5 * _prev_thresh
+                dyn_threshold = 0.6 * dyn_threshold + 0.4 * _prev_thresh
             self.smoothed_dyn_threshold[symbol] = dyn_threshold
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
