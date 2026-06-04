@@ -177,10 +177,15 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Quintic-ramp strong-sum: (c-0.5)^5 — even smoother near 0.5 than cubic.
-            # Max at c=0.9 is 0.4^5 = 0.01024; normalize by /0.01024 to get ~1.0 max.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bull_confs)
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bear_confs)
+            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale):
+            # smoothed/double-smoothed signals (EMA, RSI) contribute more; raw price-derivative
+            # (ret_short) and short-window slope contribute less. Noise-flipped voters shift
+            # strong-sum by less when the flipped voter is a high-noise one.
+            _voter_weights = (0.7, 1.2, 1.1, 1.0, 0.9, 1.1)
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
