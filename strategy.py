@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
+STRONG_WEIGHT_MIN = 1.6  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
@@ -178,7 +178,7 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00015,
+                (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
