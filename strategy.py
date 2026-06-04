@@ -79,8 +79,11 @@ MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters, soft tanh contributions)
-# Lowered to compensate for sigmoid leak from opposing side under soft voting.
-MIN_VOTES = 2.5
+# Strong-consensus quorum: count voters with confidence >= STRONG_CONF, require >= STRONG_QUORUM.
+# Replaces sum-threshold (which can pass via many weak voters) with strong-agreement requirement.
+STRONG_CONF = 0.70
+STRONG_QUORUM = 3
+MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -168,8 +171,13 @@ class Strategy:
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
-            bull_votes = sum(0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull)
-            bear_votes = sum(0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull)
+            _bull_confs = [0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            _bear_confs = [0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            bull_votes = sum(_bull_confs)
+            bear_votes = sum(_bear_confs)
+            # Strong-consensus quorum: count voters individually exceeding STRONG_CONF.
+            _bull_strong = sum(1 for c in _bull_confs if c >= STRONG_CONF)
+            _bear_strong = sum(1 for c in _bear_confs if c >= STRONG_CONF)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -192,9 +200,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_QUORUM and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_QUORUM and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -245,7 +253,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= STRONG_QUORUM and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= STRONG_QUORUM and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
