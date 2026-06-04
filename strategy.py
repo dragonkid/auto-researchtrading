@@ -45,7 +45,7 @@ RSI_TREND_BIAS_DECAY = 0.10
 # Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
-MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
+MOMENTUM_HOLD_BONUS = 1  # max extra bars when slope strongly agrees (reduced 2->1 to cap bull dispersion under slope-gated peak-profit)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.25
@@ -83,6 +83,10 @@ MIN_VOTES = 3
 FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+
+# Continuous confidence margin gate (architectural: parallel decision channel)
+# Sum of 6 tanh signals in [-6,+6]. Entry requires |conf| >= CONF_MARGIN in addition to binary votes.
+CONF_MARGIN = 1.5
 
 
 def ema(values, span):
@@ -153,8 +157,15 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            _rsi_thr = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_h = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > _rsi_thr, _macd_h > 0.0003, _lr.slope > 0.00015, _ema_slope > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < _rsi_thr, _macd_h < -0.0003, _lr.slope < -0.00015, _ema_slope < -0.0005])
+            # Parallel continuous confidence (architectural: must agree with binary vote for entry)
+            confidence = (np.tanh((ret_short - 0.0) / dyn_threshold) + np.tanh((_ef - _es) / (_es * 0.005))
+                          + np.tanh((rsi - _rsi_thr) / 8.0) + np.tanh(_macd_h / 0.0006)
+                          + np.tanh(_lr.slope / 0.0003) + np.tanh(_ema_slope / 0.001))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -176,13 +187,15 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Adaptive CONF_MARGIN: scales smoothly with trend strength.
+            # Sideways (low rsi_trend_str): lower margin (0.6) — voters naturally have mixed signs.
+            # Trending: higher margin (1.5) — strict alignment required.
+            _conf_margin = 0.6 + 0.9 * rsi_trend_str
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and confidence >= _conf_margin and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and confidence <= -_conf_margin and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
-                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -206,10 +219,11 @@ class Strategy:
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
-                # Peak-profit trailing exit (noise-immune: anchored to entry_price)
+                # Peak-profit trailing exit (slope-gated: exit only when slope ALSO turned against position)
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                    _slope_against = (current_pos > 0 and _lr.slope < 0) or (current_pos < 0 and _lr.slope > 0)
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK and _slope_against:
                         target = 0.0
 
                 # Momentum-decay exit (soft time pressure, slope-extended)
