@@ -207,9 +207,12 @@ class Strategy:
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
+                # Gated by slope confirmation: only exit if linreg slope ALSO turned against position
+                # (prevents noise-driven trailing exits when trend still intact)
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                    _slope_against = (current_pos > 0 and _lr.slope < 0) or (current_pos < 0 and _lr.slope > 0)
+                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK and _slope_against:
                         target = 0.0
 
                 # Momentum-decay exit (soft time pressure, slope-extended)
