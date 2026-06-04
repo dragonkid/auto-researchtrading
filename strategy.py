@@ -110,14 +110,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Cross-asset trend snapshot: ret_long for every available symbol.
-        # Used as a 7th soft voter — multi-asset agreement filters single-symbol noise.
-        cross_ret_long = {}
-        for _s in ACTIVE_SYMBOLS:
-            if _s in bar_data and len(bar_data[_s].history) > LONG_WINDOW:
-                _c = bar_data[_s].history["close"].values
-                cross_ret_long[_s] = (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -178,20 +170,6 @@ class Strategy:
             ]
             bull_votes = sum(0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull)
             bear_votes = sum(0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull)
-
-            # 7th voter: cross-asset trend agreement (mean ret_long of OTHER symbols).
-            # Asymmetric contribution: only the matching side gains, so chop adds ~0 to both
-            # (raising MIN_VOTES bar effectively). In coordinated moves the agreeing side gets a
-            # full +1 boost, suppressing single-symbol noise-driven entries.
-            # Independent data dependency from voters 1-6 (those are within-symbol price-derived).
-            _other_rets = [cross_ret_long[_o] for _o in ACTIVE_SYMBOLS if _o != symbol and _o in cross_ret_long]
-            if _other_rets:
-                _cross_mean = sum(_other_rets) / len(_other_rets)
-                _cross_signal = _cross_mean / 0.012  # sharpness: ~LONG_WINDOW return scale
-                # tanh(s) is in [-1,1]; clip to [0,1] for bull side, [-1,0]→[0,1] for bear side
-                _t = np.tanh(_cross_signal)
-                bull_votes += max(0.0, _t)
-                bear_votes += max(0.0, -_t)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
