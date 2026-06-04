@@ -177,12 +177,21 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
+            # Sigmoid strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
+            # Architectural change: replace quintic (c-0.5)^5*97.66 with logistic
+            # 1/(1+exp(-12*(c-0.7))). Quintic has steep curvature near c=0.9 (amplifies
+            # noise on already-strong voters). Logistic saturates symmetrically — flat
+            # near 0.5 AND flat near 1.0, smooth ramp in the 0.55-0.85 transition zone
+            # where noise sensitivity is highest.
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Sigmoid centered at 0.85, sharpness 25 — saturates symmetrically (smooth on
+            # both sides of activation point), unlike quintic which keeps amplifying past 0.9.
+            def _sig(c):
+                return 1.0 / (1.0 + np.exp(-25.0 * (c - 0.85)))
+            _bull_strong = sum(_sig(c) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(_sig(c) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
