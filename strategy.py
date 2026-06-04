@@ -106,6 +106,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.prev_bull_strong = {}
+        self.prev_bear_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -211,16 +213,17 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Continuous strong-sum ramp [1.0, 2.0] -> [0, 1] entry size scaling.
-                _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
-                _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
-                # Vol-adaptive deadzone: low-vol (rally) gets NARROWER deadzone (vote-only entries
-                # rare); high-vol gets baseline. Step 6 showed wider hurt rally — try opposite:
-                # narrower deadzone removes vote-only entries that were noise-sensitive.
-                _deadzone = TREND_GATE_DEADZONE * (1.0 - 0.5 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
-                if bull_votes >= MIN_VOTES and _bull_scale > 0 and (_trend_biased > 0 or (abs(_trend_biased) < _deadzone and bull_votes > bear_votes)):
+                # Persistent strong-sum: take min(current, previous-bar) for entry conviction.
+                # A 1-bar persistence requirement means a noise spike on bar N alone cannot fire an
+                # entry — it must be confirmed on the prior bar. This is a stateful low-pass on
+                # the strong-sum boundary, structurally distinct from prior boundary smoothing.
+                _persistent_bull = min(_bull_strong, self.prev_bull_strong.get(symbol, _bull_strong))
+                _persistent_bear = min(_bear_strong, self.prev_bear_strong.get(symbol, _bear_strong))
+                _bull_scale = max(0.0, min(1.0, (_persistent_bull - 1.0)))
+                _bear_scale = max(0.0, min(1.0, (_persistent_bear - 1.0)))
+                if bull_votes >= MIN_VOTES and _bull_scale > 0 and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC * _bull_scale
-                elif bear_votes >= MIN_VOTES and _bear_scale > 0 and (_trend_biased < 0 or (abs(_trend_biased) < _deadzone and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_scale > 0 and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC * _bear_scale
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -287,6 +290,10 @@ class Strategy:
                     # Low vol (calm): moderate flip
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
+
+            # Update prev strong-sum state for next-bar persistence check
+            self.prev_bull_strong[symbol] = _bull_strong
+            self.prev_bear_strong[symbol] = _bear_strong
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
