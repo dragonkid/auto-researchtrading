@@ -233,7 +233,11 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                # Architectural: peak_pnl uses leaky-max state evolution (3% decay/bar) instead of
+                # pure ratchet. A single noise-spiked pos_pnl no longer permanently raises peak,
+                # which would otherwise lock in a giveback boundary that exits prematurely.
+                _prev_peak = self.peak_pnl.get(symbol, 0.0)
+                self.peak_pnl[symbol] = max(_prev_peak * 0.97, pos_pnl)
 
                 # Hard stop-loss (preserves DD discipline)
                 if pos_pnl < STOP_LOSS_PCT:
