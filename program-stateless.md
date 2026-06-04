@@ -81,7 +81,7 @@ For each experiment:
    - sideways: ≤ 5.6%
    - rally_2024: ≤ 6.0%
 
-   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 6.0. Do NOT discard experiments solely because composite decreased.
+   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 7.19. Do NOT discard experiments solely because composite decreased.
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
 
@@ -205,7 +205,7 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 
 The production strategy (8569cb5) scores min_stab=0.778 (per-regime).
 
-**Stability is a constraint, not the optimization target.** Keep stability ≥ 0.80 (no penalty zone) and focus on improving raw_composite. Do NOT sacrifice signal quality/Sharpe for marginal stability gains above 0.80.
+**Stability scoring**: ≥ 0.80 = no penalty. Higher stability beyond 0.80 provides no additional score benefit.
 
 **Do NOT conclude that "stability requires fundamentally different architecture and is too risky."** That reasoning is a trap — it leads to endless base-performance tweaks that never close the gap. Structural changes to improve stability ARE the highest-ROI experiments available.
 
@@ -221,8 +221,7 @@ If results.tsv has < 10 entries or you haven't seen flip-rate data from prior se
 If results.tsv already contains diagnostic insights from prior sessions (grep for "flip rate", "noise", "voter sensitivity"), you may skip re-running diagnostics and proceed directly to experimentation.
 
 ### How to evaluate stability experiments
-- Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 7.19 and DD caps are not violated
+- Check `regime_X_stability` in the output — all four should improve
 - The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.19
 
 ## Stability improvement approaches (when min_stability < 0.80)
@@ -230,30 +229,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
 **HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
 
-### Choosing your approach
-
-There is no single correct path to stability. Choose based on your analysis of results.tsv and the current architecture:
-
-**Incremental (within current architecture):**
-- Per-voter hysteresis, confidence margins, abstain zones
-- Input denoising (smoothing before voters)
-- Aggregate decision margin (not just majority)
-- Remove/replace the noisiest voter entirely
-
-**Structural (new architecture):**
-- Replace binary voting with weighted/continuous signals
-- Redesign exit logic entirely (not RSI-based)
-- Different signal fusion method (regression, scoring, probabilistic)
-- Fundamentally different entry/exit decision mechanism
-- Replace voter-based decisions with continuous confidence scores
-
 If incremental approaches are saturated (check results.tsv — 10+ discards in that direction), switch to structural. **Do not keep iterating on approaches that have been proven to plateau.**
-
-### Regime-conditional strategies (recommended unexplored direction)
-
-Sideways and trending regimes have fundamentally different optimal behaviors. A globally-uniform strategy may have reached its architectural limit.
-
-Regime-conditional behavior — where parameters scale smoothly with regime indicators — is an underexplored direction that could break through this ceiling.
 
 **Hard binary regime switches are forbidden.** A strategy that detects "current regime = sideways" and switches to a different code path creates boundary noise that destroys stability (the switch point itself is noise-sensitive). More importantly, the AR(1) correlated noise test CANNOT detect regime-detection overfitting — a smooth regime classifier (e.g., 100-bar volatility average) will pass stability tests while being perfectly overfit to the 4 known backtest regimes. This is the one form of overfitting our test harness does not catch.
 
