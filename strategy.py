@@ -251,6 +251,11 @@ class Strategy:
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.9) / (PEAK_PROFIT_GIVEBACK * 0.1))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                # Architectural: slope-aware peak-profit modulation. When slope strongly turns
+                # against position, peak-profit pressure amplifies (correlated bearish signals).
+                # When slope is calm, peak-profit relaxes. Couples two exit signals via
+                # multiplicative dependency rather than additive sum.
+                _pp_pressure = _pp_pressure * (0.5 + _sl_slope_pressure)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
