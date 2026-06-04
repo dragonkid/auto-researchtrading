@@ -80,8 +80,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Lowered to compensate for sigmoid leak from opposing side under soft voting.
-MIN_VOTES = 2.7
-FLIP_MIN_VOTES = 2.7
+MIN_VOTES = 2.5
+FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -161,12 +161,12 @@ class Strategy:
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
             _voter_signals_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * 0.16, 1e-6),
-                (_ef - _es) / (mid * 0.00060),
-                (rsi - _rsi_thresh) / 3.2,
-                (_macd_diff - 0.0003) / 0.00010,
-                (_lr.slope - 0.00015) / 0.00008,
-                (_ea_slope - 0.0005) / 0.00020,
+                (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
+                (_ef - _es) / (mid * 0.0008),
+                (rsi - _rsi_thresh) / 4.0,
+                (_macd_diff - 0.0003) / 0.00012,
+                (_lr.slope - 0.00015) / 0.00010,
+                (_ea_slope - 0.0005) / 0.00025,
             ]
             bull_votes = sum(0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull)
             bear_votes = sum(0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull)
