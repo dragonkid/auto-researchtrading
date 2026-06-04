@@ -211,12 +211,9 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Vol-adaptive deadzone: low vol -> wider deadzone (more "near-zero" tolerance for entry),
-                # consistent vol-adaptive band pattern across architecture.
-                _dz = TREND_GATE_DEADZONE * (1.0 + 0.4 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4)))
-                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < _dz and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < _dz and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -238,30 +235,22 @@ class Strategy:
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
-                # band scales 0.06 (low vol) -> 0.26 (high vol) of |STOP|.
-                _stop_abs = abs(STOP_LOSS_PCT)
-                _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                # Hard stop-loss (preserves DD discipline)
+                if pos_pnl < STOP_LOSS_PCT:
+                    target = 0.0
+                _sl_pressure = 0.0
 
-                # Slope-against pressure: vol-adaptive ramp width (consistent with SL pressure).
-                # Low-vol regimes (rally) get wider relative ramp — slope under low vol is more
-                # noise-prone, so smoother boundary is needed to prevent flip-driven exits.
+                # Slope-against pressure: narrow ramp around threshold (noise-stable boundary).
+                # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_band = 0.30 + 0.40 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.85 * _slope_thresh) / (0.30 * _slope_thresh)))
 
-                # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
-                # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
-                # High vol -> wider band (absorbs giveback-ratio noise from price chop).
+                # Peak-profit soft pressure: narrower ramp 0.9*GIVEBACK -> GIVEBACK (closer to hard timing)
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
-                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.9) / (PEAK_PROFIT_GIVEBACK * 0.1))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
