@@ -141,7 +141,7 @@ class Strategy:
             # A close-price perturbation moves realized_vol -> dyn_threshold -> all 6 voter thresholds simultaneously.
             # Smoothing the threshold dampens this correlated noise without changing voter logic.
             _prev_thresh = self.smoothed_dyn_threshold.get(symbol, dyn_threshold)
-            dyn_threshold = 0.3 * dyn_threshold + 0.7 * _prev_thresh
+            dyn_threshold = 0.7 * dyn_threshold + 0.3 * _prev_thresh
             self.smoothed_dyn_threshold[symbol] = dyn_threshold
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
