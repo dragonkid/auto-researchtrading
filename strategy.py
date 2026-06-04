@@ -205,7 +205,7 @@ class Strategy:
                 # tanh-based factor. Effective STRONG_WEIGHT_MIN scales 1.0x->1.5x based on
                 # alignment, removing noise boundary at trend_avg=0. Vote-margin requirement
                 # (bull > bear + 0.3) eliminates 50/50 boundary noise.
-                _trend_align_bull = 0.5 * (1.0 + np.tanh(self.smoothed_trend[symbol] / 0.025))
+                _trend_align_bull = 0.5 * (1.0 + np.tanh(self.smoothed_trend[symbol] / 0.012))
                 _trend_align_bear = 1.0 - _trend_align_bull
                 _bull_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bull))
                 _bear_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bear))
