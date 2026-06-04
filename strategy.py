@@ -181,14 +181,21 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: combined temporal-vote score for entry
-            # Sum current+prev votes; require >= 2*MIN_VOTES - 1 (i.e., 5 for 6 voters with MIN_VOTES=3)
-            # Smooth temporal denoising: 3+2, 4+1, 2+3 all qualify; isolated single-bar 3+0 doesn't.
-            # Plus spatial bypass: current >= MIN_VOTES+1 alone qualifies (overwhelming current consensus).
+            # Architectural: continuous-weighted temporal-vote confirmation for entry.
+            # Effective vote signal = current_votes + w_prev * prev_votes, where w_prev scales smoothly with
+            # rsi_trend_str: w_prev=1 in trending (strong temporal denoising), w_prev=0 in sideways (no
+            # temporal smoothing, since sideways has fewer 4+ vote bars and temporal coupling adds entry-timing
+            # noise). The threshold scales correspondingly: 2*MIN_VOTES - 1 in trending, MIN_VOTES in sideways.
+            # No binary switch — confirmation is a smooth function of rsi_trend_str.
             _prev_bull = self.prev_bull_votes.get(symbol, 0)
             _prev_bear = self.prev_bear_votes.get(symbol, 0)
-            _confirmed_bull = (bull_votes >= MIN_VOTES and bull_votes + _prev_bull >= 2 * MIN_VOTES - 1) or (bull_votes >= MIN_VOTES + 1)
-            _confirmed_bear = (bear_votes >= MIN_VOTES and bear_votes + _prev_bear >= 2 * MIN_VOTES - 1) or (bear_votes >= MIN_VOTES + 1)
+            _w_prev = rsi_trend_str  # in [0,1]
+            _eff_bull = bull_votes + _w_prev * _prev_bull
+            _eff_bear = bear_votes + _w_prev * _prev_bear
+            _eff_thresh = MIN_VOTES + _w_prev * (MIN_VOTES - 1)  # 3 sideways, 5 trending
+            # Spatial bypass: overwhelming current consensus (>=4) always qualifies regardless of trend strength.
+            _confirmed_bull = (bull_votes >= MIN_VOTES and _eff_bull >= _eff_thresh) or (bull_votes >= MIN_VOTES + 1)
+            _confirmed_bear = (bear_votes >= MIN_VOTES and _eff_bear >= _eff_thresh) or (bear_votes >= MIN_VOTES + 1)
 
             if current_pos == 0 and not in_cooldown:
                 if _confirmed_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
