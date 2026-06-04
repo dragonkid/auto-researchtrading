@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
+STRONG_WEIGHT_MIN = 1.7  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
@@ -177,10 +177,10 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Strong-consensus weighted sum with abstain zone: voters with conf in [0.45, 0.55]
-            # contribute 0. Narrower zone — only filter strictly-uncertain voters.
-            _bull_strong = sum(max(0.0, (c - 0.55) * (1.0 / 0.35)) for c in _bull_confs)
-            _bear_strong = sum(max(0.0, (c - 0.55) * (1.0 / 0.35)) for c in _bear_confs)
+            # Strong-consensus weighted sum with abstain zone: voters with conf in [0.4, 0.6]
+            # contribute 0 — uncertain voters excluded at the source.
+            _bull_strong = sum(max(0.0, (c - 0.6) * 2.5) for c in _bull_confs)
+            _bear_strong = sum(max(0.0, (c - 0.6) * 2.5) for c in _bear_confs)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
