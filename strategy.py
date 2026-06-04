@@ -185,7 +185,10 @@ class Strategy:
             # near boundaries. Continuous interpolation by rsi_trend_str (already computed).
             _w_trend = (0.7, 1.2, 1.1, 1.0, 0.9, 1.1)
             _w_flat = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
-            _voter_weights = tuple(_w_trend[i] * rsi_trend_str + _w_flat[i] * (1.0 - rsi_trend_str) for i in range(6))
+            # Use sharper trend-strength saturation (decay 0.05) so rally fully engages step1
+            # weights while only true sideways pulls toward flat.
+            _trend_blend = min(abs(ret_long) / 0.05, 1.0)
+            _voter_weights = tuple(_w_trend[i] * _trend_blend + _w_flat[i] * (1.0 - _trend_blend) for i in range(6))
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
