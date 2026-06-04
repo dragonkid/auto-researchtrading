@@ -210,7 +210,7 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.006 * np.tanh(_avg_signal)
+                _trend_biased = self.smoothed_trend[symbol] + 0.012 * np.tanh(_avg_signal)
                 if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
