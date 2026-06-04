@@ -258,9 +258,16 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                # Architectural: exit requires CONFIRMATION across pressure sources, not just sum.
+                # Old (sum>=1.0): any single saturated source triggers exit -> noise-flippable boundary.
+                # New: exit if (sum>=1.0 AND >=2 sources contributing >=0.4) OR any single source saturates >=1.0.
+                # This makes the exit boundary harder to cross from one noisy-source spike, while still
+                # allowing a fully-saturated single source (terminal stop/peak) to act unilaterally.
+                _pressures = [_sl_pressure, _sl_slope_pressure, _pp_pressure, _time_pressure]
+                _exit_pressure = sum(_pressures)
+                _confirmed_count = sum(1 for p in _pressures if p >= 0.4)
+                _any_saturated = any(p >= 1.0 for p in _pressures)
+                if (_any_saturated or (_exit_pressure >= 1.0 and _confirmed_count >= 2)) and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
