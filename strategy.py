@@ -103,11 +103,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        # Architectural: previous-bar vote memory for two-bar entry confirmation
-        self.prev_bull_votes = {}
-        self.prev_bear_votes = {}
-        # Architectural: previous-bar slope memory for two-bar exit confirmation
-        self.prev_slope = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -181,26 +176,10 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: continuous-weighted temporal-vote confirmation for entry.
-            # Effective vote signal = current_votes + w_prev * prev_votes, where w_prev scales smoothly with
-            # rsi_trend_str: w_prev=1 in trending (strong temporal denoising), w_prev=0 in sideways (no
-            # temporal smoothing, since sideways has fewer 4+ vote bars and temporal coupling adds entry-timing
-            # noise). The threshold scales correspondingly: 2*MIN_VOTES - 1 in trending, MIN_VOTES in sideways.
-            # No binary switch — confirmation is a smooth function of rsi_trend_str.
-            _prev_bull = self.prev_bull_votes.get(symbol, 0)
-            _prev_bear = self.prev_bear_votes.get(symbol, 0)
-            _w_prev = rsi_trend_str  # in [0,1]
-            _eff_bull = bull_votes + _w_prev * _prev_bull
-            _eff_bear = bear_votes + _w_prev * _prev_bear
-            _eff_thresh = MIN_VOTES + _w_prev * (MIN_VOTES - 1)  # 3 sideways, 5 trending
-            # Spatial bypass: overwhelming current consensus (>=4) always qualifies regardless of trend strength.
-            _confirmed_bull = (bull_votes >= MIN_VOTES and _eff_bull >= _eff_thresh) or (bull_votes >= MIN_VOTES + 1)
-            _confirmed_bear = (bear_votes >= MIN_VOTES and _eff_bear >= _eff_thresh) or (bear_votes >= MIN_VOTES + 1)
-
             if current_pos == 0 and not in_cooldown:
-                if _confirmed_bull and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif _confirmed_bear and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -222,19 +201,9 @@ class Strategy:
                 if pos_pnl < STOP_LOSS_PCT:
                     target = 0.0
 
-                # Architectural: two-bar exit confirmation with strong-slope bypass
-                # Marginal exit (just past threshold): require prev-bar slope sign agreement (denoise)
-                # Strong exit (slope >> threshold * 2): immediate exit (preserve crash protection)
+                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
                 _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _ps = self.prev_slope.get(symbol, 0.0)
-                _strong_thresh = _exit_slope_thresh * 2.0
-                _exit_long = current_pos > 0 and (
-                    (_lr.slope < -_strong_thresh) or (_lr.slope < -_exit_slope_thresh and _ps < 0)
-                )
-                _exit_short = current_pos < 0 and (
-                    (_lr.slope > _strong_thresh) or (_lr.slope > _exit_slope_thresh and _ps > 0)
-                )
-                if target != 0 and (_exit_long or _exit_short):
+                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
                 # Peak-profit trailing exit (noise-immune: anchored to entry_price)
@@ -269,10 +238,5 @@ class Strategy:
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-
-            # Update prev-bar memory for next-bar two-bar confirmation (entry voters + exit slope)
-            self.prev_bull_votes[symbol] = bull_votes
-            self.prev_bear_votes[symbol] = bear_votes
-            self.prev_slope[symbol] = _lr.slope
 
         return signals
