@@ -211,16 +211,13 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Continuous strong-sum ramp [1.0, 2.0] -> [0, 1]. Plus vol-adaptive entry-frac
-                # damping: in low-vol regimes (rally), reduce entry size further to absorb noise.
-                # entry_frac_mult = 0.85 + 0.15*min(1, vol_ratio) — low vol -> 0.85x, high vol -> 1.0x.
+                # Continuous strong-sum ramp [1.0, 2.0] -> [0, 1] entry size scaling.
                 _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
                 _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
-                _entry_frac_mult = 0.85 + 0.15 * min(1.0, vol_ratio)
                 if bull_votes >= MIN_VOTES and _bull_scale > 0 and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC * _bull_scale * _entry_frac_mult
+                    target = size * ENTRY_INITIAL_FRAC * _bull_scale
                 elif bear_votes >= MIN_VOTES and _bear_scale > 0 and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC * _bear_scale * _entry_frac_mult
+                    target = -size * ENTRY_INITIAL_FRAC * _bear_scale
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
@@ -279,13 +276,19 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled). Apply continuous strong-sum
+                # ramp to flips too — removes binary STRONG_WEIGHT_MIN=1.5 boundary on flips,
+                # making flip size proportional to opposite-side conviction. Flips fired by
+                # marginal-conviction signals are now small (low impact); strong flips full size.
+                _flip_bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
+                _flip_bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
+                _flip_scale = _flip_bear_scale if current_pos > 0 else _flip_bull_scale
+                if not in_cooldown and _flip_scale > 0 and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
-                    target = (-size if current_pos > 0 else size) * _flip_frac
+                    target = (-size if current_pos > 0 else size) * _flip_frac * _flip_scale
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
