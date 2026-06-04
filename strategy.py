@@ -219,16 +219,15 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.7) / (PEAK_PROFIT_GIVEBACK * 0.3))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
-                # Time pressure: smooth ramp around HOLD_DECAY_START + 1/HOLD_DECAY_RATE
+                # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 1.5) / 2.0))
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 0.7 makes any single near-trigger source decisive
-                # while two half-strength sources can also exit (the noise-buffer benefit).
+                # Total exit pressure: threshold 0.85 balances DD safety vs noise-stability
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 0.7 and target != 0:
+                if _exit_pressure >= 0.85 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
