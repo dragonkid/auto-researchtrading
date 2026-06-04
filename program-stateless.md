@@ -203,7 +203,7 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 - stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
 - stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
 
-The production strategy (8569cb5) scores min_stab=0.778 (per-regime). It is just below the no-penalty zone — giving a clear improvement target (+0.022 to reach 0.80) without being unreachably far. The raw_composite floor is set at 7.19 (production level) — signal quality must NOT degrade below production baseline.
+The production strategy (8569cb5) scores min_stab=0.778 (per-regime).
 
 **Stability is a constraint, not the optimization target.** Keep stability ≥ 0.80 (no penalty zone) and focus on improving raw_composite. Do NOT sacrifice signal quality/Sharpe for marginal stability gains above 0.80.
 
