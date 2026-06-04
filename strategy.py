@@ -98,7 +98,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.40  # first bar: 40% of target (slightly lower for DD protection in rally)
+ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
@@ -233,7 +233,7 @@ class Strategy:
                 # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.85 * _slope_thresh) / (0.30 * _slope_thresh)))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.75 * _slope_thresh) / (0.30 * _slope_thresh)))
 
                 # Peak-profit soft pressure: narrower ramp 0.9*GIVEBACK -> GIVEBACK (closer to hard timing)
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
