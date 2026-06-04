@@ -244,10 +244,17 @@ class Strategy:
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
-                # Slope-against pressure: vol-adaptive ramp width (consistent with SL pressure).
-                # Low-vol regimes (rally) get wider relative ramp — slope under low vol is more
-                # noise-prone, so smoother boundary is needed to prevent flip-driven exits.
-                _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
+                # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
+                # robustness. Single _lr.slope (16-bar) is shared with entry voter — coupling
+                # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
+                # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
+                _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slopes = []
+                for _w in (12, 16, 22):
+                    _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
+                    _slopes.append(_ll.slope)
+                _exit_slope = float(np.median(_slopes))
+                _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.30 + 0.40 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
@@ -263,8 +270,9 @@ class Strategy:
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
-                _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
+                # Uses same robust median exit-slope for consistency within exit subsystem.
+                _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
+                _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
