@@ -82,8 +82,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.4  # lowered to compensate for weighted vote gate (was 2.5 with uniform weights)
-FLIP_MIN_VOTES = 2.4
+MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
+FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -179,13 +179,16 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            # Architectural unification: apply same noise-sensitivity weights to vote-count
-            # gate (bull_votes/bear_votes). Previously this gate used uniform weights, while
-            # strong-sum used noise weights — two different decision boundaries with different
-            # voter sensitivities. Unifying the boundaries reduces the count of independent
-            # noise-sensitive thresholds the strategy depends on.
-            bull_votes = sum(c * w for c, w in zip(_bull_confs, _voter_weights))
-            bear_votes = sum(c * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural unification (blended): 50/50 mix of uniform and noise-weighted
+            # vote counts. Pure weighted version was too strict on rally (down-weighted
+            # voters reduce sum below threshold). Blend retains noise-filter half-step while
+            # recovering rally entry rate.
+            _bull_votes_uniform = sum(_bull_confs)
+            _bear_votes_uniform = sum(_bear_confs)
+            _bull_votes_weighted = sum(c * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_votes_weighted = sum(c * w for c, w in zip(_bear_confs, _voter_weights))
+            bull_votes = 0.5 * _bull_votes_uniform + 0.5 * _bull_votes_weighted
+            bear_votes = 0.5 * _bear_votes_uniform + 0.5 * _bear_votes_weighted
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
