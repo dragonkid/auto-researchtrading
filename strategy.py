@@ -214,10 +214,10 @@ class Strategy:
                 # Continuous strong-sum ramp [1.0, 2.0] -> [0, 1] entry size scaling.
                 _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
                 _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
-                # Vol-adaptive deadzone: low-vol (rally) gets wider deadzone (vote-only entries
-                # require stronger margin); high-vol gets baseline. Reduces noise sensitivity at
-                # the trend_biased=0 boundary in rally where ret_long swings near zero.
-                _deadzone = TREND_GATE_DEADZONE * (1.0 + 0.5 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
+                # Vol-adaptive deadzone: low-vol (rally) gets NARROWER deadzone (vote-only entries
+                # rare); high-vol gets baseline. Step 6 showed wider hurt rally — try opposite:
+                # narrower deadzone removes vote-only entries that were noise-sensitive.
+                _deadzone = TREND_GATE_DEADZONE * (1.0 - 0.5 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
                 if bull_votes >= MIN_VOTES and _bull_scale > 0 and (_trend_biased > 0 or (abs(_trend_biased) < _deadzone and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC * _bull_scale
                 elif bear_votes >= MIN_VOTES and _bear_scale > 0 and (_trend_biased < 0 or (abs(_trend_biased) < _deadzone and bear_votes > bull_votes)):
