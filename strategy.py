@@ -78,10 +78,16 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters, soft tanh contributions)
-# Lowered to compensate for sigmoid leak from opposing side under soft voting.
-MIN_VOTES = 2.5
-FLIP_MIN_VOTES = 2.5
+# Vote / cooldown (4 factor-blocks, soft tanh contributions)
+# Voters grouped into independent factor-blocks; intra-block averaging collapses redundancy
+# before summation. Block layout (4 blocks):
+#   B1 price-momentum: ret_short
+#   B2 trend-confirmation: EMA-cross, EMA-slope
+#   B3 oscillator: RSI
+#   B4 slope/inflection: MACD-hist, linreg-slope
+# Threshold rescaled to preserve original required-fraction (2.5/6 ≈ 0.417 -> 0.417*4 ≈ 1.667).
+MIN_VOTES = 1.67
+FLIP_MIN_VOTES = 1.67
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -153,23 +159,33 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters with smooth tanh contribution: hard binary except at threshold boundary.
-            # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
-            # 0/1 except in a narrow band around the threshold where it transitions smoothly. Keeps original
-            # vote-count semantics (sum stays in [0, 6]) while reducing flip-rate near boundaries.
+            # 4 factor-blocks with soft tanh contributions: collapse correlated voters within block
+            # by averaging, then sum block votes. Each block's vote stays in [0,1]; total in [0,4].
+            # Reduces effective decision dimensions (and noise channels) from 6 to 4 without losing
+            # signal — correlated voters were already double-counting trend information.
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            _voter_signals_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * 0.0008),
-                (rsi - _rsi_thresh) / 4.0,
-                (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
-                (_ea_slope - 0.0005) / 0.00025,
-            ]
-            bull_votes = sum(0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull)
-            bear_votes = sum(0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull)
+            # Per-voter signed signals (bull-direction; bear = negation)
+            _v_ret = (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6)
+            _v_emacross = (_ef - _es) / (mid * 0.0008)
+            _v_emaslope = (_ea_slope - 0.0005) / 0.00025
+            _v_rsi = (rsi - _rsi_thresh) / 4.0
+            _v_macd = (_macd_diff - 0.0003) / 0.00012
+            _v_lrslope = (_lr.slope - 0.00015) / 0.00010
+            # Block sigmoids (bull and bear); average within block to collapse redundancy
+            def _sig(x):
+                return 0.5 * (1.0 + np.tanh(x))
+            _b1_bull = _sig(_v_ret)
+            _b2_bull = 0.5 * (_sig(_v_emacross) + _sig(_v_emaslope))
+            _b3_bull = _sig(_v_rsi)
+            _b4_bull = 0.5 * (_sig(_v_macd) + _sig(_v_lrslope))
+            _b1_bear = _sig(-_v_ret)
+            _b2_bear = 0.5 * (_sig(-_v_emacross) + _sig(-_v_emaslope))
+            _b3_bear = _sig(-_v_rsi)
+            _b4_bear = 0.5 * (_sig(-_v_macd) + _sig(-_v_lrslope))
+            bull_votes = _b1_bull + _b2_bull + _b3_bull + _b4_bull
+            bear_votes = _b1_bear + _b2_bear + _b3_bear + _b4_bear
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
