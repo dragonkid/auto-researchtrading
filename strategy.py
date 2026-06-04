@@ -204,10 +204,10 @@ class Strategy:
                 if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
                     target = 0.0
 
-                # Peak-profit trailing exit (slope-gated: exit only when slope ALSO turned against position)
+                # Peak-profit trailing exit (slope-gated with vol-adaptive deadzone, unified with linreg-exit threshold)
                 if target != 0:
                     self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    _slope_against = (current_pos > 0 and _lr.slope < 0) or (current_pos < 0 and _lr.slope > 0)
+                    _slope_against = (current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)
                     if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK and _slope_against:
                         target = 0.0
 
