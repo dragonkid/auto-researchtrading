@@ -213,11 +213,11 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _sl_slope_pressure = max(0.0, min(1.2, (_slope_against - 0.5 * _slope_thresh) / (0.5 * _slope_thresh)))
 
-                # Peak-profit giveback pressure: smooth based on giveback ratio
+                # Peak-profit hard gate: entry-anchored = already noise-immune
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
-                _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.7) / (PEAK_PROFIT_GIVEBACK * 0.3))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                if self.peak_pnl[symbol] > _pp_min and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
+                    target = 0.0
+                _pp_pressure = 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
