@@ -82,7 +82,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Strong-consensus quorum: count voters with confidence >= STRONG_CONF, require >= STRONG_QUORUM.
 # Replaces sum-threshold (which can pass via many weak voters) with strong-agreement requirement.
 STRONG_CONF = 0.65
-STRONG_QUORUM = 4
+STRONG_QUORUM = 3
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
@@ -98,7 +98,7 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-ENTRY_INITIAL_FRAC = 0.43  # first bar: 43% of target (balance noise immunity vs DD risk)
+ENTRY_INITIAL_FRAC = 0.40  # first bar: 40% of target (slightly lower for DD protection in rally)
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
