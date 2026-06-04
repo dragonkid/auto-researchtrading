@@ -245,7 +245,11 @@ class Strategy:
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive STOP center:
                 # low vol (rally) -> deeper stop (pos relaxes, fewer premature exits on noise);
                 # high vol (crash) -> tighter stop (noise-aware exit). |STOP| varies 0.024 -> 0.030.
-                _stop_abs = abs(STOP_LOSS_PCT) * (1.0 + 0.40 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
+                # Vol-adaptive stop: deep stop only when low-vol AND trending (rally-like).
+                # Low-vol-sideways (no trend) keeps the original tighter stop.
+                _low_vol = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5))
+                _trending = min(1.0, abs(ret_long) / 0.06)
+                _stop_abs = abs(STOP_LOSS_PCT) * (1.0 + 0.40 * _low_vol * _trending)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
@@ -258,17 +262,15 @@ class Strategy:
                 _slope_band = 0.30 + 0.40 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
-                # Peak-profit soft pressure: vol-adaptive band. Plus low-vol-low-trend pull on
-                # giveback threshold to compensate for deep-stop's looser exit pressure in sideways.
+                # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
+                # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
+                # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                # Low-vol no-trend (sideways) -> tighter giveback (lower threshold) to preserve PP discipline
-                _sideways_factor = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)) * (1.0 - min(1.0, abs(ret_long) / 0.06))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * (1.0 - 0.15 * _sideways_factor)
-                _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
