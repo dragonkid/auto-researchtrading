@@ -187,10 +187,14 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Adaptive CONF_MARGIN: scales smoothly with trend strength.
+            # Sideways (low rsi_trend_str): lower margin (0.6) — voters naturally have mixed signs.
+            # Trending: higher margin (1.5) — strict alignment required.
+            _conf_margin = 0.6 + 0.9 * rsi_trend_str
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and confidence >= CONF_MARGIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and confidence >= _conf_margin and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and confidence <= -CONF_MARGIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and confidence <= -_conf_margin and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
