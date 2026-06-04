@@ -84,7 +84,6 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
-NET_STRONG_MIN = 1.2  # required (bull_strong - bear_strong) for entry; common-mode noise cancellation
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -203,15 +202,10 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Net-strong-conviction gate: replaces dual (MIN_VOTES count + STRONG_WEIGHT_MIN sum)
-            # with a single difference _bull_strong - _bear_strong. Common-mode noise (when a voter
-            # near 0 boundary inflates both bull and bear) cancels in the difference. This collapses
-            # two boundary thresholds into one, reducing noise-flip surface area at entry.
-            _net_strong = _bull_strong - _bear_strong
             if current_pos == 0 and not in_cooldown:
-                if _net_strong >= NET_STRONG_MIN and bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif _net_strong <= -NET_STRONG_MIN and bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -262,7 +256,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and _net_strong <= -NET_STRONG_MIN and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and _net_strong >= NET_STRONG_MIN and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
