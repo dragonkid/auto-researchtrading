@@ -190,6 +190,16 @@ class Strategy:
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
             _avg_signal = sum(_voter_signals_bull) / 6.0
+            # Voter-coherence gate on strong-sum: when voter confs are dispersed (boundary regime),
+            # multiplicatively dampen the strong-sum value going into the threshold check.
+            # _conf_std typically ~0.10 (aligned) to ~0.30 (dispersed). _coh_gate range [0.85, 1.05]:
+            # a 5% boost when voters strongly agree, 15% damping at maximum dispersion.
+            # Acts at the decision boundary (gating) rather than on size (returns-preserving).
+            _conf_std = float(np.std(_bull_confs))
+            _coh_gate = 1.05 - 1.00 * min(_conf_std / 0.30, 1.0)
+            _coh_gate = max(0.85, _coh_gate)
+            _bull_strong = _bull_strong * _coh_gate
+            _bear_strong = _bear_strong * _coh_gate
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
