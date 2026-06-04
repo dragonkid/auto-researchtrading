@@ -183,7 +183,7 @@ class Strategy:
             # smoothed/double-smoothed signals (EMA, RSI) contribute more; raw price-derivative
             # (ret_short) and short-window slope contribute less. Noise-flipped voters shift
             # strong-sum by less when the flipped voter is a high-noise one.
-            _voter_weights = (0.85, 1.10, 1.00, 1.00, 0.95, 1.10)
+            _voter_weights = (0.85, 1.20, 1.10, 0.95, 0.85, 1.05)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
