@@ -106,6 +106,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.last_net_strong = {}  # per-symbol prev-bar (bull_strong - bear_strong)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -186,6 +187,21 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Cross-asset consensus gate (architectural, prev-bar state):
+            # average net-strong (bull-bear) of OTHER symbols from the previous bar.
+            # If current symbol's signal disagrees with cross-asset average, tighten the
+            # entry threshold proportionally. Cross-asset noise is uncorrelated; cross-asset
+            # signal is correlated. This filters single-symbol noise spikes.
+            _net_strong_self = _bull_strong - _bear_strong
+            _other_nets = [self.last_net_strong[s] for s in ACTIVE_SYMBOLS
+                           if s != symbol and s in self.last_net_strong]
+            if _other_nets:
+                _cross_net = sum(_other_nets) / len(_other_nets)
+                # disagreement: current sign != cross sign AND cross magnitude meaningful
+                _disagree = (_net_strong_self * _cross_net < 0) and (abs(_cross_net) > 0.5)
+                if _disagree:
+                    _strong_min += 0.30 * min(abs(_cross_net) / 2.0, 1.0)
+            self.last_net_strong[symbol] = _net_strong_self
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
