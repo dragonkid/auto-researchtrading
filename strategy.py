@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.7  # required sum of margin-above-0.5 voter contributions
+STRONG_WEIGHT_MIN = 1.3  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
