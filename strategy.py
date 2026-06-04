@@ -177,10 +177,16 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Quintic-ramp strong-sum: (c-0.5)^5 — even smoother near 0.5 than cubic.
-            # Max at c=0.9 is 0.4^5 = 0.01024; normalize by /0.01024 to get ~1.0 max.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bull_confs)
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bear_confs)
+            # Composite-signal strong-sum: average raw signals first, then quintic ramp on averaged
+            # confidence. Noise in individual voters near 0 is averaged DOWN (variance/N for indep,
+            # less for correlated) before the nonlinearity. Replaces 6 independent boundary crossings
+            # with 1 aggregate boundary, dramatically reducing noise-flip surface area.
+            _avg_signal = sum(_voter_signals_bull) / 6.0
+            _bull_avg_conf = 0.1 + 0.8 * 0.5 * (1.0 + np.tanh(_avg_signal))
+            _bear_avg_conf = 0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-_avg_signal))
+            # Scale by 6 to keep STRONG_WEIGHT_MIN threshold semantics roughly compatible.
+            _bull_strong = max(0.0, (_bull_avg_conf - 0.5) ** 5 * 97.66) * 6.0
+            _bear_strong = max(0.0, (_bear_avg_conf - 0.5) ** 5 * 97.66) * 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
