@@ -235,12 +235,14 @@ class Strategy:
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Architectural: stop-loss as smooth pressure source instead of hard binary gate.
-                # Tightened ramp: pressure 0 at 0.95*|STOP|, 1.0 at 1.05*|STOP| (0.24% band, was 0.6%).
-                # Closer to binary timing while still smoothing the knife-edge boundary.
+                # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
+                # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
+                # high vol (crash) -> wide band (absorbs larger noise excursions).
+                # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
                 _stop_abs = abs(STOP_LOSS_PCT)
                 _loss = -pos_pnl
-                _sl_pressure = max(0.0, min(1.0, (_loss - 0.95 * _stop_abs) / (0.10 * _stop_abs)))
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: narrow ramp around threshold (noise-stable boundary).
                 # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
