@@ -235,10 +235,14 @@ class Strategy:
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Hard stop-loss (preserves DD discipline)
-                if pos_pnl < STOP_LOSS_PCT:
-                    target = 0.0
-                _sl_pressure = 0.0
+                # Architectural: stop-loss as smooth pressure source instead of hard binary gate.
+                # Old: if pos_pnl < STOP_LOSS_PCT: target = 0.0 (binary noise-vulnerable boundary at -2.4%).
+                # New: ramp pressure 0 at 0.85*|STOP|, 1.0 at 1.15*|STOP|. Single saturated source still
+                # exits unilaterally (preserved by _any_saturated path), so DD discipline is intact, but
+                # boundary becomes a 0.6%-wide smooth band rather than a knife-edge.
+                _stop_abs = abs(STOP_LOSS_PCT)
+                _loss = -pos_pnl  # positive when losing
+                _sl_pressure = max(0.0, min(1.0, (_loss - 0.85 * _stop_abs) / (0.30 * _stop_abs)))
 
                 # Slope-against pressure: narrow ramp around threshold (noise-stable boundary).
                 # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
