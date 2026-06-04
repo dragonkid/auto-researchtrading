@@ -84,7 +84,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
-CERTAINTY_MIN = 1.7  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
+CERTAINTY_MIN = 1.5  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -168,8 +168,8 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0012),
                 (rsi - _rsi_thresh) / 6.0,
                 (_macd_diff - 0.0003) / 0.00018,
-                (_lr.slope - 0.00015) / 0.00015,
-                (_ea_slope - 0.0005) / 0.00038,
+                (_lr.slope - 0.00015) / 0.00010,
+                (_ea_slope - 0.0005) / 0.00025,
             ]
             _bull_confs = [0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
