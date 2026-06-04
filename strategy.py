@@ -244,11 +244,13 @@ class Strategy:
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
-                # Slope-against pressure: narrow ramp around threshold (noise-stable boundary).
-                # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
+                # Slope-against pressure: vol-adaptive ramp width (consistent with SL pressure).
+                # Low-vol regimes (rally) get wider relative ramp — slope under low vol is more
+                # noise-prone, so smoother boundary is needed to prevent flip-driven exits.
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.85 * _slope_thresh) / (0.30 * _slope_thresh)))
+                _slope_band = 0.30 + 0.40 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: narrower ramp 0.9*GIVEBACK -> GIVEBACK (closer to hard timing)
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
