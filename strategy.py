@@ -185,7 +185,7 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.25 * (1.0 - rsi_trend_str)
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -215,7 +215,10 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Bias coefficient scales up slightly in sideways for stronger voter-trend fusion
+                # there (reduces noise sensitivity at zero-crossing). Continuous interpolation.
+                _bias_coef = 0.005 + 0.003 * (1.0 - rsi_trend_str)
+                _trend_biased = self.smoothed_trend[symbol] + _bias_coef * np.tanh(_avg_signal)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
