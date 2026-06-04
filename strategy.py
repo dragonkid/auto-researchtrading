@@ -137,7 +137,14 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _hl2_full = (bd.history["high"].values + bd.history["low"].values) / 2.0
+            # Multi-window slope consensus for entry voter: mean of 3 slopes (12/16/22)
+            # parallels the exit-pressure consensus mechanism. Reduces single-window flip
+            # rate at the slope voter boundary 0.00015 — the noisiest entry voter under AR(1).
+            _entry_slopes = []
+            for _w in (12, LINREG_PERIOD, 22):
+                _entry_slopes.append(linregress(np.arange(_w), np.log(_hl2_full[-_w:])).slope)
+            _lr_slope = float(np.mean(_entry_slopes))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -167,7 +174,7 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
+                (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
