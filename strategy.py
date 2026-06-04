@@ -211,15 +211,16 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Continuous strong-sum ramp: floor at 1.2 (blocks weakest entries) with smooth
-                # ramp [1.2, 2.0] -> [0, 1] entry scale. Floor protects rally regime which suffered
-                # from weak-conviction entries enabled by the [1.0, 2.0] ramp in step 1.
-                _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.2) / 0.8))
-                _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.2) / 0.8))
+                # Continuous strong-sum ramp [1.0, 2.0] -> [0, 1]. Plus vol-adaptive entry-frac
+                # damping: in low-vol regimes (rally), reduce entry size further to absorb noise.
+                # entry_frac_mult = 0.85 + 0.15*min(1, vol_ratio) — low vol -> 0.85x, high vol -> 1.0x.
+                _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
+                _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
+                _entry_frac_mult = 0.85 + 0.15 * min(1.0, vol_ratio)
                 if bull_votes >= MIN_VOTES and _bull_scale > 0 and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC * _bull_scale
+                    target = size * ENTRY_INITIAL_FRAC * _bull_scale * _entry_frac_mult
                 elif bear_votes >= MIN_VOTES and _bear_scale > 0 and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC * _bear_scale
+                    target = -size * ENTRY_INITIAL_FRAC * _bear_scale * _entry_frac_mult
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
