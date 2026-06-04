@@ -106,7 +106,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.voter_history = {}  # symbol -> list of last 3 _voter_signals_bull arrays
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -171,23 +170,11 @@ class Strategy:
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
-            # Architectural: median-of-3 voter signals across last 3 bars per voter.
-            # Noise spikes (single-bar outliers) are filtered without lag bias of EMA.
-            # When trend is consistent, median ~ current; when noisy, single-bar flips dropped.
-            _hist = self.voter_history.get(symbol, [])
-            _hist = _hist + [_voter_signals_bull]
-            if len(_hist) > 3:
-                _hist = _hist[-3:]
-            self.voter_history[symbol] = _hist
-            if len(_hist) == 3:
-                _voter_signals_eff = [float(np.median([_hist[k][i] for k in range(3)])) for i in range(6)]
-            else:
-                _voter_signals_eff = _voter_signals_bull
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_eff]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_eff]
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum: (c-0.5)^5 — even smoother near 0.5 than cubic.
@@ -197,7 +184,7 @@ class Strategy:
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
-            _avg_signal = sum(_voter_signals_eff) / 6.0
+            _avg_signal = sum(_voter_signals_bull) / 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
