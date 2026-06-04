@@ -133,7 +133,7 @@ class Strategy:
                 smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             # Vol-adaptive floor: low-vol regimes get higher floor on dyn_threshold (wider entry buffer)
-            _dyn_floor = DYN_THRESHOLD_FLOOR * (1.0 + 0.25 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
+            _dyn_floor = DYN_THRESHOLD_FLOOR * (1.0 + 0.30 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
             dyn_threshold = max(_dyn_floor, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
