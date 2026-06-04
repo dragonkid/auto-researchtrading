@@ -197,30 +197,35 @@ class Strategy:
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
-                # Stop-loss exit (noise-immune: anchored to entry_price)
-                if pos_pnl < STOP_LOSS_PCT:
+                # Unified exit-pressure architecture: each exit signal contributes a continuous
+                # pressure value in [0, ~1.5+]; exit triggers when total pressure > threshold.
+                # Replaces 4 independent hard exit gates with one soft accumulator.
+                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+
+                # Stop-loss pressure: smooth ramp from STOP_LOSS_PCT*0.7 to STOP_LOSS_PCT
+                _sl_pressure = max(0.0, min(1.5, (STOP_LOSS_PCT * 0.7 - pos_pnl) / (abs(STOP_LOSS_PCT) * 0.3)))
+
+                # Slope-against pressure: directional slope opposing position
+                _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
+                _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _sl_slope_pressure = max(0.0, min(1.0, _slope_against / _slope_thresh - 0.5))
+
+                # Peak-profit giveback pressure: smooth based on giveback ratio
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
+                _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.7) / (PEAK_PROFIT_GIVEBACK * 0.3))) if self.peak_pnl[symbol] > _pp_min else 0.0
+
+                # Time pressure: smooth ramp around HOLD_DECAY_START + 1/HOLD_DECAY_RATE
+                _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
+                _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 1.5) / 2.0))
+
+                # Total exit pressure
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-
-                # Vol-adaptive linreg exit: widen in calm (vol_ratio < 0.7) for noise buffer
-                _exit_slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                if target != 0 and ((current_pos > 0 and _lr.slope < -_exit_slope_thresh) or (current_pos < 0 and _lr.slope > _exit_slope_thresh)):
-                    target = 0.0
-
-                # Peak-profit trailing exit (noise-immune: anchored to entry_price)
-                if target != 0:
-                    self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
-                    if self.peak_pnl[symbol] > PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                        target = 0.0
-
-                # Momentum-decay exit (soft time pressure, slope-extended)
-                if target != 0 and bars_held > HOLD_DECAY_START:
-                    # Slope agreement: does linreg slope support position direction?
-                    _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
-                    _slope_strength = min(1.0, abs(_lr.slope) / 0.0006)  # normalized slope magnitude
-                    # Extra hold time when slope strongly agrees
-                    _effective_max = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                    if bars_held >= _effective_max:
-                        target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
