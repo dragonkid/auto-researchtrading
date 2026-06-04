@@ -214,15 +214,12 @@ class Strategy:
                 # Vol-adaptive deadzone: low vol -> wider deadzone (more "near-zero" tolerance for entry),
                 # consistent vol-adaptive band pattern across architecture.
                 _dz = TREND_GATE_DEADZONE * (1.0 + 0.4 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4)))
-                # Vol-adaptive initial fraction: smaller initial commit in low-vol -> reduced noise exposure
-                # during scale-in phase. Scale 0.35 (low vol) -> 0.43 (high vol).
-                _init_frac = 0.35 + 0.08 * min(1.0, vol_ratio)
                 if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < _dz and bull_votes > bear_votes)):
-                    target = size * _init_frac
+                    target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < _dz and bear_votes > bull_votes)):
-                    target = -size * _init_frac
+                    target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _init_frac
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
