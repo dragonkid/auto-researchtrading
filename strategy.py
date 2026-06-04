@@ -197,13 +197,14 @@ class Strategy:
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
-                # Unified exit-pressure architecture: each exit signal contributes a continuous
-                # pressure value in [0, ~1.5+]; exit triggers when total pressure > threshold.
-                # Replaces 4 independent hard exit gates with one soft accumulator.
+                # Unified soft exit-pressure architecture (slope + peak_profit + time only).
+                # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Stop-loss pressure: smooth ramp from STOP_LOSS_PCT*0.7 to STOP_LOSS_PCT
-                _sl_pressure = max(0.0, min(1.5, (STOP_LOSS_PCT * 0.7 - pos_pnl) / (abs(STOP_LOSS_PCT) * 0.3)))
+                # Hard stop-loss (preserves DD discipline)
+                if pos_pnl < STOP_LOSS_PCT:
+                    target = 0.0
+                _sl_pressure = 0.0
 
                 # Slope-against pressure: directional slope opposing position
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
