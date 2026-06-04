@@ -235,27 +235,32 @@ class Strategy:
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
-                # Hard stop-loss (preserves DD discipline)
-                if pos_pnl < STOP_LOSS_PCT:
-                    target = 0.0
-                _sl_pressure = 0.0
+                # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
+                # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
+                # high vol (crash) -> wide band (absorbs larger noise excursions).
+                # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
+                _stop_abs = abs(STOP_LOSS_PCT)
+                _loss = -pos_pnl
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
-                # Slope-against pressure: narrow ramp around threshold (noise-stable boundary).
-                # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
+                # Slope-against pressure: vol-adaptive ramp width (consistent with SL pressure).
+                # Low-vol regimes (rally) get wider relative ramp — slope under low vol is more
+                # noise-prone, so smoother boundary is needed to prevent flip-driven exits.
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.85 * _slope_thresh) / (0.30 * _slope_thresh)))
+                _slope_band = 0.30 + 0.40 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
-                # Peak-profit soft pressure: narrower ramp 0.9*GIVEBACK -> GIVEBACK (closer to hard timing)
+                # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
+                # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
+                # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.9) / (PEAK_PROFIT_GIVEBACK * 0.1))) if self.peak_pnl[symbol] > _pp_min else 0.0
-                # Architectural: slope-aware peak-profit modulation. When slope strongly turns
-                # against position, peak-profit pressure amplifies (correlated bearish signals).
-                # When slope is calm, peak-profit relaxes. Couples two exit signals via
-                # multiplicative dependency rather than additive sum.
-                _pp_pressure = _pp_pressure * max(0.95, 0.5 + _sl_slope_pressure)
+                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
