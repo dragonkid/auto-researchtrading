@@ -149,6 +149,8 @@ After your last experiment (or when the exit rule triggers), exit. The outer loo
 
 ## Results TSV format
 
+**results.tsv is append-only.** Never delete, modify, or rewrite existing rows. Only append new rows at the end.
+
 New schema (10 columns, tab-separated):
 ```
 commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
