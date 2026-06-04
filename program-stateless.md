@@ -73,7 +73,7 @@ For each experiment:
    An experiment qualifies as `keep` if ALL of the following are met:
    - `min_stability` improved by **at least +0.003** vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **7.0** (composite score calculated WITHOUT tiered penalty — use pre-penalty regime scores to compute mean - 0.5*std + simplicity_bonus). Calibrated to production strategy baseline.
+   - `raw_composite` ≥ **7.19** (must not degrade below production baseline). Calibrated to production strategy 8569cb5.
 
    **Absolute DD caps (hard ceiling, never changes):**
    - bull_2021: ≤ 7.8%
@@ -203,7 +203,7 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 - stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
 - stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
 
-The production strategy (8569cb5) scores min_stab=0.778 (per-regime). It is just below the no-penalty zone — giving a clear improvement target (+0.022 to reach 0.80) without being unreachably far. The raw_composite floor is set at 7.0 (production level) to prevent trading signal quality for stability.
+The production strategy (8569cb5) scores min_stab=0.778 (per-regime). It is just below the no-penalty zone — giving a clear improvement target (+0.022 to reach 0.80) without being unreachably far. The raw_composite floor is set at 7.19 (production level) — signal quality must NOT degrade below production baseline.
 
 **Stability is a constraint, not the optimization target.** Keep stability ≥ 0.80 (no penalty zone) and focus on improving raw_composite. Do NOT sacrifice signal quality/Sharpe for marginal stability gains above 0.80.
 
@@ -222,8 +222,8 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate stability experiments
 - Check `regime_X_stability` in the output — ALL four should improve toward 0.85+
-- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 7.0 and DD caps are not violated
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.0
+- A stability gain of +0.003 is worth pursuing even if composite drops significantly — revenue decline is acceptable as long as raw_composite ≥ 7.19 and DD caps are not violated
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.19
 
 ## Stability improvement approaches (when min_stability < 0.80)
 
