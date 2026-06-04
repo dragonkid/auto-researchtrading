@@ -225,9 +225,10 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 1.5) / 2.0))
 
-                # Total exit pressure
+                # Total exit pressure: threshold 0.7 makes any single near-trigger source decisive
+                # while two half-strength sources can also exit (the noise-buffer benefit).
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                if _exit_pressure >= 0.7 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
