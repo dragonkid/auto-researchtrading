@@ -106,6 +106,11 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        # Hysteresis state for strong-sum boundary: was last bar above threshold?
+        # Adds asymmetric admission/rejection: easier to maintain a side once admitted,
+        # harder to admit a fresh side. Filters near-boundary noise that previously caused
+        # entry decisions to flicker bar-to-bar.
+        self._last_above = {}  # symbol -> "bull" | "bear" | None
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -194,6 +199,18 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Hysteresis: if same side was above threshold last bar, lower its threshold
+            # by 0.10 (easier to remain admitted). Opposite side or no admission last bar
+            # uses base threshold. Asymmetric boundary reduces near-boundary entry flicker.
+            _bull_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bull" else 0.0)
+            _bear_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bear" else 0.0)
+            # Update hysteresis state for next bar (track which side was above this bar)
+            if _bull_strong >= _bull_thresh and bull_votes > bear_votes:
+                self._last_above[symbol] = "bull"
+            elif _bear_strong >= _bear_thresh and bear_votes > bull_votes:
+                self._last_above[symbol] = "bear"
+            else:
+                self._last_above[symbol] = None
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -224,9 +241,9 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_thresh and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_thresh and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
