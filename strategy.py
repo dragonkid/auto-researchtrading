@@ -75,8 +75,8 @@ TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
 MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
+MEANREV_RSI_OVERSOLD = 47
+MEANREV_RSI_OVERBOUGHT = 53
 
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
@@ -183,7 +183,7 @@ class Strategy:
             # smoothed/double-smoothed signals (EMA, RSI) contribute more; raw price-derivative
             # (ret_short) and short-window slope contribute less. Noise-flipped voters shift
             # strong-sum by less when the flipped voter is a high-noise one.
-            _voter_weights = (0.85, 1.20, 1.10, 0.95, 0.85, 1.05)
+            _voter_weights = (0.7, 1.2, 1.1, 1.0, 0.9, 1.1)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
