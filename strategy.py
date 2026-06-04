@@ -107,7 +107,6 @@ class Strategy:
         self.bar_count = 0
         self.smoothed_trend = {}
         self.smoothed_dyn_threshold = {}
-        self.smoothed_realized_vol = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -124,11 +123,6 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
-            # Light asymmetric smoothing on realized_vol: clamp upward spikes.
-            _prev_rv = self.smoothed_realized_vol.get(symbol, realized_vol)
-            if realized_vol > _prev_rv:
-                realized_vol = 0.5 * realized_vol + 0.5 * _prev_rv
-            self.smoothed_realized_vol[symbol] = realized_vol
             vol_ratio = realized_vol / TARGET_VOL
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
@@ -146,12 +140,12 @@ class Strategy:
             # EMA-smooth dyn_threshold across bars: dampens common-mode noise driving all voter boundaries.
             # A close-price perturbation moves realized_vol -> dyn_threshold -> all 6 voter thresholds simultaneously.
             # Smoothing the threshold dampens this correlated noise without changing voter logic.
-            # Asymmetric smoothing — heavy on rises (block spike-up), moderate on drops.
+            # Asymmetric smoothing — moderate on rises (block spike-up), light on drops.
             _prev_thresh = self.smoothed_dyn_threshold.get(symbol, dyn_threshold)
             if dyn_threshold > _prev_thresh:
-                dyn_threshold = 0.3 * dyn_threshold + 0.7 * _prev_thresh
+                dyn_threshold = 0.4 * dyn_threshold + 0.6 * _prev_thresh
             else:
-                dyn_threshold = 0.5 * dyn_threshold + 0.5 * _prev_thresh
+                dyn_threshold = 0.7 * dyn_threshold + 0.3 * _prev_thresh
             self.smoothed_dyn_threshold[symbol] = dyn_threshold
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
