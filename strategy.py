@@ -106,6 +106,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.smoothed_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -258,9 +259,15 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                # Architectural: EMA-smoothed exit pressure. Single-bar noise spikes
+                # cannot push smoothed pressure across threshold; sustained pressure does.
+                # alpha=0.5 -> single bar contributes 50% weight; threshold 0.85 means
+                # one bar at 1.7 OR two bars at ~1.0 trigger exit.
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                _prev_smoothed = self.smoothed_exit_pressure.get(symbol, 0.0)
+                _smoothed_exit = 0.5 * _exit_pressure + 0.5 * _prev_smoothed
+                self.smoothed_exit_pressure[symbol] = _smoothed_exit
+                if _smoothed_exit >= 0.85 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
@@ -274,7 +281,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.smoothed_exit_pressure):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
