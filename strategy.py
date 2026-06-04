@@ -262,9 +262,15 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                # Confirmation logic on unified exit gate. Single saturated source (>=1.0) exits
+                # unilaterally (DD discipline preserved for stop, terminal time, full giveback).
+                # Sub-saturated sum >=1.0 requires >=2 sources contributing (>=0.25 each) — prevents
+                # noise on a single near-saturated source from triggering exit.
+                _pressures = [_sl_pressure, _sl_slope_pressure, _pp_pressure, _time_pressure]
+                _exit_pressure = sum(_pressures)
+                _any_saturated = any(p >= 1.0 for p in _pressures)
+                _contributing = sum(1 for p in _pressures if p >= 0.25)
+                if (_any_saturated or (_exit_pressure >= 1.0 and _contributing >= 2)) and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
