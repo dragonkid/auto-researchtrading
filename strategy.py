@@ -106,7 +106,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.smooth_pnl = {}  # EMA-smoothed pos_pnl for exit subsystem (architectural noise damping)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -224,14 +223,6 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Architectural: EMA-smooth pos_pnl as common input to all exit-pressure sources.
-                # Single point of noise damping shared across stop-loss, peak-tracking, and giveback.
-                # alpha=0.6 over ~3 bars: tighter than typical voter smoothing, since exits must
-                # remain responsive enough to stop drawdowns; but enough to absorb single-bar noise spikes.
-                _prev_smooth = self.smooth_pnl.get(symbol, pos_pnl)
-                pos_pnl_s = 0.6 * pos_pnl + 0.4 * _prev_smooth
-                self.smooth_pnl[symbol] = pos_pnl_s
-
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
@@ -242,16 +233,14 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Peak tracked on smoothed pnl for noise immunity in giveback computation.
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl_s)
+                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
                 # high vol (crash) -> wide band (absorbs larger noise excursions).
                 # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
-                # _loss uses smoothed pnl so single-bar spikes don't trip stop pressure.
                 _stop_abs = abs(STOP_LOSS_PCT)
-                _loss = -pos_pnl_s
+                _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
@@ -267,7 +256,7 @@ class Strategy:
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl_s)
+                _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
@@ -295,7 +284,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self.smooth_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
