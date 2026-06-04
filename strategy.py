@@ -209,9 +209,9 @@ class Strategy:
                 _trend_align_bear = 1.0 - _trend_align_bull
                 _bull_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bull))
                 _bear_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bear))
-                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_req and bull_votes > bear_votes + 0.15:
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_req and bull_votes > bear_votes + 0.3:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_req and bear_votes > bull_votes + 0.15:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_req and bear_votes > bull_votes + 0.3:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
