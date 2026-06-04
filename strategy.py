@@ -181,10 +181,14 @@ class Strategy:
             # Max at c=0.9 is 0.4^5 = 0.01024; normalize by /0.01024 to get ~1.0 max.
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bull_confs)
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bear_confs)
-            # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
-            # acts as an additional alignment check at entry. Common-mode noise cancels in the
-            # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
-            _avg_signal = sum(_voter_signals_bull) / 6.0
+            # Architectural co-gate: margin-weighted voter signal. Weight each voter signal by its
+            # own |signal| (saturated by tanh) — voters near zero contribute little, strong voters
+            # contribute fully. Reduces noise sensitivity at the trend bias gate vs flat average:
+            # a noise-flipped near-zero voter has near-zero weight so cannot meaningfully bias the
+            # gate. Common-mode noise still cancels (opposite-sign strong voters offset).
+            _voter_weights = [abs(np.tanh(s)) for s in _voter_signals_bull]
+            _w_sum = sum(_voter_weights) + 1e-9
+            _avg_signal = sum(s * w for s, w in zip(_voter_signals_bull, _voter_weights)) / _w_sum
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
