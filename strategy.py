@@ -84,6 +84,10 @@ FLIP_MIN_VOTES = 3
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Continuous confidence margin gate (architectural: parallel decision channel)
+# Sum of 6 tanh signals in [-6,+6]. Entry requires |conf| >= CONF_MARGIN in addition to binary votes.
+CONF_MARGIN = 1.5
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -153,8 +157,15 @@ class Strategy:
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters (ret_vshort removed: redundant with ret_short, adds noise channel without info)
-            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid > 0.0003, _lr.slope > 0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] > 0.0005])
-            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0), (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid < -0.0003, _lr.slope < -0.00015, (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK] < -0.0005])
+            _rsi_thr = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            _macd_h = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ema_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            bull_votes = sum([ret_short > dyn_threshold, _ef > _es, rsi > _rsi_thr, _macd_h > 0.0003, _lr.slope > 0.00015, _ema_slope > 0.0005])
+            bear_votes = sum([ret_short < -dyn_threshold, _ef < _es, rsi < _rsi_thr, _macd_h < -0.0003, _lr.slope < -0.00015, _ema_slope < -0.0005])
+            # Parallel continuous confidence (architectural: must agree with binary vote for entry)
+            confidence = (np.tanh((ret_short - 0.0) / dyn_threshold) + np.tanh((_ef - _es) / (_es * 0.005))
+                          + np.tanh((rsi - _rsi_thr) / 8.0) + np.tanh(_macd_h / 0.0006)
+                          + np.tanh(_lr.slope / 0.0003) + np.tanh(_ema_slope / 0.001))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -177,9 +188,9 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and confidence >= CONF_MARGIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and confidence <= -CONF_MARGIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
