@@ -248,15 +248,10 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Soft exit: continuous fraction reduction instead of binary close at pressure>=1.
-                # Pressure 0.7->1.2 ramps target reduction from 0% to 100%. Keeps median exit
-                # timing (50% reduction at pressure ~0.95) while removing noise boundary at 1.0.
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                _exit_reduction = max(0.0, min(1.0, (_exit_pressure - 0.7) / 0.5))
-                if _exit_reduction > 0 and target != 0:
-                    target = target * (1.0 - _exit_reduction)
-                    if abs(target) < abs(current_pos) * 0.05:  # below 5% retained -> full close
-                        target = 0.0
+                if _exit_pressure >= 1.0 and target != 0:
+                    target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and trend_avg > 0)):
