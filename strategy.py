@@ -78,9 +78,10 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters: ret_vshort removed)
-MIN_VOTES = 3
-FLIP_MIN_VOTES = 3
+# Vote / cooldown (6 voters, soft tanh contributions)
+# Lowered to compensate for sigmoid leak from opposing side under soft voting.
+MIN_VOTES = 2.7
+FLIP_MIN_VOTES = 2.7
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
