@@ -132,7 +132,9 @@ class Strategy:
             for _si in range(1, len(closes)):
                 smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
-            dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
+            # Vol-adaptive floor: low-vol regimes get higher floor on dyn_threshold (wider entry buffer)
+            _dyn_floor = DYN_THRESHOLD_FLOOR * (1.0 + 0.20 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
+            dyn_threshold = max(_dyn_floor, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
@@ -245,7 +247,7 @@ class Strategy:
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive STOP center:
                 # low vol (rally) -> deeper stop (pos relaxes, fewer premature exits on noise);
                 # high vol (crash) -> tighter stop (noise-aware exit). |STOP| varies 0.024 -> 0.030.
-                _stop_abs = abs(STOP_LOSS_PCT) * (1.0 + 0.30 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
+                _stop_abs = abs(STOP_LOSS_PCT) * (1.0 + 0.40 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
