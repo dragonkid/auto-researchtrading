@@ -48,7 +48,7 @@ HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK = 0.25
+PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -233,7 +233,7 @@ class Strategy:
                 # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.75 * _slope_thresh) / (0.30 * _slope_thresh)))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.85 * _slope_thresh) / (0.30 * _slope_thresh)))
 
                 # Peak-profit soft pressure: narrower ramp 0.9*GIVEBACK -> GIVEBACK (closer to hard timing)
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
