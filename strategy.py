@@ -84,7 +84,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
-CERTAINTY_MIN = 1.3  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
+CERTAINTY_MIN = 1.7  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
