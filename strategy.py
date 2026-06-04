@@ -177,20 +177,15 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Quintic-ramp strong-sum with trend-modulated per-voter weights.
-            # In trending regimes (high |ret_long|), weight by inverse-noise-sensitivity:
-            # smoothed signals (EMA, RSI) up, raw price-derivatives down.
-            # In sideways (low |ret_long|), weights flatten to uniform 1.0 to prevent any
-            # single voter from dominating the strong-sum aggregation when all signals are
-            # near boundaries. Continuous interpolation by rsi_trend_str (already computed).
-            _w_trend = (0.7, 1.2, 1.1, 1.0, 0.9, 1.1)
-            _w_flat = (1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
-            # Use sharper trend-strength saturation (decay 0.05) so rally fully engages step1
-            # weights while only true sideways pulls toward flat.
-            _trend_blend = min(abs(ret_long) / 0.05, 1.0)
-            _voter_weights = tuple(_w_trend[i] * _trend_blend + _w_flat[i] * (1.0 - _trend_blend) for i in range(6))
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
+            # Additional uncertain-band hard-zero: confidences below 0.55 contribute zero
+            # to strong-sum. Removes residual quintic-tail leakage from low-confidence
+            # voters that flip near 0.5 — purely noise contributions can't add to strong-sum.
+            _voter_weights = (0.7, 1.2, 1.1, 1.0, 0.9, 1.1)
+            _bull_strong = sum(((c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights) if c >= 0.55)
+            _bear_strong = sum(((c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights) if c >= 0.55)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
