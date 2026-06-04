@@ -284,9 +284,15 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries.
+                # Architectural co-gate: also require at least 2 sources to independently exceed 0.4.
+                # Prevents a single noisy source from crossing 1.0 alone (e.g., when one source
+                # spikes to 1.0 due to noise while others are zero). Two-source corroboration filters
+                # exit-noise without disturbing genuine multi-source convergence (the typical exit case).
+                _pressures = (_sl_pressure, _sl_slope_pressure, _pp_pressure, _time_pressure)
+                _exit_pressure = sum(_pressures)
+                _active_sources = sum(1 for p in _pressures if p >= 0.4)
+                if _exit_pressure >= 1.0 and _active_sources >= 2 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
