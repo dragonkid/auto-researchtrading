@@ -81,7 +81,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus quorum: count voters with confidence >= STRONG_CONF, require >= STRONG_QUORUM.
 # Replaces sum-threshold (which can pass via many weak voters) with strong-agreement requirement.
-STRONG_CONF = 0.65
+STRONG_CONF = 0.67
 STRONG_QUORUM = 3
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
