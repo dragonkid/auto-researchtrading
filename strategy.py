@@ -210,10 +210,7 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                # Vol-adaptive bias coefficient: lower in low vol (rally) to reduce signal-driven
-                # trend zero-crossings; higher in high vol where signal-to-noise favors voter influence.
-                _bias_coef = 0.003 + 0.004 * min(1.0, vol_ratio)
-                _trend_biased = self.smoothed_trend[symbol] + _bias_coef * np.tanh(_avg_signal)
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
                 # Vol-adaptive deadzone: low vol -> wider deadzone (more "near-zero" tolerance for entry),
                 # consistent vol-adaptive band pattern across architecture.
                 _dz = TREND_GATE_DEADZONE * (1.0 + 0.4 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4)))
