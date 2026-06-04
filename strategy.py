@@ -221,8 +221,10 @@ class Strategy:
                     if bars_held >= _effective_max:
                         target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign w/ deadzone, vol-scaled)
+                # Deadzone matches entry-side TREND_GATE_DEADZONE: flip requires trend_avg to clearly
+                # oppose position, not just barely cross zero. Removes noise-driven flips in sideways.
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and trend_avg < -TREND_GATE_DEADZONE) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and trend_avg > TREND_GATE_DEADZONE)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
