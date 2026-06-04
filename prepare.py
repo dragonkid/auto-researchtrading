@@ -37,7 +37,7 @@ SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Full data range for download
 DATA_START = "2020-10-01"
-DATA_END = "2026-04-10"
+DATA_END = "2026-05-18"
 
 # Date splits (UTC timestamps)
 TRAIN_START = "2023-06-01"
