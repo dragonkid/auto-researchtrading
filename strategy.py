@@ -207,10 +207,13 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and _avg_signal > 0.10 and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and _avg_signal < -0.10 and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC
+                # Continuous _avg_signal scaling: size_scale = tanh(|avg_signal| * 5) clipped to [0.5, 1.0].
+                # Soft alignment check — strong alignment = full size, weak = half-size, no hard boundary.
+                _avg_size_scale = max(0.5, min(1.0, np.tanh(abs(_avg_signal) * 5.0)))
+                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and _avg_signal > 0 and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                    target = size * ENTRY_INITIAL_FRAC * _avg_size_scale
+                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and _avg_signal < 0 and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                    target = -size * ENTRY_INITIAL_FRAC * _avg_size_scale
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
