@@ -173,8 +173,26 @@ class Strategy:
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            _bull_confs_raw = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            # Asymmetric per-voter smoothing: accept moves AWAY from 0.5 immediately
+            # (preserves entry speed when conviction grows), but EMA-smooth moves TOWARD 0.5
+            # (damps noise-induced retreats that cause flips). Architectural: ratchet-like
+            # voter dynamics — fast on conviction, slow on doubt.
+            _prev = self.voter_conf_ema.get(symbol)
+            if _prev is None or len(_prev) != len(_bull_confs_raw):
+                _bull_confs = list(_bull_confs_raw)
+            else:
+                _bull_confs = []
+                for i, c_raw in enumerate(_bull_confs_raw):
+                    c_prev = _prev[i]
+                    # distance from 0.5: prev_dist vs new_dist
+                    if abs(c_raw - 0.5) >= abs(c_prev - 0.5):
+                        _bull_confs.append(c_raw)  # conviction grew or held: take new value
+                    else:
+                        # conviction shrank: EMA smooth (slow retreat)
+                        _bull_confs.append(0.4 * c_raw + 0.6 * c_prev)
+            self.voter_conf_ema[symbol] = _bull_confs
+            _bear_confs = [max(0.1, min(0.9, 1.0 - c)) for c in _bull_confs]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Strong-consensus weighted sum: each voter contributes max(0, 2*(conf-0.5)).
