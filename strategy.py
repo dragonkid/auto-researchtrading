@@ -177,13 +177,10 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Cubic-ramp strong-sum: smooth abstain zone via (c-0.5)^3 * 8.
-            # At c=0.5: 0; c=0.6: 0.008; c=0.7: 0.064; c=0.8: 0.216; c=0.9: 0.512.
-            # Hard normalization: max contribution at c=0.9 is 0.512 — multiply by 1/0.512 ≈ 1.95
-            # so max single-voter contrib is ~1.0 (matches prior scale). Cubic damping near 0.5
-            # eliminates gradient-discontinuity-induced noise sensitivity at the abstain edge.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 3 * 15.625) for c in _bull_confs)
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 3 * 15.625) for c in _bear_confs)
+            # Quintic-ramp strong-sum: (c-0.5)^5 — even smoother near 0.5 than cubic.
+            # Max at c=0.9 is 0.4^5 = 0.01024; normalize by /0.01024 to get ~1.0 max.
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bull_confs)
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bear_confs)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
