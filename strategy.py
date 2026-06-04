@@ -106,7 +106,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        self.voter_confs = {}  # per-symbol EMA-smoothed bull confidences (list of 6)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -174,20 +173,8 @@ class Strategy:
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _raw_bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            # Per-voter EMA-smoothed confidence: low-pass filter at the voter level.
-            # alpha=0.6 (span~2.3 bars) — single-bar noise can't fully flip a voter; needs
-            # 2-3 bars of consistent signal. Bear conf = (1.0 - bull_smoothed) preserves symmetry
-            # and ensures sum semantics unchanged. Architectural: adds new state, changes
-            # how voter contributions are aggregated over time (orthogonal to existing weight/threshold gates).
-            _alpha = 0.6
-            _prev = self.voter_confs.get(symbol)
-            if _prev is None:
-                _bull_confs = list(_raw_bull_confs)
-            else:
-                _bull_confs = [_alpha * r + (1.0 - _alpha) * p for r, p in zip(_raw_bull_confs, _prev)]
-            self.voter_confs[symbol] = _bull_confs
-            _bear_confs = [1.0 - c for c in _bull_confs]
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
