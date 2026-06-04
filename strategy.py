@@ -84,8 +84,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
-CERTAINTY_MIN = 1.5  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
-CERTAINTY_MEANREV_MIN = 0.4  # lighter gate on meanrev path (weak-signal-by-design entry)
+CERTAINTY_MIN = 1.3  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -213,11 +212,7 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and _bear_certainty >= CERTAINTY_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Apply certainty gate aligned with desired meanrev side (oversold->bull, overbought->bear)
-                    if rsi < MEANREV_RSI_OVERSOLD and _bull_certainty >= CERTAINTY_MEANREV_MIN:
-                        target = size * ENTRY_INITIAL_FRAC
-                    elif rsi > MEANREV_RSI_OVERBOUGHT and _bear_certainty >= CERTAINTY_MEANREV_MIN:
-                        target = -size * ENTRY_INITIAL_FRAC
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
