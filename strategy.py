@@ -206,12 +206,11 @@ class Strategy:
                     target = 0.0
                 _sl_pressure = 0.0
 
-                # Slope-against pressure: directional slope opposing position.
-                # At slope=threshold, pressure=1.0 (matches original hard-trigger semantics).
-                # Continuous: linear ramp from 0.5*threshold (pressure 0) to 1.0*threshold (pressure 1).
+                # Slope-against pressure: narrow ramp around threshold (noise-stable boundary).
+                # Ramp: pressure 0 at 0.85*thresh, 1.0 at 1.15*thresh — keeps original timing centered.
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _sl_slope_pressure = max(0.0, min(1.2, (_slope_against - 0.5 * _slope_thresh) / (0.5 * _slope_thresh)))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - 0.85 * _slope_thresh) / (0.30 * _slope_thresh)))
 
                 # Peak-profit soft pressure: narrower ramp 0.9*GIVEBACK -> GIVEBACK (closer to hard timing)
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
@@ -225,9 +224,9 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 0.85 with narrower peak-profit ramp
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 0.85 and target != 0:
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
