@@ -200,11 +200,7 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Temporal entry sampling: new entries and flips only evaluated on
-            # even-indexed bars (per-symbol). Halves noise exposure of entry
-            # decisions while leaving exit logic active every bar (DD safety).
-            _entry_eligible = (self.bar_count + hash(symbol)) % 2 == 0
-            if current_pos == 0 and not in_cooldown and _entry_eligible:
+            if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
@@ -257,8 +253,8 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled) — gated by entry sampling
-                if not in_cooldown and _entry_eligible and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
