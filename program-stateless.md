@@ -85,7 +85,7 @@ For each experiment:
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
 
-   **Composite keep path:** `composite_score` improved by at least +0.30 vs baseline, `min_stability` ≥ baseline - 0.002 (micro-regression allowed, hard floor 0.75), `raw_composite` ≥ 7.19, and no DD cap violation.
+   **Composite keep path:** `composite_score` improved by at least +0.03 vs baseline, `min_stability` ≥ baseline (no regression), `raw_composite` ≥ 7.19, and no DD cap violation.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for subsequent experiments in this session is now this keep.
    If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
