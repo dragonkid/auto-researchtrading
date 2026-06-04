@@ -261,15 +261,7 @@ class Strategy:
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
-            # Position-target hysteresis: when same-side position exists, suppress
-            # micro-adjustments below 12% of current position. Prevents noise-induced
-            # sizing wobbles that diverge across noise replays. Direction changes
-            # (entry, flip, exit-to-zero) bypass this gate.
-            _delta = abs(target - current_pos)
-            _same_side = (target > 0 and current_pos > 0) or (target < 0 and current_pos < 0)
-            _is_direction_change = (target == 0) or (current_pos == 0) or not _same_side
-            _hysteresis_floor = 0.12 * abs(current_pos) if _same_side else 0.0
-            if _delta > 1.0 and (_is_direction_change or _delta > _hysteresis_floor):
+            if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
