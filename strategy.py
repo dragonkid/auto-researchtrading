@@ -140,11 +140,12 @@ class Strategy:
             # EMA-smooth dyn_threshold across bars: dampens common-mode noise driving all voter boundaries.
             # A close-price perturbation moves realized_vol -> dyn_threshold -> all 6 voter thresholds simultaneously.
             # Smoothing the threshold dampens this correlated noise without changing voter logic.
-            # Asymmetric smoothing: smooth threshold drops (preserve protective wide threshold),
-            # let increases pass through fast (track vol spikes immediately).
+            # Adaptive smoothing: heavier (alpha_new=0.3) in trends, lighter (alpha_new=0.7) in sideways/choppy
+            # rationale: sideways regime benefits from threshold reactivity; trending regimes benefit from stability.
             _prev_thresh = self.smoothed_dyn_threshold.get(symbol, dyn_threshold)
-            if dyn_threshold < _prev_thresh:
-                dyn_threshold = 0.3 * dyn_threshold + 0.7 * _prev_thresh
+            _trend_str = min(abs(ret_long) / 0.05, 1.0)
+            _alpha_new = 0.7 - 0.4 * _trend_str
+            dyn_threshold = _alpha_new * dyn_threshold + (1.0 - _alpha_new) * _prev_thresh
             self.smoothed_dyn_threshold[symbol] = dyn_threshold
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
