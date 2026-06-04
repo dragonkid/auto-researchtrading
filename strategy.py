@@ -202,12 +202,12 @@ class Strategy:
 
             if current_pos == 0 and not in_cooldown:
                 # Continuous trend-alignment: replaces hard `trend_avg > 0` gate with smooth
-                # tanh-based factor. Effective STRONG_WEIGHT_MIN scales 1.0x->1.5x based on
-                # alignment, removing noise boundary at trend_avg=0.
+                # tanh-based factor. Aligned trend gives slight bonus (0.85x req); against
+                # trend gives 1.5x req. Removes noise boundary at trend_avg=0.
                 _trend_align_bull = 0.5 * (1.0 + np.tanh(self.smoothed_trend[symbol] / TREND_GATE_DEADZONE))
                 _trend_align_bear = 1.0 - _trend_align_bull
-                _bull_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bull))
-                _bear_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bear))
+                _bull_req = STRONG_WEIGHT_MIN * (0.85 + 0.65 * (1.0 - _trend_align_bull))
+                _bear_req = STRONG_WEIGHT_MIN * (0.85 + 0.65 * (1.0 - _trend_align_bear))
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_req and bull_votes > bear_votes:
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_req and bear_votes > bull_votes:
