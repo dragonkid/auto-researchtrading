@@ -177,10 +177,10 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Strong-consensus weighted sum with abstain zone: voters with conf in [0.35, 0.65]
-            # contribute 0. Wider zone — more aggressive noise filtering at the source.
-            _bull_strong = sum(max(0.0, (c - 0.65) * (1.0 / 0.25)) for c in _bull_confs)
-            _bear_strong = sum(max(0.0, (c - 0.65) * (1.0 / 0.25)) for c in _bear_confs)
+            # Strong-consensus weighted sum with abstain zone: voters with conf in [0.45, 0.55]
+            # contribute 0. Narrower zone — only filter strictly-uncertain voters.
+            _bull_strong = sum(max(0.0, (c - 0.55) * (1.0 / 0.35)) for c in _bull_confs)
+            _bear_strong = sum(max(0.0, (c - 0.55) * (1.0 / 0.35)) for c in _bear_confs)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
