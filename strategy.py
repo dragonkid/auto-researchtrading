@@ -211,11 +211,11 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Continuous strong-sum ramp: floor at 1.2 (blocks weakest entries) with smooth
-                # ramp [1.2, 2.0] -> [0, 1] entry scale. Floor protects rally regime which suffered
-                # from weak-conviction entries enabled by the [1.0, 2.0] ramp in step 1.
-                _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.2) / 0.8))
-                _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.2) / 0.8))
+                # Continuous strong-sum ramp: replaces hard binary gate at STRONG_WEIGHT_MIN=1.5
+                # with smooth ramp [1.0, 2.0] -> [0, 1] entry scale. Removes the 1.5 boundary
+                # entirely; strong_sum=1.0 -> 0 size (no entry), strong_sum=2.0 -> full size.
+                _bull_scale = max(0.0, min(1.0, (_bull_strong - 1.0)))
+                _bear_scale = max(0.0, min(1.0, (_bear_strong - 1.0)))
                 if bull_votes >= MIN_VOTES and _bull_scale > 0 and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC * _bull_scale
                 elif bear_votes >= MIN_VOTES and _bear_scale > 0 and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
