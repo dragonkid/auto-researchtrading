@@ -211,9 +211,12 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Vol-adaptive deadzone: low vol -> wider deadzone (more "near-zero" tolerance for entry),
+                # consistent vol-adaptive band pattern across architecture.
+                _dz = TREND_GATE_DEADZONE * (1.0 + 0.4 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4)))
+                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (_trend_biased > 0 or (abs(_trend_biased) < _dz and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (_trend_biased < 0 or (abs(_trend_biased) < _dz and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
