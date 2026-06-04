@@ -201,9 +201,16 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                if bull_votes >= MIN_VOTES and _bull_strong >= STRONG_WEIGHT_MIN and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Continuous trend-alignment: replaces hard `trend_avg > 0` gate with smooth
+                # tanh-based factor. Effective STRONG_WEIGHT_MIN scales 1.0x->1.5x based on
+                # alignment, removing noise boundary at trend_avg=0.
+                _trend_align_bull = 0.5 * (1.0 + np.tanh(self.smoothed_trend[symbol] / TREND_GATE_DEADZONE))
+                _trend_align_bear = 1.0 - _trend_align_bull
+                _bull_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bull))
+                _bear_req = STRONG_WEIGHT_MIN * (1.0 + 0.5 * (1.0 - _trend_align_bear))
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_req and bull_votes > bear_votes:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_req and bear_votes > bull_votes:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
