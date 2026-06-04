@@ -248,9 +248,14 @@ class Strategy:
                 # robustness. Single _lr.slope (16-bar) is shared with entry voter — coupling
                 # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
                 # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
+                # Vol-adaptive window set for median slope: low-vol regimes get wider windows
+                # (more averaging), high-vol get narrower (more responsive to fast trends).
+                # Rally (low vol) gets 14/20/28; crash (high vol) gets 10/14/18.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _vw_blend = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.6))  # 0 in high vol, 1 in low vol
+                _w_set = tuple(int(round(_short + _vw_blend * (_long - _short))) for _short, _long in ((10, 14), (14, 20), (18, 28)))
                 _slopes = []
-                for _w in (16, 22, 28):
+                for _w in _w_set:
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.median(_slopes))
