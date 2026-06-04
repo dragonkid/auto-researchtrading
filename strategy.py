@@ -255,7 +255,7 @@ class Strategy:
                 # against position, peak-profit pressure amplifies (correlated bearish signals).
                 # When slope is calm, peak-profit relaxes. Couples two exit signals via
                 # multiplicative dependency rather than additive sum.
-                _pp_pressure = _pp_pressure * max(0.85, 0.5 + _sl_slope_pressure)
+                _pp_pressure = _pp_pressure * max(0.95, 0.5 + _sl_slope_pressure)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
