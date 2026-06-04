@@ -177,10 +177,15 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
+                # Margin-scaled entry: continuous response to vote margin reduces noise sensitivity at the threshold.
+                # Margin 0 (3 vs 3): 0.5x base frac. Margin 4 (6-2 or 5-1): 1.0x. Margin 6 (6-0): 1.0x (capped).
+                _vote_margin = bull_votes - bear_votes
+                _margin_scale = max(0.5, min(1.0, 0.5 + abs(_vote_margin) / 8.0))
+                _scaled_frac = ENTRY_INITIAL_FRAC * _margin_scale
                 if bull_votes >= MIN_VOTES and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * ENTRY_INITIAL_FRAC
+                    target = size * _scaled_frac
                 elif bear_votes >= MIN_VOTES and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * ENTRY_INITIAL_FRAC
+                    target = -size * _scaled_frac
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
