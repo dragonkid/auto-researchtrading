@@ -206,10 +206,12 @@ class Strategy:
                     target = 0.0
                 _sl_pressure = 0.0
 
-                # Slope-against pressure: directional slope opposing position
+                # Slope-against pressure: directional slope opposing position.
+                # At slope=threshold, pressure=1.0 (matches original hard-trigger semantics).
+                # Continuous: linear ramp from 0.5*threshold (pressure 0) to 1.0*threshold (pressure 1).
                 _slope_against = -_lr.slope if current_pos > 0 else _lr.slope
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _sl_slope_pressure = max(0.0, min(1.0, _slope_against / _slope_thresh - 0.5))
+                _sl_slope_pressure = max(0.0, min(1.2, (_slope_against - 0.5 * _slope_thresh) / (0.5 * _slope_thresh)))
 
                 # Peak-profit giveback pressure: smooth based on giveback ratio
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
