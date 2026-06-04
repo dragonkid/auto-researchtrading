@@ -84,7 +84,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
-CERTAINTY_MIN = 0.8  # required sum of conf*(2|c-0.5|)^2 (suppresses boundary-flipping voters)
+CERTAINTY_MIN = 1.5  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -164,10 +164,10 @@ class Strategy:
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
             _voter_signals_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * 0.0008),
-                (rsi - _rsi_thresh) / 4.0,
-                (_macd_diff - 0.0003) / 0.00012,
+                (ret_short - dyn_threshold) / max(dyn_threshold * 0.30, 1e-6),
+                (_ef - _es) / (mid * 0.0012),
+                (rsi - _rsi_thresh) / 6.0,
+                (_macd_diff - 0.0003) / 0.00018,
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
@@ -176,10 +176,10 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Certainty-weighted gate: voters near boundary (conf ~0.5) contribute almost zero.
-            # Quadratic certainty weighting (c * (2|c-0.5|)^2) more strongly suppresses boundary-flipping voters
-            # while letting confident ones dominate the agreement metric.
-            _bull_certainty = sum(c * (2.0 * abs(c - 0.5)) ** 2 for c in _bull_confs)
-            _bear_certainty = sum(c * (2.0 * abs(c - 0.5)) ** 2 for c in _bear_confs)
+            # Each voter weighted by its own |2c-1| in [0,1]: confident voters dominate the agreement metric,
+            # boundary-flipping voters get suppressed. Adds a structural noise-immunity gate to entries/flips.
+            _bull_certainty = sum(c * abs(2.0 * c - 1.0) for c in _bull_confs)
+            _bear_certainty = sum(c * abs(2.0 * c - 1.0) for c in _bear_confs)
             # Strong-consensus weighted sum: each voter contributes max(0, 2*(conf-0.5)).
             # Smooth replacement for binary count: voter at conf=0.65 -> 0.30, conf=0.85 -> 0.70.
             # Eliminates the hard noise boundary at conf=STRONG_CONF.
