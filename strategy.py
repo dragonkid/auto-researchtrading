@@ -188,9 +188,9 @@ class Strategy:
             target = current_pos
 
             # Adaptive CONF_MARGIN: scales smoothly with trend strength.
-            # Sideways (low rsi_trend_str): lower margin (0.6) — voters naturally have mixed signs.
+            # Sideways (low rsi_trend_str): margin 0.3 — voters naturally have mixed signs.
             # Trending: higher margin (1.5) — strict alignment required.
-            _conf_margin = 0.6 + 0.9 * rsi_trend_str
+            _conf_margin = 0.3 + 1.2 * rsi_trend_str
             if current_pos == 0 and not in_cooldown:
                 if bull_votes >= MIN_VOTES and confidence >= _conf_margin and (self.smoothed_trend[symbol] > 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
