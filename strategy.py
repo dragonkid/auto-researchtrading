@@ -239,12 +239,10 @@ class Strategy:
                 self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
-                # low vol (rally) -> very narrow band (~near-binary, preserves original stop behavior);
-                # high vol (crash) -> wide band (absorbs larger noise excursions).
-                # Band half-width: 0.02 (low vol) -> 0.22 (high vol) of |STOP|.
+                # band scales 0.06 (low vol) -> 0.26 (high vol) of |STOP|.
                 _stop_abs = abs(STOP_LOSS_PCT)
                 _loss = -pos_pnl
-                _band_half = (0.02 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: vol-adaptive ramp width (consistent with SL pressure).
