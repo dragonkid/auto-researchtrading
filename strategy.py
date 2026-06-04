@@ -177,22 +177,10 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Slope-aligned dynamic voter weighting (architectural):
-            # base weights [0.7, 1.25, 1.10, 1.00, 0.85, 1.10] (kept from prior keep)
-            # adjusted by per-voter alignment with the current 16-bar slope direction.
-            # The slope direction is _lr.slope sign; for each voter, if (sign of voter signal)
-            # matches (sign of slope) -> weight *1.10 (aligned, less likely to be noise);
-            # else weight *0.85 (opposing slope, treat as potential noise).
-            # |slope_strength| in [0,1] controls blend: in flat-slope (sideways), weights stay near base.
-            _base_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _slope_dir = 1.0 if _lr.slope > 0 else -1.0
-            _slope_strength = min(abs(_lr.slope) / 0.0006, 1.0)
-            _voter_weights = []
-            for _w_base, _vs in zip(_base_weights, _voter_signals_bull):
-                _v_dir = 1.0 if _vs > 0 else -1.0
-                _aligned = (_v_dir == _slope_dir)
-                _adjust = 1.0 + 0.15 * _slope_strength * (1.0 if _aligned else -1.0)
-                _voter_weights.append(_w_base * _adjust)
+            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
