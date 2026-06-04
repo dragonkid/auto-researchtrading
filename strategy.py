@@ -266,7 +266,7 @@ class Strategy:
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 # Low-vol no-trend (sideways) -> tighter giveback (lower threshold) to preserve PP discipline
                 _sideways_factor = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5)) * (1.0 - min(1.0, abs(ret_long) / 0.06))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * (1.0 - 0.15 * _sideways_factor)
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * (1.0 - 0.08 * _sideways_factor)
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
