@@ -213,11 +213,11 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _sl_slope_pressure = max(0.0, min(1.2, (_slope_against - 0.5 * _slope_thresh) / (0.5 * _slope_thresh)))
 
-                # Peak-profit hard gate: entry-anchored = already noise-immune
+                # Peak-profit soft pressure: smooth giveback ratio contribution
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                if self.peak_pnl[symbol] > _pp_min and self.peak_pnl[symbol] - pos_pnl > self.peak_pnl[symbol] * PEAK_PROFIT_GIVEBACK:
-                    target = 0.0
-                _pp_pressure = 0.0
+                _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
+                _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - PEAK_PROFIT_GIVEBACK * 0.7) / (PEAK_PROFIT_GIVEBACK * 0.3))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 _slope_agrees = (_lr.slope > 0 and current_pos > 0) or (_lr.slope < 0 and current_pos < 0)
@@ -225,9 +225,9 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 0.85 balances DD safety vs noise-stability
+                # Total exit pressure: threshold 0.95 lets near-trigger sources exit + small combinations
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 0.85 and target != 0:
+                if _exit_pressure >= 0.95 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
