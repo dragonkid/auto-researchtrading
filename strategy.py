@@ -84,7 +84,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
-CERTAINTY_MIN = 1.7  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
+CERTAINTY_MIN = 1.5  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -164,12 +164,12 @@ class Strategy:
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
             _voter_signals_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * 0.30, 1e-6),
-                (_ef - _es) / (mid * 0.0012),
-                (rsi - _rsi_thresh) / 6.0,
-                (_macd_diff - 0.0003) / 0.00018,
-                (_lr.slope - 0.00015) / 0.00015,
-                (_ea_slope - 0.0005) / 0.00038,
+                (ret_short - dyn_threshold) / max(dyn_threshold * 0.25, 1e-6),
+                (_ef - _es) / (mid * 0.0010),
+                (rsi - _rsi_thresh) / 5.0,
+                (_macd_diff - 0.0003) / 0.00015,
+                (_lr.slope - 0.00015) / 0.000125,
+                (_ea_slope - 0.0005) / 0.00031,
             ]
             _bull_confs = [0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
