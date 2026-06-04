@@ -85,7 +85,6 @@ STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
 FLIP_MIN_VOTES = 2.5
 CERTAINTY_MIN = 1.5  # required sum of conf*|2c-1| (suppresses boundary-flipping voters)
-CERTAINTY_MEANREV_MIN = 0.4  # lighter gate on meanrev path (weak-signal-by-design entry)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -200,7 +199,11 @@ class Strategy:
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+            # Certainty size multiplier: scales 0.85x at gate threshold (1.5) to 1.0x at full certainty (3.0+).
+            # Smoothly rewards high-certainty entries; entries that just pass the gate get reduced size.
+            _winning_certainty = max(_bull_certainty, _bear_certainty)
+            certainty_size = 0.85 + 0.15 * max(0.0, min(1.0, (_winning_certainty - CERTAINTY_MIN) / 1.5))
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult * certainty_size
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
@@ -213,11 +216,7 @@ class Strategy:
                 elif bear_votes >= MIN_VOTES and _bear_strong >= STRONG_WEIGHT_MIN and _bear_certainty >= CERTAINTY_MIN and (self.smoothed_trend[symbol] < 0 or (abs(self.smoothed_trend[symbol]) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Apply certainty gate aligned with desired meanrev side (oversold->bull, overbought->bear)
-                    if rsi < MEANREV_RSI_OVERSOLD and _bull_certainty >= CERTAINTY_MEANREV_MIN:
-                        target = size * ENTRY_INITIAL_FRAC
-                    elif rsi > MEANREV_RSI_OVERBOUGHT and _bear_certainty >= CERTAINTY_MEANREV_MIN:
-                        target = -size * ENTRY_INITIAL_FRAC
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
