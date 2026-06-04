@@ -250,7 +250,7 @@ class Strategy:
                 # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slopes = []
-                for _w in (12, 16, 22):
+                for _w in (16, 22, 28):
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.median(_slopes))
