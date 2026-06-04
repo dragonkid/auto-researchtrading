@@ -106,6 +106,7 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        self.smoothed_dyn_threshold = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -136,6 +137,12 @@ class Strategy:
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+            # EMA-smooth dyn_threshold across bars: dampens common-mode noise driving all voter boundaries.
+            # A close-price perturbation moves realized_vol -> dyn_threshold -> all 6 voter thresholds simultaneously.
+            # Smoothing the threshold dampens this correlated noise without changing voter logic.
+            _prev_thresh = self.smoothed_dyn_threshold.get(symbol, dyn_threshold)
+            dyn_threshold = 0.5 * dyn_threshold + 0.5 * _prev_thresh
+            self.smoothed_dyn_threshold[symbol] = dyn_threshold
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
