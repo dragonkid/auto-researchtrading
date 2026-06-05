@@ -300,15 +300,8 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural: 5th exit pressure source — vol-spike pressure.
-                # Direction-agnostic stress signal: when 6-bar realized vol exceeds
-                # 24-bar baseline by >40%, apply continuous pressure over [1.4, 2.5].
-                # Adds an orthogonal axis to the existing 4-source aggregation,
-                # increasing noise tolerance via cross-axis averaging.
-                _vol_short = max(np.std(np.diff(np.log(closes[-7:]))), 1e-6)
-                _vol_spike_ratio = _vol_short / realized_vol
-                _vol_spike_pressure = max(0.0, min(1.0, (_vol_spike_ratio - 1.4) / 1.1))
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure + _vol_spike_pressure
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
