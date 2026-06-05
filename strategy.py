@@ -112,6 +112,12 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
+        # Prior-bar strong-sum (per side) for flip-path 2-bar persistence.
+        # Flip path is structurally most vulnerable: a single noisy bar can
+        # double exposure into the wrong direction. Requires opposite-side
+        # strong-sum to have been at least near-threshold on the prior bar.
+        self._prev_bull_strong = {}
+        self._prev_bear_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -319,7 +325,13 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
                 # Directional cooldown blocks flip into prior-failed direction.
-                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Persistence: opposing-side strong-sum must also have been at least
+                # 80%% of threshold on the prior bar — denoises single-bar flip noise
+                # without delaying genuine sustained reversals.
+                _flip_persist_thresh = _strong_min * 0.80
+                _prev_bear_ok = self._prev_bear_strong.get(symbol, 0.0) >= _flip_persist_thresh
+                _prev_bull_ok = self._prev_bull_strong.get(symbol, 0.0) >= _flip_persist_thresh
+                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0 and _prev_bear_ok) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0 and _prev_bull_ok)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
@@ -335,5 +347,9 @@ class Strategy:
                     self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+
+            # Update prior-bar strong-sum tracking (every bar, used by flip persistence next bar).
+            self._prev_bull_strong[symbol] = _bull_strong
+            self._prev_bear_strong[symbol] = _bear_strong
 
         return signals
