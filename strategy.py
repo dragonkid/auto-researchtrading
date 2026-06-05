@@ -191,7 +191,7 @@ class Strategy:
             # Coherence in [0, 1]: 1 = all voters aligned same side, 0 = max disagreement.
             _conf_std = float(np.std(_bull_confs))
             _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
-            _coh_factor = 0.85 + 0.15 * _coherence  # range [0.85, 1.00] — even gentler damping (recover crash)
+            _coh_factor = 0.90 + 0.10 * _coherence  # range [0.90, 1.00] — minimal damping
             _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
