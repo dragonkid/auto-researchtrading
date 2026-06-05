@@ -184,30 +184,11 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            # Voter disagreement penalty inside strong-sum aggregation:
-            # When voters disagree (high std of conf around 0.5), each voter's strong-contribution
-            # is scaled down by a coherence factor. Architectural change: aggregation no longer
-            # sums independent contributions — it scales by collective coherence.
-            # Coherence in [0, 1]: 1 = all voters aligned same side, 0 = max disagreement.
-            _conf_std = float(np.std(_bull_confs))
-            _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
-            _coh_factor = 0.90 + 0.10 * _coherence  # range [0.90, 1.00] — minimal damping
-            # Architectural: vol-conditioned aggregation exponent. Quintic (p=5) is sharp at
-            # voter boundaries — useful for high-vol regimes that need decisive aggregation.
-            # In low-vol regimes (rally/sideways), softer aggregation (p=4) reduces boundary
-            # amplification of noise-induced conf jitter. Continuous: p = 4.0 + min(1, vol_ratio).
-            # Normalization keeps max contribution = 1.0 at conf=0.9 (margin 0.4).
-            _agg_p = 4.0 + min(1.0, vol_ratio)
-            _agg_norm = 1.0 / (0.4 ** _agg_p)
-            _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** _agg_p * _agg_norm) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** _agg_p * _agg_norm) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            # Architectural addition: coherence-conditioned threshold relaxation. When voter
-            # coherence is very high (>0.85), strong consensus needs less threshold buffer —
-            # relax up to -0.10. Continuous: relax_factor = max(0, coh-0.85)/0.15.
-            _coh_relax = max(0.0, (_coherence - 0.85)) / 0.15
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) - 0.10 * min(1.0, _coh_relax)
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -238,17 +219,9 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Architectural: directional alignment pressure on _strong_min. When trend_biased
-                # weakly opposes the entry side (small |t| but wrong sign), require higher strong-sum
-                # to counterbalance. Continuous: scale_factor ranges 0..0.30 over |trend_biased|<deadzone.
-                # Removes the sign-flip cliff at trend_biased=0 by making _strong_min itself depend on
-                # the magnitude of disagreement.
-                _tb_abs_norm = min(1.0, abs(_trend_biased) / TREND_GATE_DEADZONE)
-                _bull_strong_min = _strong_min + 0.30 * (1.0 - _tb_abs_norm) * (1.0 if _trend_biased < 0 else 0.0)
-                _bear_strong_min = _strong_min + 0.30 * (1.0 - _tb_abs_norm) * (1.0 if _trend_biased > 0 else 0.0)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
