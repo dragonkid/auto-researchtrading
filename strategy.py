@@ -227,11 +227,11 @@ class Strategy:
             _pBs = self._prev_bear_strong.get(symbol, _bear_strong)
             self._prev_bull_strong[symbol] = _bull_strong
             self._prev_bear_strong[symbol] = _bear_strong
-            # Vol-conditioned persistence floor: in low-vol (sideways) widen the floor
-            # so more entries pass; in high-vol (crash) tighten it for stricter noise rejection.
-            _persist_floor = _strong_min - (0.30 + 0.20 * (1.0 - min(1.0, vol_ratio)))
-            _bull_persist_ok = min(_bull_strong, _pbs) >= _persist_floor
-            _bear_persist_ok = min(_bear_strong, _pBs) >= _persist_floor
+            _persist_floor = _strong_min - 0.30
+            # Bypass persistence when vote consensus is strong (>= MIN_VOTES + 0.5).
+            # Strong-consensus entries are not the "single-bar noise spike" problem the gate addresses.
+            _bull_persist_ok = (bull_votes >= MIN_VOTES + 0.5) or (min(_bull_strong, _pbs) >= _persist_floor)
+            _bear_persist_ok = (bear_votes >= MIN_VOTES + 0.5) or (min(_bear_strong, _pBs) >= _persist_floor)
 
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
