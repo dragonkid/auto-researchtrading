@@ -79,7 +79,7 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.5
+MIN_VOTES = 2.6  # branch step 9: tighten vote count gate to compensate for relaxed _strong_min in rally
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -216,7 +216,7 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.008 * np.tanh(_avg_signal)
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
