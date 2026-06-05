@@ -148,7 +148,15 @@ class Strategy:
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
-            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            # Architectural: multi-window median ret_short denoises the noisiest voter input
+            # at the source. Compute ret over 3 windows (adaptive_med-2, adaptive_med, adaptive_med+2)
+            # and take the median. Decouples ret_short from a single window's noise sensitivity.
+            _ret_short_w = []
+            for _wo in (-2, 0, 2):
+                _w = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, adaptive_med + _wo))
+                _ref = np.median(smoothed_closes[-_w - 2: -_w + 3])
+                _ret_short_w.append((smoothed_closes[-1] - _ref) / _ref)
+            ret_short = float(np.median(_ret_short_w))
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
@@ -183,7 +191,7 @@ class Strategy:
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            _voter_weights = (0.90, 1.20, 1.05, 1.00, 0.85, 1.00)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
