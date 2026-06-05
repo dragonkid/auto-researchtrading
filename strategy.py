@@ -314,7 +314,12 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Architectural: weak-alignment pressure on flip _strong_min. Even when trend_avg
+                # has correct sign for flip, its magnitude can be small/noisy near zero — require
+                # higher strong-sum to admit such weak-evidence flips. Continuous in |trend_avg|.
+                _ta_abs_norm = min(1.0, abs(trend_avg) / TREND_GATE_DEADZONE)
+                _flip_strong_min = _strong_min + 0.30 * (1.0 - _ta_abs_norm)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
