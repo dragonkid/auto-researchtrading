@@ -215,18 +215,13 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Architectural: smooth trend-alignment factor replaces hard sign + deadzone gate.
-                # Old: 2 hard boundaries (zero-crossing of _trend_biased, ±TREND_GATE_DEADZONE edges).
-                # New: sigmoid of _trend_biased gives _align_bull in [0,1]; effective entry strength
-                # = _bull_strong * _align_bull. One smooth boundary, no hard switch. Vote majority
-                # is the directional tie-breaker.
+                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
+                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
+                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                _align_bull = 1.0 / (1.0 + np.exp(-_trend_biased / TREND_GATE_DEADZONE))
-                _eff_bull = _bull_strong * _align_bull
-                _eff_bear = _bear_strong * (1.0 - _align_bull)
-                if bull_votes >= MIN_VOTES and _eff_bull >= _strong_min and bull_votes > bear_votes:
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _eff_bear >= _strong_min and bear_votes > bull_votes:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
