@@ -109,6 +109,8 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Vol-curvature state: prior vol_ratio per symbol for second-derivative gate.
+        self._prev_vol_ratio = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -188,7 +190,15 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: add vol-curvature term. Rising vol (regime transition) is when
+            # entries are most fragile — tighten. Falling vol (calming) is when entries are
+            # safest — slight relax. Continuous, smooth, new temporal data dependency.
+            _prev_vr = self._prev_vol_ratio.get(symbol, vol_ratio)
+            self._prev_vol_ratio[symbol] = vol_ratio
+            _vol_curv = vol_ratio - _prev_vr
+            # Smooth tanh maps curvature to [-0.10, +0.15]: rising vol → tighter, falling → relax
+            _curv_term = 0.025 + 0.125 * np.tanh(_vol_curv * 4.0)
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + _curv_term
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
