@@ -109,8 +109,6 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Last-exit P&L tracking for post-loss cooldown extension.
-        self._last_exit_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -201,12 +199,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Architectural: post-loss cooldown extension. Smooth scaling on last-exit P&L:
-            # losses extend cooldown linearly up to 2.5x; gains keep it at base.
-            # State-feedback risk control without regime detection — purely position-outcome based.
-            _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            _loss_factor = 1.0 + 1.5 * max(0.0, min(1.0, (-_last_pnl) / 0.02))
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength * _loss_factor
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -323,22 +316,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Record last-exit P&L for post-loss cooldown extension.
-                    if symbol in self.entry_prices:
-                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            _exit_pnl = -_exit_pnl
-                        self._last_exit_pnl[symbol] = _exit_pnl
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    # Record last-exit P&L on flip (close + reopen counts as exit + entry).
-                    if symbol in self.entry_prices and current_pos != 0:
-                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            _exit_pnl = -_exit_pnl
-                        self._last_exit_pnl[symbol] = _exit_pnl
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
         return signals
