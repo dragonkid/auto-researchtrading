@@ -312,18 +312,8 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural: slope-quarantined exit aggregation. Slope is the noisiest
-                # exit source (recomputed bar-by-bar from price). Sum-additive aggregation
-                # lets partial slope (e.g. 0.5) combine with partial non-slope sources to
-                # cross 1.0 — that path is dominated by slope-noise. Decoupling rule:
-                #  - If non-slope sources collectively confirm (sum >= 0.5), include slope additively.
-                #  - Otherwise, slope must fire alone at >= 1.0 (its own band gates absorb noise).
-                # Filters single-bar slope-flip exits; preserves multi-source confirmations.
-                _non_slope = _sl_pressure + _pp_pressure + _time_pressure
-                if _non_slope >= 0.5:
-                    _exit_pressure = _non_slope + _sl_slope_pressure
-                else:
-                    _exit_pressure = max(_non_slope, _sl_slope_pressure)
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
