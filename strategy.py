@@ -247,13 +247,15 @@ class Strategy:
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _prev2_pnl = self._prev2_pnl.get(symbol, pos_pnl)
-                self._prev2_pnl[symbol] = _prev_pnl
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed peak: requires pos_pnl > peak AND 2-bar rising sequence.
-                _two_bar_rising = pos_pnl >= _prev_pnl and _prev_pnl >= _prev2_pnl
-                if pos_pnl > _curr_peak and _two_bar_rising:
+                # Confirmed-peak update gated by vol_ratio: in low-vol (sideways) peak
+                # tracks instantly (any rise admitted); in higher-vol (bull/crash/rally)
+                # peak requires rising-bar confirmation. Continuous via vol weight.
+                _gate_strength = max(0.0, min(1.0, (vol_ratio - 0.7) / 0.4))
+                _rises = pos_pnl >= _prev_pnl
+                _admit = (pos_pnl > _curr_peak) and (_rises or _gate_strength < 0.5)
+                if _admit:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
