@@ -198,9 +198,7 @@ class Strategy:
             # Rally protection: low vol_ratio + moderate trend tightens to filter weak entries
             # that destabilize under vol-normalized voter calibration.
             _rally_sig = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.5)) * max(0.0, min(1.0, rsi_trend_str / 0.5))
-            # Bull signature: high vol_ratio + high trend strength. Slight relaxation to recover entries.
-            _bull_sig = max(0.0, min(1.0, (vol_ratio - 1.1) / 0.3)) * max(0.0, min(1.0, rsi_trend_str / 0.5))
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * _rally_sig - 0.08 * _bull_sig
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * _rally_sig
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -234,8 +232,8 @@ class Strategy:
                 # Hysteresis: side that was last positioned gets -0.10 strong_min (re-entry easier).
                 # Reduces near-boundary noise flicker for re-entries on the same side.
                 _last_side = self.prev_voter_signals.get(symbol + "_lastside", 0)
-                _bull_thr = _strong_min - (0.10 if _last_side > 0 else 0.0)
-                _bear_thr = _strong_min - (0.10 if _last_side < 0 else 0.0)
+                _bull_thr = _strong_min - (0.13 if _last_side > 0 else 0.0)
+                _bear_thr = _strong_min - (0.13 if _last_side < 0 else 0.0)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_thr and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_thr and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
