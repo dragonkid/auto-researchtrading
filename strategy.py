@@ -202,13 +202,19 @@ class Strategy:
             # Hysteresis: if same side was above threshold last bar, lower its threshold
             # by 0.10 (easier to remain admitted). Opposite side or no admission last bar
             # uses base threshold. Asymmetric boundary reduces near-boundary entry flicker.
-            _bull_thresh = _strong_min - (0.15 if self._last_above.get(symbol) == "bull" else 0.0)
-            _bear_thresh = _strong_min - (0.15 if self._last_above.get(symbol) == "bear" else 0.0)
-            # Update hysteresis state for next bar (track which side was above this bar)
+            _bull_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bull" else 0.0)
+            _bear_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bear" else 0.0)
+            # Update hysteresis state for next bar with persistence release: state requires
+            # admission OR margin-just-below (within 0.30) to persist — true non-events clear
+            # state so next admission is clean.
+            _persist_band = 0.30
             if _bull_strong >= _bull_thresh and bull_votes > bear_votes:
                 self._last_above[symbol] = "bull"
             elif _bear_strong >= _bear_thresh and bear_votes > bull_votes:
                 self._last_above[symbol] = "bear"
+            elif (self._last_above.get(symbol) == "bull" and _bull_strong >= _strong_min - _persist_band) or \
+                 (self._last_above.get(symbol) == "bear" and _bear_strong >= _strong_min - _persist_band):
+                pass  # Stay in current state (margin-near-threshold persistence)
             else:
                 self._last_above[symbol] = None
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
