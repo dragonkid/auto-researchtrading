@@ -112,8 +112,6 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
-        # Prior bar trend_biased for 2-bar persistence gate (denoise zero-crossing flips).
-        self._prev_trend_biased = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -233,17 +231,9 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # 2-bar trend persistence gate: out-of-deadzone sign must persist for 2 bars
-                # before the strong sign-based entry path is allowed. If current bar is in
-                # deadzone, fall through to the original deadzone-vote-dominance fallback.
-                # Targets noise-flips at the trend zero-crossing (rally stab limiter).
-                _prev_tb = self._prev_trend_biased.get(symbol, _trend_biased)
-                _bull_sign_ok = (_trend_biased > 0 and _prev_tb > 0)
-                _bear_sign_ok = (_trend_biased < 0 and _prev_tb < 0)
-                self._prev_trend_biased[symbol] = _trend_biased
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_bull_sign_ok or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_bear_sign_ok or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
