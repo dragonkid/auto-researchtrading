@@ -180,12 +180,34 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
+
+            # Architectural: SLOW-SCALE parallel voter signals (longer windows, denoised inputs).
+            # Three slow voters: 30-bar slope, 24-bar EMA-cross, 24-bar median-relative ret.
+            # These are inherently noise-immune (longer windows = lower flip rate). Combined
+            # with fast voters via weighted blend at strong-sum stage.
+            _slow_lr = linregress(np.arange(30), np.log(smoothed_closes[-30:]))
+            _ef_slow, _es_slow = ema(closes[-(EMA_SLOW + 24):], 8)[-1], ema(closes[-(EMA_SLOW + 24):], 24)[-1]
+            _med_ref_slow = np.median(smoothed_closes[-26:-21])
+            _ret_slow = (smoothed_closes[-1] - _med_ref_slow) / _med_ref_slow
+            _slow_signals_bull = [
+                (_slow_lr.slope - 0.00010) / 0.00008,
+                (_ef_slow - _es_slow) / (mid * 0.0010),
+                (_ret_slow - dyn_threshold * 0.5) / max(dyn_threshold * 0.20, 1e-6),
+            ]
+            _slow_bull = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _slow_signals_bull]
+            _slow_bear = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _slow_signals_bull]
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_fast = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_fast = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Slow-scale strong-sum (3 voters, weight 2.0 each so total=6.0 matches fast scale).
+            _bull_slow = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * 2.0 for c in _slow_bull)
+            _bear_slow = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * 2.0 for c in _slow_bear)
+            # Two-scale blend: 65% fast (responsive), 35% slow (denoised). Architectural fusion.
+            _bull_strong = 0.65 * _bull_fast + 0.35 * _bull_slow
+            _bear_strong = 0.65 * _bear_fast + 0.35 * _bear_slow
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
