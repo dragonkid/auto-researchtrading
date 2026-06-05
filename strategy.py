@@ -249,13 +249,10 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update gated by vol_ratio: in low-vol (sideways) peak
-                # tracks instantly (any rise admitted); in higher-vol (bull/crash/rally)
-                # peak requires rising-bar confirmation. Continuous via vol weight.
-                _gate_strength = max(0.0, min(1.0, (vol_ratio - 0.7) / 0.4))
-                _rises = pos_pnl >= _prev_pnl
-                _admit = (pos_pnl > _curr_peak) and (_rises or _gate_strength < 0.5)
-                if _admit:
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar). Single-bar noise spikes don't
+                # anchor the peak; sustained gain admitted within 1 bar.
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
@@ -293,7 +290,7 @@ class Strategy:
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
-                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                _pp_band = 0.08 + 0.18 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
