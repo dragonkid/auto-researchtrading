@@ -187,10 +187,9 @@ class Strategy:
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            # With vol-normalized voters, weights need rebalancing. Slope voters now have
-            # vol-balanced magnitudes, deserving slightly more weight relative to bounded
-            # voters (RSI). Ret_short retains low weight (noisiest position-shifter).
-            _voter_weights = (0.75, 1.15, 1.00, 1.05, 1.00, 1.05)
+            # With vol-normalized voters, weights need rebalancing. Try original weights
+            # closer to baseline since vol-norm changed scale not relative reliability.
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
@@ -232,8 +231,8 @@ class Strategy:
                 # Hysteresis: side that was last positioned gets -0.10 strong_min (re-entry easier).
                 # Reduces near-boundary noise flicker for re-entries on the same side.
                 _last_side = self.prev_voter_signals.get(symbol + "_lastside", 0)
-                _bull_thr = _strong_min - (0.08 if _last_side > 0 else 0.0)
-                _bear_thr = _strong_min - (0.08 if _last_side < 0 else 0.0)
+                _bull_thr = _strong_min - (0.10 if _last_side > 0 else 0.0)
+                _bear_thr = _strong_min - (0.10 if _last_side < 0 else 0.0)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_thr and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_thr and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
