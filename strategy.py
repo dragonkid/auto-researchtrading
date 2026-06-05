@@ -302,8 +302,15 @@ class Strategy:
 
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
-                    target = 0.0
+                # Architectural: smooth fractional exit. Replaces binary "exit at >= 1.0" with
+                # a linear shrinkage band [0.7, 1.0] -> [1.0x, 0.0x] of position. Pressure < 0.7
+                # holds full position; pressure >= 1.0 fully out; in-between linearly scales.
+                # Removes the noise-sensitive binary boundary at exactly 1.0 — instead spreads
+                # the decision over a 0.30-wide pressure band so noise excursions cause partial
+                # adjustments not full liquidations.
+                if _exit_pressure >= 0.7 and target != 0:
+                    _exit_frac = max(0.0, min(1.0, (_exit_pressure - 0.7) / 0.3))
+                    target = target * (1.0 - _exit_frac)
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
