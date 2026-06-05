@@ -215,14 +215,13 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Architectural simplification: remove _avg_signal bias from trend gate.
-                # The bias term (0.005 * tanh(_avg_signal)) injects a 6-voter-derived signal into
-                # the trend gate, doubling the noise channel — same voters drive votes/strong-sum
-                # AND the trend gate. Single source of truth: trend_avg from price-based MA.
-                _trend_gate = self.smoothed_trend[symbol]
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_gate > 0 or (abs(_trend_gate) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
+                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
+                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_gate < 0 or (abs(_trend_gate) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
