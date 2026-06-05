@@ -311,7 +311,11 @@ class Strategy:
                 # whipsaw position. Entry is one-shot; flip costs 2x. Asymmetric admission
                 # adds dedicated noise rejection on the flip channel only — preserves entry
                 # responsiveness in trending regimes (bull/crash).
-                _flip_strong_min = _strong_min + 0.30
+                # Vol-adaptive flip offset: low vol -> deeper noise rejection (+0.30 max);
+                # high vol -> shallower (+0.10 min) to allow legitimate crash flips.
+                # Smooth scaling on vol_ratio centered at 1.0.
+                _flip_offset = 0.30 - 0.20 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
+                _flip_strong_min = _strong_min + _flip_offset
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
