@@ -189,8 +189,12 @@ class Strategy:
             # is scaled down by a coherence factor. Architectural change: aggregation no longer
             # sums independent contributions — it scales by collective coherence.
             # Coherence in [0, 1]: 1 = all voters aligned same side, 0 = max disagreement.
-            _conf_std = float(np.std(_bull_confs))
-            _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
+            # Directional coherence: |mean(bull_confs) - 0.5| measures collective lean.
+            # If voters collectively agree on a side (mean far from 0.5), coherence is high
+            # regardless of individual voter spread. Crash regimes have strong directional
+            # consensus that prior std-based coherence damped incorrectly.
+            _bull_mean = sum(_bull_confs) / 6.0
+            _coherence = max(0.0, min(1.0, abs(_bull_mean - 0.5) / 0.15))
             _coh_factor = 0.80 + 0.20 * _coherence  # range [0.80, 1.00] — gentle damping
             _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
