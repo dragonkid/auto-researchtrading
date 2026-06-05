@@ -317,9 +317,14 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled).
+                # Flip mechanism (votes + DUAL-source sign confirmation, vol-scaled).
+                # Architectural: require BOTH trend_avg AND _avg_signal point opposite
+                # current position before flip. Two orthogonal signal sources (price-derived
+                # return + voter-signal mean) must agree on reversal. Common-mode noise
+                # rarely flips both simultaneously; rally pullback noise flips trend_avg
+                # alone but rarely the voter-mean.
                 # Directional cooldown blocks flip into prior-failed direction.
-                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0 and _avg_signal < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0 and _avg_signal > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
