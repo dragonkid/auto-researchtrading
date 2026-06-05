@@ -109,6 +109,9 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Last-exit side per symbol (+1 long, -1 short, 0 never traded). Used for entry-direction
+        # hysteresis: entries OPPOSITE to last exit side require higher strong-sum threshold.
+        self._last_exit_side = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -219,9 +222,15 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Entry-direction hysteresis: same-side re-entry uses base _strong_min;
+                # opposite-side fresh entry requires deeper threshold (+0.10) — most chop
+                # noise produces side-flipping near boundaries.
+                _last_side = self._last_exit_side.get(symbol, 0)
+                _bull_entry_min = _strong_min + (0.10 if _last_side < 0 else 0.0)
+                _bear_entry_min = _strong_min + (0.10 if _last_side > 0 else 0.0)
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_entry_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_entry_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -311,12 +320,8 @@ class Strategy:
                 # whipsaw position. Entry is one-shot; flip costs 2x. Asymmetric admission
                 # adds dedicated noise rejection on the flip channel only — preserves entry
                 # responsiveness in trending regimes (bull/crash).
-                # Step 1 base (flat +0.20) was best so far. Add rsi_trend_str-scaled
-                # flip-vote requirement: flip needs FLIP_MIN_VOTES + 0.2*(1-rsi_trend_str)
-                # when chop. Two-channel noise rejection: strong-sum and vote count both
-                # tighten in chop. Different from prior MIN_VOTES tweaks (which were on entry).
                 _flip_strong_min = _strong_min + 0.20
-                _flip_min_votes = FLIP_MIN_VOTES + 0.2 * (1.0 - rsi_trend_str)
+                _flip_min_votes = FLIP_MIN_VOTES
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_votes and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_votes and _bull_strong >= _flip_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
@@ -327,6 +332,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    self._last_exit_side[symbol] = 1 if current_pos > 0 else -1
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
