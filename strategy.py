@@ -109,6 +109,9 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # EMA state for aggregate strong-sum gate smoothing.
+        self._bull_strong_ema = {}
+        self._bear_strong_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -184,8 +187,18 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: EMA-smooth the AGGREGATE strong-sum (not voter inputs) for entry-gate
+            # decisions only. Smoothing at the aggregate layer denoises the decision boundary
+            # without delaying voter signals or affecting exit logic. Uses bull/bear-specific state.
+            # alpha=0.6 (effective span ~2.3 bars); responsive but suppresses single-bar noise spikes
+            # that flip strong-sum across the threshold.
+            _ss_alpha = 0.6
+            _bull_strong = _ss_alpha * _bull_strong_raw + (1 - _ss_alpha) * self._bull_strong_ema.get(symbol, _bull_strong_raw)
+            _bear_strong = _ss_alpha * _bear_strong_raw + (1 - _ss_alpha) * self._bear_strong_ema.get(symbol, _bear_strong_raw)
+            self._bull_strong_ema[symbol] = _bull_strong
+            self._bear_strong_ema[symbol] = _bear_strong
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
