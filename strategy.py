@@ -82,7 +82,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.4
+MIN_VOTES = 2.5
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -198,7 +198,9 @@ class Strategy:
             # Rally protection: low vol_ratio + moderate trend tightens to filter weak entries
             # that destabilize under vol-normalized voter calibration.
             _rally_sig = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.5)) * max(0.0, min(1.0, rsi_trend_str / 0.5))
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * _rally_sig
+            # Bull signature: high vol_ratio + high trend strength. Slight relaxation to recover entries.
+            _bull_sig = max(0.0, min(1.0, (vol_ratio - 1.1) / 0.3)) * max(0.0, min(1.0, rsi_trend_str / 0.5))
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * _rally_sig - 0.08 * _bull_sig
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
