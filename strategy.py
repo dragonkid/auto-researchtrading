@@ -165,13 +165,18 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: vol-adaptive voter signal normalization. Fixed denominators
+            # cause voter saturation at high vol and under-firing at low vol. Scale
+            # denominators by sqrt(vol_ratio) so typical signal magnitude is regime-balanced.
+            # The sqrt softens the adaptation (avoid over-correction).
+            _vn = max(0.5, min(2.0, vol_ratio ** 0.5))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * 0.0008),
+                (_ef - _es) / (mid * 0.0008 * _vn),
                 (rsi - _rsi_thresh) / 4.0,
-                (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
-                (_ea_slope - 0.0005) / 0.00025,
+                (_macd_diff - 0.0003) / (0.00012 * _vn),
+                (_lr.slope - 0.00015) / (0.00010 * _vn),
+                (_ea_slope - 0.0005) / (0.00025 * _vn),
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
