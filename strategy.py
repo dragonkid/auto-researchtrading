@@ -112,6 +112,11 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
+        # Prior-bar entry conviction (per-side): tracks unified scalar margin
+        # min(vote_margin, strong_margin, trend_margin) for noise-robust
+        # 2-bar persistence requirement on ENTRY ONLY (flip path unaffected).
+        self._prev_bull_conv = {}
+        self._prev_bear_conv = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -226,14 +231,40 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Unified entry-conviction scalar (architectural noise reduction):
+            # Each of the 3 entry gates contributes a normalized margin of how far it
+            # is past its threshold. min() of the margins is a single scalar that is
+            # positive iff ALL gates pass — semantically equivalent to AND. Boundary
+            # noise affects margin magnitude, not pass/fail, so a scalar persistence
+            # requirement on this min-margin denoises the entry boundary holistically
+            # (one stateful denoise covers all 3 gates at once).
+            _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+            # Trend margin: positive when trend_biased aligns with side OR when in
+            # deadzone with vote-majority support. In deadzone (|t|<DZ), margin = vote
+            # plurality scaled to ~[-1, 1]; outside deadzone, margin = trend/DZ.
+            _vote_plurality = (bull_votes - bear_votes) / 1.0
+            if abs(_trend_biased) < TREND_GATE_DEADZONE:
+                _trend_marg_long = _vote_plurality
+                _trend_marg_short = -_vote_plurality
+            else:
+                _trend_marg_long = _trend_biased / TREND_GATE_DEADZONE
+                _trend_marg_short = -_trend_biased / TREND_GATE_DEADZONE
+            _bull_conv = min((bull_votes - MIN_VOTES) / 0.50, (_bull_strong - _strong_min) / 0.30, _trend_marg_long)
+            _bear_conv = min((bear_votes - MIN_VOTES) / 0.50, (_bear_strong - _strong_min) / 0.30, _trend_marg_short)
+            _prev_bull = self._prev_bull_conv.get(symbol, -1.0)
+            _prev_bear = self._prev_bear_conv.get(symbol, -1.0)
+            self._prev_bull_conv[symbol] = _bull_conv
+            self._prev_bear_conv[symbol] = _bear_conv
+
             if current_pos == 0:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # 2-bar persistence on unified conviction: prior bar must also have positive conviction.
+                # This denoises the AND-of-three-gates boundary as a single scalar, much more noise-
+                # robust than per-gate persistence. Initial bars (no prior) gated by current alone.
+                _bull_pass = _bull_conv > 0 and _prev_bull > -0.10
+                _bear_pass = _bear_conv > 0 and _prev_bear > -0.10
+                if not in_cooldown_long and _bull_pass:
                     target = size * ENTRY_INITIAL_FRAC
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and _bear_pass:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
