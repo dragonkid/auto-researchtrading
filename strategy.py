@@ -109,6 +109,9 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Strong-sum history (last 2 bars per symbol) for 3-bar confirmation gate.
+        # Stores (bull_strong, bear_strong) tuples. Index 0 = prev bar, index 1 = prev-prev.
+        self._strong_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -214,14 +217,26 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Architectural: 3-bar strong-sum confirmation gate. Entry requires 2 of last 3
+            # bars (current + 2 prior) to satisfy bull_strong >= _strong_min (or bear). This
+            # is a temporal aggregator on the boundary signal itself — fundamentally different
+            # from per-voter EMA (lag) or entry-side hysteresis (asymmetric admission). A
+            # near-boundary noise spike that flips strong-sum on a single bar fails the gate;
+            # genuine signals persist 2+ bars and pass. Common-mode noise on strong-sum cancels.
+            _hist = self._strong_hist.get(symbol, [(0.0, 0.0), (0.0, 0.0)])
+            _bull_persist_count = (1 if _bull_strong >= _strong_min else 0) + (1 if _hist[0][0] >= _strong_min else 0) + (1 if _hist[1][0] >= _strong_min else 0)
+            _bear_persist_count = (1 if _bear_strong >= _strong_min else 0) + (1 if _hist[0][1] >= _strong_min else 0) + (1 if _hist[1][1] >= _strong_min else 0)
+            # Update history: shift in current strong values
+            self._strong_hist[symbol] = [(_bull_strong, _bear_strong), _hist[0]]
+
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_persist_count >= 2 and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_persist_count >= 2 and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -318,6 +333,8 @@ class Strategy:
                 if target == 0:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
+                    # Note: _strong_hist is NOT cleared on exit — it must persist across position
+                    # transitions to provide noise-rejection on re-entry.
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
