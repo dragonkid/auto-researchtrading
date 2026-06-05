@@ -195,8 +195,8 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             # Rally protection: low vol_ratio + moderate trend tightens to filter weak entries
             # that destabilize under vol-normalized voter calibration.
-            _rally_sig = max(0.0, min(1.0, (0.95 - vol_ratio) / 0.30)) * max(0.0, min(1.0, rsi_trend_str / 0.5))
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * _rally_sig
+            _rally_sig = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.5)) * max(0.0, min(1.0, rsi_trend_str / 0.5))
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.20 * _rally_sig
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
