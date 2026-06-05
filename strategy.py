@@ -314,7 +314,12 @@ class Strategy:
 
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                # Profit-asymmetric exit threshold: smooth tanh modulation by pos_pnl.
+                # In profit (>0): threshold rises toward 1.20 (let winners run, noise-immune).
+                # In loss (<0): threshold falls toward 0.85 (exit faster, DD protection).
+                # Continuous: no switch point at pos_pnl=0; tanh saturates at |pnl|>~3%.
+                _exit_thresh = 1.0 + 0.20 * np.tanh(pos_pnl * 35.0)
+                if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
