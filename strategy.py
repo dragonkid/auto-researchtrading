@@ -82,8 +82,8 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
-FLIP_MIN_VOTES = 2.5
+MIN_VOTES = 2.5
+FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -106,6 +106,9 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
+        self._smoothed_pnl = {}
+        self._prev2_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -185,12 +188,7 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            # Architectural addition: asymmetry-gated relaxation. When bull-bear vote spread
-            # is large (one side strongly dominates), noise margin is high and threshold can
-            # relax. When bull/bear are balanced (small spread), tighten threshold to reject
-            # noise-driven near-tie entries. Spread is bounded |bull-bear|/6 in [0,1].
-            _vote_spread = min(1.0, abs(bull_votes - bear_votes) / 3.0)
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.18 * (1.0 - _vote_spread) - 0.10 * _vote_spread
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -243,7 +241,20 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                # Architectural: confirmed-peak update — peak shifts only when pos_pnl
+                # exceeds previous peak AND is rising (pos_pnl > prev_pos_pnl). Single-bar
+                # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
+                # confirmed within 1 extra bar). Different from EMA smoothing: this is a
+                # gating rule on the high-water mark, not a low-pass filter.
+                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                self._smoothed_pnl[symbol] = pos_pnl
+                _curr_peak = self.peak_pnl.get(symbol, 0.0)
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                    self.peak_pnl[symbol] = pos_pnl
+                else:
+                    self.peak_pnl[symbol] = _curr_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -268,8 +279,8 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                _slope_thresh = 0.0003 + 0.0002 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_band = 0.30 + 0.40 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
@@ -305,7 +316,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
