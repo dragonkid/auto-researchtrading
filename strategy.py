@@ -168,13 +168,19 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: adaptive vol-damped voter normalization.
+            # Each voter divisor scales with (1 + 0.5*max(0, vol_ratio-1)) so signals
+            # shrink toward 0 in high-vol regimes, confidences regress to 0.5, strong-sum
+            # falls — noise-driven strong votes filtered without changing thresholds.
+            # Multi-variable: affects all 6 voter normalizations + bull/bear confs + strong-sums.
+            _vol_damp = 1.0 + 0.5 * max(0.0, vol_ratio - 1.0)
             _voter_signals_bull = [
-                (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * 0.0008),
-                (rsi - _rsi_thresh) / 4.0,
-                (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
-                (_ea_slope - 0.0005) / 0.00025,
+                (ret_short - dyn_threshold) / max(dyn_threshold * 0.20 * _vol_damp, 1e-6),
+                (_ef - _es) / (mid * 0.0008 * _vol_damp),
+                (rsi - _rsi_thresh) / (4.0 * _vol_damp),
+                (_macd_diff - 0.0003) / (0.00012 * _vol_damp),
+                (_lr.slope - 0.00015) / (0.00010 * _vol_damp),
+                (_ea_slope - 0.0005) / (0.00025 * _vol_damp),
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
