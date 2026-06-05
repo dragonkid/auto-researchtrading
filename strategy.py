@@ -312,13 +312,9 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural: MAX aggregator on exit pressure (was SUM).
-                # Sum permits multiple weak pressures to combine into trigger -> noisy exits
-                # in oscillating regimes (sideways) where two ~0.5 pressures sum to 1.0.
-                # Max requires ANY single source decisive; threshold 0.70 calibrated so a
-                # near-fully-loaded source still exits, but 2x partial pressures don't.
-                _exit_pressure = max(_sl_pressure, _sl_slope_pressure, _pp_pressure, _time_pressure)
-                if _exit_pressure >= 0.70 and target != 0:
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
