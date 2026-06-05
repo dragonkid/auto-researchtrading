@@ -109,24 +109,11 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Equity-curve trailing peak for adaptive de-risking after drawdown.
-        self._equity_peak = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-
-        # Architectural: equity-curve drawdown-aware size dampener (continuous, smooth).
-        # Track running equity peak. Compute current drawdown ratio. Smoothly damp size
-        # when in deep drawdown. Mechanism: after losing streak, position size reduces,
-        # giving the strategy room to recover before risking more capital. Independent
-        # of voter gates (orthogonal feedback channel).
-        if equity > self._equity_peak:
-            self._equity_peak = equity
-        _eq_dd = max(0.0, (self._equity_peak - equity) / max(self._equity_peak, 1e-9))
-        # Smooth ramp: 0% DD -> mult 1.0; 4% DD -> mult 0.85; 8% DD -> mult 0.70 (saturates).
-        _eq_dd_mult = 1.0 - 0.30 * max(0.0, min(1.0, _eq_dd / 0.08))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -222,7 +209,7 @@ class Strategy:
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _eq_dd_mult
+            size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
