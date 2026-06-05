@@ -185,8 +185,10 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            # Branch step 7: power-1.5 rally-relaxation - middle ground between linear and cubic.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) - 0.12 * rsi_trend_str ** 1.5
+            # Branch step 6: cubic rally-relaxation isolates relax to high-trend (rsi_trend_str>0.7).
+            # rsi_trend_str^3 is near-zero at moderate values, sharp at strong-trend.
+            # Preserves step 1 sideways gain while keeping rally support.
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) - 0.15 * rsi_trend_str ** 3
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
