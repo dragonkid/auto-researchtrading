@@ -106,6 +106,9 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        # Vol-adaptive smoothed pnl tracker: instant in low-vol (preserves sideways
+        # sharp giveback), 3-bar smooth in higher-vol (denoises bull/crash peaks).
+        self._smoothed_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -238,7 +241,14 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                # Peak tracker uses vol-adaptive smoothing: alpha=1.0 in low-vol (sideways),
+                # alpha=0.5 in higher-vol (bull/crash/rally). Continuous interpolation on
+                # vol_ratio; preserves sideways sharp giveback while denoising trend peaks.
+                _peak_alpha = 1.0 - 0.5 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.5))
+                _prev_smooth = self._smoothed_pnl.get(symbol, pos_pnl)
+                _smooth_pnl_ref = _peak_alpha * pos_pnl + (1.0 - _peak_alpha) * _prev_smooth
+                self._smoothed_pnl[symbol] = _smooth_pnl_ref
+                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), _smooth_pnl_ref)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -300,7 +310,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
