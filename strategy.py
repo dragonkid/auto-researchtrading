@@ -118,14 +118,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Cross-asset trend agreement: ret_long sign averaged across symbols (excluding self
-        # for each symbol below). Continuous score in [-1, 1] of how aligned other symbols are.
-        _xs_ret_long = {}
-        for _sym in ACTIVE_SYMBOLS:
-            if _sym in bar_data and len(bar_data[_sym].history) >= LONG_WINDOW + 1:
-                _c = bar_data[_sym].history["close"].values
-                _xs_ret_long[_sym] = (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -200,18 +192,6 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
-            # Architectural: cross-asset agreement as continuous threshold modulator.
-            # Compute mean ret_long sign of OTHER symbols (excluding self). If candidate side
-            # aligns with cross-asset trend, relax _strong_min by up to 0.10; if disagrees,
-            # tighten by up to 0.10. Continuous (no boundary) in cross_align ∈ [-1, 1].
-            # Different from prior cross-asset voter (which added a 7th binary voter — failed
-            # because slow signal mis-aligned in fast rally moves). Here the cross-asset signal
-            # NEVER admits an entry on its own; it only modulates an existing gate height.
-            _other_rets = [v for k, v in _xs_ret_long.items() if k != symbol]
-            _xs_align = 0.0
-            if _other_rets:
-                _xs_mean = np.mean(_other_rets)
-                _xs_align = float(np.tanh(_xs_mean / 0.04))  # tanh(±1) ≈ ±0.76 at |ret_long|=0.04
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -251,14 +231,9 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Side-specific strong-sum threshold via cross-asset agreement.
-                # Bull side: relax when cross-asset is bullish (aligns), tighten when bearish.
-                # Bear side: mirror. Magnitude up to ±0.10.
-                _strong_min_bull = _strong_min - 0.10 * _xs_align
-                _strong_min_bear = _strong_min + 0.10 * _xs_align
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min_bull and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min_bear and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
