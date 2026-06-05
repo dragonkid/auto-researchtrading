@@ -112,26 +112,11 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
-        # Portfolio equity history for closed-loop equity-vol throttle.
-        self._equity_history = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-        # Architectural: closed-loop equity-vol throttle. Track realized vol of recent equity
-        # log-returns; when whipsaw drives equity vol high, reduce sizing. When portfolio is
-        # smooth, full size. State-feedback at portfolio level (not per-symbol).
-        self._equity_history.append(equity)
-        if len(self._equity_history) > 48:
-            self._equity_history = self._equity_history[-48:]
-        _eq_throttle = 1.0
-        if len(self._equity_history) >= 24:
-            _eq_arr = np.array(self._equity_history[-24:], dtype=float)
-            _eq_logret = np.diff(np.log(_eq_arr))
-            _eq_vol = float(np.std(_eq_logret))
-            # Reference vol ~0.003 (calm) to ~0.012 (whipsaw). Throttle 1.0 -> 0.85 continuously.
-            _eq_throttle = 1.0 - 0.15 * min(1.0, max(0.0, (_eq_vol - 0.003) / 0.009))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -236,7 +221,6 @@ class Strategy:
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             combined_mult = min(combined_mult, (MAX_COMBINED_MULT_HIGH_VOL if vol_ratio > MAX_COMBINED_VOL_HIGH else MAX_COMBINED_MULT_LOW_VOL - 3.0 * max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_LOW) / (MAX_COMBINED_VOL_HIGH - MAX_COMBINED_VOL_LOW)))) + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            combined_mult *= _eq_throttle
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
