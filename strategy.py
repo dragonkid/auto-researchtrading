@@ -219,9 +219,18 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Architectural: confidence-margin abstain zone. Compute margin between bull and
+                # bear conviction (votes margin AND strong-sum margin). If BOTH margins are weak
+                # (vote_margin < 0.5 AND strong_margin < 0.30), abstain — entry side is ambiguous
+                # under noise. Different from raising thresholds (which prior experiments tried);
+                # this is a SECOND TEST that must pass: directional clarity in addition to magnitude.
+                # Abstain zone is symmetric and continuous in margins — no hard regime switch.
+                _vote_margin = abs(bull_votes - bear_votes)
+                _strong_margin = abs(_bull_strong - _bear_strong)
+                _abstain = _vote_margin < 0.5 and _strong_margin < 0.30
+                if not _abstain and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not _abstain and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
