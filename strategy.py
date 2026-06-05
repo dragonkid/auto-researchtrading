@@ -249,10 +249,11 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
-                # pos_pnl >= prev_pos_pnl (rising bar). Single-bar noise spikes don't
-                # anchor the peak; sustained gain admitted within 1 bar.
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                # Confirmed-peak update: peak shifts when pos_pnl > peak AND (rising bar
+                # OR strong margin above peak). Strong margin (0.005 = 0.5%) admits big
+                # bull gains even without rising bar — protects bull peak tracking.
+                _strong_margin = pos_pnl > _curr_peak + 0.005
+                if pos_pnl > _curr_peak and (pos_pnl >= _prev_pnl or _strong_margin):
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
