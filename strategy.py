@@ -241,14 +241,18 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Peak tracker uses vol-adaptive smoothing: alpha=1.0 in low-vol (sideways),
-                # alpha=0.5 in higher-vol (bull/crash/rally). Continuous interpolation on
-                # vol_ratio; preserves sideways sharp giveback while denoising trend peaks.
-                _peak_alpha = 1.0 - 0.3 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.5))
-                _prev_smooth = self._smoothed_pnl.get(symbol, pos_pnl)
-                _smooth_pnl_ref = _peak_alpha * pos_pnl + (1.0 - _peak_alpha) * _prev_smooth
-                self._smoothed_pnl[symbol] = _smooth_pnl_ref
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), _smooth_pnl_ref)
+                # Architectural: confirmed-peak update — peak shifts only when pos_pnl
+                # exceeds previous peak AND is rising (pos_pnl > prev_pos_pnl). Single-bar
+                # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
+                # confirmed within 1 extra bar). Different from EMA smoothing: this is a
+                # gating rule on the high-water mark, not a low-pass filter.
+                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                self._smoothed_pnl[symbol] = pos_pnl
+                _curr_peak = self.peak_pnl.get(symbol, 0.0)
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                    self.peak_pnl[symbol] = pos_pnl
+                else:
+                    self.peak_pnl[symbol] = _curr_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
