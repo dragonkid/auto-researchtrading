@@ -109,8 +109,6 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Prior bar exit pressure for exit-side hysteresis (architectural).
-        self._prev_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -304,17 +302,7 @@ class Strategy:
 
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                # Architectural: exit-side 2-bar confirmation hysteresis. A boundary-noise
-                # exit (single-bar pressure spike just crossing 1.0) can be reverted by
-                # requiring the PRIOR bar to also have built up pressure (>=0.55). This is
-                # symmetric to entry hysteresis but applied at the exit gate. Stop-loss
-                # always bypasses (catastrophic risk). Time pressure of 1.0 also bypasses
-                # (deterministic time exit, not noise).
-                _prev_ep = self._prev_exit_pressure.get(symbol, 0.0)
-                self._prev_exit_pressure[symbol] = _exit_pressure
-                _hard_exit = (_sl_pressure >= 1.0) or (_time_pressure >= 1.0)
-                _confirmed_exit = (_exit_pressure >= 1.0) and (_prev_ep >= 0.55)
-                if (_hard_exit or _confirmed_exit) and target != 0:
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
@@ -328,7 +316,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._prev_exit_pressure):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
