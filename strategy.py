@@ -244,7 +244,7 @@ class Strategy:
                 # Peak tracker uses vol-adaptive smoothing: alpha=1.0 in low-vol (sideways),
                 # alpha=0.5 in higher-vol (bull/crash/rally). Continuous interpolation on
                 # vol_ratio; preserves sideways sharp giveback while denoising trend peaks.
-                _peak_alpha = 1.0 - 0.6 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.5))
+                _peak_alpha = 1.0 - 0.3 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.5))
                 _prev_smooth = self._smoothed_pnl.get(symbol, pos_pnl)
                 _smooth_pnl_ref = _peak_alpha * pos_pnl + (1.0 - _peak_alpha) * _prev_smooth
                 self._smoothed_pnl[symbol] = _smooth_pnl_ref
