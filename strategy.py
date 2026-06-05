@@ -165,15 +165,18 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: vol-adaptive voter signal normalization (sqrt vol_ratio).
-            _vn = max(0.5, min(2.0, vol_ratio ** 0.5))
+            # Architectural: vol-adaptive voter signal normalization restricted to
+            # slope-based voters (linregress slope, EMA slope) which scale most strongly
+            # with volatility. Other voters (ret_short already has dyn_threshold scaling,
+            # RSI is bounded, EMA_cross & MACD are mid-normalized) have native vol terms.
+            _vn_slope = max(0.5, min(2.0, vol_ratio ** 0.5))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * 0.0008 * _vn),
+                (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
-                (_macd_diff - 0.0003) / (0.00012 * _vn),
-                (_lr.slope - 0.00015) / (0.00010 * _vn),
-                (_ea_slope - 0.0005) / (0.00025 * _vn),
+                (_macd_diff - 0.0003) / 0.00012,
+                (_lr.slope - 0.00015) / (0.00010 * _vn_slope),
+                (_ea_slope - 0.0005) / (0.00025 * _vn_slope),
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -185,10 +188,7 @@ class Strategy:
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            # With vol-normalized voters, weights need rebalancing. Slope voters now have
-            # vol-balanced magnitudes, deserving slightly more weight relative to bounded
-            # voters (RSI). Ret_short retains low weight (noisiest position-shifter).
-            _voter_weights = (0.75, 1.15, 1.00, 1.05, 1.00, 1.05)
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
