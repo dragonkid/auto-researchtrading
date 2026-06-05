@@ -112,6 +112,9 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
+        # Per-symbol majority-side history for commitment-time entry gate.
+        # Stores sign(bull_votes - bear_votes) for last 3 bars.
+        self._maj_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -183,6 +186,18 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
+            # Majority-side commitment gate (architectural state-feedback):
+            # track sign of vote-margin over last 3 bars; entry requires that
+            # the candidate side is the majority NOW and was not strongly opposed
+            # in the immediately prior bar. Rejects single-bar majority flips
+            # without lagging when consensus has been stable.
+            _maj_curr = 1 if bull_votes > bear_votes else (-1 if bear_votes > bull_votes else 0)
+            _mh = self._maj_history.get(symbol, [])
+            _mh = (_mh + [_maj_curr])[-3:]
+            self._maj_history[symbol] = _mh
+            _prev_maj = _mh[-2] if len(_mh) >= 2 else 0
+            _bull_committed = not (_prev_maj < 0)  # block bull entry if prior bar was bearish majority
+            _bear_committed = not (_prev_maj > 0)  # block bear entry if prior bar was bullish majority
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
@@ -231,9 +246,9 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if not in_cooldown_long and _bull_committed and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and _bear_committed and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
