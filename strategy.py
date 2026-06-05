@@ -300,15 +300,9 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural: split exit aggregation into two orthogonal axes.
-                # Axis A (emergency): stop-loss pressure alone. Saturates at 1.0 at hard stop.
-                # Axis B (soft): slope + peak-profit + time. Sum must reach 1.0.
-                # OR-combine: either axis triggers an exit. Decouples emergency exit
-                # from accumulation of mild signals — prevents soft-only sum from
-                # masking stop-loss approach, and prevents stop-loss buildup from
-                # delaying soft-exit decisions.
-                _soft_pressure = _sl_slope_pressure + _pp_pressure + _time_pressure
-                if (_sl_pressure >= 1.0 or _soft_pressure >= 1.0) and target != 0:
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
