@@ -202,8 +202,8 @@ class Strategy:
             # Hysteresis: if same side was above threshold last bar, lower its threshold
             # by 0.10 (easier to remain admitted). Opposite side or no admission last bar
             # uses base threshold. Asymmetric boundary reduces near-boundary entry flicker.
-            _bull_thresh = _strong_min - (0.05 if self._last_above.get(symbol) == "bull" else 0.0)
-            _bear_thresh = _strong_min - (0.05 if self._last_above.get(symbol) == "bear" else 0.0)
+            _bull_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bull" else 0.0)
+            _bear_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bear" else 0.0)
             # Update hysteresis state for next bar (track which side was above this bar)
             if _bull_strong >= _bull_thresh and bull_votes > bear_votes:
                 self._last_above[symbol] = "bull"
