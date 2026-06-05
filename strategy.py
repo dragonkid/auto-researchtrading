@@ -194,9 +194,7 @@ class Strategy:
             # low-vol-with-positive-trend (rally signature). Linear ramp lowers the effective
             # strong-sum at the boundary; rally protection requires a higher floor where the
             # change admits noise-driven entries. Uses continuous interpolations only.
-            # Rally floor uses rsi_trend_str (smoother) instead of raw ret_long, AND
-            # requires the trend to be positive (sign of ret_long for direction).
-            _rally_floor = 0.15 * max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * (rsi_trend_str if ret_long > 0 else 0.0)
+            _rally_floor = 0.15 * max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, ret_long / 0.04))
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + _rally_floor
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
@@ -227,9 +225,13 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: combines trend_avg + voter signal into
                 # one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Near-boundary buffer: when strong-sum margin small (<= 0.2), require
+                # extra vote-count buffer (MIN_VOTES + 0.3). High-conviction entries bypass.
+                _bull_buf = (_bull_strong - _strong_min) > 0.2 or bull_votes >= MIN_VOTES + 0.3
+                _bear_buf = (_bear_strong - _strong_min) > 0.2 or bear_votes >= MIN_VOTES + 0.3
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_buf and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_buf and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
