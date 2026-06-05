@@ -109,6 +109,8 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Prior-bar entry-side intent: +1 bull, -1 bear, 0 none. Used for 2-bar entry confirmation.
+        self._prev_entry_intent = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -214,14 +216,24 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Compute current bar's intent (which side, if any, would entry favor)
+            _bull_admit = bull_votes >= MIN_VOTES and _bull_strong >= _strong_min
+            _bear_admit = bear_votes >= MIN_VOTES and _bear_strong >= _strong_min
+            _curr_intent = 1 if _bull_admit and not _bear_admit else (-1 if _bear_admit and not _bull_admit else 0)
+
             if current_pos == 0 and not in_cooldown:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
+                # Architectural: 2-bar entry confirmation. Entry fires when current intent matches
+                # prior-bar intent (persistence). Single-bar override allowed when strong-sum
+                # exceeds higher threshold (high-conviction bypass). New state primitive
+                # (_prev_entry_intent) enables noise-rejection at the entry boundary itself.
+                _prev_intent = self._prev_entry_intent.get(symbol, 0)
+                _override_min = _strong_min + 0.7  # high-conviction override
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                _bull_pass = _bull_admit and (_prev_intent == 1 or _bull_strong >= _override_min) and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes))
+                _bear_pass = _bear_admit and (_prev_intent == -1 or _bear_strong >= _override_min) and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes))
+                if _bull_pass:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif _bear_pass:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -321,5 +333,8 @@ class Strategy:
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+
+            # Persist current bar's intent for next-bar 2-bar confirmation gate
+            self._prev_entry_intent[symbol] = _curr_intent
 
         return signals
