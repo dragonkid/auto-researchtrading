@@ -179,15 +179,8 @@ class Strategy:
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            # Vol-adaptive voter confidence clip range.
-            # Low vol regimes (rally/sideways) → narrower clip [0.15, 0.85] reduces voter
-            # decisiveness when noise dominates; high vol (crash) → wider clip [0.05, 0.95]
-            # preserves voter conviction during legitimate regime transitions. The clip width
-            # itself becomes a denoising mechanism that scales with signal-to-noise ratio.
-            _clip_floor = 0.15 - 0.10 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.6))
-            _clip_span = 1.0 - 2.0 * _clip_floor
-            _bull_confs = [_clip_floor + _clip_span * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [_clip_floor + _clip_span * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
