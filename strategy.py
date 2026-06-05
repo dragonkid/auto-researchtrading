@@ -109,9 +109,6 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Architectural: prior-bar strong-sums for 2-bar aggregate persistence gate.
-        self._prev_bull_strong = {}
-        self._prev_bear_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -217,28 +214,14 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: 2-bar aggregate strong-sum persistence gate. Stores prior bar's
-            # _bull_strong/_bear_strong; entry requires min(curr, prev) >= _strong_min - 0.30.
-            # A single noisy spike (one bar above threshold, prior far below) is rejected;
-            # a sustained signal (both bars above the relaxed floor) passes. Operates on the
-            # AGGREGATE strong-sum rather than per-voter signs (avoiding the boundary-amplification
-            # mode of per-voter persistence).
-            _pbs = self._prev_bull_strong.get(symbol, _bull_strong)
-            _pBs = self._prev_bear_strong.get(symbol, _bear_strong)
-            self._prev_bull_strong[symbol] = _bull_strong
-            self._prev_bear_strong[symbol] = _bear_strong
-            _persist_floor = _strong_min - 0.30
-            _bull_persist_ok = min(_bull_strong, _pbs) >= _persist_floor
-            _bear_persist_ok = min(_bear_strong, _pBs) >= _persist_floor
-
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_persist_ok and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_persist_ok and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
