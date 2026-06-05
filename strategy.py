@@ -189,24 +189,11 @@ class Strategy:
             # is scaled down by a coherence factor. Architectural change: aggregation no longer
             # sums independent contributions — it scales by collective coherence.
             # Coherence in [0, 1]: 1 = all voters aligned same side, 0 = max disagreement.
-            # Direction-asymmetric coherence: bull entries care about bull-side coherence
-            # (do bull-leaning voters agree among themselves?). Compute std over only those
-            # voters whose conf is on the relevant side. Architectural: aggregation factor
-            # is now side-specific rather than a single shared coherence.
-            _bull_side = [c for c in _bull_confs if c > 0.5]
-            _bear_side = [c for c in _bear_confs if c > 0.5]
-            if len(_bull_side) >= 2:
-                _bull_coh = max(0.0, min(1.0, 1.0 - float(np.std(_bull_side)) / 0.20))
-            else:
-                _bull_coh = 0.5
-            if len(_bear_side) >= 2:
-                _bear_coh = max(0.0, min(1.0, 1.0 - float(np.std(_bear_side)) / 0.20))
-            else:
-                _bear_coh = 0.5
-            _bull_coh_factor = 0.80 + 0.20 * _bull_coh
-            _bear_coh_factor = 0.80 + 0.20 * _bear_coh
-            _bull_strong = _bull_coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = _bear_coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _conf_std = float(np.std(_bull_confs))
+            _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
+            _coh_factor = 0.80 + 0.20 * _coherence  # range [0.80, 1.00] — gentle damping
+            _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
