@@ -192,8 +192,15 @@ class Strategy:
             _conf_std = float(np.std(_bull_confs))
             _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
             _coh_factor = 0.90 + 0.10 * _coherence  # range [0.90, 1.00] — minimal damping
-            _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: vol-conditioned aggregation exponent. Quintic (p=5) is sharp at
+            # voter boundaries — useful for high-vol regimes that need decisive aggregation.
+            # In low-vol regimes (rally/sideways), softer aggregation (p=4) reduces boundary
+            # amplification of noise-induced conf jitter. Continuous: p = 4.0 + min(1, vol_ratio).
+            # Normalization keeps max contribution = 1.0 at conf=0.9 (margin 0.4).
+            _agg_p = 4.0 + min(1.0, vol_ratio)
+            _agg_norm = 1.0 / (0.4 ** _agg_p)
+            _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** _agg_p * _agg_norm) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** _agg_p * _agg_norm) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             # Architectural addition: coherence-conditioned threshold relaxation. When voter
