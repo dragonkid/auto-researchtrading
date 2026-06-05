@@ -227,6 +227,15 @@ class Strategy:
                 _tb_abs_norm = min(1.0, abs(_trend_biased) / TREND_GATE_DEADZONE)
                 _bull_strong_min = _strong_min + 0.30 * (1.0 - _tb_abs_norm) * (1.0 if _trend_biased < 0 else 0.0)
                 _bear_strong_min = _strong_min + 0.30 * (1.0 - _tb_abs_norm) * (1.0 if _trend_biased > 0 else 0.0)
+                # Architectural: vote-margin pressure on strong-sum thresholds. When votes barely
+                # exceed MIN_VOTES (small margin), require higher strong-sum to compensate.
+                # Continuous over [MIN_VOTES, MIN_VOTES+0.6]: full pressure (+0.20) at minimum,
+                # zero pressure when votes >= MIN_VOTES+0.6. Couples two existing gates that were
+                # previously evaluated independently.
+                _bull_margin = max(0.0, min(1.0, (bull_votes - MIN_VOTES) / 0.6))
+                _bear_margin = max(0.0, min(1.0, (bear_votes - MIN_VOTES) / 0.6))
+                _bull_strong_min = _bull_strong_min + 0.20 * (1.0 - _bull_margin)
+                _bear_strong_min = _bear_strong_min + 0.20 * (1.0 - _bear_margin)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
