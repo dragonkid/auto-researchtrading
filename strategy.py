@@ -233,13 +233,10 @@ class Strategy:
             _persist_floor = _strong_min - 0.30
             _bull_pen = max(0.0, _persist_floor - min(_bull_strong, _pbs))
             _bear_pen = max(0.0, _persist_floor - min(_bear_strong, _pBs))
-            # Trend-aligned penalty discount: when ret_long aligns with entry side
-            # (strong trending regime), reduce penalty. (1 - rsi_trend_str) scales penalty
-            # weight: 0 alignment -> full 1.5x; full alignment -> 0.5x. Preserves
-            # noise rejection in chop while admitting trend-following entries in rally.
-            _trend_penalty_scale = 0.5 + 1.0 * (1.0 - rsi_trend_str)
-            _bull_min_eff = _strong_min + _trend_penalty_scale * _bull_pen
-            _bear_min_eff = _strong_min + _trend_penalty_scale * _bear_pen
+            # Penalty multiplier 1.8 — stronger lift recovers rally noise rejection
+            # while keeping smooth-gradient property (preserves sideways).
+            _bull_min_eff = _strong_min + 1.8 * _bull_pen
+            _bear_min_eff = _strong_min + 1.8 * _bear_pen
 
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
