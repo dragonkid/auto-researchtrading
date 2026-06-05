@@ -243,10 +243,13 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up (no vote confirmation needed)
-                # Rationale: vote check during accumulation is a noise channel.
-                # Entry decision was already validated on bar 0; scale-in is commitment.
-                if bars_held <= ENTRY_FULL_BARS:
+                # Position accumulation: scale-up gated by voter-side persistence.
+                # Architectural: scale-in continues only while voters still lead in the held
+                # direction (bull_votes > bear_votes for long, vice versa). Reverses prior
+                # rationale — a deteriorating voter side during scale-in IS a signal that the
+                # entry was a noise event; freezing prevents commitment escalation on false start.
+                _votes_persist = (current_pos > 0 and bull_votes > bear_votes) or (current_pos < 0 and bear_votes > bull_votes)
+                if bars_held <= ENTRY_FULL_BARS and _votes_persist:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
