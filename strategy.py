@@ -82,7 +82,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.5  # retained as fallback floor on raw sum (prevents trivially weak entries)
+MIN_VOTES = 2.6  # raised slightly to filter rally noise entries
 FLIP_MIN_VOTES = 2.5
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -279,7 +279,7 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                _slope_thresh = 0.00035 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
