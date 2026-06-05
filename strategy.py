@@ -187,14 +187,8 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            # Architectural: coherence damping on strong-sum aggregation. Damp by 0.90+0.10*coherence
-            # where coherence = 1 - std(bull_confs)/0.30 (clipped). Range [0.90, 1.00]: minimal
-            # damping that reduces noise-amplified strong-sum during voter disagreement.
-            _conf_std = float(np.std(_bull_confs))
-            _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
-            _coh_factor = 0.90 + 0.10 * _coherence
-            _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
@@ -339,7 +333,11 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Architectural: asymmetric flip threshold — flip path requires _strong_min + 0.20.
+                # Decouples flip and entry admission; rejects boundary-noise flips while admitting
+                # protective trend-flip transitions.
+                _flip_strong_min = _strong_min + 0.20
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
