@@ -249,7 +249,9 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                # Margin scales with vol_ratio: 0.0005 at vr=0.6, 0.002 at vr=1.5+
+                _peak_margin = 0.0005 + 0.0015 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.9))
+                if pos_pnl > _curr_peak + _peak_margin and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
