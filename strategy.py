@@ -165,17 +165,14 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: vol-adaptive voter signal normalization using SMOOTHED
-            # vol_ratio (median of recent vol estimates) to reduce noise feedback into
-            # voter calibration. Computing a robust vol estimate from a longer window
-            # and a 3-window median decouples voter denominators from instantaneous
-            # close-price noise.
-            _vol_estimates = []
-            for _vw in (VOL_LOOKBACK, VOL_LOOKBACK + 8, VOL_LOOKBACK - 8):
-                _v = max(np.std(np.diff(np.log(closes[-_vw - 1:-1]))), 1e-6)
-                _vol_estimates.append(_v / TARGET_VOL)
-            _vr_smooth = float(np.median(_vol_estimates))
-            _vn = max(0.5, min(2.0, _vr_smooth ** 0.5))
+            # Architectural: vol-adaptive voter signal normalization with smooth dead-band
+            # around vol_ratio=1 (rally regime typical). Adaptation strength fades to 0 near
+            # vol_ratio=1 via tanh of (vol_ratio-1) distance, preserving rally calibration
+            # while still adapting in extreme bull (vol high) and sideways (vol low) regimes.
+            # _adapt in [0,1]: 0 at vol_ratio=1, ~1 outside [0.7, 1.3].
+            _adapt = min(1.0, abs(vol_ratio - 1.0) / 0.3)
+            _vn_raw = max(0.5, min(2.0, vol_ratio ** 0.5))
+            _vn = 1.0 + _adapt * (_vn_raw - 1.0)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008 * _vn),
