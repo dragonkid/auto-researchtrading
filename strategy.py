@@ -78,14 +78,13 @@ MEANREV_TREND_THRESHOLD = 0.05
 MEANREV_RSI_OVERSOLD = 49
 MEANREV_RSI_OVERBOUGHT = 51
 
-# Vote / cooldown (6 voters, soft tanh contributions)
+# Vote (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
-COOLDOWN_BARS = 1
-COOLDOWN_TREND_DECAY = 0.06
+TREND_DECAY_NORM = 0.06  # ret_long normalizer for trend-strength weighting in trend_avg
 
 
 def ema(values, span):
@@ -103,15 +102,11 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.entry_prices, self.peak_pnl, self.entry_bar = {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
+        # Prior pnl for confirmed-peak gate (peak shifts only on rising bars).
         self._smoothed_pnl = {}
-        self._prev2_pnl = {}
-        # Direction of last exited position (for directional cooldown).
-        # +1 = last position was long, -1 = short, 0 = none.
-        self._last_exit_dir = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -197,21 +192,11 @@ class Strategy:
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
             _avg_signal = sum(_voter_signals_bull) / 6.0
 
-            cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
+            cooldown_trend_strength = min(abs(ret_long) / TREND_DECAY_NORM, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Directional cooldown: blocks re-entry only on the direction of last exit.
-            # Reverse direction may enter freely — captures legitimate flips after a stop-out
-            # (esp. crash regime where stopped-out longs precede shorts) without admitting
-            # noise-driven re-entries on the same losing side.
-            _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _cooldown_active = _bars_since_exit < COOLDOWN_BARS * cooldown_trend_strength
-            _last_dir = self._last_exit_dir.get(symbol, 0)
-            in_cooldown_long = _cooldown_active and _last_dir > 0
-            in_cooldown_short = _cooldown_active and _last_dir < 0
-            in_cooldown = _cooldown_active and _last_dir == 0  # legacy fallback for mean-rev path
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -231,11 +216,11 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
-                elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -319,7 +304,7 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
                 # Directional cooldown blocks flip into prior-failed direction.
-                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                if ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
@@ -329,10 +314,8 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
-                    self.exit_bar[symbol] = self.bar_count
-                    self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
 
