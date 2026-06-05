@@ -106,9 +106,6 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        # Smoothed pnl tracker for peak: 3-bar EMA reference signal so noise spikes
-        # don't anchor an artificial peak that triggers premature giveback.
-        self._smoothed_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -241,12 +238,7 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Peak tracked on EMA-smoothed pnl (alpha=0.5, span=3) to prevent
-                # noise spikes anchoring an artificial peak that fires premature giveback.
-                _prev_smooth = self._smoothed_pnl.get(symbol, pos_pnl)
-                _smooth_pnl = 0.5 * pos_pnl + 0.5 * _prev_smooth
-                self._smoothed_pnl[symbol] = _smooth_pnl
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), _smooth_pnl)
+                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -308,7 +300,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
