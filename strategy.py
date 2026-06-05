@@ -194,7 +194,7 @@ class Strategy:
             # low-vol-with-positive-trend (rally signature). Linear ramp lowers the effective
             # strong-sum at the boundary; rally protection requires a higher floor where the
             # change admits noise-driven entries. Uses continuous interpolations only.
-            _rally_floor = 0.22 * max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, ret_long / 0.04))
+            _rally_floor = 0.10 * max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, ret_long / 0.04))
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + _rally_floor
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
