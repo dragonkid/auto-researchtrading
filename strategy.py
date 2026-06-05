@@ -305,8 +305,14 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled). Architectural: flip
+                # uses a HIGHER strong-sum bar than entry. Flip is a high-stakes operation
+                # (closes existing position + opens opposite); a noise-flipped strong-sum can
+                # whipsaw position. Entry is one-shot; flip costs 2x. Asymmetric admission
+                # adds dedicated noise rejection on the flip channel only — preserves entry
+                # responsiveness in trending regimes (bull/crash).
+                _flip_strong_min = _strong_min + 0.20
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
