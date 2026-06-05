@@ -231,19 +231,10 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Confidence-scaled initial entry frac (architectural):
-                # initial position scales smoothly with signal strength via votes-margin
-                # AND strong-sum margin combined. Weak boundary signals enter smaller
-                # (noise-protective), strong signals enter at full target — couples
-                # position size to entry confidence rather than constant frac.
-                _vote_str_bull = max(0.0, min(1.0, (bull_votes - MIN_VOTES) / 1.5))
-                _vote_str_bear = max(0.0, min(1.0, (bear_votes - MIN_VOTES) / 1.5))
-                _entry_frac_bull = ENTRY_INITIAL_FRAC * (0.7 + 0.6 * _vote_str_bull)
-                _entry_frac_bear = ENTRY_INITIAL_FRAC * (0.7 + 0.6 * _vote_str_bear)
                 if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
-                    target = size * _entry_frac_bull
+                    target = size * ENTRY_INITIAL_FRAC
                 elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
-                    target = -size * _entry_frac_bear
+                    target = -size * ENTRY_INITIAL_FRAC
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
