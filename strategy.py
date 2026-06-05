@@ -199,10 +199,11 @@ class Strategy:
             # Architectural addition: coherence-conditioned threshold relaxation. When voter
             # coherence is very high (>0.85), strong consensus needs less threshold buffer —
             # relax up to -0.10. Continuous: relax_factor = max(0, coh-0.85)/0.15.
-            # Trend-gated coherence relax: only relax in trending regimes (rsi_trend_str high).
-            # Sideways gets no relax — preserves its threshold equilibrium.
+            # Coherence relax (step 1) + extra sideways tightening (when low coherence in low-trend).
+            # Low coherence in sideways = noise-driven, tighten more.
             _coh_relax = max(0.0, (_coherence - 0.85)) / 0.15
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) - 0.10 * min(1.0, _coh_relax) * rsi_trend_str
+            _coh_tight = max(0.0, (0.65 - _coherence)) / 0.30
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) - 0.10 * min(1.0, _coh_relax) + 0.10 * min(1.0, _coh_tight) * (1.0 - rsi_trend_str)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
