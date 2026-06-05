@@ -109,6 +109,10 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Last successful entry direction per symbol and bar of that entry.
+        # Used as a session-momentum gate: penalize counter-direction entries within K bars.
+        self._last_entry_dir = {}
+        self._last_entry_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -227,6 +231,19 @@ class Strategy:
                 _tb_abs_norm = min(1.0, abs(_trend_biased) / TREND_GATE_DEADZONE)
                 _bull_strong_min = _strong_min + 0.30 * (1.0 - _tb_abs_norm) * (1.0 if _trend_biased < 0 else 0.0)
                 _bear_strong_min = _strong_min + 0.30 * (1.0 - _tb_abs_norm) * (1.0 if _trend_biased > 0 else 0.0)
+                # Architectural: session-direction momentum gate. If last successful entry was
+                # opposite direction within K bars, raise strong-sum threshold for that side
+                # continuously (decays linearly to zero over K bars). Penalizes rapid counter-
+                # direction churn that's most often noise-driven. K scales mildly with chop
+                # (less trend = more conservative).
+                _last_dir = self._last_entry_dir.get(symbol, 0)
+                _last_bar = self._last_entry_bar.get(symbol, -999)
+                _K = 8.0
+                _decay = max(0.0, 1.0 - (self.bar_count - _last_bar) / _K)
+                if _last_dir < 0:
+                    _bull_strong_min = _bull_strong_min + 0.20 * _decay
+                elif _last_dir > 0:
+                    _bear_strong_min = _bear_strong_min + 0.20 * _decay
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
@@ -329,5 +346,7 @@ class Strategy:
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._last_entry_dir[symbol] = 1 if target > 0 else -1
+                    self._last_entry_bar[symbol] = self.bar_count
 
         return signals
