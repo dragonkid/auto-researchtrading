@@ -106,9 +106,9 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        # Vol-adaptive smoothed pnl tracker: instant in low-vol (preserves sideways
-        # sharp giveback), 3-bar smooth in higher-vol (denoises bull/crash peaks).
+        # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        self._prev2_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -247,11 +247,13 @@ class Strategy:
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                _prev2_pnl = self._prev2_pnl.get(symbol, pos_pnl)
+                self._prev2_pnl[symbol] = _prev_pnl
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Margin scales with vol_ratio: 0.0005 at vr=0.6, 0.002 at vr=1.5+
-                _peak_margin = 0.0005 + 0.0015 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.9))
-                if pos_pnl > _curr_peak + _peak_margin and pos_pnl >= _prev_pnl:
+                # Confirmed peak: requires pos_pnl > peak AND 2-bar rising sequence.
+                _two_bar_rising = pos_pnl >= _prev_pnl and _prev_pnl >= _prev2_pnl
+                if pos_pnl > _curr_peak and _two_bar_rising:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
@@ -316,7 +318,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
