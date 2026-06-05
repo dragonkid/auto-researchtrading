@@ -184,8 +184,16 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Voter disagreement penalty inside strong-sum aggregation:
+            # When voters disagree (high std of conf around 0.5), each voter's strong-contribution
+            # is scaled down by a coherence factor. Architectural change: aggregation no longer
+            # sums independent contributions — it scales by collective coherence.
+            # Coherence in [0, 1]: 1 = all voters aligned same side, 0 = max disagreement.
+            _conf_std = float(np.std(_bull_confs))
+            _coherence = max(0.0, min(1.0, 1.0 - _conf_std / 0.30))
+            _coh_factor = 0.80 + 0.20 * _coherence  # range [0.80, 1.00] — gentle damping
+            _bull_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = _coh_factor * sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
