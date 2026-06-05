@@ -198,16 +198,12 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            _strong_min = STRONG_WEIGHT_MIN + 0.15 * (1.0 - rsi_trend_str)
             # Hysteresis: if same side was above threshold last bar, lower its threshold
             # by 0.10 (easier to remain admitted). Opposite side or no admission last bar
             # uses base threshold. Asymmetric boundary reduces near-boundary entry flicker.
-            # Hysteresis depth inverse to trend strength: deeper in chop (where boundary
-            # flicker happens), shallow in trends (where conviction is steady and hysteresis
-            # would inflate entries unnecessarily).
-            _hys_depth = 0.05 + 0.10 * (1.0 - rsi_trend_str)
-            _bull_thresh = _strong_min - (_hys_depth if self._last_above.get(symbol) == "bull" else 0.0)
-            _bear_thresh = _strong_min - (_hys_depth if self._last_above.get(symbol) == "bear" else 0.0)
+            _bull_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bull" else 0.0)
+            _bear_thresh = _strong_min - (0.10 if self._last_above.get(symbol) == "bear" else 0.0)
             # Update hysteresis state for next bar (track which side was above this bar)
             if _bull_strong >= _bull_thresh and bull_votes > bear_votes:
                 self._last_above[symbol] = "bull"
