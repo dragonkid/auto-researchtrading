@@ -226,14 +226,30 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+            # Smooth-quorum entry architecture: each of 3 entry gates contributes a
+            # continuous [0, 1] term via sigmoid of margin. Entry fires when sum of
+            # terms >= 2.0 (effective 2-of-3 quorum). Replaces boolean AND-of-3
+            # with scalar quorum. Boundary noise on any single gate cannot flip
+            # entry alone — it must combine with weakness in another gate to drop
+            # below quorum. Decision topology: intersection of 3 boolean sets ->
+            # weighted threshold on continuous score. Mean-rev path retained as
+            # parallel branch.
+            def _sig(x):
+                return 1.0 / (1.0 + np.exp(-x))
+            _vote_pass_long = _sig((bull_votes - MIN_VOTES) / 0.10)
+            _strong_pass_long = _sig((_bull_strong - _strong_min) / 0.08)
+            _trend_pass_long = _sig(_trend_biased / TREND_GATE_DEADZONE * 2.0)
+            _quorum_long = _vote_pass_long + _strong_pass_long + _trend_pass_long
+            _vote_pass_short = _sig((bear_votes - MIN_VOTES) / 0.10)
+            _strong_pass_short = _sig((_bear_strong - _strong_min) / 0.08)
+            _trend_pass_short = _sig(-_trend_biased / TREND_GATE_DEADZONE * 2.0)
+            _quorum_short = _vote_pass_short + _strong_pass_short + _trend_pass_short
+
             if current_pos == 0:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if not in_cooldown_long and _quorum_long >= 2.40 and _quorum_long > _quorum_short:
                     target = size * ENTRY_INITIAL_FRAC
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and _quorum_short >= 2.40 and _quorum_short > _quorum_long:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
