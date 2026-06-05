@@ -237,7 +237,7 @@ class Strategy:
             # (strong trending regime), reduce penalty. (1 - rsi_trend_str) scales penalty
             # weight: 0 alignment -> full 1.5x; full alignment -> 0.5x. Preserves
             # noise rejection in chop while admitting trend-following entries in rally.
-            _trend_penalty_scale = 0.5 + 1.0 * (1.0 - rsi_trend_str)
+            _trend_penalty_scale = 0.3 + 1.2 * (1.0 - rsi_trend_str)
             _bull_min_eff = _strong_min + _trend_penalty_scale * _bull_pen
             _bear_min_eff = _strong_min + _trend_penalty_scale * _bear_pen
 
