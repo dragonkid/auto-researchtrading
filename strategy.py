@@ -261,18 +261,12 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Decaying-peak architecture: peak decays slowly toward current pnl
-                # rather than ratcheting one-way. Confirmed rising-bar update for new
-                # highs PLUS 1.5%%-per-bar exponential decay when not refreshed. Noise
-                # spikes contribute less because peak can drift back down; sustained
-                # highs still register fully because each bar's confirmed update wins
-                # over the small decay step. Architecturally different from ratchet
-                # (no longer a one-way function) and from EMA (asymmetric: instant up,
-                # slow down).
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
-                    self.peak_pnl[symbol] = max(pos_pnl, _curr_peak * 0.985)
+                    self.peak_pnl[symbol] = _curr_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
