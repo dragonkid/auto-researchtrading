@@ -109,6 +109,12 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Architectural: leaky-integrator exit-pressure state. Replaces hard cliff at
+        # _exit_pressure >= 1.0 with a temporal integrator. Each bar: accum decays by
+        # ACCUM_DECAY then adds current pressure. Exit fires only when accum >= ACCUM_THRESH.
+        # Single-bar noise spikes (pressure=1.01) cannot trigger; 3+ bars of moderate
+        # pressure (~0.7) will. Inherent hysteresis — orthogonal to all prior denoising.
+        self._exit_accum = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -320,9 +326,17 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                # Total exit pressure: leaky-integrator hysteresis (ACCUM_DECAY=0.55, threshold=1.55).
+                # accum_new = ACCUM_DECAY * accum_prev + current_pressure
+                # Exit when accum_new >= 1.55. Single-bar pressure spike of 1.01 (was the cliff)
+                # builds accum to 1.01 on first bar — below threshold. Sustained pressure ~0.75
+                # across 3 bars: 0.75 -> 1.16 -> 1.39 — still below; ~0.85 across 3: 0.85 -> 1.32 -> 1.58.
+                # Hard saturation (any source = 1.0) acts almost-immediately if other sources contribute.
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                _accum_prev = self._exit_accum.get(symbol, 0.0)
+                _accum = 0.55 * _accum_prev + _exit_pressure
+                self._exit_accum[symbol] = _accum
+                if _accum >= 1.55 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
@@ -336,10 +350,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._exit_accum):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._exit_accum.pop(symbol, None)
 
         return signals
