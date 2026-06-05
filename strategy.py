@@ -112,6 +112,9 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
+        # Trade-density tracking: bar_count of recent entries (per symbol). Used for
+        # entry-rate-aware threshold tightening (architectural state).
+        self._recent_entry_bars = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -192,6 +195,18 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: entry-density-aware threshold tightening. Count entries in last
+            # 48 bars; when density is high (strategy firing rapidly = noise-dominated),
+            # tighten _strong_min continuously up to +0.10. Uses strategy's own past behavior
+            # as a noise-regime signal, orthogonal to price-derived voters. New state-feedback
+            # control loop at the entry-decision level.
+            _entry_window = 48
+            _ents = self._recent_entry_bars.get(symbol, [])
+            _ents = [b for b in _ents if self.bar_count - b <= _entry_window]
+            self._recent_entry_bars[symbol] = _ents
+            _entry_density = len(_ents) / _entry_window  # in [0, 1]
+            # Reference: 4 entries / 48 bars (8.3% density) = neutral; 12+ = noisy
+            _strong_min += 0.10 * min(1.0, max(0.0, (_entry_density - 0.08) / 0.17))
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -335,5 +350,6 @@ class Strategy:
                     self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._recent_entry_bars.setdefault(symbol, []).append(self.bar_count)
 
         return signals
