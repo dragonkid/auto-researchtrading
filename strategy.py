@@ -232,8 +232,10 @@ class Strategy:
                 # Hysteresis: side that was last positioned gets -0.10 strong_min (re-entry easier).
                 # Reduces near-boundary noise flicker for re-entries on the same side.
                 _last_side = self.prev_voter_signals.get(symbol + "_lastside", 0)
-                _bull_thr = _strong_min - (0.08 if _last_side > 0 else 0.0)
-                _bear_thr = _strong_min - (0.08 if _last_side < 0 else 0.0)
+                # Vol-adaptive hysteresis: deeper in high-vol (bull/crash) where boundary noise is larger.
+                _hyst = 0.08 + 0.06 * max(0.0, min(1.0, (vol_ratio - 0.9) / 0.5))
+                _bull_thr = _strong_min - (_hyst if _last_side > 0 else 0.0)
+                _bear_thr = _strong_min - (_hyst if _last_side < 0 else 0.0)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_thr and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_thr and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
