@@ -317,13 +317,9 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled) gated on
-                # exit-pressure confirmation (architectural coupling): flip requires
-                # current position is also under meaningful exit pressure (>= 0.40)
-                # — a momentum-failure confirmation orthogonal to vote/trend reversal.
-                # Reduces noise-driven flips when momentum is still intact.
-                _flip_exit_ok = _exit_pressure >= 0.40
-                if _flip_exit_ok and ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled).
+                # Directional cooldown blocks flip into prior-failed direction.
+                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
