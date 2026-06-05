@@ -311,12 +311,13 @@ class Strategy:
                 # whipsaw position. Entry is one-shot; flip costs 2x. Asymmetric admission
                 # adds dedicated noise rejection on the flip channel only — preserves entry
                 # responsiveness in trending regimes (bull/crash).
-                # Trend-clarity-adaptive flip offset: when trend is unclear (low rsi_trend_str),
-                # noise-flips dominate -> deep rejection (0.20). When trend is clear (rally end /
-                # crash strong move), legitimate protective flips matter -> shallow (0.10).
-                _flip_offset = 0.20 - 0.10 * rsi_trend_str
-                _flip_strong_min = _strong_min + _flip_offset
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_strong_min and trend_avg > 0)):
+                # Step 1 base (flat +0.20) was best so far. Add rsi_trend_str-scaled
+                # flip-vote requirement: flip needs FLIP_MIN_VOTES + 0.2*(1-rsi_trend_str)
+                # when chop. Two-channel noise rejection: strong-sum and vote count both
+                # tighten in chop. Different from prior MIN_VOTES tweaks (which were on entry).
+                _flip_strong_min = _strong_min + 0.20
+                _flip_min_votes = FLIP_MIN_VOTES + 0.2 * (1.0 - rsi_trend_str)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_votes and _bear_strong >= _flip_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_votes and _bull_strong >= _flip_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
