@@ -284,10 +284,17 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                # Total exit pressure: gradual proportional exit replaces binary >= 1.0 gate.
+                # Architectural change: position scales smoothly from 100% -> 0% as pressure
+                # rises 0.85 -> 1.15. Eliminates the dominant hard decision boundary in the
+                # exit subsystem; noise nudging pressure across 1.0 now shifts position by ~5%
+                # rather than fully closing/holding stochastically.
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
-                    target = 0.0
+                _exit_keep = max(0.0, min(1.0, (1.15 - _exit_pressure) / 0.30))
+                if _exit_keep < 1.0 and target != 0:
+                    target = target * _exit_keep
+                    if _exit_keep <= 0.0:
+                        target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
