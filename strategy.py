@@ -84,7 +84,7 @@ MEANREV_RSI_OVERBOUGHT = 51
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
-COOLDOWN_BARS = 1
+COOLDOWN_BARS = 2  # raised to give cooldown range under trend-inverse modulation
 COOLDOWN_TREND_DECAY = 0.06
 
 
@@ -206,8 +206,11 @@ class Strategy:
             # Reverse direction may enter freely — captures legitimate flips after a stop-out
             # (esp. crash regime where stopped-out longs precede shorts) without admitting
             # noise-driven re-entries on the same losing side.
+            # Trend-inverse cooldown: chop regimes (low |ret_long|) need MORE cooldown to filter
+            # noise-driven re-entries; trend regimes need LESS to allow legitimate momentum re-entry.
+            # Inverts the prior trend-multiplied cooldown which gave chop the SHORTEST cooldown.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _cooldown_active = _bars_since_exit < COOLDOWN_BARS * cooldown_trend_strength
+            _cooldown_active = _bars_since_exit < COOLDOWN_BARS * (1.0 - cooldown_trend_strength)
             _last_dir = self._last_exit_dir.get(symbol, 0)
             in_cooldown_long = _cooldown_active and _last_dir > 0
             in_cooldown_short = _cooldown_active and _last_dir < 0
