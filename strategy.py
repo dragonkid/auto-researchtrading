@@ -109,9 +109,6 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Architectural: voter direction persistence — store prior-bar voter signs
-        # for 2-bar persistence gate at entry. Each entry: list of 6 floats from prior bar.
-        self._prev_voter_signals = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -217,29 +214,14 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Architectural: 2-bar voter persistence gate. A voter is "persistently bull"
-            # if signal>0 on both this bar and the prior bar. Count persistent voters; gate
-            # demands at least 4 of 6 persistent on the side of entry. This is an orthogonal
-            # noise channel to the count/margin gates: noise-flipped voters lose persistence
-            # (they switch sign across bars). Stable trends preserve persistence naturally.
-            _prev_sigs = self._prev_voter_signals.get(symbol)
-            self._prev_voter_signals[symbol] = list(_voter_signals_bull)
-            if _prev_sigs is None:
-                _persist_bull = sum(1 for s in _voter_signals_bull if s > 0)
-                _persist_bear = sum(1 for s in _voter_signals_bull if s < 0)
-            else:
-                _persist_bull = sum(1 for s, ps in zip(_voter_signals_bull, _prev_sigs) if s > 0 and ps > 0)
-                _persist_bear = sum(1 for s, ps in zip(_voter_signals_bull, _prev_sigs) if s < 0 and ps < 0)
-            _PERSIST_MIN = 4
-
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _persist_bull >= _PERSIST_MIN and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _persist_bear >= _PERSIST_MIN and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
