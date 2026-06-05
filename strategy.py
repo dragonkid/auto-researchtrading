@@ -249,11 +249,9 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update: peak shifts when pos_pnl > peak AND (rising bar
-                # OR strong margin above peak). Strong margin (0.005 = 0.5%) admits big
-                # bull gains even without rising bar — protects bull peak tracking.
-                _strong_margin = pos_pnl > _curr_peak + 0.005
-                if pos_pnl > _curr_peak and (pos_pnl >= _prev_pnl or _strong_margin):
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
@@ -281,7 +279,7 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _slope_thresh = 0.00025 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
