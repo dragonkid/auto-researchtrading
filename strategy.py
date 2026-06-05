@@ -109,6 +109,9 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Per-symbol previous-bar voter signals for persistence weighting.
+        # Voters whose sign flipped vs prev bar are likely noise -> down-weight contribution.
+        self.prev_voter_signals = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -176,8 +179,20 @@ class Strategy:
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            # Persistence weighting (architectural): voters that maintain sign vs prev bar are
+            # robust signals; voters that flipped sign vs prev bar are likely noise -> down-weight
+            # their contribution. Continuous penalty: weight = 0.6 + 0.4*sign_agree where
+            # sign_agree=1 if same sign as prev, 0 if flipped. Boundary cases (signal ~0)
+            # transition smoothly via tanh distance.
+            _prev_sigs = self.prev_voter_signals.get(symbol, _voter_signals_bull)
+            _persist_w = []
+            for _cur, _prv in zip(_voter_signals_bull, _prev_sigs):
+                # Continuous sign-agreement: tanh of cur*prev. Strong agreement -> 1, strong flip -> -1, near-zero -> ~0.
+                _agree = np.tanh(_cur * _prv * 4.0)  # 4x sharpens the boundary
+                _persist_w.append(0.6 + 0.4 * (0.5 * (1.0 + _agree)))  # maps [-1,1] -> [0.6, 1.0]
+            self.prev_voter_signals[symbol] = list(_voter_signals_bull)
+            _bull_confs = [(0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s))) * w for s, w in zip(_voter_signals_bull, _persist_w)]
+            _bear_confs = [(0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s))) * w for s, w in zip(_voter_signals_bull, _persist_w)]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
