@@ -112,6 +112,9 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
+        # 3-bar vote integral: stores rolling per-symbol bull/bear vote history
+        # for sustained-consensus entry gating (architectural state feedback).
+        self._vote_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -181,8 +184,16 @@ class Strategy:
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
             _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
-            bull_votes = sum(_bull_confs)
-            bear_votes = sum(_bear_confs)
+            bull_votes_curr = sum(_bull_confs)
+            bear_votes_curr = sum(_bear_confs)
+            # 3-bar vote integral (architectural): require sustained consensus rather
+            # than single-bar threshold crossing. New state-feedback channel that
+            # smooths the entry decision boundary across time without changing thresholds.
+            _vh = self._vote_history.get(symbol, [])
+            _vh = (_vh + [(bull_votes_curr, bear_votes_curr)])[-3:]
+            self._vote_history[symbol] = _vh
+            bull_votes = sum(b for b, _ in _vh) / len(_vh)
+            bear_votes = sum(s for _, s in _vh) / len(_vh)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
