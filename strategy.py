@@ -222,15 +222,14 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                # Entry-direction hysteresis: same-side re-entry uses base _strong_min;
-                # opposite-side fresh entry requires deeper threshold (+0.10) — most chop
-                # noise produces side-flipping near boundaries.
-                _last_side = self._last_exit_side.get(symbol, 0)
-                _bull_entry_min = _strong_min + (0.10 if _last_side < 0 else 0.0)
-                _bear_entry_min = _strong_min + (0.10 if _last_side > 0 else 0.0)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_entry_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Step 1 base + opposing-strong veto: bull entry suppressed if _bear_strong > 0.5,
+                # bear entry suppressed if _bull_strong > 0.5. In chop, both _bull_strong and
+                # _bear_strong can be moderately above zero simultaneously; near-balanced strong-sums
+                # indicate noise-zone where entries are noise-flippable. Hard veto on opposing-side
+                # strength removes the most fragile entries.
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bear_strong < 0.5 and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_entry_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bull_strong < 0.5 and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
