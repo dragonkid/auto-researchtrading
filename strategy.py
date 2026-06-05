@@ -188,8 +188,8 @@ class Strategy:
             # conf>0.5 voters instead of concentrating on saturated ones (quintic c^5*97.66
             # gave a near-binary at c~0.7). Linear ramp has smoother derivative — single noisy
             # voter at c=0.95 contributes 0.9 instead of 5.66, reducing voter dominance.
-            _bull_strong = sum(max(0.0, (c - 0.5)) * w * 5.0 for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5)) * w * 5.0 for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5)) * w * 4.0 for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5)) * w * 4.0 for c, w in zip(_bear_confs, _voter_weights))
             # Continuous regime-adaptive threshold: tighten in low-trend (sideways) AND in
             # low-vol-with-positive-trend (rally signature). Linear ramp lowers the effective
             # strong-sum at the boundary; rally protection requires a higher floor where the
