@@ -249,15 +249,12 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Architectural: peak with slow decay. Confirmed-peak rule preserved
-                # (peak shifts up only on confirmed rising bars), but stale peaks
-                # decay 1% per bar back toward current pos_pnl. Prevents single-bar
-                # spike highs from anchoring giveback pressure for the rest of the
-                # trade. Floor at current pos_pnl (peak never goes below it).
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
-                    self.peak_pnl[symbol] = max(pos_pnl, _curr_peak * 0.99)
+                    self.peak_pnl[symbol] = _curr_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
