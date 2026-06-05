@@ -312,8 +312,17 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
+                # Voter-disagreement exit pressure (5th orthogonal source).
+                # When voter alignment opposes the held direction (bull holding bear-leaning votes
+                # or vice versa), contribute smoothly to exit pressure. Voter strong-sums are
+                # already clipped/quintic-shaped so this is noise-buffered at the source.
+                # Regime-agnostic: voter disagreement spans all regimes, unlike vol-spike which
+                # correlated with crash. Contribution caps at 0.6 to avoid swamping price-side
+                # exit aggregation.
+                _align_against = (_bear_strong - _bull_strong) if current_pos > 0 else (_bull_strong - _bear_strong)
+                _voter_exit_pressure = max(0.0, min(0.6, (_align_against - 0.5) / 1.5))
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure + _voter_exit_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
