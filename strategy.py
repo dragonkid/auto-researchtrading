@@ -407,16 +407,11 @@ class Strategy:
                     # margin-as-gate attempts which filtered flips out.
                     _flip_margin = (_bear_margin if current_pos > 0 else _bull_margin)
                     # One-sided modulation: positive margin (high conviction) increases
-                    # flip size, negative margin (marginal/below-threshold gate-pass) is
-                    # treated as zero — avoids cutting flip size when noise drives margin
-                    # negative on legitimate but marginal flips.
-                    # Quadratic damping: multiplies a positive-margin signal by smooth
-                    # ramp (margin^2 / (margin^2 + 0.04)) so low-margin noise is filtered
-                    # but strong signals pass at full amplitude. Avoids vol_ratio coupling
-                    # which removed the very regimes improving.
-                    _pm = max(0.0, _flip_margin)
-                    _damp = (_pm * _pm) / (_pm * _pm + 0.04)
-                    _flip_conv_adj = 0.10 * _damp * np.tanh(_pm / 0.30)
+                    # flip size; never decreases. Same architectural pattern as _w_pp/_w_time.
+                    # Smaller amplitude (0.10 -> 0.08) and steeper saturation (margin/0.20) —
+                    # delivers near-full boost only on clearly-strong margins, attenuates
+                    # mid-range noise more aggressively.
+                    _flip_conv_adj = 0.08 * np.tanh(max(0.0, _flip_margin) / 0.20)
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
