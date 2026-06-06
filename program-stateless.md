@@ -72,7 +72,7 @@ For each experiment:
    An experiment qualifies as `keep` if ALL of the following are met:
    - `composite_score` improved by at least +0.03 vs baseline, OR `raw_composite` improved vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **7.19** (must not degrade below production baseline). Calibrated to production strategy 8569cb5.
+   - `raw_composite` ≥ **8.30** (must not degrade below current baseline floor). Calibrated to current best strategy c1fc8bd (raw 8.42).
    - `raw_composite` ≥ baseline - 0.10 (no large score regression allowed).
    - `min_stability` ≥ baseline - 0.002 (must not regress more than 0.002 from baseline).
 
