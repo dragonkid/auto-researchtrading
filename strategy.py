@@ -187,13 +187,8 @@ class Strategy:
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
-            # noisy entries; relax in trends. Architectural: trend-strength source for the
-            # gate threshold uses MEAN of two trend signals (rsi_trend_str from ret_long_lagged
-            # AND |ret_short|/dyn_threshold magnitude). Two independent trend sources averaged
-            # → common-mode noise cancels at the gate boundary. Reduces the "rsi_trend_str alone"
-            # noise channel that previously drove _strong_min.
-            _gate_trend_str = 0.5 * (rsi_trend_str + min(abs(ret_short) / max(dyn_threshold, 1e-6), 1.0))
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - _gate_trend_str)
+            # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
