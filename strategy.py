@@ -260,9 +260,15 @@ class Strategy:
                 _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
-                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit:
+                # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
+                # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
+                # count gate since both derive from the same _bull_confs values. Removing the count
+                # gate eliminates correlated-noise amplification at the entry decision boundary
+                # (one less hard gate on the same underlying signal). Strong-sum is the primary
+                # discriminator (uses voter weights and quintic ramp); count is a coarser version.
+                if _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit:
+                elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
