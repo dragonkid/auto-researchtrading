@@ -315,18 +315,8 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + conviction-margin-modulated trend gate, vol-scaled).
-                # Architectural: same conviction-margin override pattern as entry path applied
-                # symmetrically to flip. Replaces hard trend_avg sign requirement with smooth
-                # admission: very high opposite-side conviction can flip against small-magnitude
-                # same-direction trend. Removes the binary trend=0 boundary on flip path that
-                # was the last asymmetric noise channel (entry path was already smoothed in
-                # baseline keep).
-                _flip_bear_margin = (_bear_strong - _strong_min) / max(_strong_min, 1e-6)
-                _flip_bull_margin = (_bull_strong - _strong_min) / max(_strong_min, 1e-6)
-                _flip_bear_admit = trend_avg < TREND_GATE_DEADZONE * min(1.0, _flip_bear_margin / 0.3) and trend_avg < TREND_GATE_DEADZONE
-                _flip_bull_admit = trend_avg > -TREND_GATE_DEADZONE * min(1.0, _flip_bull_margin / 0.3) and trend_avg > -TREND_GATE_DEADZONE
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and _flip_bear_admit) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and _flip_bull_admit)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
