@@ -116,6 +116,13 @@ class Strategy:
         # (decision moment) and reused throughout scale-in. Decouples scale-in
         # commitment from per-bar noise in vol/consensus signals.
         self._frozen_size = {}
+        # Architectural: frozen exit threshold at entry. Captures entry conviction
+        # (vote-margin above _strong_min) and uses it to set exit threshold for the
+        # entire hold. High-conviction entries get a higher exit bar (more patience);
+        # low-conviction entries get a lower exit bar (faster exit). Decouples exit
+        # threshold from per-bar exit-pressure noise — once the position is committed
+        # at conviction X, exit timing is anchored to that conviction.
+        self._frozen_exit_thresh = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -232,15 +239,22 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Conviction-coupled exit threshold: clamp(0.85, 1.15) based on
+                # margin above _strong_min. margin=0 -> 0.85; margin>=1.0 -> 1.15.
+                _bull_conv = max(0.0, min(1.0, (_bull_strong - _strong_min) / 1.0))
+                _bear_conv = max(0.0, min(1.0, (_bear_strong - _strong_min) / 1.0))
                 if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size  # freeze for scale-in
+                    self._frozen_exit_thresh[symbol] = 0.85 + 0.30 * _bull_conv
                 elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
+                    self._frozen_exit_thresh[symbol] = 0.85 + 0.30 * _bear_conv
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
+                    self._frozen_exit_thresh[symbol] = 0.85  # mean-rev: low conviction
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -318,9 +332,10 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                # Total exit pressure: threshold from frozen entry conviction (0.85-1.15).
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                _exit_thresh = self._frozen_exit_thresh.get(symbol, 1.0)
+                if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
@@ -333,11 +348,14 @@ class Strategy:
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
                     self._frozen_size[symbol] = size
+                    # Refresh exit threshold for new direction's conviction
+                    _flip_conv = max(0.0, min(1.0, ((_bear_strong if current_pos > 0 else _bull_strong) - _strong_min) / 1.0))
+                    self._frozen_exit_thresh[symbol] = 0.85 + 0.30 * _flip_conv
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size, self._frozen_exit_thresh):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
