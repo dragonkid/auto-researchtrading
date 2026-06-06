@@ -74,10 +74,6 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
-MEANREV_TREND_THRESHOLD = 0.05
-MEANREV_RSI_OVERSOLD = 49
-MEANREV_RSI_OVERBOUGHT = 51
-
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
@@ -215,7 +211,6 @@ class Strategy:
             _last_dir = self._last_exit_dir.get(symbol, 0)
             in_cooldown_long = _cooldown_active and _last_dir > 0
             in_cooldown_short = _cooldown_active and _last_dir < 0
-            in_cooldown = _cooldown_active and _last_dir == 0  # legacy fallback for mean-rev path
 
             # Architectural: vol-targeted size with consensus scaling.
             # Reduced consensus_boost magnitude (0.60 -> 0.30) to stay under DD caps.
@@ -237,9 +232,6 @@ class Strategy:
                     self._frozen_size[symbol] = size  # freeze for scale-in
                 elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
-                    self._frozen_size[symbol] = size
-                elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
