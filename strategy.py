@@ -81,9 +81,9 @@ MEANREV_RSI_OVERBOUGHT = 51
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.25  # 5 voters: scaled from 1.5 (5/6 ratio)
-MIN_VOTES = 2.08  # 5 voters: scaled from 2.5
-FLIP_MIN_VOTES = 2.0  # 5 voters: scaled from 2.4
+STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
+MIN_VOTES = 2.5
+FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -172,13 +172,13 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # 5 voters (removed EMA_slope as redundant with EMA_cross + linreg_slope)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr.slope - 0.00015) / 0.00010,
+                (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -188,9 +188,9 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16].
-            # Weights preserve original noise-sensitivity ratios; sum=5.0 preserves scale at new MIN.
-            _voter_weights = (0.7, 1.30, 1.15, 1.05, 0.80)
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
@@ -199,7 +199,7 @@ class Strategy:
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
-            _avg_signal = sum(_voter_signals_bull) / 5.0
+            _avg_signal = sum(_voter_signals_bull) / 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
