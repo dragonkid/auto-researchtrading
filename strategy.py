@@ -172,10 +172,19 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: RSI deadzone — absorbing band around threshold removes
+            # voter contribution where RSI sits near 50 (sideways noise source). Outside
+            # the band, signal ramps linearly; inside, signal is 0 -> tanh(0)=0.5 = abstain.
+            _rsi_diff = rsi - _rsi_thresh
+            _rsi_dead = 3.0
+            if abs(_rsi_diff) <= _rsi_dead:
+                _rsi_voter = 0.0
+            else:
+                _rsi_voter = (_rsi_diff - np.sign(_rsi_diff) * _rsi_dead) / 4.0
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
-                (rsi - _rsi_thresh) / 4.0,
+                _rsi_voter,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
