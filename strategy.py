@@ -214,16 +214,7 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Vol-spike guard: block entry when current vol >> trailing vol (regime-change moment).
-            # Uses ratio of short-window vol (12 bars) to long-window vol (48 bars). When the
-            # ratio exceeds threshold, signal SNR is poor — defer entry. Architectural: new
-            # entry gate based on vol-history dynamics (separate from vol_ratio vs TARGET_VOL).
-            _vol_short = max(np.std(np.diff(np.log(closes[-13:-1]))), 1e-6)
-            _vol_long = max(np.std(np.diff(np.log(closes[-49:-1]))), 1e-6)
-            _vol_spike = _vol_short / _vol_long
-            _vol_spike_ok = _vol_spike < 1.8
-
-            if current_pos == 0 and not in_cooldown and _vol_spike_ok:
+            if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
