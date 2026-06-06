@@ -72,7 +72,7 @@ For each experiment:
    An experiment qualifies as `keep` if ALL of the following are met:
    - `composite_score` improved by at least +0.03 vs baseline, OR `raw_composite` improved vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **8.30** (must not degrade below current baseline floor). Calibrated to current best strategy c1fc8bd (raw 8.42).
+   - `raw_composite` ≥ **8.80** (must not degrade below current baseline floor). Calibrated to current best strategy bcff3dc (raw 9.40).
    - `raw_composite` ≥ baseline - 0.10 (no large score regression allowed).
    - `min_stability` ≥ baseline - 0.002 (must not regress more than 0.002 from baseline).
      **Relaxed stab path**: if `composite_score` ≥ baseline + 0.10, the stab constraint relaxes to ≥ baseline - 0.004. This allows strategies with significant composite improvement to pass despite slightly lower noise-test stability.
@@ -222,7 +222,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 - Check `raw_composite` and `composite_score` — these must improve vs baseline
 - Check `min_stability` — must not regress more than 0.002 vs baseline
 - Check `regime_X_flip_count`, `regime_X_flip_wr`, `regime_X_flip_pnl` — flip events account for ~60% of trades but have low win rate. If a regime's DD is elevated, check whether flip frequency or flip PnL worsened before adjusting other parameters.
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%), raw_composite ≥ 8.30, and min_stab ≥ baseline - 0.002
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%), raw_composite ≥ 8.80, and min_stab ≥ baseline - 0.002
 
 ## Stability constraints (guard rails, not objectives)
 
