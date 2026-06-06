@@ -109,6 +109,10 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Persistence buffers: last 2 bars of strong-side firings per symbol.
+        # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
+        self._bull_strong_hist = {}
+        self._bear_strong_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -189,6 +193,23 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+
+            # Architectural: isolated-spike penalty on entry threshold.
+            # Track last 2 bars of strong-side firings; if current strong-sum crossed
+            # _strong_min but the prior 2 bars sat well below it, the crossing is
+            # likely a noise spike. Penalize by tightening _strong_min proportional to
+            # how far prior bars were below the firing line. Continuous: penalty =
+            # 0.10 * max(0, 1 - mean_prior_above_ratio). Adds new state and history-aware
+            # control flow to the entry gate.
+            _bh = self._bull_strong_hist.get(symbol, [])
+            _eh = self._bear_strong_hist.get(symbol, [])
+            _bull_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 2.0 if len(_bh) == 2 else 1.0
+            _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
+            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
+            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
+            # Update history (always) — buffer of length 2.
+            self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
+            self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -225,13 +246,13 @@ class Strategy:
                 # softens proportionally: very strong conviction can override small-magnitude
                 # wrong-sign trend. Smooth replacement for the binary deadzone clause —
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
-                _bull_margin = (_bull_strong - _strong_min) / max(_strong_min, 1e-6)
-                _bear_margin = (_bear_strong - _strong_min) / max(_strong_min, 1e-6)
+                _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
+                _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_admit:
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_admit:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -323,7 +344,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
