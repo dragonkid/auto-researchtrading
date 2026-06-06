@@ -210,13 +210,10 @@ class Strategy:
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
-            # Architectural: equal-weighted voter agreement margin (bull-bear conf mean) for
-            # trend-gate bias. Was: mean of pre-tanh _voter_signals_bull where each signal has
-            # different unit scale (ret_short~5x range, EMA_cross~20+x range, slope~few-x);
-            # the "mean" was effectively dominated by whichever voter had the largest scale.
-            # Now: mean(_bull_confs) - mean(_bear_confs), bounded in [-0.8, 0.8] by tanh+clip.
-            # Each voter contributes equally to the trend-gate bias regardless of pre-tanh scale.
-            _avg_signal = (sum(_bull_confs) - sum(_bear_confs)) / 6.0
+            # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
+            # acts as an additional alignment check at entry. Common-mode noise cancels in the
+            # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
+            _avg_signal = sum(_voter_signals_bull) / 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -242,9 +239,7 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                # _avg_signal in [-0.8, 0.8] (bull-bear conf mean); scale x3 so saturation
-                # (|_avg_signal| ≈ 0.5+) drives tanh near ±1, preserving original bias magnitude.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal * 3.0)
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
                 # Architectural: replaced binary deadzone vote-tiebreak with continuous
                 # strong-conviction admission. When _bull_strong significantly exceeds
                 # _strong_min (margin = (strong - min) / min), the trend-sign requirement
