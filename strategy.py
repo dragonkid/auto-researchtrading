@@ -391,13 +391,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: vol-conditioned FLIP_MIN_VOTES. Same family as a92de01
-                # (vol-conditioned ENTRY_INITIAL_FRAC) and a298796 (vol-conditioned flip-frac).
-                # Low vol -> tighter flip count gate (filter chop noise flips in sideways/rally).
-                # High vol -> looser flip count gate (admit protective crash flips).
-                # Continuous tanh: range ~[2.25, 2.55] around base 2.4 with amplitude 0.15.
-                _flip_min_votes_dyn = FLIP_MIN_VOTES + 0.15 * np.tanh((1.0 - vol_ratio) / 0.4)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_votes_dyn and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_votes_dyn and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
