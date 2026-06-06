@@ -331,24 +331,16 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural change to exit-pressure fusion: Noisy-OR aggregation.
-                # Previously: weighted sum of 4 pressures with binary threshold at 1.0.
-                # Sum amplifies correlated noise (slope/pp/sl all derive from price).
-                # Noisy-OR: P(exit) = 1 - (1-p1)*(1-p2)*(1-p3)*(1-p4), naturally bounded [0,1].
-                # Threshold raised to match: triggers when COMBINED probability >= 0.78.
-                # PnL-conditioned per-channel weights kept (asymmetric profit/loss profile).
-                # Mathematical effect: any single pressure near 1.0 fires; multiple weak
-                # pressures combine sub-additively (less false-firing from correlated noise).
+                # PnL-conditioned exit-pressure weighting (architectural change to fusion):
+                # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
+                # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
+                # Stop-loss and time pressure stay at unit weight (protective + structural).
+                # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
-                # Apply weights (clipped to [0,1] before noisy-OR — weights >1 would break)
-                _p_sl = min(1.0, _sl_pressure)
-                _p_slope = min(1.0, _w_slope * _sl_slope_pressure)
-                _p_pp = min(1.0, _w_pp * _pp_pressure)
-                _p_time = min(1.0, _time_pressure)
-                _exit_pressure = 1.0 - (1.0 - _p_sl) * (1.0 - _p_slope) * (1.0 - _p_pp) * (1.0 - _p_time)
-                if _exit_pressure >= 0.78 and target != 0:
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
