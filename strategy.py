@@ -392,15 +392,6 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Architectural: multi-source confirmation gate on exit fusion.
-                # Count non-SL exit sources contributing meaningfully (>0.3). If only one source
-                # is firing AND stop-loss is not engaged, raise the threshold by +0.30 — a single
-                # source crossing saturation alone is more likely a noise spike than a real exit
-                # signal. New derived quantity (_active_nonsl_sources) and new control flow at
-                # exit decision: parallel co-gate to the existing sum-threshold rule.
-                _active_nonsl = (1 if _sl_slope_pressure > 0.3 else 0) + (1 if _pp_pressure > 0.3 else 0) + (1 if _time_pressure > 0.3 else 0)
-                if _active_nonsl < 2 and _sl_pressure < 0.5:
-                    _exit_thresh = _exit_thresh + 0.30
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
