@@ -300,16 +300,8 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Opposing-conviction soft pressure (5th source).
-                # When holding long, rising _bear_strong is early evidence to exit (before flip threshold).
-                # Smooth ramp from _strong_min*0.5 to _strong_min, capped at 1.0.
-                # Decouples exit timing from binary flip threshold — captures continuous opposing signal.
-                _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
-                _opp_lower = _strong_min * 0.5
-                _opp_pressure = max(0.0, min(1.0, (_opp_strong - _opp_lower) / max(_strong_min - _opp_lower, 1e-6)))
-
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure + _opp_pressure
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
