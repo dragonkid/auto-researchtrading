@@ -282,17 +282,7 @@ class Strategy:
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Architectural: gate the meanrev fallback with strong-sum agreement.
-                    # Meanrev was orphaned from the unified strong-sum evidence framework
-                    # (only RSI + low-trend gates). Now requires partial voter consensus
-                    # in the same direction as the RSI extreme (>=0.4 of _strong_min).
-                    # Brings meanrev into the unified gate structure: voter ensemble
-                    # must confirm the reversion direction with at least minimal margin.
-                    _mr_min = 0.4 * _strong_min
-                    if rsi < MEANREV_RSI_OVERSOLD and _bull_strong >= _mr_min:
-                        target = size * _entry_frac_dyn
-                    elif rsi > MEANREV_RSI_OVERBOUGHT and _bear_strong >= _mr_min:
-                        target = -size * _entry_frac_dyn
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
