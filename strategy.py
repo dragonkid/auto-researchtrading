@@ -310,8 +310,15 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                # PnL-conditioned exit-pressure weighting (architectural change to fusion):
+                # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
+                # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
+                # Stop-loss and time pressure stay at unit weight (protective + structural).
+                # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
+                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
+                _w_slope = 1.0 + 0.30 * max(0.0, -_pnl_scale)        # heavier in loss
+                _w_pp    = 1.0 + 0.30 * max(0.0, _pnl_scale)         # heavier in profit
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
