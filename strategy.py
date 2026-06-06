@@ -374,23 +374,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: funding-rate exit pressure (5th source, exit-only).
-                # Different from prior funding-as-voter attempt: not used at entry decision,
-                # only as an exit nudge when funding direction strongly opposes our position
-                # AND we've held long enough for funding cost to accumulate. Smooth band on
-                # funding magnitude; one-sided (only fires against position direction).
-                # Funding signal smoothed over 8 bars to reduce noise.
-                _funding_recent = bd.history["funding_rate"].values[-8:]
-                _funding_smooth = float(np.mean(_funding_recent))
-                # Funding cost direction: positive funding rate -> longs pay shorts.
-                # If long and funding > 0, funding is against us; if short and funding < 0, also against us.
-                _funding_against = _funding_smooth if current_pos > 0 else -_funding_smooth
-                # Smooth pressure: 0 below 0.0001 (1bps/8h), saturates at 0.0005 (5bps/8h).
-                # Time-scaled: only meaningful after a few bars held.
-                _funding_time_scale = min(1.0, bars_held / 6.0)
-                _funding_pressure = max(0.0, min(1.0, (_funding_against - 0.0001) / 0.0004)) * _funding_time_scale
-                _w_funding = 1.0 + 0.20 * max(0.0, -_pnl_scale)  # heavier in loss (funding cost compounds with drawdown)
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_funding * 0.4 * _funding_pressure
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
