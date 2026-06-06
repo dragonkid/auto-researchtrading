@@ -218,7 +218,7 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                _trend_biased = self.smoothed_trend[symbol] + 0.008 * np.tanh(_avg_signal)
                 # Architectural simplification: removed deadzone vote-tiebreak override.
                 # Previously, when |_trend_biased| < TREND_GATE_DEADZONE, the trend-sign
                 # requirement was bypassed and replaced with bull_votes > bear_votes.
