@@ -387,19 +387,8 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Architectural: graduated exit. Weak exit pressure (between _exit_thresh
-                # and 1.5*_exit_thresh) scales position to 50% rather than full exit.
-                # Strong exit pressure (>=1.5*_exit_thresh) or any SL saturation forces
-                # full exit. Decouples "marginal exit signal" (scale down) from "decisive
-                # exit signal" (cut). The scale-down preserves option value when momentum
-                # may continue (esp. bull/rally winners hitting time pressure early).
-                # SL exemption: when _sl_pressure >= 0.95, always full exit (protective).
-                if target != 0 and _exit_pressure >= _exit_thresh:
-                    _hard_exit = _exit_pressure >= 1.5 * _exit_thresh or _sl_pressure >= 0.95
-                    if _hard_exit:
-                        target = 0.0
-                    else:
-                        target = current_pos * 0.5
+                if _exit_pressure >= _exit_thresh and target != 0:
+                    target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
