@@ -323,9 +323,11 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled).
-                # Directional cooldown blocks flip into prior-failed direction.
-                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Flip mechanism: replace trend_avg sign cliff with continuous vote-margin
+                # dominance. Flip fires when opposite-side votes dominate by FLIP_VOTE_MARGIN.
+                # Decouples flip from noise-sensitive sign(trend_avg) cliff.
+                _flip_vote_margin = 0.5
+                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and (bear_votes - bull_votes) >= _flip_vote_margin) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and (bull_votes - bear_votes) >= _flip_vote_margin)):
                     # Flip is a NEW entry decision — refresh frozen size for the new direction.
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
