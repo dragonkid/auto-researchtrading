@@ -319,10 +319,22 @@ class Strategy:
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
+                # Architectural: dual-timescale slope-agreement gate. Short slope (8 bars) and
+                # long slope (32 bars) computed independently; their sign agreement modulates
+                # the slope-against pressure. When short & long agree, agreement_factor=1.0
+                # (full pressure). When they disagree (regime transition / noise), factor smoothly
+                # drops toward 0.6 floor — slope-against contribution dampened because the
+                # underlying trend is uncertain. Smooth via tanh of the product of
+                # signed-slope-strengths so the transition has no boundary.
+                _ll_short = linregress(np.arange(8), np.log(_hl2[-8:]))
+                _ll_long = linregress(np.arange(32), np.log(_hl2[-32:]))
+                _slope_short, _slope_long = float(_ll_short.slope), float(_ll_long.slope)
+                _agree_signal = np.tanh((_slope_short * _slope_long) / 1e-7)  # ~+1 same sign, ~-1 opposite
+                _slope_agree_factor = 0.6 + 0.4 * max(0.0, _agree_signal)  # in [0.6, 1.0]
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                _sl_slope_pressure = _slope_agree_factor * max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
