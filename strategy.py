@@ -324,15 +324,12 @@ class Strategy:
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
-                # Architectural: hybrid time-pressure horizon. Pnl-driven extension dominates for
-                # winners (bull super-trends); slope-driven extension as fallback for moderate-pnl
-                # trades (crash continuations, sideways slow trends). Take max so winners always get
-                # full pnl-extension; weaker slope extension fills the gap when pnl is near zero.
-                _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
-                _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                _pnl_ext = MOMENTUM_HOLD_BONUS * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT) * 1.5))
-                _slope_ext = MOMENTUM_HOLD_BONUS * 0.6 * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                _hold_extension = max(_pnl_ext, _slope_ext)
+                # Architectural: asymmetric pnl-driven horizon. Profitable trades extend (winners run);
+                # losing trades CONTRACT (shorten horizon, faster time-out for losers). Stop dependence
+                # on noise-sensitive slope. Symmetric tanh on pnl_scale: positive pnl extends by up to
+                # +MOMENTUM_HOLD_BONUS, negative pnl contracts by up to -MOMENTUM_HOLD_BONUS*0.5.
+                _pnl_scale_t = np.tanh(pos_pnl / abs(STOP_LOSS_PCT) * 1.5)
+                _hold_extension = MOMENTUM_HOLD_BONUS * max(0.0, _pnl_scale_t) - MOMENTUM_HOLD_BONUS * 0.5 * max(0.0, -_pnl_scale_t)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_extension
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
