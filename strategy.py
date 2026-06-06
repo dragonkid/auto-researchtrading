@@ -397,14 +397,7 @@ class Strategy:
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
                     # vol_ratio (full flip in high-vol crash for protection; conservative
                     # flip in low-vol where noise risk dominates).
-                    # Architectural: conviction-margin SIZE modulation on flip path.
-                    # Larger commitment when opposite-side strong-sum is well above its threshold
-                    # (high conviction reversal), smaller when marginal. Continuous tanh
-                    # mapping margin -> [-0.10, +0.10] additive to base flip frac. Scales SIZE
-                    # of accepted flips (orthogonal to gate decisions, which are unchanged).
-                    _flip_margin = (_bear_margin if current_pos > 0 else _bull_margin)
-                    _flip_conv_adj = 0.10 * np.tanh(_flip_margin / 0.30)
-                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
+                    _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
