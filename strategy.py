@@ -228,14 +228,22 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Architectural: continuous alignment score replaces binary sign-cliff.
+                # Three independent signals fused into a single smooth alignment scalar:
+                #   trend_avg / TREND_GATE_DEADZONE (range ~[-1,1])
+                #   tanh(_avg_signal) (range [-1,1])  — common-mode-cancelling voter average
+                #   (bull_strong-bear_strong)/_strong_min (range ~[-2,2]) — strong-sum margin
+                # Side-aligned sum must exceed +0.5 (bull) / be < -0.5 (bear). Eliminates the
+                # sign-cliff at trend_avg=0 (sideways limiter source) by replacing the binary
+                # AND-of-(sign,deadzone-fallback) with a continuous threshold on a 3-signal sum.
+                _trend_norm = max(-1.5, min(1.5, self.smoothed_trend[symbol] / TREND_GATE_DEADZONE))
+                _avg_norm = np.tanh(_avg_signal)
+                _strong_diff = (_bull_strong - _bear_strong) / max(_strong_min, 0.1)
+                _alignment = _trend_norm + _avg_norm + _strong_diff
+                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _alignment > 0.5:
                     target = size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size  # freeze for scale-in
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _alignment < -0.5:
                     target = -size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
