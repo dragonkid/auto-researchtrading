@@ -371,7 +371,14 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Architectural: anti-whipsaw bars_held gate. Flip allowed only after at
+                # least 2 bars in position. A flip on bar 1 is most likely a fresh-entry
+                # whipsaw catching noise — the just-entered position has not yet exhibited
+                # any holding-period evidence, and the opposite-side strong-sum at bar 1
+                # is most plausibly the same noise that the entry gate marginally crossed.
+                # Adds time-in-position evidence as a flip prerequisite without affecting
+                # exit-pressure path (positions still exit normally on bar 1 if exit_pressure>=1).
+                if not in_cooldown and bars_held >= 2 and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
