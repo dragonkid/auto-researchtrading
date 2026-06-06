@@ -241,22 +241,13 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Architectural: scale-in halt-on-deteriorate. Default deterministic scale-up,
-                # but if during scale-in the strong-sum on the held side drops well below
-                # _strong_min (margin < -0.20), HOLD at current scale instead of ramping.
-                # Distinct from exit (no flat) and from full-recheck (no vote requirement).
-                # Soft commit-mid-flight: doesn't reverse, just halts further commitment when
-                # conviction deteriorates significantly. Stop-loss / exit logic still operate.
+                # Position accumulation: deterministic scale-up (no vote confirmation needed)
+                # Rationale: vote check during accumulation is a noise channel.
+                # Entry decision was already validated on bar 0; scale-in is commitment.
                 if bars_held <= ENTRY_FULL_BARS:
-                    _held_strong = _bull_strong if current_pos > 0 else _bear_strong
-                    _held_margin = (_held_strong - _strong_min) / max(_strong_min, 1e-6)
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
-                    if _held_margin < -0.20:
-                        # Halt scale-in: keep current position level (no further ramp)
-                        target = current_pos
-                    else:
-                        target = full_target * scale_frac
+                    target = full_target * scale_frac
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
