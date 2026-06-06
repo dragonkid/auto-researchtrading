@@ -300,9 +300,14 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                # Total exit pressure: vol-adaptive threshold.
+                # High vol (crash) -> 0.85 (faster exits, less DD risk).
+                # Low vol (sideways/rally calm) -> 1.15 (don't exit on weak pressure).
+                # Continuous interpolation on vol_ratio: thresh = 1.15 - 0.30 * sigmoid((vol_ratio-1.0)/0.4)
+                # Smooth transition centered at vol_ratio=1.0.
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                _exit_thresh = 1.15 - 0.30 * 0.5 * (1.0 + np.tanh((vol_ratio - 1.0) / 0.4))
+                if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
