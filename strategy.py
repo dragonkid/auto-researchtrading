@@ -359,8 +359,13 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + bias-corrected trend sign, vol-scaled).
+                # Architectural: flip trend-sign now uses _trend_biased (trend_avg + voter-bias)
+                # to match entry-side gate. Removes asymmetric trend-source (entry uses biased,
+                # flip used raw trend_avg). Common-mode voter-bias cancels at the flip boundary
+                # exactly as at entry, reducing trend-sign-flip noise on FLIP_MIN_VOTES path.
+                _flip_trend = trend_avg + 0.005 * np.tanh(_avg_signal)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and _flip_trend < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and _flip_trend > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
