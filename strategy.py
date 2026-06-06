@@ -332,14 +332,7 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                # Architectural: smooth peak-activation ramp (replaces binary peak>_pp_min toggle).
-                # Smoothstep over [0.6*_pp_min, _pp_min] gives gradual activation as peak grows;
-                # eliminates hard discontinuity where pressure jumps from 0 to full at exact peak=_pp_min.
-                # Below 60% of _pp_min: no pressure. Above _pp_min: full activation. Smooth between.
-                _pp_act_t = max(0.0, min(1.0, (self.peak_pnl[symbol] - 0.6 * _pp_min) / (0.4 * _pp_min)))
-                _pp_activation = _pp_act_t * _pp_act_t * (3.0 - 2.0 * _pp_act_t)
-                _pp_pressure_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                _pp_pressure = _pp_activation * _pp_pressure_raw
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
