@@ -277,9 +277,25 @@ class Strategy:
                 # gate eliminates correlated-noise amplification at the entry decision boundary
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
-                if _bull_strong >= _bull_strong_min and _bull_admit:
+                # Architectural: trend-quality (R²) gate on directional entry.
+                # _lr.rvalue is the linregress correlation coefficient on log(hl2) over
+                # LINREG_PERIOD bars. R² = rvalue² measures how well the slope describes
+                # the price path. High R² = clean directional move (trend); low R² =
+                # chaotic move (chop, even if slope is non-zero). Require R² >= floor
+                # for directional bull/bear entries; meanrev path unaffected (it FIRES
+                # in low-trend conditions). Continuous attenuation via smoothstep on R².
+                # Decoupled from voter ensemble (R² is a price-path-shape metric, not
+                # a vote count) — adds a new evidence dimension to entry gate.
+                _r2 = _lr.rvalue ** 2
+                _r2_quality = max(0.0, min(1.0, (_r2 - 0.05) / 0.15))  # smoothstep [0.05, 0.20]
+                _r2_quality = _r2_quality * _r2_quality * (3.0 - 2.0 * _r2_quality)
+                # Tighten _strong_min by up to 20% when R² is low (poor trend quality).
+                _r2_strong_mult = 1.0 + 0.20 * (1.0 - _r2_quality)
+                _bull_strong_min_r2 = _bull_strong_min * _r2_strong_mult
+                _bear_strong_min_r2 = _bear_strong_min * _r2_strong_mult
+                if _bull_strong >= _bull_strong_min_r2 and _bull_admit:
                     target = size * _entry_frac_dyn
-                elif _bear_strong >= _bear_strong_min and _bear_admit:
+                elif _bear_strong >= _bear_strong_min_r2 and _bear_admit:
                     target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
