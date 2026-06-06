@@ -239,22 +239,19 @@ class Strategy:
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
-                # Unified soft exit-pressure architecture (slope + peak_profit + time only).
-                # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Architectural: confirmed-peak update — peak shifts only when pos_pnl
-                # exceeds previous peak AND is rising (pos_pnl > prev_pos_pnl). Single-bar
-                # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
-                # confirmed within 1 extra bar). Different from EMA smoothing: this is a
-                # gating rule on the high-water mark, not a low-pass filter.
-                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                self._smoothed_pnl[symbol] = pos_pnl
+                # Architectural: EMA-filtered peak tracker. Replaces binary rising-bar gate
+                # with a continuous low-pass filter — pnl is EMA-smoothed (alpha=0.5,
+                # span=3) and peak ratchets up against the SMOOTHED pnl. Single-bar noise
+                # spikes (which would inflate the peak under raw max) are filtered by EMA;
+                # legitimate sustained moves still register because EMA tracks within ~2
+                # bars. Different from confirmed-rising-bar: continuous filter rather than
+                # binary direction gate, removes the boundary-noise channel at the rising
+                # threshold (where pos_pnl ~= prev_pnl, gate fluctuates).
+                _prev_smooth = self._smoothed_pnl.get(symbol, pos_pnl)
+                _smooth_pnl = 0.5 * pos_pnl + 0.5 * _prev_smooth
+                self._smoothed_pnl[symbol] = _smooth_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
-                # pos_pnl >= prev_pos_pnl (rising bar).
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
-                    self.peak_pnl[symbol] = pos_pnl
-                else:
-                    self.peak_pnl[symbol] = _curr_peak
+                self.peak_pnl[symbol] = max(_curr_peak, _smooth_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
