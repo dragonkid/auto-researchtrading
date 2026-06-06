@@ -173,15 +173,11 @@ class Strategy:
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
-            # Trend-adaptive voter clipping range: in chop (low rsi_trend_str), tighter
-            # clipping [0.2, 0.8] limits single-voter dominance under high noise; in trends,
-            # wider clipping [0.1, 0.9] preserves voter conviction. Adaptive dynamic range
-            # of the voter signal layer — different from prior fixed [0.1, 0.9] aggregation.
-            _clip_lo = 0.1 + 0.1 * (1.0 - rsi_trend_str)
-            _clip_hi = 0.9 - 0.1 * (1.0 - rsi_trend_str)
-            _clip_span = _clip_hi - _clip_lo
-            _bull_confs = [_clip_lo + _clip_span * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [_clip_lo + _clip_span * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
+            # Prevents any single voter from dominating the strong-sum under noise saturation.
+            # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
