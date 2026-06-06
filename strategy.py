@@ -410,11 +410,7 @@ class Strategy:
                     # flip size, negative margin (marginal/below-threshold gate-pass) is
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
-                    # Vol-gated: only apply conviction-margin modulation when vol_ratio > 1
-                    # (high-vol regimes where flip is protective). Low-vol/sideways flips
-                    # use base sizing (no modulation noise channel).
-                    _vol_gate = max(0.0, min(1.0, (vol_ratio - 1.0) / 0.5))
-                    _flip_conv_adj = 0.10 * _vol_gate * np.tanh(max(0.0, _flip_margin) / 0.30)
+                    _flip_conv_adj = 0.06 * np.tanh(max(0.0, _flip_margin) / 0.30)
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
