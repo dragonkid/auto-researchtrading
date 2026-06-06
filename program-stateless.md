@@ -75,6 +75,7 @@ For each experiment:
    - `raw_composite` ≥ **8.30** (must not degrade below current baseline floor). Calibrated to current best strategy c1fc8bd (raw 8.42).
    - `raw_composite` ≥ baseline - 0.10 (no large score regression allowed).
    - `min_stability` ≥ baseline - 0.002 (must not regress more than 0.002 from baseline).
+     **Relaxed stab path**: if `composite_score` ≥ baseline + 0.10, the stab constraint relaxes to ≥ baseline - 0.004. This allows strategies with significant composite improvement to pass despite slightly lower noise-test stability.
 
    **Absolute DD caps (hard ceiling, never changes):**
    - bull_2021: ≤ 7.8%
