@@ -260,9 +260,16 @@ class Strategy:
                 _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
-                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit:
+                # Architectural: strength-separation gate. Block entry when bull/bear strong-sums
+                # are too close (near-tie consensus = choppy/ambiguous). Require winner to lead
+                # runner-up by at least 0.5 (about 1/3 of a typical _strong_min). This adds a NEW
+                # signal source — relative strength asymmetry — orthogonal to absolute strong-sum.
+                _strong_sep_min = 0.5
+                _bull_separation = _bull_strong - _bear_strong >= _strong_sep_min
+                _bear_separation = _bear_strong - _bull_strong >= _strong_sep_min
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit and _bull_separation:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit and _bear_separation:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
