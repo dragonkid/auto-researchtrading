@@ -366,7 +366,19 @@ class Strategy:
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
+                # Architectural: opposite-side strong-sum as 5th exit-pressure source.
+                # Connects voter-ensemble evidence to exit subsystem (currently exit only
+                # uses price-derived signals: sl, slope, pp, time). When opposite-side
+                # voters align well above their threshold while position is open, that's
+                # exit evidence distinct from price-derived sources. Continuous ramp from
+                # 0 (margin <= 0) to 1 (margin >= 0.5). Capped weight 0.25 to avoid
+                # dominating the additive sum (0.25 means even saturated opposite-strong
+                # alone cannot exit — needs corroboration from price-derived sources).
+                _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
+                _opp_strong_min = _bear_strong_min if current_pos > 0 else _bull_strong_min
+                _opp_margin = (_opp_strong - _opp_strong_min) / max(_opp_strong_min, 1e-6)
+                _opp_pressure = max(0.0, min(1.0, _opp_margin / 0.5))
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure + 0.25 * _opp_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
