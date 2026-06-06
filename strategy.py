@@ -379,7 +379,25 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: 5th exit source — range-position pressure.
+                # Compute price's rank within last 24-bar high-low range. For LONGS, when
+                # price reaches upper portion (rank>0.85), build smooth pressure to lock
+                # gains at range-extremes (mean-reversion-aware exit). For SHORTS, mirror
+                # at lower portion (rank<0.15). Orthogonal to slope/peak/time: uses range
+                # distribution, not momentum or absolute giveback. Gated on profit (pos_pnl>0)
+                # to avoid premature exit on unrealized losses near range edges.
+                _r_high = np.max(bd.history["high"].values[-24:])
+                _r_low = np.min(bd.history["low"].values[-24:])
+                _r_range = max(_r_high - _r_low, 1e-8)
+                _r_rank = (mid - _r_low) / _r_range
+                if current_pos > 0 and pos_pnl > 0:
+                    _range_pressure = max(0.0, min(1.0, (_r_rank - 0.85) / 0.10))
+                elif current_pos < 0 and pos_pnl > 0:
+                    _range_pressure = max(0.0, min(1.0, (0.15 - _r_rank) / 0.10))
+                else:
+                    _range_pressure = 0.0
+                _w_range = 0.50  # smaller weight — protective accent, not primary
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_range * _range_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
