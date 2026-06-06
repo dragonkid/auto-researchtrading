@@ -292,8 +292,14 @@ class Strategy:
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Architectural: scale-in anchor uses vol-conditioned _entry_frac_dyn (same
+                # as bar-0 commit) instead of constant ENTRY_INITIAL_FRAC. Removes the
+                # bar-0/bar-1 discontinuity introduced when _entry_frac_dyn was added.
+                # Low-vol scale-in trajectory starts higher (0.50->1.0); high-vol starts
+                # lower (0.36->1.0). Mechanism is same vol_ratio source (realized-vol
+                # derived, smoother than gate signals).
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    scale_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
