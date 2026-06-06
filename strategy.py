@@ -229,9 +229,19 @@ class Strategy:
                 _bear_margin = (_bear_strong - _strong_min) / max(_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_admit:
+                # Architectural: signal-magnitude-coupled MIN_VOTES. Strong aligned signals
+                # require fewer votes (legitimate high-conviction signals shortcut count
+                # gate); weak signals require more votes (noise floor). _avg_signal is
+                # variance-reduced cross-voter average; high |_avg_signal| means voters
+                # collectively express strong directional view. Couples the count gate to
+                # signal magnitude — removes the binary 2.5-votes boundary as the dominant
+                # noise channel for marginal entries.
+                _sig_mag = min(1.0, abs(_avg_signal))
+                _bull_min_votes = MIN_VOTES - 0.30 * _sig_mag if _avg_signal > 0 else MIN_VOTES + 0.20 * _sig_mag
+                _bear_min_votes = MIN_VOTES - 0.30 * _sig_mag if _avg_signal < 0 else MIN_VOTES + 0.20 * _sig_mag
+                if bull_votes >= _bull_min_votes and _bull_strong >= _strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_admit:
+                elif bear_votes >= _bear_min_votes and _bear_strong >= _strong_min and _bear_admit:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
