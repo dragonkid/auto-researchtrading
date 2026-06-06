@@ -370,19 +370,8 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + smooth conviction-modulated trend gate, vol-scaled).
-                # Architectural: replaces hard trend_avg<0 / trend_avg>0 sign boundary with the
-                # same conviction-margin admission rule already used at entry. Strong flip
-                # conviction (margin = (strong - strong_min)/strong_min) softens the trend-sign
-                # requirement proportionally, capped by TREND_GATE_DEADZONE — small wrong-sign
-                # trend permitted only when flip-side strong-sum is well above its gate. Same
-                # boundary, magnitude-modulated. Reduces flip-side noise at trend zero-crossings
-                # while keeping a hard ceiling on how far wrong-sign the trend can be.
-                _flip_bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
-                _flip_bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
-                _flip_to_bear_ok = trend_avg < TREND_GATE_DEADZONE * min(1.0, _flip_bear_margin / 0.3) and trend_avg < TREND_GATE_DEADZONE
-                _flip_to_bull_ok = trend_avg > -TREND_GATE_DEADZONE * min(1.0, _flip_bull_margin / 0.3) and trend_avg > -TREND_GATE_DEADZONE
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and _flip_to_bear_ok) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and _flip_to_bull_ok)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses quarter-amplitude vol modulation of entry anchor.
                     # Flip is single-bar commitment (no scale-in absorption), so noise risk
                     # is asymmetrically larger than entry. Weight 0.25 toward _entry_frac_dyn
