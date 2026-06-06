@@ -305,8 +305,12 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                # Flip mechanism: gate by _avg_signal sign (variance-reduced 6-voter mean)
+                # rather than trend_avg sign. trend_avg is window-return derived (2 inputs, high
+                # noise correlation); _avg_signal averages 6 voters so common-mode noise cancels
+                # → cleaner flip-direction signal. Architectural: changes data dependency of the
+                # flip-direction gate from price-windowed-returns to voter-aggregate.
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and _avg_signal < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and _avg_signal > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
