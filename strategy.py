@@ -216,13 +216,10 @@ class Strategy:
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
-            # Architectural: replace raw-signal mean with bounded-conviction mean.
-            # _voter_signals_bull are unbounded (a single voter saturating at ±5 dominates
-            # the mean). _bull_confs - _bear_confs is bounded in [-0.8, 0.8] per voter and
-            # represents net per-voter conviction (positive=bull, negative=bear). Mean of
-            # bounded contributions is strictly outlier-resistant: no single voter can swing
-            # the average by more than 1/6 of its range. Common-mode noise still cancels.
-            _avg_signal = sum(b - e for b, e in zip(_bull_confs, _bear_confs)) / 6.0
+            # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
+            # acts as an additional alignment check at entry. Common-mode noise cancels in the
+            # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
+            _avg_signal = sum(_voter_signals_bull) / 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
