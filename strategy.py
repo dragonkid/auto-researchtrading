@@ -256,22 +256,6 @@ class Strategy:
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
 
-            # Architectural: high-low range expansion gate. When current bar's range
-            # significantly exceeds recent 12-bar average range, current close may be
-            # a noise-driven extreme. Tighten _strong_min on entry by up to 15% when
-            # range_ratio > 1.4 (continuous smoothstep, no firing below 1.2). Different
-            # from vol_ratio (close-to-close vol) — uses intra-bar high-low which is
-            # an orthogonal noise indicator capturing single-bar volatility spikes.
-            _highs = bd.history["high"].values
-            _lows = bd.history["low"].values
-            _bar_ranges = (_highs[-13:-1] - _lows[-13:-1]) / closes[-13:-1]
-            _avg_range = max(float(np.mean(_bar_ranges)), 1e-6)
-            _curr_range = (_highs[-1] - _lows[-1]) / closes[-1]
-            _range_ratio = _curr_range / _avg_range
-            _range_penalty = max(0.0, min(1.0, (_range_ratio - 1.2) / 0.4))
-            _bull_strong_min = _bull_strong_min * (1.0 + 0.15 * _range_penalty)
-            _bear_strong_min = _bear_strong_min * (1.0 + 0.15 * _range_penalty)
-
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
