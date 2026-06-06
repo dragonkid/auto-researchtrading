@@ -116,6 +116,9 @@ class Strategy:
         # (decision moment) and reused throughout scale-in. Decouples scale-in
         # commitment from per-bar noise in vol/consensus signals.
         self._frozen_size = {}
+        # Frozen vol_ratio at entry — used to shape exit-pressure bands (SL/PP/slope).
+        # Decouples exit-band geometry from per-bar vol_ratio noise during the hold.
+        self._frozen_vol_ratio = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -235,12 +238,15 @@ class Strategy:
                 if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size  # freeze for scale-in
+                    self._frozen_vol_ratio[symbol] = vol_ratio
                 elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
+                    self._frozen_vol_ratio[symbol] = vol_ratio
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
+                    self._frozen_vol_ratio[symbol] = vol_ratio
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -249,6 +255,9 @@ class Strategy:
 
                 # Use frozen size from entry bar (decouples scale-in from per-bar noise).
                 _entry_size = self._frozen_size.get(symbol, size)
+                # Frozen vol_ratio from entry: shape exit-pressure bands using the
+                # vol regime at the moment of decision, not per-bar noisy vol_ratio.
+                _exit_vr = self._frozen_vol_ratio.get(symbol, vol_ratio)
 
                 # Position accumulation: deterministic scale-up using FROZEN size.
                 # Decision-moment commitment, not per-bar recomputation.
@@ -280,7 +289,7 @@ class Strategy:
                 # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
                 _stop_abs = abs(STOP_LOSS_PCT)
                 _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _band_half = (0.06 + 0.20 * min(1.0, _exit_vr)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
@@ -297,17 +306,17 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - _exit_vr) / 0.3))
+                _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - _exit_vr) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, _exit_vr ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
-                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                _pp_band = 0.10 + 0.20 * min(1.0, _exit_vr)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
@@ -333,11 +342,12 @@ class Strategy:
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
                     self._frozen_size[symbol] = size
+                    self._frozen_vol_ratio[symbol] = vol_ratio
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size, self._frozen_vol_ratio):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
