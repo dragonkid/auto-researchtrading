@@ -367,7 +367,16 @@ class Strategy:
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                # Architectural: time-conditioned exit threshold during scale-in phase.
+                # Fresh positions (bars_held <= ENTRY_FULL_BARS) get a higher pressure
+                # threshold (1.2 instead of 1.0) — protects against early-trade noise
+                # exits where pressure can transiently spike above 1.0 from low-conviction
+                # signals before the position has time to develop. Stop-loss path is
+                # exempt (already triggers at deeper losses regardless). Linear ramp from
+                # 1.2 (bar 0) to 1.0 (bar ENTRY_FULL_BARS+1) so no hard discontinuity.
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / (ENTRY_FULL_BARS + 1.0))
+                # Stop-loss exemption: still exit immediately if hard SL pressure dominates.
+                if (_exit_pressure >= _exit_thresh or _sl_pressure >= 0.95) and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
