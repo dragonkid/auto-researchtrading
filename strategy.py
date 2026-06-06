@@ -323,20 +323,11 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural multi-var: (1) chop-tightened FLIP_MIN_VOTES — flips in
-                # low-trend regimes (chop) require higher vote count to filter noise-flips;
-                # trending regimes use base threshold. (2) trend-gated flip-conviction sizing
-                # — in trends, scale flip_frac by |trend_avg| (high-conviction flips full
-                # commit, marginal flips small); in chop, ignore the conviction adjustment
-                # (no useful trend_avg signal there). Combines two coordinated changes.
-                _flip_min_votes = FLIP_MIN_VOTES + 0.20 * (1.0 - rsi_trend_str)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_votes and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_votes and _bull_strong >= _strong_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
-                    _flip_conv_in_trend = min(1.0, abs(trend_avg) / 0.005)
-                    _flip_conv_factor = 1.0 - 0.25 * rsi_trend_str * (1.0 - _flip_conv_in_trend)
-                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)) * _flip_conv_factor
+                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
