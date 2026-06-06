@@ -137,7 +137,14 @@ class Strategy:
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
-            ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            # Multi-window mean ret_long: averages 3 lookback windows (16/20/24) to reduce
+            # single-window noise on the trend-strength signal that drives _strong_min,
+            # cooldown_trend_strength, sideways_boost, dyn_threshold, and strength_scale.
+            # Same robust-aggregation primitive that proved out for exit slope (12/16/22 mean).
+            _rl_16 = (closes[-1] - closes[-16]) / closes[-16]
+            _rl_20 = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            _rl_24 = (closes[-1] - closes[-24]) / closes[-24]
+            ret_long = (_rl_16 + _rl_20 + _rl_24) / 3.0
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
