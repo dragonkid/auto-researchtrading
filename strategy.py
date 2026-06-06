@@ -287,15 +287,13 @@ class Strategy:
                 else:
                     self.peak_pnl[symbol] = _curr_peak
 
-                # Architectural simplification: stop-loss as smooth pressure with FIXED band.
-                # Removed vol-adaptive band (was 0.06+0.20*min(1,vol_ratio)). Stop-loss is an
-                # entry-anchored protective trigger; vol-adapting its band couples stop timing
-                # to noisy vol_ratio (which itself drifts on close-perturbed std). Fixed band
-                # of 0.20 of |STOP| (midpoint of prior range) decouples stop semantics from
-                # ambient vol noise. Removes a data dependency between exit subsystem and vol.
+                # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
+                # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
+                # high vol (crash) -> wide band (absorbs larger noise excursions).
+                # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
                 _stop_abs = abs(STOP_LOSS_PCT)
                 _loss = -pos_pnl
-                _band_half = 0.20 * _stop_abs
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
