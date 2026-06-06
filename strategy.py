@@ -322,11 +322,7 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                # Continuous peak-profit activation: smooth ramp instead of binary threshold.
-                # Removes the boundary at peak_pnl == _pp_min where pp_pressure flips 0 -> nonzero.
-                # _pp_active = tanh(2*(peak/min - 1)) clipped to [0,1] — smooth saturation.
-                _pp_active = max(0.0, min(1.0, np.tanh(2.0 * (self.peak_pnl[symbol] / _pp_min - 1.0))))
-                _pp_pressure = _pp_active * max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
