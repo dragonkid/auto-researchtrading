@@ -109,8 +109,6 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Persistence-confirmed exit: track prev-bar exit pressure per symbol.
-        self._prev_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -321,15 +319,7 @@ class Strategy:
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
-                # Persistence-confirmed exit: borderline pressure (1.0-1.3) requires 2 consecutive
-                # bars to fire; high pressure (>=1.3) fires immediately. Decouples noise-borderline
-                # exits from genuine ones via state confirmation. Stop-loss alone (>=1.0 from sl_pressure)
-                # also bypasses persistence — protective gate stays single-bar.
-                _prev_ep = self._prev_exit_pressure.get(symbol, 0.0)
-                _strong_exit = _exit_pressure >= 1.3 or _sl_pressure >= 0.9
-                _confirmed_exit = _exit_pressure >= 1.0 and _prev_ep >= 1.0
-                self._prev_exit_pressure[symbol] = _exit_pressure
-                if (_strong_exit or _confirmed_exit) and target != 0:
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
@@ -343,7 +333,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._prev_exit_pressure):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
