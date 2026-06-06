@@ -215,18 +215,13 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # Architectural: consensus-AND entry direction gate. Replaces additive bias
-                # (trend_avg + 0.005*tanh(_avg_signal)) with explicit AND between trend_avg sign
-                # and _avg_signal sign. Two independent direction signals (price-windowed vs
-                # voter-mean) must agree for entry. Common-mode noise across the two doesn't
-                # mask disagreement; either signal alone in the deadzone falls back to
-                # vote-tiebreak. Different fusion: AND of two sign tests vs additive blend.
-                _trend = self.smoothed_trend[symbol]
-                _bull_dir = (_trend > 0 and _avg_signal > 0) or (abs(_trend) < TREND_GATE_DEADZONE and _avg_signal > 0 and bull_votes > bear_votes)
-                _bear_dir = (_trend < 0 and _avg_signal < 0) or (abs(_trend) < TREND_GATE_DEADZONE and _avg_signal < 0 and bear_votes > bull_votes)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_dir:
+                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
+                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
+                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_dir:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
