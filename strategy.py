@@ -311,11 +311,12 @@ class Strategy:
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
-                # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
-                # Uses same robust median exit-slope for consistency within exit subsystem.
-                _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
-                _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                # Architectural: deterministic time pressure (decoupled from price-derived noise).
+                # Previously _max_hold depended on _exit_slope strength/agreement, propagating
+                # exit-slope noise into time pressure. Now _max_hold is a pure constant — time
+                # pressure becomes a perfectly noise-free baseline gate. Other exit pressures
+                # (sl, slope, pp) still fire earlier under conviction.
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * 0.5
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
