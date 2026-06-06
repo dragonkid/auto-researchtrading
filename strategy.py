@@ -355,14 +355,7 @@ class Strategy:
                 # Uses same robust median exit-slope for consistency within exit subsystem.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                # Architectural: vol-adaptive HOLD_DECAY_START. In high vol (crash), each bar
-                # represents more risk-per-time, so trim max-hold (faster time-pressure firing
-                # protects against DD accumulation). In low vol (sideways/rally calm), extend
-                # max-hold (slower time-pressure firing lets winners run further).
-                # Continuous tanh modulation around vol_ratio=1.0, amplitude ±2 bars
-                # (HOLD_DECAY_START effectively in [4, 8] vs constant 6).
-                _hold_start_dyn = HOLD_DECAY_START - 2.0 * np.tanh((vol_ratio - 1.0) / 0.4)
-                _max_hold = _hold_start_dyn + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
