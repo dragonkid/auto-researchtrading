@@ -113,9 +113,6 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
-        # Entry strong-sum recorded at entry; used by pyramid-up gate to admit
-        # additional capital when conviction strengthens after position is full.
-        self._entry_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -282,21 +279,6 @@ class Strategy:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
-                else:
-                    # Architectural: pyramid-up gate. After position is full (bars_held > 3),
-                    # allow scaling up to 1.15x when conviction has strengthened since entry
-                    # AND position is in profit AND no exit pressure is building. New control
-                    # flow + new state (_entry_strong). Not a parameter tweak — adds a fresh
-                    # branch that can RAISE the target above the entry-time size cap.
-                    _entry_str = self._entry_strong.get(symbol, 0.0)
-                    _curr_str = _bull_strong if current_pos > 0 else _bear_strong
-                    _str_growth = (_curr_str - _entry_str) / max(_entry_str, 1e-6)
-                    # Smooth ramp: factor in [1.0, 1.15] as growth goes 0 -> 0.5
-                    _pyr_factor = 1.0 + 0.15 * max(0.0, min(1.0, _str_growth / 0.5))
-                    # Only apply when in profit and within reasonable holding period.
-                    if pos_pnl > 0.005 and bars_held < 12:
-                        full_target = size if current_pos > 0 else -size
-                        target = full_target * _pyr_factor
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
@@ -382,11 +364,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._entry_strong):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._entry_strong[symbol] = _bull_strong if target > 0 else _bear_strong
 
         return signals
