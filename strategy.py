@@ -218,17 +218,20 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.008 * np.tanh(_avg_signal)
-                # Architectural simplification: removed deadzone vote-tiebreak override.
-                # Previously, when |_trend_biased| < TREND_GATE_DEADZONE, the trend-sign
-                # requirement was bypassed and replaced with bull_votes > bear_votes.
-                # That created two boundaries instead of one (sign-flip + count-tie) and
-                # admitted entries during chop where trend was effectively zero. Now a
-                # strict trend-sign requirement (with avg_signal-bias smoothing already
-                # added) governs direction admission alone.
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _trend_biased > 0:
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Architectural: replaced binary deadzone vote-tiebreak with continuous
+                # strong-conviction admission. When _bull_strong significantly exceeds
+                # _strong_min (margin = (strong - min) / min), the trend-sign requirement
+                # softens proportionally: very strong conviction can override small-magnitude
+                # wrong-sign trend. Smooth replacement for the binary deadzone clause —
+                # gates on conviction magnitude rather than on absolute |_trend_biased|.
+                _bull_margin = (_bull_strong - _strong_min) / max(_strong_min, 1e-6)
+                _bear_margin = (_bear_strong - _strong_min) / max(_strong_min, 1e-6)
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _trend_biased < 0:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_admit:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
