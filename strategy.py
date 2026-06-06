@@ -198,7 +198,15 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: volume-modulated additional tightening. Low-volume thrusts
+            # are noise-prone; raise _strong_min when recent short-window volume is below
+            # the long-window baseline. Continuous: factor scales 0..1 over the [0.85, 1.05]
+            # volume-ratio range, contributing up to +0.15 tightening. High volume contributes 0.
+            # Different from existing vol_confirm_mult (which only affects sizing 0.98..1.10);
+            # this re-uses the same volume signal for the entry-quality gate.
+            _vol_ratio_signal = np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / max(np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:]), 1e-6)
+            _vol_tighten = max(0.0, min(1.0, (1.05 - _vol_ratio_signal) / 0.20))
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * _vol_tighten
 
             # Architectural: isolated-spike penalty on entry threshold.
             # Track last 2 bars of strong-side firings; if current strong-sum crossed
