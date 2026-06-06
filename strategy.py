@@ -353,9 +353,8 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + _trend_biased sign — symmetric with entry gate, vol-scaled)
-                _flip_trend_biased = trend_avg + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and _flip_trend_biased < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and _flip_trend_biased > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
