@@ -324,13 +324,11 @@ class Strategy:
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
-                # Architectural: decouple time-pressure horizon from noise-sensitive _exit_slope.
-                # Was: _max_hold depended on slope direction × strength (slope is bar-noise channel).
-                # Now: _max_hold extends with pos_pnl (entry-anchored, low-noise). Profit ≥ stop magnitude
-                # extends horizon by MOMENTUM_HOLD_BONUS; loss/flat keeps baseline. Single-source
-                # control: time horizon driven by realized PnL, not slope estimate.
-                _hold_extension = MOMENTUM_HOLD_BONUS * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT) * 1.5))
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_extension
+                # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
+                # Uses same robust median exit-slope for consistency within exit subsystem.
+                _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
+                _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
