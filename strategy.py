@@ -316,8 +316,8 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss (gentle)
-                _w_pp    = 1.0 + 0.45 * max(0.0, _pnl_scale)         # heavier in profit (stronger)
+                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
+                _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
