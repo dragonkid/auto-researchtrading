@@ -372,12 +372,14 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
-                    # Architectural: flip uses same vol-conditioned initial fraction as entry.
-                    # Symmetry — flip is a first-bar commitment to a new direction (same role
-                    # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
-                    # vol_ratio (full flip in high-vol crash for protection; conservative
-                    # flip in low-vol where noise risk dominates).
-                    _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
+                    # Architectural: flip uses half-amplitude vol modulation of entry anchor.
+                    # Flip is single-bar commitment (no scale-in absorption), so noise risk
+                    # is asymmetrically larger than entry. Use midpoint between fixed and
+                    # vol-modulated anchor: _flip_anchor = 0.5*(ENTRY_INITIAL_FRAC + _entry_frac_dyn).
+                    # In low-vol (rally), anchor stays near 0.46 (was 0.49 in step 1, 0.43 originally).
+                    # In high-vol (crash), anchor stays near 0.40 (was 0.36 in step 1, 0.43 originally).
+                    _flip_anchor = 0.5 * (ENTRY_INITIAL_FRAC + _entry_frac_dyn)
+                    _flip_frac = min(1.0, _flip_anchor + (1.0 - _flip_anchor) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
