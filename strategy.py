@@ -157,13 +157,19 @@ class Strategy:
             ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
-            _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
-            _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
+            # Architectural: ALL voter signals routed through smoothed_closes for unified
+            # noise treatment. Previously only ret_short/ret_vshort used smoothed_closes;
+            # EMA, RSI, MACD, slope, EMA_slope all consumed raw closes — inconsistent
+            # noise topology. This makes smoothed_closes load-bearing as a single upstream
+            # noise filter for ALL voter signals.
+            _vc = smoothed_closes  # voter-input closes
+            _ef, _es = ema(_vc[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(_vc[-(EMA_SLOW+10):], EMA_SLOW)[-1]
+            _ret_long_lagged = (_vc[-2] - _vc[-LONG_WINDOW - 1]) / _vc[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
-            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            _rd = np.diff(_vc[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
-            _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
-            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
+            _ml = ema(_vc[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(_vc[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            _ea = ema(_vc[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 6 voters with smooth tanh contribution: hard binary except at threshold boundary.
             # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
