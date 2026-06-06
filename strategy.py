@@ -216,7 +216,15 @@ class Strategy:
             _avg_signal = sum(_voter_signals_bull) / 6.0
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
-            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            # Architectural: smooth the older reference point of the short trend component.
+            # Was: (closes[-1] - closes[-MED2_WINDOW]) — a point-to-point return where BOTH
+            # endpoints are single-bar noise channels. New: replace older endpoint with a
+            # 5-bar median of HL2 around bar [-MED2_WINDOW]. Decouples trend-gate noise
+            # from any single bar of closes; magnitude semantics preserved.
+            _hl2_trend = (bd.history["high"].values + bd.history["low"].values) / 2.0
+            _trend_short_ref = np.median(_hl2_trend[-MED2_WINDOW - 2: -MED2_WINDOW + 3])
+            _trend_short = (closes[-1] - _trend_short_ref) / _trend_short_ref
+            trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * _trend_short + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
