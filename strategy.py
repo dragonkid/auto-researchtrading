@@ -112,6 +112,10 @@ class Strategy:
         # Direction of last exited position (for directional cooldown).
         # +1 = last position was long, -1 = short, 0 = none.
         self._last_exit_dir = {}
+        # Architectural: frozen size at entry. Size is computed once at entry bar
+        # (decision moment) and reused throughout scale-in. Decouples scale-in
+        # commitment from per-bar noise in vol/consensus signals.
+        self._frozen_size = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -230,22 +234,27 @@ class Strategy:
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
                 if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
+                    self._frozen_size[symbol] = size  # freeze for scale-in
                 elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
+                    self._frozen_size[symbol] = size
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
+                    self._frozen_size[symbol] = size
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up (no vote confirmation needed)
-                # Rationale: vote check during accumulation is a noise channel.
-                # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Use frozen size from entry bar (decouples scale-in from per-bar noise).
+                _entry_size = self._frozen_size.get(symbol, size)
+
+                # Position accumulation: deterministic scale-up using FROZEN size.
+                # Decision-moment commitment, not per-bar recomputation.
                 if bars_held <= ENTRY_FULL_BARS:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
-                    full_target = size if current_pos > 0 else -size
+                    full_target = _entry_size if current_pos > 0 else -_entry_size
                     target = full_target * scale_frac
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
@@ -317,16 +326,18 @@ class Strategy:
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
                 # Directional cooldown blocks flip into prior-failed direction.
                 if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                    # Flip is a NEW entry decision — refresh frozen size for the new direction.
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
                     _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
+                    self._frozen_size[symbol] = size
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
