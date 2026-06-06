@@ -349,15 +349,7 @@ class Strategy:
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
-                # Architectural: funding-cost exit pressure. Adverse funding (paying to hold)
-                # accumulates as small exit pressure scaled by bars_held (cost-of-carry effect).
-                # Funding rate is orthogonal data (not derived from close OHLC) — adds independent
-                # signal source to exit decision. Adverse = positive funding for long, negative
-                # for short. Smooth tanh modulator; saturates at extreme funding levels.
-                _funding_8 = float(np.mean(bd.history["funding_rate"].values[-8:]))
-                _funding_signed = _funding_8 if current_pos > 0 else -_funding_8
-                _funding_pressure = max(0.0, min(1.0, np.tanh(_funding_signed / 0.0001) * (bars_held / 24.0)))
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure + _funding_pressure
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
