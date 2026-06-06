@@ -215,10 +215,13 @@ class Strategy:
             target = current_pos
 
             if current_pos == 0 and not in_cooldown:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Architectural simplification: removed _avg_signal bias from trend gate.
+                # _trend_biased now equals raw smoothed_trend — single signal source for the
+                # gate boundary. The bias coupled trend_gate noise to voter aggregation noise
+                # (both derived from same close series); decoupling reduces correlated-noise
+                # at the gate-boundary. Voter conviction is already used via _bull_strong /
+                # _bear_strong (independent gate), making the additive bias redundant.
+                _trend_biased = self.smoothed_trend[symbol]
                 # Architectural: replaced binary deadzone vote-tiebreak with continuous
                 # strong-conviction admission. When _bull_strong significantly exceeds
                 # _strong_min (margin = (strong - min) / min), the trend-sign requirement
