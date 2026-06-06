@@ -216,11 +216,6 @@ class Strategy:
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
-            # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
-            # acts as an additional alignment check at entry. Common-mode noise cancels in the
-            # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
-            _avg_signal = sum(_voter_signals_bull) / 6.0
-
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
@@ -257,10 +252,12 @@ class Strategy:
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
 
             if current_pos == 0 and not in_cooldown:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Architectural simplification: removed _avg_signal co-gate bias.
+                # Use trend_avg directly. Removes a redundant signal source — trend_avg already
+                # blends ret_short and ret_long via cooldown_trend_strength, providing a robust
+                # directional gate. The _avg_signal bias (0.005 * tanh) was small in magnitude
+                # but added a noise channel coupling 6 voter signals into the trend boundary.
+                _trend_biased = self.smoothed_trend[symbol]
                 # Architectural: replaced binary deadzone vote-tiebreak with continuous
                 # strong-conviction admission. When _bull_strong significantly exceeds
                 # _strong_min (margin = (strong - min) / min), the trend-sign requirement
