@@ -379,17 +379,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: volume-conditioned exit-fusion modulator. Volume signal
-                # (vol_confirm_mult, computed at entry, range 0.98-1.10) reflects signal
-                # reliability — high volume = signals more reliable; low volume = signals
-                # more noise-prone. Applied as smooth multiplier on non-SL exit pressures:
-                # in low-volume bars, dampen non-SL exit components (avoid noise exits);
-                # in high-volume bars, normal weight. Continuous, bounded ~[0.92, 1.04].
-                # SL pressure unaffected (entry-anchored, doesn't depend on signal reliability).
-                # New cross-coupling: exit fusion now depends on volume, parallel to size.
-                _vol_norm = (vol_confirm_mult - VOL_CONFIRM_FLOOR) / (VOL_CONFIRM_CAP - VOL_CONFIRM_FLOOR)
-                _vol_exit_mult = 0.92 + 0.12 * _vol_norm  # [0.92, 1.04]
-                _exit_pressure = _sl_pressure + _vol_exit_mult * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
