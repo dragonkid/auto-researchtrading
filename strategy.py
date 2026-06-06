@@ -292,12 +292,8 @@ class Strategy:
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
-                # Architectural: scale-in starts from vol-conditioned _entry_frac_dyn so the
-                # initial-frac vol-modulation flows through accumulation, not just bar 0.
-                # In high vol the position trajectory stays smaller across bars 1-2 (noise-
-                # protected accumulation); in low vol it commits faster (capture momentum).
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * bars_held / ENTRY_FULL_BARS)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
