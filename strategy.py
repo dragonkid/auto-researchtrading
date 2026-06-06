@@ -248,8 +248,15 @@ class Strategy:
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
                 _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
                 _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
-                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                # Multi-source trend agreement: HL2-derived linreg slope as second trend source.
+                # Slope is computed from high+low (decoupled from close-derived trend_avg).
+                # Continuous agreement gate: _slope_dir = tanh(slope/0.0003) in [-1, 1].
+                # Bull admit requires _trend_biased above relaxed bound AND slope not strongly bearish
+                # (slope_dir > -0.3). Adds a smooth orthogonal-source filter that catches false
+                # entries where close-derived trend says "go" but HL2-slope says otherwise.
+                _slope_dir = np.tanh(_lr.slope / 0.0003)
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _slope_dir > -0.3
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _slope_dir < 0.3
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit:
