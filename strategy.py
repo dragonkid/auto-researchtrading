@@ -406,7 +406,11 @@ class Strategy:
                     # flip frac. Modulates SIZE only — gates unchanged. Distinct from prior
                     # margin-as-gate attempts which filtered flips out.
                     _flip_margin = (_bear_margin if current_pos > 0 else _bull_margin)
-                    _flip_conv_adj = 0.10 * np.tanh(_flip_margin / 0.30)
+                    # Deadzone-gated modulation: only adjust size when |margin| clearly
+                    # exceeds noise floor. Suppresses sub-noise oscillation channel that
+                    # destabilizes flip size on low-conviction (rally) flips.
+                    _flip_margin_eff = np.sign(_flip_margin) * max(0.0, abs(_flip_margin) - 0.10)
+                    _flip_conv_adj = 0.10 * np.tanh(_flip_margin_eff / 0.30)
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
