@@ -173,11 +173,13 @@ class Strategy:
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
-            # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
-            # Prevents any single voter from dominating the strong-sum under noise saturation.
-            # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            # Per-voter tanh sharpness: derivative voters (MACD/slope/EMA_slope) get gentler
+            # transition (sharpness 0.7) to reduce flip-rate at boundary; smoother voters
+            # (ret_short/EMA_cross/RSI) keep sharpness 1.0. Voter ordering:
+            # [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            _voter_sharpness = (1.0, 1.0, 1.0, 0.7, 0.7, 0.7)
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s * sh)) for s, sh in zip(_voter_signals_bull, _voter_sharpness)]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s * sh)) for s, sh in zip(_voter_signals_bull, _voter_sharpness)]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
