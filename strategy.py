@@ -116,13 +116,6 @@ class Strategy:
         # (decision moment) and reused throughout scale-in. Decouples scale-in
         # commitment from per-bar noise in vol/consensus signals.
         self._frozen_size = {}
-        # Architectural: leaky-integrator entry conviction.
-        # Accumulates bull/bear strong-margin over bars, decays at 30%/bar.
-        # Entry fires when accumulator >= threshold. Filters single-bar boundary
-        # noise: a noise-flipped voter contributes margin for ONE bar then decays;
-        # legitimate trends accumulate margin over multiple bars.
-        # Stored as (bull_acc, bear_acc) per symbol.
-        self._entry_conv = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -234,29 +227,15 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
-            # Leaky-integrator entry conviction (architectural).
-            # Accumulates (strong_sum - threshold) when positive, decays 30%/bar.
-            # Fires entry when accumulated conviction >= ENTRY_CONV_THRESHOLD.
-            # Mechanism: legitimate trend signals accumulate margin across bars;
-            # noise-flipped single-bar voter contributions decay before threshold.
-            ENTRY_CONV_DECAY = 0.70  # keep 70% of prior conviction (30% decay)
-            ENTRY_CONV_THRESHOLD = 1.4  # ~2 bars of margin=0.7 above _strong_min
-            _bull_acc, _bear_acc = self._entry_conv.get(symbol, (0.0, 0.0))
-            _bull_margin = max(0.0, _bull_strong - _strong_min)
-            _bear_margin = max(0.0, _bear_strong - _strong_min)
-            _bull_acc = ENTRY_CONV_DECAY * _bull_acc + _bull_margin
-            _bear_acc = ENTRY_CONV_DECAY * _bear_acc + _bear_margin
-            self._entry_conv[symbol] = (_bull_acc, _bear_acc)
-
             if current_pos == 0:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_acc >= ENTRY_CONV_THRESHOLD and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size  # freeze for scale-in
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_acc >= ENTRY_CONV_THRESHOLD and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
@@ -358,7 +337,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size, self._entry_conv):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._frozen_size):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
