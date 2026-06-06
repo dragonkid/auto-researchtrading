@@ -178,12 +178,8 @@ class Strategy:
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
             _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
-            # Median-based vote aggregation: replace sum-of-confs with median.
-            # Topology: requires majority (4+ of 6) of voters to lean bullish for median > 0.5.
-            # Robust to single-voter outliers — one noise-flipped voter cant cross the gate.
-            # Scaled x6 to preserve MIN_VOTES=2.5 calibration semantics (median 0.4167 -> 2.5).
-            bull_votes = float(np.median(_bull_confs)) * 6.0
-            bear_votes = float(np.median(_bear_confs)) * 6.0
+            bull_votes = sum(_bull_confs)
+            bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
