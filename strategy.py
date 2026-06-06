@@ -366,7 +366,12 @@ class Strategy:
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
+                # Architectural extension: time-pressure asymmetric weight by pnl_scale.
+                # In profit: heavier time pressure (lock in gains via time exit).
+                # In loss: lighter time pressure (give losing positions room to recover
+                # before time-killing — alignment with slope-against doing the loss-cutting).
+                _w_time  = 1.0 + 0.20 * _pnl_scale                   # [-1,1] -> [0.8, 1.2]
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
