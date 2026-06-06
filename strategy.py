@@ -119,6 +119,9 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Architectural: exit-pressure magnitude at last exit. Used to scale cooldown
+        # duration: stronger exit pressure -> longer cooldown (regime hostile).
+        self._last_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -226,7 +229,14 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
+            # Architectural: pressure-scaled cooldown. Base cooldown still scales with
+            # trend strength. Additionally, scale by ratio of last exit_pressure to
+            # threshold (1.0): strong exits (pressure>>1.0) get longer cooldown,
+            # marginal exits (pressure~1.0) get shorter. Smooth tanh mapping.
+            # Range: 1.0..2.5x base. New state-dependent control flow on cooldown gate.
+            _last_p = self._last_exit_pressure.get(symbol, 1.0)
+            _press_mult = 1.0 + 1.5 * np.tanh(max(0.0, _last_p - 1.0) / 0.6)
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength * _press_mult
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -394,6 +404,7 @@ class Strategy:
                     _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
+                    self._last_exit_pressure[symbol] = _exit_pressure
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
