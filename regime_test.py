@@ -102,6 +102,9 @@ def _run_regime_worker(args: tuple) -> dict:
         "seconds": result.backtest_seconds,
         "stability": stability,
         "stability_factor": stability_factor,
+        "flip_count": result.flip_count,
+        "flip_win_rate": result.flip_win_rate_pct,
+        "flip_pnl_pct": result.flip_total_pnl_pct,
     }
 
 
@@ -245,7 +248,18 @@ if __name__ == "__main__":
                 print(f"regime_{r['name']}_annual_return_pct: {r['annual_return_pct']:.6f}")
                 print(f"regime_{r['name']}_max_dd: {r['max_dd_pct']:.6f}")
                 print(f"regime_{r['name']}_stability: {r.get('stability', 1.0):.6f}")
+                print(f"regime_{r['name']}_flip_count: {r.get('flip_count', 0)}")
+                print(f"regime_{r['name']}_flip_wr: {r.get('flip_win_rate', 0.0):.2f}")
+                print(f"regime_{r['name']}_flip_pnl: {r.get('flip_pnl_pct', 0.0):.2f}")
 
         stabilities = [r.get("stability", 1.0) for r in results if "error" not in r]
         if stabilities:
             print(f"min_stability: {min(stabilities):.6f}")
+        # Flip summary across all regimes
+        total_flips = sum(r.get("flip_count", 0) for r in results if "error" not in r)
+        total_trades = sum(r.get("trades", 0) for r in results if "error" not in r)
+        flip_pnls_all = [r.get("flip_pnl_pct", 0.0) for r in results if "error" not in r]
+        flip_wrs = [r.get("flip_win_rate", 0.0) for r in results if "error" not in r and r.get("flip_count", 0) > 0]
+        print(f"total_flip_count: {total_flips}")
+        print(f"flip_pct_of_trades: {total_flips / total_trades * 100:.1f}" if total_trades > 0 else "flip_pct_of_trades: 0.0")
+        print(f"mean_flip_wr: {sum(flip_wrs) / len(flip_wrs):.2f}" if flip_wrs else "mean_flip_wr: 0.00")

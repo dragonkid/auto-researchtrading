@@ -100,6 +100,10 @@ class BacktestResult:
     backtest_seconds: float = 0.0
     equity_curve: list = field(default_factory=list)
     trade_log: list = field(default_factory=list)
+    # Flip metrics
+    flip_count: int = 0
+    flip_win_rate_pct: float = 0.0
+    flip_total_pnl_pct: float = 0.0     # sum of flip close PnL as % of initial equity
 
 # ---------------------------------------------------------------------------
 # Data download
@@ -337,6 +341,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     equity_curve = [INITIAL_CAPITAL]
     hourly_returns = []
     trade_log = []
+    flip_log = []  # Track flip PnLs: [(symbol, pnl_pct), ...]
     total_volume = 0.0
     prev_equity = INITIAL_CAPITAL
 
@@ -456,6 +461,12 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                     # Modifying position
                     old_notional = abs(current_pos)
                     old_entry = portfolio.entry_prices.get(sig.symbol, exec_price)
+                    # Detect flip (direction reversal) — record for stats only
+                    is_flip = (current_pos > 0 and sig.target_position < 0) or (current_pos < 0 and sig.target_position > 0)
+                    if is_flip and old_entry > 0:
+                        flip_pnl = current_pos * (exec_price - old_entry) / old_entry
+                        flip_pnl_pct = flip_pnl / INITIAL_CAPITAL * 100
+                        flip_log.append((sig.symbol, flip_pnl_pct))
                     # Realize PnL on reduced portion
                     if abs(sig.target_position) < abs(current_pos):
                         reduced = abs(current_pos) - abs(sig.target_position)
@@ -551,6 +562,17 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         else:
             current_streak = 0
 
+    # Flip metrics
+    flip_count = len(flip_log)
+    if flip_count > 0:
+        flip_pnls = [p for _, p in flip_log]
+        flip_wins = sum(1 for p in flip_pnls if p > 0)
+        flip_win_rate_pct = flip_wins / flip_count * 100
+        flip_total_pnl_pct = sum(flip_pnls)
+    else:
+        flip_win_rate_pct = 0.0
+        flip_total_pnl_pct = 0.0
+
     return BacktestResult(
         sharpe=sharpe,
         total_return_pct=total_return_pct,
@@ -564,6 +586,9 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         backtest_seconds=t_end - t_start,
         equity_curve=equity_curve,
         trade_log=trade_log,
+        flip_count=flip_count,
+        flip_win_rate_pct=flip_win_rate_pct,
+        flip_total_pnl_pct=flip_total_pnl_pct,
     )
 
 # ---------------------------------------------------------------------------
