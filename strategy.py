@@ -354,12 +354,7 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                # Architectural: absolute-giveback deadzone gate. Beyond peak_pnl > _pp_min,
-                # also require _giveback >= 0.005 (50bps) before pp_pressure can fire. Prevents
-                # pp_pressure from oscillating on tiny noise wiggles when peak is just barely
-                # qualifying — those wiggles produce nonzero giveback_ratio but no real reversal.
-                # Adds a second activation gate in parallel to the peak threshold.
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if (self.peak_pnl[symbol] > _pp_min and _giveback >= 0.005) else 0.0
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
