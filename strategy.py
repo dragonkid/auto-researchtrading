@@ -281,23 +281,8 @@ class Strategy:
                     target = size * _entry_frac_dyn
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
-                else:
-                    # Architectural: smooth meanrev fallback with conviction-scaled size.
-                    # Replace binary trend-magnitude cutoff (abs(ret_long) < 0.05) and
-                    # binary RSI thresholds with continuous gates:
-                    # - trend gate: smoothstep on |ret_long| (1.0 at 0, 0 at 0.06)
-                    # - RSI conviction: |rsi - 50| / 8 saturated (0 at 50, 1 at >=58)
-                    # - direction: oversold (rsi<50) -> long, overbought (rsi>50) -> short
-                    # Combined admission factor = trend_gate * rsi_conviction in [0, 1].
-                    # Only fires when factor > 0.15 (excludes tiny conviction); size scales
-                    # linearly with factor up to full _entry_frac_dyn.
-                    _mr_trend_gate = max(0.0, min(1.0, (0.06 - abs(ret_long)) / 0.04))
-                    _mr_rsi_dev = abs(rsi - 50.0)
-                    _mr_rsi_conv = max(0.0, min(1.0, (_mr_rsi_dev - 1.0) / 7.0))
-                    _mr_admit = _mr_trend_gate * _mr_rsi_conv
-                    if _mr_admit > 0.15:
-                        _mr_dir = 1.0 if rsi < 50 else -1.0
-                        target = _mr_dir * size * _entry_frac_dyn * _mr_admit
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
