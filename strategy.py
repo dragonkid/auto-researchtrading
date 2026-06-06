@@ -318,14 +318,9 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Probabilistic-OR exit aggregation: each pressure ∈ [0,1] is treated as
-                # independent exit-warrant probability. Compound noise (e.g., 4 sources at 0.3)
-                # produces 1-(0.7)^4=0.76 (no exit) instead of sum=1.2 (false-positive exit).
-                # A single source reaching 1.0 still fires. Threshold 0.85 calibrated for
-                # similar admission rate to sum>=1.0.
-                _p_keep = (1.0 - _sl_pressure) * (1.0 - _sl_slope_pressure) * (1.0 - _pp_pressure) * (1.0 - _time_pressure)
-                _exit_pressure = 1.0 - _p_keep
-                if _exit_pressure >= 0.85 and target != 0:
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
