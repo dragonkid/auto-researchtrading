@@ -341,6 +341,25 @@ class Strategy:
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
+                # Architectural: trend-deceleration exit pressure (5th source).
+                # Compare 8-bar half-window slope vs 16-bar full-window slope on _hl2.
+                # When same-direction slope is DECELERATING (recent half slower than full),
+                # add proportional exit pressure scaled by deceleration magnitude.
+                # Different from _slope_against (sign-based): captures slowing momentum
+                # BEFORE sign reversal, giving earlier exit on stale trends.
+                # Smooth, vol-banded, one-sided (only fires when slope direction agrees
+                # with position — i.e., we're in a winning trend that's slowing).
+                _lr_recent = linregress(np.arange(8), np.log(_hl2[-8:]))
+                _slope_recent = _lr_recent.slope
+                # Same-direction agreement: slope agrees with position
+                _slope_with = _exit_slope if current_pos > 0 else -_exit_slope
+                _slope_recent_with = _slope_recent if current_pos > 0 else -_slope_recent
+                # Deceleration ratio: how much recent slope undershot full-window slope.
+                # Only meaningful when full slope is positive in our direction.
+                _decel_thresh = 0.0002
+                _decel = max(0.0, _slope_with - _slope_recent_with)  # positive = decelerating
+                _slope_decel_pressure = max(0.0, min(1.0, (_decel - _decel_thresh) / (0.0006))) if _slope_with > _decel_thresh else 0.0
+
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
@@ -374,7 +393,11 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Decel pressure: heavier in profit (lock gains on stalling trend),
+                # neutral in loss (slope-against handles loss-cutting).
+                _w_decel = 1.0 + 0.30 * max(0.0, _pnl_scale)
+                # Cap decel contribution to 0.5 to avoid overwhelming 4-source fusion.
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_decel * 0.5 * _slope_decel_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
