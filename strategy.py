@@ -213,13 +213,15 @@ class Strategy:
             in_cooldown_short = _cooldown_active and _last_dir < 0
             in_cooldown = _cooldown_active and _last_dir == 0  # legacy fallback for mean-rev path
 
-            # Architectural: vol-targeted size with calm-conditioned scaling.
-            # Two factors: risk_budget (vol-target inverse) and calm_boost (low-vol
-            # bonus, smooth ramp on vol_ratio<1.7). Calm boost is the dominant
-            # alpha-extractor in low-vol regimes where sample-size matters most.
+            # Architectural: vol-targeted size with vote-consensus scaling.
+            # Conviction-weighted size based on dominant-side strong-sum normalized
+            # to threshold. When voters agree strongly (high _bull_strong / _bear_strong),
+            # size scales up. Single factor in addition to risk_budget — replaces
+            # 6 boost layers with one consensus-derived multiplier.
             risk_budget = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85))
-            calm_factor = 1.0 + 0.80 * max(0.0, min(1.0, (1.7 - vol_ratio) / 0.4)) ** 0.85
-            size = equity * BASE_POSITION_SIZE * 2.5 * risk_budget * calm_factor
+            _consensus = max(_bull_strong, _bear_strong) / max(_strong_min, 0.1)
+            consensus_boost = 1.0 + 0.60 * min(1.0, max(0.0, _consensus - 1.0))
+            size = equity * BASE_POSITION_SIZE * 2.5 * risk_budget * consensus_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
