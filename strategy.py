@@ -109,6 +109,8 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # EMA-smoothed strong-sum (architectural: post-aggregation noise smoothing)
+        self._strong_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -184,8 +186,20 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: post-aggregation EMA on strong-sum. Smooths the aggregated
+            # conviction signal (alpha=0.6, span~2.3 bars) — input voters stay responsive
+            # (preserves derivative-voter signal), but aggregation noise crossing the
+            # _strong_min boundary is dampened. Different abstraction layer than per-voter
+            # smoothing or input smoothing: noise that survives clipping/quintic is
+            # temporally averaged at the gate-comparison point.
+            _prev_bull = self._strong_ema.get(symbol + "_bull", _bull_strong_raw)
+            _prev_bear = self._strong_ema.get(symbol + "_bear", _bear_strong_raw)
+            _bull_strong = 0.6 * _bull_strong_raw + 0.4 * _prev_bull
+            _bear_strong = 0.6 * _bear_strong_raw + 0.4 * _prev_bear
+            self._strong_ema[symbol + "_bull"] = _bull_strong
+            self._strong_ema[symbol + "_bear"] = _bear_strong
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
