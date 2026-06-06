@@ -70,9 +70,10 @@ For each experiment:
    **Keep/discard rules:**
 
    An experiment qualifies as `keep` if ALL of the following are met:
-   - `raw_composite` improved vs baseline (higher is better).
+   - `composite_score` improved by at least +0.03 vs baseline, OR `raw_composite` improved vs baseline.
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
    - `raw_composite` ≥ **7.19** (must not degrade below production baseline). Calibrated to production strategy 8569cb5.
+   - `raw_composite` ≥ baseline - 0.10 (no large score regression allowed).
    - `min_stability` ≥ baseline - 0.002 (must not regress more than 0.002 from baseline).
 
    **Absolute DD caps (hard ceiling, never changes):**
@@ -81,11 +82,9 @@ For each experiment:
    - sideways: ≤ 5.6%
    - rally_2024: ≤ 6.0%
 
-   **Revenue decline is NOT acceptable.** A keep MUST improve raw_composite vs baseline. Experiments that improve stability but reduce raw_composite or composite_score are discards — stability without score is not progress.
+   **Revenue decline is acceptable only when signal quality improves.** A keep that slightly reduces raw_composite (within -0.10) but improves composite_score is valid — composite penalizes inconsistency and rewards balanced performance. However, large raw_composite drops (more than -0.10 vs baseline) indicate real signal degradation and should be discarded.
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
-
-   **Composite keep path:** `composite_score` improved by at least +0.03 vs baseline, `min_stability` ≥ baseline - 0.002 (no significant regression), `raw_composite` ≥ 7.19, and no DD cap violation.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for ALL subsequent experiments is now this keep. **CRITICAL: after a keep, you MUST compare the next experiment against this new keep's min_stab and composite, not the session-start baseline.** Read the last `keep` row in results.tsv to get the current baseline values.
    If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
@@ -208,8 +207,6 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 The current baseline (c1fc8bd) scores min_stab=0.782 (per-regime).
 
 **Stability scoring**: ≥ 0.80 = no penalty. Higher stability beyond 0.80 provides no additional score benefit. Current baseline is at 0.782 which incurs a minor 25% tier penalty — this is acceptable. Do NOT pursue stability improvements that reduce raw_composite or composite_score.
-
-**CRITICAL LESSON (from 200+ experiments):** Improving noise-test stability beyond ~0.782 does NOT improve real-world cross-exchange performance. Strategies with stab 0.789-0.792 performed WORSE on cross-exchange validation (Sharpe 9.33-9.47) than the baseline at stab 0.782 (Sharpe 10.09). The noise test measures perturbation sensitivity, not actual robustness. Do NOT sacrifice score for stability — it's a dead end.
 
 ### Diagnostic-first approach (optional, recommended for new sessions)
 
