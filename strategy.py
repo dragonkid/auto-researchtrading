@@ -408,10 +408,11 @@ class Strategy:
                     _flip_margin = (_bear_margin if current_pos > 0 else _bull_margin)
                     # One-sided modulation: positive margin (high conviction) increases
                     # flip size; never decreases. Same architectural pattern as _w_pp/_w_time.
-                    # Smaller amplitude (0.10 -> 0.08) and steeper saturation (margin/0.20) —
-                    # delivers near-full boost only on clearly-strong margins, attenuates
-                    # mid-range noise more aggressively.
-                    _flip_conv_adj = 0.08 * np.tanh(max(0.0, _flip_margin) / 0.20)
+                    # One-sided modulation (positive margin only). Amplitude attenuated
+                    # in low-vol regimes where flip events are concentrated near margin
+                    # noise: amp ranges 0.06 (low vol) to 0.10 (high vol), continuous.
+                    _amp = 0.06 + 0.04 * max(0.0, min(1.0, (vol_ratio - 0.6) / 0.6))
+                    _flip_conv_adj = _amp * np.tanh(max(0.0, _flip_margin) / 0.30)
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
