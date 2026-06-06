@@ -360,7 +360,9 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Architectural simplification: removed redundant FLIP_MIN_VOTES count gate
+                # (parallel to entry-side simplification — count gate is redundant with strong-sum).
+                if not in_cooldown and ((current_pos > 0 and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
