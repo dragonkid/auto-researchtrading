@@ -213,16 +213,13 @@ class Strategy:
             in_cooldown_short = _cooldown_active and _last_dir < 0
             in_cooldown = _cooldown_active and _last_dir == 0  # legacy fallback for mean-rev path
 
-            # Architectural simplification: pure vol-targeted size. Replaces
-            # multiplicative cascade of 7+ factors (calm/sideways/vol_confirm/
-            # strength_scale/cross_asset/vote_boost/cap) with single risk-budget
-            # factor. Removes correlated-noise amplification across factors all
-            # derived from same realized_vol/closes data. Decision boundary for
-            # SIZE becomes a single scalar — far fewer noise propagation paths.
-            # Tuned to roughly match prior typical combined_mult magnitude (~3.0)
-            # via a calibrated multiplier so position scales remain comparable.
+            # Architectural simplification: vol-targeted size with single sideways/
+            # rally support boost. 2 factors instead of 7 — eliminates correlated-
+            # noise amplification while restoring low-trend sample-size (sideways/
+            # rally need larger positions in low-vol to maintain return-gate score).
             risk_budget = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85))
-            size = equity * BASE_POSITION_SIZE * 3.0 * risk_budget
+            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
+            size = equity * BASE_POSITION_SIZE * 2.0 * risk_budget * sideways_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
