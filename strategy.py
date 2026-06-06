@@ -196,16 +196,6 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
-            # Architectural: vote-spread (differential) as the gate primitive.
-            # bull_strong and bear_strong are highly correlated (both derived from same 6
-            # voter sigmoids). Their spread cancels common-mode noise — a noise-flipped voter
-            # shifts BOTH sums by ~equal amounts, leaving the spread roughly constant.
-            # This replaces two independent thresholds (votes AND _bull_strong) with one
-            # differential threshold on the side-disagreement scalar.
-            _strong_spread = _bull_strong - _bear_strong
-            # Calibration: typical _bull_strong at entry ~= 1.5-2.5, _bear_strong ~= 0.3-0.8.
-            # Spread of ~1.0 corresponds to a clear-conviction entry.
-            _spread_min = STRONG_WEIGHT_MIN * 0.65 + 0.13 * (1.0 - rsi_trend_str)
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -242,10 +232,10 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if not in_cooldown_long and bull_votes >= MIN_VOTES and _strong_spread >= _spread_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                if not in_cooldown_long and bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
                     target = size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size  # freeze for scale-in
-                elif not in_cooldown_short and bear_votes >= MIN_VOTES and -_strong_spread >= _spread_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif not in_cooldown_short and bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
                     target = -size * ENTRY_INITIAL_FRAC
                     self._frozen_size[symbol] = size
                 elif not _cooldown_active and abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
@@ -335,7 +325,7 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled).
                 # Directional cooldown blocks flip into prior-failed direction.
-                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and -_strong_spread >= _spread_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _strong_spread >= _spread_min and trend_avg > 0)):
+                if ((not in_cooldown_short and current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (not in_cooldown_long and current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
                     # Flip is a NEW entry decision — refresh frozen size for the new direction.
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
