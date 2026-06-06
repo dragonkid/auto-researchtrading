@@ -109,9 +109,6 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
-        # Architectural: effective-hold accumulator. Ticks faster when in loss, slower in profit.
-        # Decouples time pressure from clock-time, anchoring it to trade-quality state.
-        self._eff_hold = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -296,19 +293,12 @@ class Strategy:
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
-                # Architectural: effective-hold tracker. Bars in profit tick at 0.4x rate,
-                # bars in loss tick at 1.0x rate. Profitable trades get extended runway;
-                # losing trades feel time pressure faster. Smooth tanh ramp on pos_pnl
-                # blends the rates near zero. Replaces raw bars_held with a trade-quality-
-                # conditioned counter, decoupling time pressure from clock-time.
-                _profit_weight = 0.4 + 0.6 * 0.5 * (1.0 - np.tanh(pos_pnl * 80.0))  # 0.4 deep profit, 1.0 deep loss
-                _prev_eff = self._eff_hold.get(symbol, 0.0)
-                _eff = _prev_eff + _profit_weight
-                self._eff_hold[symbol] = _eff
+                # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
+                # Uses same robust median exit-slope for consistency within exit subsystem.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                _time_pressure = max(0.0, min(1.0, (_eff - _max_hold + 3.0) / 4.0))
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
                 _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
@@ -326,11 +316,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._eff_hold):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._eff_hold[symbol] = 0.0
 
         return signals
