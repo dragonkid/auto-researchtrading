@@ -233,18 +233,6 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
-            # Architectural: vol-of-vol stability gate. Compute rolling std of per-bar
-            # log-returns over 24 bars in two halves; vol_of_vol = std of (vol1, vol2).
-            # When vol regime is unstable (vol_of_vol high), regime-derived sizing parameters
-            # (combined_mult, calm_boost) are themselves noisy. New orthogonal signal source:
-            # not price-direction, not volume — it's volatility-stationarity. Smooth shrink
-            # toward 1.0 (no penalty) when vol_of_vol low; toward 0.92 when high.
-            # Continuous tanh mapping; new state-free control path in size calculation.
-            _logret = np.diff(np.log(closes[-25:]))
-            _vol_h1 = np.std(_logret[:12]) + 1e-8
-            _vol_h2 = np.std(_logret[12:]) + 1e-8
-            _vol_of_vol = abs(_vol_h2 - _vol_h1) / max(_vol_h1, _vol_h2)
-            vol_stab_mult = 1.0 - 0.08 * np.tanh(_vol_of_vol * 4.0)
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             # Architectural: vol_confirm_mult applied POST-CAP rather than absorbed in cap calc.
             # Previously vol_confirm_mult was part of pre-cap product; when cap binds (high-vol regimes),
@@ -263,7 +251,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult * vol_stab_mult
+            size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
