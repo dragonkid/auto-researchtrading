@@ -300,18 +300,8 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural: avg_signal alignment as 5th exit pressure source. Voter
-                # aggregate (variance-reduced) provides directional confirmation distinct
-                # from slope-based exit signals. When _avg_signal turns opposite to the
-                # position direction with magnitude, contribute to exit pressure. Smooth
-                # ramp keeps the source noise-gated. Sources from different signal classes
-                # (price-derivative slope vs voter-aggregate momentum) reduce common-mode
-                # noise vs the existing slope-only exit basis.
-                _avg_against = -_avg_signal if current_pos > 0 else _avg_signal
-                _avg_pressure = max(0.0, min(1.0, (_avg_against - 0.30) / 0.50))
-
                 # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
-                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure + _avg_pressure
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
