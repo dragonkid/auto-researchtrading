@@ -343,8 +343,14 @@ class Strategy:
                 if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign + exit-slope confirmation, vol-scaled).
+                # Architectural: flip now requires exit-slope to confirm directional change.
+                # Couples flip activation to the exit subsystem's robust median 3-window slope —
+                # flips fire only when votes AND trend AND slope all agree on the reversal,
+                # adding a third decoupled-noise channel to the flip gate. New cross-subsystem
+                # data dependency (entry-side flip now reads exit-side slope).
+                _flip_slope_ok = (current_pos > 0 and _exit_slope < 0) or (current_pos < 0 and _exit_slope > 0)
+                if not in_cooldown and _flip_slope_ok and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
