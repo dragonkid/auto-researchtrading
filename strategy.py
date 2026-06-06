@@ -119,8 +119,6 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
-        # Temporal-coherence gate: prior-bar averaged voter signal per symbol.
-        self._avg_signal_prev = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -222,16 +220,6 @@ class Strategy:
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
             _avg_signal = sum(_voter_signals_bull) / 6.0
-            # Architectural: temporal-coherence gate. Require averaged voter signal to be
-            # same-sign on current AND prior bar before admitting an entry. Single-bar
-            # noise spikes that flip _avg_signal sign are filtered. New state (_avg_signal_prev),
-            # new control flow (gate evaluated at entry only, not exit). Structurally distinct
-            # from amplitude-based strong-spike penalty: this gates on TEMPORAL persistence
-            # of the variance-reduced co-signal.
-            _avg_prev = self._avg_signal_prev.get(symbol, _avg_signal)
-            _bull_coherent = (_avg_signal > 0.0) and (_avg_prev > 0.0)
-            _bear_coherent = (_avg_signal < 0.0) and (_avg_prev < 0.0)
-            self._avg_signal_prev[symbol] = _avg_signal
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -294,9 +282,9 @@ class Strategy:
                 # gate eliminates correlated-noise amplification at the entry decision boundary
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_coherent:
+                if _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * _entry_frac_dyn
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_coherent:
+                elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
