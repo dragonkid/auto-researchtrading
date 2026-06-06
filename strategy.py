@@ -349,13 +349,8 @@ class Strategy:
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
-                # Architectural: decouple SL from additive evidence-accumulating exit.
-                # Stop-loss is a hard protective gate (avoid catastrophic loss); the other 3
-                # sources accumulate evidence for graceful exit. Two separate conditions:
-                # (1) SL pressure >= 0.5 fires alone (loss-protection veto)
-                # (2) sum of soft pressures >= 1.0 fires (evidence accumulation)
-                _soft_pressure = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
-                if (_sl_pressure >= 0.5 or _soft_pressure >= 1.0) and target != 0:
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
