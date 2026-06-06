@@ -205,8 +205,16 @@ class Strategy:
             _eh = self._bear_strong_hist.get(symbol, [])
             _bull_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 2.0 if len(_bh) == 2 else 1.0
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
-            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
-            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
+            # Architectural: post-exit re-entry conviction tax. After an exit, re-entries within
+            # 5 bars require proportionally stricter _strong_min. Smooth linear decay. Different
+            # from cooldown (binary re-entry block): a continuous confidence-tax that lets fresh
+            # signals through but raises the bar for premature reverses. Mechanism: exits typically
+            # happen on momentum reversal — re-entry within 5 bars is statistically more likely to
+            # be noise reflecting the just-exited reversal than a fresh trend.
+            _bse = self.bar_count - self.exit_bar.get(symbol, -999)
+            _reentry_tax = max(0.0, 0.15 * (1.0 - _bse / 5.0)) if _bse < 5 else 0.0
+            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio) + _reentry_tax)
+            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio) + _reentry_tax)
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
