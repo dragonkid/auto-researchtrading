@@ -193,16 +193,6 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
-            # Architectural: volume-confirmation as continuous modulator on _strong_min.
-            # Volume is an orthogonal data source (not close-derived) — adds independent
-            # signal evidence to the entry threshold. Below-baseline volume tightens
-            # threshold (low-conviction noise filter); above-baseline slightly relaxes it.
-            # Continuous (no boundary), no new state, single new data dependency.
-            _vol_short_mean = np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:])
-            _vol_long_mean = np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])
-            _vol_conf_raw = _vol_short_mean / max(_vol_long_mean, 1e-9)
-            # Modulation centered at 1.0: below -> tighten, above -> relax. Clip to bounded range.
-            _strong_min = _strong_min + 0.10 * max(-1.0, min(1.0, (1.0 - _vol_conf_raw) / 0.15))
 
             # Architectural: isolated-spike penalty on entry threshold.
             # Track last 2 bars of strong-side firings; if current strong-sum crossed
