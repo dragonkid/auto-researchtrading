@@ -367,26 +367,17 @@ class Strategy:
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
-                # Architectural: time-conditioned exit threshold during scale-in phase.
-                # Fresh positions (bars_held <= ENTRY_FULL_BARS) get a higher pressure
-                # threshold (1.2 instead of 1.0) — protects against early-trade noise
-                # exits where pressure can transiently spike above 1.0 from low-conviction
-                # signals before the position has time to develop. Stop-loss path is
-                # exempt (already triggers at deeper losses regardless). Linear ramp from
-                # 1.2 (bar 0) to 1.0 (bar ENTRY_FULL_BARS+1) so no hard discontinuity.
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / (ENTRY_FULL_BARS + 1.0))
-                # Stop-loss exemption: still exit immediately if hard SL pressure dominates.
-                if (_exit_pressure >= _exit_thresh or _sl_pressure >= 0.95) and target != 0:
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
-                    # Architectural: flip uses quarter-amplitude vol modulation of entry anchor.
-                    # Flip is single-bar commitment (no scale-in absorption), so noise risk
-                    # is asymmetrically larger than entry. Weight 0.25 toward _entry_frac_dyn
-                    # gives gentle vol-aware tilt while preserving flip's near-constant character.
-                    _flip_anchor = 0.75 * ENTRY_INITIAL_FRAC + 0.25 * _entry_frac_dyn
-                    _flip_frac = min(1.0, _flip_anchor + (1.0 - _flip_anchor) * min(1.0, vol_ratio / 1.5))
+                    # Architectural: flip uses same vol-conditioned initial fraction as entry.
+                    # Symmetry — flip is a first-bar commitment to a new direction (same role
+                    # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
+                    # vol_ratio (full flip in high-vol crash for protection; conservative
+                    # flip in low-vol where noise risk dominates).
+                    _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
