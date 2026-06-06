@@ -300,15 +300,9 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural split: critical exits (stop-loss + slope-against) use MAX
-                # semantics — either one alone can fire when fully saturated. Slow exits
-                # (peak_profit + time) use SUM with their own threshold. Two thresholds
-                # decouple "danger" exits from "stale" exits, giving each appropriate
-                # noise-rejection behavior. Critical exits need responsive single-source
-                # firing; slow exits need cumulative confirmation.
-                _critical = max(_sl_pressure, _sl_slope_pressure)
-                _slow = _pp_pressure + _time_pressure
-                if (_critical >= 1.0 or _slow >= 1.0) and target != 0:
+                # Total exit pressure: threshold 1.0 — sources match original timing, noise-buffer at boundaries
+                _exit_pressure = _sl_pressure + _sl_slope_pressure + _pp_pressure + _time_pressure
+                if _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
