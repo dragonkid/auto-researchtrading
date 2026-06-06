@@ -119,6 +119,10 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Exit-pressure persistence: prior bar's _exit_pressure value per symbol.
+        # Used to require 2-bar pressure persistence on exit firing (suppresses
+        # single-bar noise spikes that breach the threshold).
+        self._exit_press_prev = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -387,7 +391,19 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if _exit_pressure >= _exit_thresh and target != 0:
+                # Architectural: 2-bar exit-pressure persistence. Single-bar spikes that
+                # breach _exit_thresh from very low prior-bar pressure are noise-suspect.
+                # When prior_pressure < 0.6 * _exit_thresh AND current crosses, require an
+                # additional +0.10 buffer above _exit_thresh (filters lone spikes). When
+                # prior was already elevated (>=0.6*thresh), no buffer needed (continued
+                # buildup confirms exit). SL exemption preserved (forces standard thresh).
+                _prev_press = self._exit_press_prev.get(symbol, 0.0)
+                if _sl_pressure < 0.95 and _prev_press < 0.6 * _exit_thresh:
+                    _exit_thresh_eff = _exit_thresh + 0.10
+                else:
+                    _exit_thresh_eff = _exit_thresh
+                self._exit_press_prev[symbol] = _exit_pressure
+                if _exit_pressure >= _exit_thresh_eff and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
@@ -403,7 +419,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._exit_press_prev):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
