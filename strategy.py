@@ -233,19 +233,8 @@ class Strategy:
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_admit:
                     target = -size * ENTRY_INITIAL_FRAC
-                else:
-                    # Architectural: continuous mean-reversion admission strength.
-                    # Replaces the 2-hard-boundary AND (|ret_long|<0.05 AND (rsi<49 or rsi>51))
-                    # with a single smooth admission scalar. trend_softness scales 0->1 as
-                    # |ret_long| goes from MEANREV_TREND_THRESHOLD->0; rsi_extremity scales
-                    # 0->1 as rsi distance from 50 grows. Combined product must exceed 0.20
-                    # to admit. Removes the discrete cliff at |ret_long|=0.05 and rsi=49/51
-                    # — the binary OR over two threshold-cliffs was the noise channel.
-                    _trend_softness = max(0.0, 1.0 - abs(ret_long) / MEANREV_TREND_THRESHOLD)
-                    _rsi_extremity = abs(rsi - 50) / 4.0
-                    _mr_strength = _trend_softness * min(1.0, _rsi_extremity)
-                    if _mr_strength > 0.20:
-                        target = (size if rsi < 50 else -size) * ENTRY_INITIAL_FRAC
+                elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
