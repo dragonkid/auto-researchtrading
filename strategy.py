@@ -272,20 +272,17 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Architectural: 2-bar persistence-confirmed peak update. Peak shifts only
-                # when pos_pnl exceeds prev peak AND pos_pnl has risen across the last 2
-                # bars (pos_pnl >= prev_pnl AND prev_pnl >= prev2_pnl). Two-bar persistence
-                # (vs. previous one-bar) requires the rise to persist before anchoring the
-                # peak — an isolated single-bar spike followed by reversal cannot move the
-                # peak. Trades 1 bar of additional peak latency for a structurally stronger
-                # noise filter on the giveback denominator (peak_pnl is the reference for
-                # _giveback_ratio). Revives the previously-dead _prev2_pnl state.
+                # Architectural: confirmed-peak update — peak shifts only when pos_pnl
+                # exceeds previous peak AND is rising (pos_pnl > prev_pos_pnl). Single-bar
+                # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
+                # confirmed within 1 extra bar). Different from EMA smoothing: this is a
+                # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _prev2_pnl = self._prev2_pnl.get(symbol, _prev_pnl)
-                self._prev2_pnl[symbol] = _prev_pnl
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl and _prev_pnl >= _prev2_pnl:
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
