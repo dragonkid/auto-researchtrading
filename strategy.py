@@ -220,6 +220,10 @@ class Strategy:
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
             _avg_signal = sum(_voter_signals_bull) / 6.0
+            # Conviction margins (relative excess of strong-sum over its admission threshold).
+            # Computed at top-level so they are available to both entry and flip paths.
+            _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
+            _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -267,8 +271,6 @@ class Strategy:
                 # softens proportionally: very strong conviction can override small-magnitude
                 # wrong-sign trend. Smooth replacement for the binary deadzone clause —
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
-                _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
-                _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
@@ -397,7 +399,15 @@ class Strategy:
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
                     # vol_ratio (full flip in high-vol crash for protection; conservative
                     # flip in low-vol where noise risk dominates).
-                    _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
+                    # Architectural: conviction-margin SIZE modulation on flip path.
+                    # Larger commitment when opposite-side strong-sum is well above its
+                    # admission threshold (high conviction reversal), smaller when marginal.
+                    # Continuous tanh mapping of margin -> [-0.10, +0.10] additive to base
+                    # flip frac. Modulates SIZE only — gates unchanged. Distinct from prior
+                    # margin-as-gate attempts which filtered flips out.
+                    _flip_margin = (_bear_margin if current_pos > 0 else _bull_margin)
+                    _flip_conv_adj = 0.10 * np.tanh(_flip_margin / 0.30)
+                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
