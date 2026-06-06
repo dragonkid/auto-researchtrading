@@ -248,8 +248,8 @@ class Strategy:
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
                 _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
                 _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
-                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3)
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit:
