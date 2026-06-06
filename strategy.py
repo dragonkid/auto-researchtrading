@@ -324,16 +324,15 @@ class Strategy:
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
-                # Architectural: pnl-conditioned slope-extension. Use slope when in moderate pnl
-                # (slope sets crash continuation); use pnl extension when deep in profit (let bull
-                # winners run). Hybrid via pnl-weighted blend: high-profit blend toward pnl_ext;
-                # low/zero-pnl blend toward slope_ext. Single source per regime, smooth transition.
+                # Architectural: additive pnl-extension on top of slope-extension. Slope-extension
+                # preserves baseline behavior for crash/sideways (continuation moves). Pnl-extension
+                # ADDS to it when in profit, allowing bull super-trends to extend further. No
+                # subtraction or blending — purely additive: max horizon = baseline_slope_ext + pnl_bonus.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                _pnl_blend = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT) * 1.5))
-                _pnl_ext = MOMENTUM_HOLD_BONUS * _pnl_blend
                 _slope_ext = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
-                _hold_extension = _pnl_blend * _pnl_ext + (1.0 - _pnl_blend) * _slope_ext
+                _pnl_ext = MOMENTUM_HOLD_BONUS * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT) * 1.5))
+                _hold_extension = _slope_ext + _pnl_ext
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_extension
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
