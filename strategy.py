@@ -219,9 +219,16 @@ class Strategy:
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
                 _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and (_trend_biased > 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bull_votes > bear_votes)):
+                # Architectural simplification: removed deadzone vote-tiebreak override.
+                # Previously, when |_trend_biased| < TREND_GATE_DEADZONE, the trend-sign
+                # requirement was bypassed and replaced with bull_votes > bear_votes.
+                # That created two boundaries instead of one (sign-flip + count-tie) and
+                # admitted entries during chop where trend was effectively zero. Now a
+                # strict trend-sign requirement (with avg_signal-bias smoothing already
+                # added) governs direction admission alone.
+                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _trend_biased > 0:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and (_trend_biased < 0 or (abs(_trend_biased) < TREND_GATE_DEADZONE and bear_votes > bull_votes)):
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _trend_biased < 0:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
