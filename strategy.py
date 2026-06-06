@@ -109,6 +109,10 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Persistence buffers: last 3 bars of strong-side firings per symbol.
+        # Used to relax _strong_min when same-side conviction has been building.
+        self._bull_strong_hist = {}
+        self._bear_strong_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -189,6 +193,26 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+
+            # Architectural: persistence-weighted threshold relaxation.
+            # Track last 3 bars of strong-side firings; same-side conviction that has been
+            # building (multiple recent bars near/above firing threshold) gets a continuous
+            # threshold relaxation. Entry gate becomes signal-history-aware rather than
+            # purely instantaneous. Smooth: relaxation = 0.10 * mean(last3_above_min_ratio).
+            _bh = self._bull_strong_hist.get(symbol, [])
+            _eh = self._bear_strong_hist.get(symbol, [])
+            # Continuous "above-ratio" per bar: how close was strong-sum to firing.
+            # Use clipped ratio (strong/min, capped at 1.0) so the persistence factor
+            # rewards sustained near-firing levels, not a single high spike.
+            _bull_persist = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 3.0 if len(_bh) == 3 else 0.0
+            _bear_persist = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 3.0 if len(_eh) == 3 else 0.0
+            _bull_strong_min = _strong_min * (1.0 - 0.10 * _bull_persist)
+            _bear_strong_min = _strong_min * (1.0 - 0.10 * _bear_persist)
+            # Update history (always, regardless of position state) — buffer of length 3.
+            _bh = (_bh + [_bull_strong])[-3:]
+            _eh = (_eh + [_bear_strong])[-3:]
+            self._bull_strong_hist[symbol] = _bh
+            self._bear_strong_hist[symbol] = _eh
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
@@ -225,13 +249,13 @@ class Strategy:
                 # softens proportionally: very strong conviction can override small-magnitude
                 # wrong-sign trend. Smooth replacement for the binary deadzone clause —
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
-                _bull_margin = (_bull_strong - _strong_min) / max(_strong_min, 1e-6)
-                _bear_margin = (_bear_strong - _strong_min) / max(_strong_min, 1e-6)
+                _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
+                _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
-                if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_admit:
+                if bull_votes >= MIN_VOTES and _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * ENTRY_INITIAL_FRAC
-                elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_admit:
+                elif bear_votes >= MIN_VOTES and _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * ENTRY_INITIAL_FRAC
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
@@ -323,7 +347,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
