@@ -210,10 +210,12 @@ class Strategy:
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
-            # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
-            # acts as an additional alignment check at entry. Common-mode noise cancels in the
-            # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
-            _avg_signal = sum(_voter_signals_bull) / 6.0
+            # Architectural: robust median (vs. mean) aggregation of voter signals for the
+            # alignment bias. Mean is dominated by any single outlier-magnitude voter (e.g.
+            # MACD spike during news bar) which pulls _avg_signal away from the consensus
+            # direction; median uses the middle-3 voter signals as the consensus statistic.
+            # Changes the alignment-aggregation function itself (not a parameter tweak).
+            _avg_signal = float(np.median(_voter_signals_bull))
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
