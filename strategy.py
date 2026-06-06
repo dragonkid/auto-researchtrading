@@ -367,16 +367,16 @@ class Strategy:
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
-                # Architectural: pos_pnl-magnitude-modulated scale-in exit threshold ramp.
-                # During scale-in (bars_held <= ENTRY_FULL_BARS), threshold boost scales
-                # smoothly with pos_pnl/PEAK_PROFIT_MIN_BASE (smoothstep on 0..1 range).
-                # Marginal-winning gets light protection, strongly-winning gets full
-                # protection. Time decay: full protection at bar 0, none at bar ENTRY_FULL_BARS.
-                # Stop-loss exemption preserved.
-                _pnl_norm = max(0.0, min(1.0, pos_pnl / PEAK_PROFIT_MIN_BASE))
-                _pnl_smooth = _pnl_norm * _pnl_norm * (3.0 - 2.0 * _pnl_norm)  # smoothstep
-                _time_decay = max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if bars_held <= ENTRY_FULL_BARS else 0.0
-                _exit_thresh = 1.0 + 0.20 * _pnl_smooth * _time_decay
+                # Architectural: pos_pnl-gated scale-in exit threshold ramp.
+                # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
+                # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
+                # (1.2 at bar 0, 1.0 at bar ENTRY_FULL_BARS). Protects winning scale-in
+                # from noise-driven premature exits while letting losing scale-in exit
+                # normally (no protection — losing positions are noise-vulnerable too).
+                # Stop-loss is exempt (full _sl_pressure forces exit regardless).
+                _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
