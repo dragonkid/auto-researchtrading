@@ -239,11 +239,7 @@ class Strategy:
             # the volume-confirmation modulation was effectively zeroed out. Moving it post-cap allows
             # volume signal to modulate size in trending regimes where cap binds. New control flow:
             # cap caps the "base" sizing, then volume confirmation modulates the result.
-            # Architectural: cross_asset_boost moved POST-CAP (same pattern as efbb4a0 vol_confirm_mult keep).
-            # Range [1.0, 1.15] — small bounded modulator with signal content (cooldown_trend_strength).
-            # When cap binds in trending regimes, the cross-asset modulation is otherwise absorbed.
-            _cross_asset_boost = 1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * HIGH_VOTE_BOOST_MULT
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
@@ -255,7 +251,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult * _cross_asset_boost
+            size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
