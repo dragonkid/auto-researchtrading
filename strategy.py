@@ -229,10 +229,18 @@ class Strategy:
                 _bear_margin = (_bear_strong - _strong_min) / max(_strong_min, 1e-6)
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                # Vote-margin-adaptive entry frac: high consensus (votes well above MIN_VOTES)
+                # → larger initial commitment (less scale-in lag); low consensus (near MIN_VOTES)
+                # → smaller initial commitment (more noise buffer). Continuous, scale by margin.
+                # margin = (votes - MIN_VOTES) / (max_possible_remaining); cap to [0, 1].
+                _vote_margin_b = max(0.0, min(1.0, (bull_votes - MIN_VOTES) / 1.5))
+                _vote_margin_s = max(0.0, min(1.0, (bear_votes - MIN_VOTES) / 1.5))
+                _entry_frac_b = ENTRY_INITIAL_FRAC * (0.85 + 0.30 * _vote_margin_b)  # range [0.85, 1.15] of base
+                _entry_frac_s = ENTRY_INITIAL_FRAC * (0.85 + 0.30 * _vote_margin_s)
                 if bull_votes >= MIN_VOTES and _bull_strong >= _strong_min and _bull_admit:
-                    target = size * ENTRY_INITIAL_FRAC
+                    target = size * _entry_frac_b
                 elif bear_votes >= MIN_VOTES and _bear_strong >= _strong_min and _bear_admit:
-                    target = -size * ENTRY_INITIAL_FRAC
+                    target = -size * _entry_frac_s
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
             elif current_pos != 0:
