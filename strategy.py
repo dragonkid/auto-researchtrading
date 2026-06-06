@@ -327,7 +327,12 @@ class Strategy:
                     # High vol (crash): full flip for protection
                     # Moderate vol (rally/sideways): more conservative flip (noise buffer)
                     # Low vol (calm): moderate flip
-                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
+                    # Architectural: trend_avg magnitude scales flip_frac. Strong-opposing
+                    # trend (|trend_avg| far from 0) = full flip; weak-opposing (near 0,
+                    # marginal flip signal) = smaller commit. Continuous coupling, decouples
+                    # flip size from binary trend sign — high-conviction flips ramp faster.
+                    _flip_conv = min(1.0, abs(trend_avg) / 0.005)
+                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5)) * (0.75 + 0.25 * _flip_conv)
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
