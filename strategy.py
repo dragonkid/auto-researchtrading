@@ -331,16 +331,23 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # PnL-conditioned exit-pressure weighting (architectural change to fusion):
-                # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
-                # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
-                # Stop-loss and time pressure stay at unit weight (protective + structural).
-                # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
+                # Architectural: noisy-OR fusion of exit pressures (replaces additive sum + 1.0 cutoff).
+                # Each pressure treated as independent exit probability; combined survival = product
+                # of (1-p_i). Exit when P_exit = 1 - prod(1-p_i) >= 0.78. PnL conditioning preserved
+                # via per-component weighting (slope heavier in loss, pp heavier in profit) by raising
+                # 1-p to a power < 1 (amplifies) or > 1 (attenuates). Different fusion topology:
+                # multiplicative survival saturates smoothly when any single pressure is strong, and
+                # combines weak pressures sublinearly (less prone to noise-driven exits from multiple
+                # mid-range pressures summing to 1.0).
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
-                _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
-                if _exit_pressure >= 1.0 and target != 0:
+                _amp_slope = 1.0 + 0.30 * max(0.0, -_pnl_scale)      # >1 in loss → amplify slope contribution
+                _amp_pp    = 1.0 + 0.40 * max(0.0, _pnl_scale)       # >1 in profit → amplify pp contribution
+                _surv = ((1.0 - _sl_pressure)
+                         * (1.0 - _sl_slope_pressure) ** _amp_slope
+                         * (1.0 - _pp_pressure) ** _amp_pp
+                         * (1.0 - _time_pressure))
+                _exit_prob = 1.0 - _surv
+                if _exit_prob >= 0.78 and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
