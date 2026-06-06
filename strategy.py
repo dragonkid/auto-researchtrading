@@ -391,7 +391,20 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Architectural: add multi-window slope agreement gate to flip.
+                # _exit_slope (mean of 12/16/22-bar log slopes on hl2) is computed in the
+                # exit subsystem and not currently used by flip. Adding it as a flip
+                # confirmation provides a second-source robust momentum check that's
+                # decoupled from trend_avg (which uses ret_long+MED2 returns) — a flip
+                # only fires when BOTH return-derived (trend_avg) and slope-derived
+                # (_exit_slope) agree on direction. Reduces false-flip rate in chop
+                # where trend_avg can flip sign on a single noisy bar but slope (16-bar
+                # mean of 3 windows) lags. Threshold 0.0001 (small but non-zero) keeps
+                # flat-slope chop from generating spurious flips.
+                _flip_slope_thresh = 0.00010
+                _flip_bull = bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _exit_slope > _flip_slope_thresh
+                _flip_bear = bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _exit_slope < -_flip_slope_thresh
+                if not in_cooldown and ((current_pos > 0 and _flip_bear) or (current_pos < 0 and _flip_bull)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
