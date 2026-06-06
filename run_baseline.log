@@ -1,0 +1,44 @@
+Running 4 regimes in parallel...
+
+  bull_2021: Sharpe=16.91  AnnReturn=+6303645.5%  MaxDD=4.39%  Score=11.56
+  crash_bear: Sharpe=12.25  AnnReturn=+214831.8%  MaxDD=5.11%  Score=9.93
+  sideways: Sharpe=10.22  AnnReturn=+15686.2%  MaxDD=4.66%  Score=5.06
+  rally_2024: Sharpe=10.81  AnnReturn=+36569.8%  MaxDD=5.32%  Score=5.18
+
+Total wall time: 414.8s
+
+========================================================================================================================
+Regime          Period                      Sharpe    AnnRet%   MaxDD%  Trades    Win%     PF    Score
+------------------------------------------------------------------------------------------------------------------------
+bull_2021       2021-01-01~2021-10-31     16.91  +6303645.5%     4.39%   12796    81.7%   18.5     11.56
+crash_bear      2021-11-01~2022-12-31     12.25  +214831.8%     5.11%   16311    85.8%   15.7      9.93
+sideways        2023-01-01~2023-12-31     10.22   +15686.2%     4.66%   12980    86.1%   22.4      5.06
+rally_2024      2024-01-01~2024-12-31     10.81   +36569.8%     5.32%   13413    87.6%   32.6      5.18
+========================================================================================================================
+---
+composite_score:    6.856286
+raw_composite:      8.416275
+mean_score:         7.932992
+std_score:          2.871412
+num_regimes:        4
+regime_bull_2021_score: 11.562674
+regime_bull_2021_sharpe: 16.907362
+regime_bull_2021_annual_return_pct: 6303645.517368
+regime_bull_2021_max_dd: 4.391196
+regime_bull_2021_stability: 0.795261
+regime_crash_bear_score: 9.928027
+regime_crash_bear_sharpe: 12.245605
+regime_crash_bear_annual_return_pct: 214831.795048
+regime_crash_bear_max_dd: 5.113955
+regime_crash_bear_stability: 0.804004
+regime_sideways_score: 5.063306
+regime_sideways_sharpe: 10.216459
+regime_sideways_annual_return_pct: 15686.221828
+regime_sideways_max_dd: 4.657410
+regime_sideways_stability: 0.796032
+regime_rally_2024_score: 5.177962
+regime_rally_2024_sharpe: 10.806618
+regime_rally_2024_annual_return_pct: 36569.801014
+regime_rally_2024_max_dd: 5.316384
+regime_rally_2024_stability: 0.785336
+min_stability: 0.785336

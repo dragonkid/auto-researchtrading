@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-When min_stability < 0.80: at least 3 of 5 experiments MUST target stability (use stability keep path). Remaining 2 may target composite.
+Focus on maximizing raw_composite and composite_score. Do NOT sacrifice score to improve stability — experiments that improve stability but reduce raw_composite or composite are not valuable. Stability improvements are only worthwhile when they come WITH score improvements (or at zero score cost).
 
 ## Session protocol
 
@@ -36,7 +36,7 @@ Each experiment may be a **single-variable change OR a multi-variable structural
 
 ### ESCALATION RULE (multi-variable architectural change)
 
-If the last 3+ stability-targeted experiments in `results.tsv` all achieved < +0.003 stability gain, single-parameter threshold tuning is **exhausted**. Your next stability experiment MUST be a **multi-variable architectural change** — e.g., replace binary voting with weighted ensemble, restructure exit logic, change signal fusion method, add hysteresis layers, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
+If the last 3+ experiments in `results.tsv` all achieved negligible raw_composite improvement, single-parameter threshold tuning is **exhausted**. Your next experiment MUST be a **multi-variable architectural change** — e.g., add new signal sources, restructure exit logic, change signal fusion method, add new voters, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
 
 **This rule is enforced by the exit rule below:** you cannot exit a session without having attempted at least 2 architectural changes. The escalation rule checks BOTH the current session's discards AND the tail of `results.tsv` from prior sessions — if the last 3+ results across sessions are sub-threshold discards, escalation is already active from experiment 1.
 
@@ -51,9 +51,8 @@ If the last 5 branches (from results.tsv BRANCH SUMMARY lines) all operate withi
 For each experiment:
 
 **Exit rule (escalation-gated):**
-- 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (layers 3-4 from the stability methodology: hysteresis, confidence margin, weighted ensemble, abstain zone, etc.). Single-parameter tweaks are forbidden after 3 discards.
+- 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (new signal sources, exit logic restructuring, voter architecture changes, etc.). Single-parameter tweaks are forbidden after 3 discards.
 - 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the independent-exploration cap of 5 experiments.
-- A discard with stability ≥ +0.003 counts as "progress" and resets the counter — keep iterating on that direction.
 - A `keep` resets everything.
 
 1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
@@ -68,12 +67,13 @@ For each experiment:
 5. **Parse results**: `grep "^composite_score:\|^raw_composite:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
-   **Keep/discard rules (stability-first):**
+   **Keep/discard rules:**
 
    An experiment qualifies as `keep` if ALL of the following are met:
-   - `min_stability` improved by **at least +0.003** vs baseline.
+   - `raw_composite` improved vs baseline (higher is better).
    - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
    - `raw_composite` ≥ **7.19** (must not degrade below production baseline). Calibrated to production strategy 8569cb5.
+   - `min_stability` ≥ baseline - 0.002 (must not regress more than 0.002 from baseline).
 
    **Absolute DD caps (hard ceiling, never changes):**
    - bull_2021: ≤ 7.8%
@@ -81,11 +81,11 @@ For each experiment:
    - sideways: ≤ 5.6%
    - rally_2024: ≤ 6.0%
 
-   **Revenue decline is acceptable.** A keep that improves stability but reduces composite score is valid as long as raw_composite stays ≥ 7.19. Do NOT discard experiments solely because composite decreased.
+   **Revenue decline is NOT acceptable.** A keep MUST improve raw_composite vs baseline. Experiments that improve stability but reduce raw_composite or composite_score are discards — stability without score is not progress.
 
    **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
 
-   **Composite keep path:** `composite_score` improved by at least +0.03 vs baseline, `min_stability` ≥ baseline (no regression), `raw_composite` ≥ 7.19, and no DD cap violation.
+   **Composite keep path:** `composite_score` improved by at least +0.03 vs baseline, `min_stability` ≥ baseline - 0.002 (no significant regression), `raw_composite` ≥ 7.19, and no DD cap violation.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for ALL subsequent experiments is now this keep. **CRITICAL: after a keep, you MUST compare the next experiment against this new keep's min_stab and composite, not the session-start baseline.** Read the last `keep` row in results.tsv to get the current baseline values.
    If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
@@ -104,7 +104,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 
 **Rules:**
 - **Justification required**: State explicitly (1) what the new architecture does differently, (2) which regime regressed and why, (3) your hypothesis for fixing it in the next step.
-- **No fixed max depth**: the branch continues as long as you're making progress. Branch budget is INDEPENDENT of the 5-experiment exploration cap — they don't share slots. If 7 consecutive branch steps show no improvement (min_stab delta ≤ 0 vs the previous branch step), terminate the branch early. There is no other depth ceiling — a branch that keeps improving can iterate as many steps as needed.
+- **No fixed max depth**: the branch continues as long as you're making progress. Branch budget is INDEPENDENT of the 5-experiment exploration cap — they don't share slots. If 7 consecutive branch steps show no improvement (raw_composite delta ≤ 0 vs the previous branch step), terminate the branch early. There is no other depth ceiling — a branch that keeps improving can iterate as many steps as needed.
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
 - **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **current baseline** (the most recent `keep` row in results.tsv), it's a real `keep`. Record as `keep` and update baseline. All subsequent experiments compare against this new keep.
 - **Failure (revert the branch)**: if the branch terminates without meeting keep criteria (either via 7 consecutive no-progress steps or because you decided to stop), revert ALL branch commits back to the most recent `keep` in results.tsv. **CRITICAL: You MUST only revert your own experiment commits. Run `git log --oneline` and count ONLY commits with messages starting with "exp:" or "branch step". Use `git revert --no-edit HEAD~N..HEAD` where N = that count. NEVER revert commits with "feat:", "fix:", or "doc:" prefixes — those are infrastructure changes by the project owner. If such commits are interleaved, revert your commits individually instead of using a range. NEVER modify or delete existing `keep` rows in results.tsv — they are permanent records.** Record ONE summary `discard` line explaining the branch attempt and why it failed.
@@ -197,7 +197,7 @@ Search regimes (4 non-overlapping periods):
 - sideways: 2023-01 ~ 2023-12 (sideways recovery)
 - rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 
-## Primary Objective: Maximize raw_composite while maintaining stability ≥ 0.80
+## Primary Objective: Maximize raw_composite (score-first)
 
 The noise test uses AR(1) correlated perturbation matching real cross-exchange differences. Penalty tiers:
 
@@ -205,13 +205,11 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 - stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
 - stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
 
-The production strategy (8569cb5) scores min_stab=0.778 (per-regime).
+The current baseline (c1fc8bd) scores min_stab=0.782 (per-regime).
 
-**Stability scoring**: ≥ 0.80 = no penalty. Higher stability beyond 0.80 provides no additional score benefit.
+**Stability scoring**: ≥ 0.80 = no penalty. Higher stability beyond 0.80 provides no additional score benefit. Current baseline is at 0.782 which incurs a minor 25% tier penalty — this is acceptable. Do NOT pursue stability improvements that reduce raw_composite or composite_score.
 
-**Do NOT conclude that "stability requires fundamentally different architecture and is too risky."** That reasoning is a trap — it leads to endless base-performance tweaks that never close the gap. Structural changes to improve stability ARE the highest-ROI experiments available.
-
-**Multi-variable structural changes are explicitly allowed** for stability work. You are NOT limited to single-parameter tweaks. Diagnose the noise sensitivity source first, then propose whatever scope of change is needed — including architectural modifications that touch multiple components simultaneously.
+**CRITICAL LESSON (from 200+ experiments):** Improving noise-test stability beyond ~0.782 does NOT improve real-world cross-exchange performance. Strategies with stab 0.789-0.792 performed WORSE on cross-exchange validation (Sharpe 9.33-9.47) than the baseline at stab 0.782 (Sharpe 10.09). The noise test measures perturbation sensitivity, not actual robustness. Do NOT sacrifice score for stability — it's a dead end.
 
 ### Diagnostic-first approach (optional, recommended for new sessions)
 
@@ -222,16 +220,17 @@ If results.tsv has < 10 entries or you haven't seen flip-rate data from prior se
 
 If results.tsv already contains diagnostic insights from prior sessions (grep for "flip rate", "noise", "voter sensitivity"), you may skip re-running diagnostics and proceed directly to experimentation.
 
-### How to evaluate stability experiments
-- Check `regime_X_stability` in the output — all four should improve
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%) and raw_composite ≥ 7.19
+### How to evaluate experiments
+- Check `raw_composite` and `composite_score` — these must improve vs baseline
+- Check `min_stability` — must not regress more than 0.002 vs baseline
+- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%), raw_composite ≥ 7.19, and min_stab ≥ baseline - 0.002
 
-## Stability improvement approaches (when min_stability < 0.80)
+## Stability constraints (guard rails, not objectives)
+
+Stability is a CONSTRAINT, not a goal. The keep rule requires min_stab ≥ baseline - 0.002. As long as this is satisfied, focus entirely on maximizing raw_composite and composite_score.
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
 **HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
-
-If incremental approaches are saturated (check results.tsv — 10+ discards in that direction), switch to structural. **Do not keep iterating on approaches that have been proven to plateau.**
 
 **Hard binary regime switches are forbidden.** A strategy that detects "current regime = sideways" and switches to a different code path creates boundary noise that destroys stability (the switch point itself is noise-sensitive). More importantly, the AR(1) correlated noise test CANNOT detect regime-detection overfitting — a smooth regime classifier (e.g., 100-bar volatility average) will pass stability tests while being perfectly overfit to the 4 known backtest regimes. This is the one form of overfitting our test harness does not catch.
 
