@@ -459,6 +459,19 @@ class Strategy:
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: profit-magnitude exit-threshold relaxation.
+                # Positions in meaningful profit (pos_pnl > 0.5%) get a smooth additive
+                # bonus to _exit_thresh proportional to profit-over-stop ratio. Lets
+                # winners run past the standard pressure threshold; the pp_pressure
+                # subsystem (giveback-based) still provides the actual peak-protection
+                # gating. Bonus capped at +0.20 (matches winning-scale-in maximum).
+                # Continuous tanh on (pos_pnl - 0.005) / |STOP|. Distinct from pp_pressure
+                # which kicks in on giveback ratio; this is on absolute profit level.
+                # New data dependency: exit threshold value depends on absolute pos_pnl,
+                # not just bar age and flip-origin flag.
+                if pos_pnl > 0.005:
+                    _profit_thresh_bonus = 0.20 * np.tanh((pos_pnl - 0.005) / abs(STOP_LOSS_PCT))
+                    _exit_thresh = _exit_thresh + _profit_thresh_bonus
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
