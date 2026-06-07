@@ -465,7 +465,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                     is_flip = (current_pos > 0 and sig.target_position < 0) or (current_pos < 0 and sig.target_position > 0)
                     if is_flip and old_entry > 0:
                         flip_pnl = current_pos * (exec_price - old_entry) / old_entry
-                        flip_pnl_pct = flip_pnl / INITIAL_CAPITAL * 100
+                        flip_pnl_pct = flip_pnl / max(portfolio.equity, 1.0) * 100
                         flip_log.append((sig.symbol, flip_pnl_pct))
                     # Realize PnL on reduced portion
                     if abs(sig.target_position) < abs(current_pos):
