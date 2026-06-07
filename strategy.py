@@ -119,6 +119,10 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Architectural: per-symbol entry-bar own-side strong-sum, used as a
+        # conviction anchor for scale-in throttling. Captured at entry, used to
+        # detect conviction contraction during scale-in.
+        self._entry_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -308,10 +312,13 @@ class Strategy:
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     target = size * _entry_frac_dyn
+                    self._entry_strong[symbol] = _bull_strong
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
+                    self._entry_strong[symbol] = _bear_strong
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
+                    self._entry_strong[symbol] = _bull_strong if rsi < MEANREV_RSI_OVERSOLD else _bear_strong
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -321,8 +328,21 @@ class Strategy:
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Architectural: conviction-contraction throttle on scale-in. Captures
+                # own-side strong-sum at entry; if current own-side strong-sum drops
+                # significantly below entry value during scale-in, dampen the scale-up
+                # rate (continuous throttle, not a hard freeze). Smooth contraction
+                # ratio in [0, 1]: 0 = full throttle (frozen at current level), 1 = no
+                # throttle (full scale-in). Decouples scale-in commitment from per-bar
+                # noise WITHOUT rejecting genuine momentum continuations: only scales
+                # back when conviction has materially contracted.
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    _own_strong_now = _bull_strong if current_pos > 0 else _bear_strong
+                    _entry_strong = self._entry_strong.get(symbol, _own_strong_now)
+                    _conv_ratio = max(0.0, min(1.0, _own_strong_now / max(_entry_strong * 0.7, 1e-6)))
+                    _scale_step = bars_held / ENTRY_FULL_BARS
+                    _effective_step = _scale_step * _conv_ratio
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _effective_step)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
@@ -455,11 +475,12 @@ class Strategy:
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
+                    self._entry_strong[symbol] = _bear_strong if current_pos > 0 else _bull_strong
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._entry_strong):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
