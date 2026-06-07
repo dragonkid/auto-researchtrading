@@ -231,19 +231,6 @@ class Strategy:
             self.smoothed_trend[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
-            # Architectural: high-confluence cooldown bypass.
-            # When two orthogonal trend signals (16-bar slope + 10/20-bar trend_avg)
-            # strongly agree on a direction (positive product, magnitude well above
-            # noise floor), the post-exit cooldown gate is bypassed. Continuous
-            # smoothstep gate on _lr.slope * trend_avg in [1e-5, 4e-5] -> [0, 1]
-            # bypass weight; if weight > 0.5 (halfway), in_cooldown forced False.
-            # New control-flow primitive: signal-strength gates a structural
-            # control variable. Cooldown remains in place for noise-only post-exit
-            # bars (no confluence) which is the noise-protection role of cooldown.
-            _bypass_t = max(0.0, min(1.0, (max(0.0, _lr.slope * trend_avg) - 1e-5) / 3e-5))
-            _bypass_smooth = _bypass_t * _bypass_t * (3.0 - 2.0 * _bypass_t)
-            if _bypass_smooth > 0.5:
-                in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
