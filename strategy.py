@@ -233,12 +233,7 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
-            # Architectural simplification: remove STRENGTH_FLOOR_SIDEWAYS sideways floor.
-            # Previously max() floored sideways strength_scale at ~2.6 when ret_long small;
-            # remove floor — let strength_scale derive purely from ret_short/threshold.
-            # The floor was a hidden conditional binary near ret_long=STRENGTH_FLOOR_DECAY
-            # boundary. Pure ret_short formulation is smoother and more honest about signal.
-            strength_scale = min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85)
+            strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             # Architectural: vol_confirm_mult applied POST-CAP rather than absorbed in cap calc.
             # Previously vol_confirm_mult was part of pre-cap product; when cap binds (high-vol regimes),
             # the volume-confirmation modulation was effectively zeroed out. Moving it post-cap allows
