@@ -119,6 +119,8 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Bars since last peak update — drives time-decay on pp_pressure threshold.
+        self._bars_since_peak = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -340,8 +342,10 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._bars_since_peak[symbol] = 0
                 else:
                     self.peak_pnl[symbol] = _curr_peak
+                    self._bars_since_peak[symbol] = self._bars_since_peak.get(symbol, 0) + 1
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -378,7 +382,17 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                # Architectural: time-decay on giveback threshold. After 5 bars without a
+                # new peak, _pp_lower tightens linearly (smaller ratio fires pressure earlier).
+                # Mechanism: positions stuck after-peak in lateral chop should exit before
+                # they drift back to entry. Continuous ramp 0..0.30 over 5..15 bars-since-peak.
+                # Vol-attenuated: high-vol regimes get smaller decay (legitimate noise around peak)
+                # via 1/max(1.0, vol_ratio) — crash positions don't get prematurely tightened.
+                _bsp = self._bars_since_peak.get(symbol, 0)
+                _stale_ramp = max(0.0, min(1.0, (_bsp - 5.0) / 10.0))
+                _stale_decay = 0.30 * _stale_ramp / max(1.0, vol_ratio)
+                _pp_lower_eff = _pp_lower * (1.0 - _stale_decay)
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower_eff) / max(PEAK_PROFIT_GIVEBACK * _pp_band, 1e-6))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
@@ -459,7 +473,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._bars_since_peak):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
