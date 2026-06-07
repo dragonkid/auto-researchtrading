@@ -282,10 +282,21 @@ class Strategy:
                 # gate eliminates correlated-noise amplification at the entry decision boundary
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
+                # Architectural: _avg_signal as smooth ENTRY-size amplifier (one-sided).
+                # Symmetric extension of the flip-size amplifier (2df1e4d keep) to first-bar
+                # entry commitment. _avg_signal aligned with entry direction acts as a
+                # smoother conviction signal than strong-sum margin (linear mean of voter
+                # signals; not quintic-amplified). One-sided amp [1.0, 1.05] — half the
+                # flip-side amplitude because entry has the scale-in cushion that flip
+                # lacks (entry's first-bar noise is partially absorbed by 3-bar ramp;
+                # flip is single-bar commitment). Bounded amplification only — never
+                # shrinks below baseline (avoids noise-driven under-sized entries).
+                _entry_amp_bull = 1.0 + 0.05 * np.tanh(2.0 * max(0.0, _avg_signal))
+                _entry_amp_bear = 1.0 + 0.05 * np.tanh(2.0 * max(0.0, -_avg_signal))
                 if _bull_strong >= _bull_strong_min and _bull_admit:
-                    target = size * _entry_frac_dyn
+                    target = size * min(1.0, _entry_frac_dyn * _entry_amp_bull)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
-                    target = -size * _entry_frac_dyn
+                    target = -size * min(1.0, _entry_frac_dyn * _entry_amp_bear)
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
@@ -403,21 +414,6 @@ class Strategy:
                     # vol_ratio (full flip in high-vol crash for protection; conservative
                     # flip in low-vol where noise risk dominates).
                     _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
-                    # Architectural: _avg_signal as smooth flip-size amplifier (one-sided).
-                    # Variance-reduced linear-average voter signal as conviction proxy in the
-                    # NEW direction. Different signal source than prior rejected
-                    # conviction-margin family (quintic-amplified strong-sum/min) which
-                    # over-coupled to extreme-voter noise. _avg_signal averages over moderate
-                    # voter signals — smoother, more stable in low-vol regimes.
-                    # ONE-SIDED amp [1.0, 1.10]: amplifies when voters strongly support the
-                    # flip direction; never shrinks flip below baseline (avoids noise-driven
-                    # under-sized flips during legit reversals). Branch_revert insight from
-                    # conviction-margin SIZE modulation (d0cdd12): direction worth re-test
-                    # with smoother source.
-                    _flip_dir = -1.0 if current_pos > 0 else 1.0
-                    _flip_conv = max(0.0, _avg_signal * _flip_dir)
-                    _flip_amp = 1.0 + 0.10 * np.tanh(2.0 * _flip_conv)
-                    _flip_frac = min(1.0, _flip_frac * _flip_amp)
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
