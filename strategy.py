@@ -435,17 +435,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: bars-held-conditioned flip strong-sum threshold.
-                # Early in position life (bars_held<6), positions are more noise-vulnerable
-                # (similar primitive to bc26c28 pos_pnl-gated exit threshold protection).
-                # Tighten _strong_min for the OPPOSITE side by smooth ramp from 1.20x at
-                # bar 0 to 1.0x at bar 6+. Reduces premature flips on fresh positions.
-                # New state: bars_held-conditioned flip-side strong-sum threshold (currently
-                # flip uses static _bear_strong_min/_bull_strong_min identical to entry side).
-                _flip_bars_factor = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / 6.0)
-                _flip_bear_min = _bear_strong_min * _flip_bars_factor
-                _flip_bull_min = _bull_strong_min * _flip_bars_factor
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_bear_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_bull_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
