@@ -125,6 +125,22 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-symbol trend pre-computation. New data dependency
+        # between symbols (the loop is otherwise per-symbol independent). For
+        # each symbol, compute a soft trend signal from MED2_WINDOW return; later
+        # used as a post-cap agreement multiplier on the active-symbol size.
+        # Continuous tanh on each symbol's ret to avoid hard sign boundaries.
+        _xs_signals = {}
+        for _xs_sym in ACTIVE_SYMBOLS:
+            if _xs_sym not in bar_data:
+                continue
+            _xs_bd = bar_data[_xs_sym]
+            if len(_xs_bd.history) < MED2_WINDOW + 1:
+                continue
+            _xs_closes = _xs_bd.history["close"].values
+            _xs_ret = (_xs_closes[-1] - _xs_closes[-MED2_WINDOW]) / _xs_closes[-MED2_WINDOW]
+            _xs_signals[_xs_sym] = np.tanh(_xs_ret / 0.01)  # soft signal in [-1, 1]
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -239,6 +255,30 @@ class Strategy:
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+            # Architectural: ADDITIONAL chop-only post-cap boost (smaller magnitude 0.08).
+            # Original cross-asset boost stays inside combined_mult (preserves bull behavior
+            # via cap-absorption). Additional post-cap boost activates only in deep chop
+            # (trend_strength<0.3), giving sideways/rally a small additional size lift that
+            # is NOT subject to cap.
+            _xa_chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
+            _xa_boost = 1.0 + 0.08 * _xa_chop_gate
+            # Architectural: cross-symbol trend agreement post-cap multiplier.
+            # New data dependency between symbols — when OTHER symbols' soft trend
+            # signals agree in sign with this symbol's trend_avg, apply a small
+            # multiplicative boost. This is genuinely cross-symbol (the prior
+            # CROSS_ASSET_FIXED_BOOST is single-asset misnamed). Mechanism:
+            # macro-aligned moves carry more durable directional signal than
+            # idiosyncratic moves. Continuous: agreement = mean(sign-aligned
+            # tanh signals from OTHER symbols), one-sided positive boost.
+            _own_xs = _xs_signals.get(symbol, 0.0)
+            _own_dir = np.tanh(trend_avg / 0.005)  # soft sign of this symbol's trend gate
+            _other_xs = [v for k, v in _xs_signals.items() if k != symbol]
+            if len(_other_xs) > 0 and abs(_own_dir) > 0.05:
+                _agree_score = sum(_o * _own_dir for _o in _other_xs) / len(_other_xs)
+                _agree_score = max(0.0, _agree_score)  # one-sided
+            else:
+                _agree_score = 0.0
+            _xs_boost = 1.0 + 0.05 * _agree_score
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
@@ -250,7 +290,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _xs_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -259,12 +299,32 @@ class Strategy:
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
+            # Architectural: directional-confluence first-bar amplifier.
+            # When 16-bar log-price slope (_lr.slope) aligns in sign and magnitude
+            # with the trend_avg gate, the entry is a high-confluence event — two
+            # orthogonal-window signals agree. Continuous tanh on the product
+            # _lr.slope * trend_avg (positive = same direction, scale by typical
+            # trending magnitudes 0.0005 * 0.02 = 1e-5). One-sided positive boost
+            # only (negative product stays at 0). Adds [+0.0, +0.06] to first-bar
+            # frac. Does NOT couple to entry voter signals — uses two trend-window
+            # primitives that are not in the strong-sum.
+            # Vol-adaptive scale: in low-vol both signals shrink, so the
+            # confluence threshold scales down with vol_ratio**2 to maintain
+            # similar activation across regimes.
+            _confluence_raw = _lr.slope * trend_avg
+            _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
+            _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
 
             if current_pos == 0 and not in_cooldown:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Architectural simplification: removed _avg_signal bias from trend gate.
+                # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
+                # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
+                # trend gate created CORRELATED noise amplification at entry — both gates fire
+                # on the same underlying noise. Using raw smoothed_trend decouples the trend
+                # gate from the voter-signal subsystem; trend_avg derives from price-window
+                # returns (orthogonal to per-bar voter signals).
+                _trend_biased = self.smoothed_trend[symbol]
                 # Architectural: replaced binary deadzone vote-tiebreak with continuous
                 # strong-conviction admission. When _bull_strong significantly exceeds
                 # _strong_min (margin = (strong - min) / min), the trend-sign requirement
@@ -357,7 +417,15 @@ class Strategy:
                 # Uses same robust median exit-slope for consistency within exit subsystem.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                # Architectural: vol-conditioned symmetric momentum hold bonus.
+                # Slope-against shortens max_hold but only at full strength when
+                # slope is signal-dominated (high vol). In low-vol (rally chop) the
+                # shortening is attenuated by min(1, vol_ratio) — slope noise in
+                # rally would otherwise create noise-driven early time exits.
+                # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
+                _short_atten = min(1.0, vol_ratio)
+                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
@@ -366,8 +434,15 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
-                _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
+                # Architectural: scale-in-aware slope-pressure attenuator. During the first
+                # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
+                # to micro-noise on a position not yet at full size. Attenuate _w_slope
+                # smoothly with bars_held so slope-against pressure ramps up with position
+                # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
+                # and onward. New data dependency: slope-pressure weight on bars_held.
+                _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
@@ -411,20 +486,7 @@ class Strategy:
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
-                    # Architectural: cross-symbol flip-direction confirmation modulates flip size.
-                    # Distinct from entry _xs_boost (which uses own trend_avg agreement). Here we
-                    # check whether OTHER symbols' soft trend signals agree with the NEW flip
-                    # direction (-1 if flipping to short, +1 if flipping to long). Symmetric
-                    # two-sided: agreement boosts flip frac (high-conviction macro reversal),
-                    # disagreement dampens (idiosyncratic flip likely noise). Continuous tanh.
-                    _new_dir = -1.0 if current_pos > 0 else 1.0
-                    _other_xs_flip = [v for k, v in _xs_signals.items() if k != symbol]
-                    if len(_other_xs_flip) > 0:
-                        _flip_xs_agree = sum(_o * _new_dir for _o in _other_xs_flip) / len(_other_xs_flip)
-                    else:
-                        _flip_xs_agree = 0.0
-                    _flip_xs_adj = 0.08 * np.tanh(_flip_xs_agree / 0.5)  # two-sided ~[-0.08, +0.08]
-                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj + _flip_xs_adj))
+                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
