@@ -194,8 +194,28 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: voter-agreement consensus boost on strong-sum.
+            # Sum-of-quintic alone treats "1 voter at 0.95 + 5 at 0.55" same as "all 6 at 0.65" if
+            # weighted sums match — but the latter is much higher-quality consensus (broader
+            # evidence base, less single-voter dependence). Boost strong-sum by an agreement factor:
+            # low std among voters above 0.5 -> high consensus -> larger multiplier.
+            # Continuous, bounded ~[1.0, 1.15]. Common-mode noise (all voters drift together)
+            # leaves agreement-std unchanged; orthogonal noise (one voter flips) increases std,
+            # which reduces multiplier — a noise-rejecting fusion property.
+            _bull_pos = [max(0.0, c - 0.5) for c in _bull_confs]
+            _bear_pos = [max(0.0, c - 0.5) for c in _bear_confs]
+            _bull_pos_mean = sum(_bull_pos) / 6.0
+            _bear_pos_mean = sum(_bear_pos) / 6.0
+            _bull_pos_std = (sum((p - _bull_pos_mean) ** 2 for p in _bull_pos) / 6.0) ** 0.5
+            _bear_pos_std = (sum((p - _bear_pos_mean) ** 2 for p in _bear_pos) / 6.0) ** 0.5
+            # Agreement boost: when std is small relative to mean, all voters are similarly bullish/bearish.
+            # Normalize std by max_pos (0.4) to bound; multiplier in [1.0, 1.15].
+            _bull_agree = 1.0 + 0.15 * max(0.0, 1.0 - _bull_pos_std / 0.20) * min(1.0, _bull_pos_mean / 0.10)
+            _bear_agree = 1.0 + 0.15 * max(0.0, 1.0 - _bear_pos_std / 0.20) * min(1.0, _bear_pos_mean / 0.10)
+            _bull_strong = _bull_strong_raw * _bull_agree
+            _bear_strong = _bear_strong_raw * _bear_agree
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
