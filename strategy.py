@@ -477,7 +477,23 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Architectural: per-bar volume z-score gate on flip path. Flips are
+                # high-conviction reversals — institutional flow during a true reversal
+                # bar tends to manifest as above-typical volume. Compute volume z-score
+                # over 24-bar window and require z > -0.5 (smooth attenuation below).
+                # This filters flip cascades that fire on noise-only price moves with
+                # below-average volume. New data dependency: flip admission gates on
+                # per-bar volume distribution (volume previously only entered via the
+                # 12/24 bar AVERAGE ratio in vol_confirm_mult — not per-bar z-score).
+                _vols = bd.history["volume"].values[-24:]
+                _vol_mean = float(np.mean(_vols))
+                _vol_std = max(float(np.std(_vols)), 1e-9)
+                _vol_z = (float(_vols[-1]) - _vol_mean) / _vol_std
+                # Smooth admission: full pass at z>=0, smooth attenuation to 0 at z<=-1.
+                # Soft-AND with existing flip gates: gate triggers only when smooth
+                # admission factor > 0.5 (i.e., z > -0.5 approx).
+                _flip_vol_admit = max(0.0, min(1.0, (_vol_z + 1.0) / 1.0)) > 0.5
+                if not in_cooldown and _flip_vol_admit and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
