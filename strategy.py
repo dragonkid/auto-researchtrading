@@ -245,7 +245,7 @@ class Strategy:
             # Gated to fire only in clear chop (cooldown_trend_strength < 0.5) via smooth
             # ramp — preserves bull pullback-bar behavior (where trend_strength dips below 1
             # but is still mid-trend) while admitting full boost in true sideways/rally chop.
-            _xa_chop_gate = max(0.0, min(1.0, (0.5 - cooldown_trend_strength) / 0.3))
+            _xa_chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
             _xa_boost = 1.0 + CROSS_ASSET_FIXED_BOOST * _xa_chop_gate
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
