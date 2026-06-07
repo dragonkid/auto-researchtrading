@@ -428,6 +428,16 @@ class Strategy:
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: late-position threshold tightening. After 10 bars held,
+                # ramp _exit_thresh down from 1.0 to 0.85 over bars 10..18. Long-held
+                # positions have accumulated profit and are more vulnerable to retrace;
+                # weaker exit pressure should suffice. Continuous, only fires past
+                # bars_held=10 (well after scale-in protection ends). Profit-gated:
+                # only tightens when in profit (pos_pnl > 0) to avoid forcing premature
+                # exits on losing positions that may yet recover.
+                if bars_held > 10 and pos_pnl > 0:
+                    _late_ramp = max(0.0, min(1.0, (bars_held - 10.0) / 8.0))
+                    _exit_thresh = _exit_thresh * (1.0 - 0.15 * _late_ramp)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
