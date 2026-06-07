@@ -304,7 +304,17 @@ class Strategy:
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
+                    # Architectural: gate mean-rev fallback through strong-sum conviction infra at relaxed
+                    # threshold (0.6x). Mean-rev was the only entry path with no strong-sum gate, relying
+                    # solely on binary RSI cutoffs at 49/51 — a known noise boundary. Adding the strong-sum
+                    # check unifies the gate architecture (same _bull_strong/_bear_strong primitive used
+                    # by primary entry) and filters noise-driven RSI flips that don't have voter support.
+                    # Direction-specific: oversold -> need bull conviction, overbought -> need bear conviction.
+                    _mr_thresh = _bull_strong_min * 0.6
+                    if rsi < MEANREV_RSI_OVERSOLD and _bull_strong >= _mr_thresh:
+                        target = size * _entry_frac_dyn
+                    elif rsi > MEANREV_RSI_OVERBOUGHT and _bear_strong >= _bear_strong_min * 0.6:
+                        target = -size * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
