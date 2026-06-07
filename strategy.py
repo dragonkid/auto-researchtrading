@@ -392,17 +392,6 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Architectural: protective-source saturation exemption. Generalizes the
-                # SL exemption to the OTHER two protective sources (peak-profit giveback,
-                # slope-against). When any protective source SATURATES (>=0.95), force
-                # standard threshold. Time pressure is excluded — time is structural
-                # (not signal-driven), so a maxed-time-pressure during winning scale-in
-                # is by design (don't override the scale-in protection). Same primitive
-                # family as SL exemption: complete saturation of a protective source
-                # represents a regime-change signal too strong to dilute by waiting for
-                # consensus; bypass the scale-in ramp on such events.
-                if _pp_pressure >= 0.95 or _sl_slope_pressure >= 0.95:
-                    _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
