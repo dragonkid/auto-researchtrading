@@ -262,14 +262,6 @@ class Strategy:
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
 
             if current_pos == 0 and not in_cooldown:
-                # Architectural: post-exit entry-size dampening (whipsaw protection).
-                # When a fresh entry fires within RECOVERY_BARS of last exit, scale the
-                # entry size by a smooth recovery factor in [0.7, 1.0] over 4 bars.
-                # Reduces wrong-side accumulation in chop where strategy oscillates
-                # between entry and exit. Continuous (no binary switch).
-                _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -9999)
-                _recovery_t = max(0.0, min(1.0, (_bars_since_exit - 1) / 4.0))
-                _entry_recovery = 0.7 + 0.3 * (_recovery_t * _recovery_t * (3.0 - 2.0 * _recovery_t))
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
@@ -291,11 +283,11 @@ class Strategy:
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
                 if _bull_strong >= _bull_strong_min and _bull_admit:
-                    target = size * _entry_frac_dyn * _entry_recovery
+                    target = size * _entry_frac_dyn
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
-                    target = -size * _entry_frac_dyn * _entry_recovery
+                    target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn * _entry_recovery
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
