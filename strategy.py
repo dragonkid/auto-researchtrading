@@ -435,14 +435,6 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: volume-confirmed flip-size modulation.
-                # Real reversals come with volume; chop-noise flips happen on weak volume.
-                # Use vol_confirm_mult (already computed for entry sizing) as a soft modulator
-                # on flip frac — does NOT gate the flip decision (that would create a noise
-                # boundary at vol_confirm_mult=1.0 threshold). Continuous: maps vol_confirm_mult
-                # in [0.98, 1.10] -> [0.9, 1.05] flip-size multiplier via linear interp.
-                _flip_vol_mult = 0.9 + (vol_confirm_mult - 0.98) / 0.12 * 0.15
-                _flip_vol_mult = max(0.9, min(1.05, _flip_vol_mult))
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
@@ -462,7 +454,7 @@ class Strategy:
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
-                    target = (-size if current_pos > 0 else size) * _flip_frac * _flip_vol_mult
+                    target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
