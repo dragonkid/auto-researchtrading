@@ -365,10 +365,24 @@ class Strategy:
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
+                # Architectural: slope-agreement confidence — when the 3 windows produce
+                # similar-magnitude slopes (low dispersion relative to the mean), the
+                # multi-window slope estimate is signal-dominated. When dispersion is
+                # large vs the mean magnitude, individual windows are dominated by
+                # window-specific noise and the slope-against pressure should be
+                # discounted. coh = |mean| / (|mean| + std), maps to [0, 1] continuously
+                # with no thresholds. Multiplies the slope-against pressure directly.
+                _slope_std = float(np.std(_slopes))
+                _slope_coh = abs(_exit_slope) / (abs(_exit_slope) + _slope_std + 1e-9)
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Apply slope-coherence multiplier: dampens slope-against pressure when
+                # the 3 windows disagree (window-specific noise dominates). Asymmetric:
+                # only dampens (multiplier in [0,1]), never amplifies — high coherence
+                # leaves baseline unchanged, low coherence reduces premature exits.
+                _sl_slope_pressure = _sl_slope_pressure * _slope_coh
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
