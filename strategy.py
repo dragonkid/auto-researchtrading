@@ -382,16 +382,14 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                # Architectural: scale-in-aware slope-pressure attenuator, gated on pos_pnl >= 0.
-                # During the first ENTRY_FULL_BARS bars, slope can transiently oppose position
-                # direction due to micro-noise on a position not yet at full size. Attenuate
-                # _w_slope smoothly with bars_held so slope-against pressure ramps up with
-                # position commitment — but ONLY for winning scale-in (pos_pnl >= 0). Losing
-                # scale-in keeps full slope-pressure (sideways exits losing positions sooner).
-                # Refines 33bb4b7 keep to recover sideways score regression while preserving
-                # bull/crash gains. Same primitive family as bc26c28 pos_pnl-gated exit thresh.
-                _scale_in_w = (0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)) if pos_pnl >= 0 else 1.0
-                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during winning scale-in
+                # Architectural: scale-in-aware slope-pressure attenuator. During the first
+                # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
+                # to micro-noise on a position not yet at full size. Attenuate _w_slope
+                # smoothly with bars_held so slope-against pressure ramps up with position
+                # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
+                # and onward. New data dependency: slope-pressure weight on bars_held.
+                _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
