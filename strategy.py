@@ -395,20 +395,8 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Architectural: asymmetric flip strong-sum threshold (looser than entry).
-                # Entry happens from flat (low risk to wait); flip happens from wrong-side
-                # (already-losing, time-cost). The two have asymmetric expected-value math:
-                # flips with even modest hit rate beat holding-through-reversal. Currently
-                # FLIP_MIN_VOTES is looser than MIN_VOTES (2.4 vs 2.5) on count gate, but
-                # strong-sum gate uses identical _strong_min. Decouple: flip strong-sum
-                # threshold = entry's * 0.90, providing protective flips at 10% lower
-                # conviction. Continuous (0.90 multiplier, not boolean switch). NEW data
-                # dependency: flip_min and entry_min are no longer the same value.
-                _flip_strong_min_factor = 0.90
-                _bull_flip_min = _bull_strong_min * _flip_strong_min_factor
-                _bear_flip_min = _bear_strong_min * _flip_strong_min_factor
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
