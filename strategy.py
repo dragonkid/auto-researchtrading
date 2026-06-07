@@ -211,20 +211,8 @@ class Strategy:
             _eh = self._bear_strong_hist.get(symbol, [])
             _bull_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 2.0 if len(_bh) == 2 else 1.0
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
-            # Architectural: symmetric sustained-conviction relaxation.
-            # Mirror the isolated-spike penalty: when prior 2 bars were ALSO firing
-            # (prior strong-sum >= _strong_min), the firing is signal-dominated (not
-            # a noise spike). Relax _strong_min slightly proportional to how strongly
-            # prior bars exceeded the firing line. Continuous: relaxation = 0.05 *
-            # max(0, mean_prior_excess_ratio) where excess_ratio in [0, 1] saturates
-            # at strong/min = 1.5. Same _bh/_eh state, no new buffers.
-            # Asymmetric: penalty up to +10% (kept), relaxation up to -5% (smaller
-            # to avoid over-admitting in trending regimes where prior bars commonly
-            # sustain above _strong_min).
-            _bull_prior_excess = sum(max(0.0, min(1.0, (s - _strong_min) / max(_strong_min * 0.5, 1e-6))) for s in _bh) / 2.0 if len(_bh) == 2 else 0.0
-            _bear_prior_excess = sum(max(0.0, min(1.0, (s - _strong_min) / max(_strong_min * 0.5, 1e-6))) for s in _eh) / 2.0 if len(_eh) == 2 else 0.0
-            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio) - 0.05 * _bull_prior_excess)
-            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio) - 0.05 * _bear_prior_excess)
+            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
+            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
