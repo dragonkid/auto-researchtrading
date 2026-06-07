@@ -238,15 +238,14 @@ class Strategy:
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
-            # Cross-asset fixed boost moved post-cap (same architectural pattern as vol_confirm_mult
-            # in 9051fcf): inside-cap absorption neutralizes the boost in regimes where the cap binds.
-            # Post-cap application lets the chop-active boost modulate SIZE directly.
-            # Gated to fire only in clear chop (cooldown_trend_strength < 0.5) via smooth
-            # ramp — preserves bull pullback-bar behavior (where trend_strength dips below 1
-            # but is still mid-trend) while admitting full boost in true sideways/rally chop.
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+            # Architectural: ADDITIONAL chop-only post-cap boost (smaller magnitude 0.08).
+            # Original cross-asset boost stays inside combined_mult (preserves bull behavior
+            # via cap-absorption). Additional post-cap boost activates only in deep chop
+            # (trend_strength<0.3), giving sideways/rally a small additional size lift that
+            # is NOT subject to cap.
             _xa_chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
-            _xa_boost = 1.0 + CROSS_ASSET_FIXED_BOOST * _xa_chop_gate
+            _xa_boost = 1.0 + 0.08 * _xa_chop_gate
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
