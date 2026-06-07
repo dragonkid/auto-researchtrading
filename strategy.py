@@ -259,22 +259,6 @@ class Strategy:
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
-            # Architectural: directional-confluence first-bar amplifier.
-            # When 16-bar log-price slope (_lr.slope) aligns in sign and magnitude
-            # with the trend_avg gate, the entry is a high-confluence event — two
-            # orthogonal-window signals agree. Continuous tanh on the product
-            # _lr.slope * trend_avg (positive = same direction, scale by typical
-            # trending magnitudes 0.0005 * 0.02 = 1e-5). One-sided positive boost
-            # only (negative product stays at 0). Adds [+0.0, +0.06] to first-bar
-            # frac. Does NOT couple to entry voter signals — uses two trend-window
-            # primitives that are not in the strong-sum.
-            # Vol-adaptive scale: in low-vol both signals shrink, so the
-            # confluence threshold scales down with vol_ratio**2 to maintain
-            # similar activation across regimes.
-            _confluence_raw = _lr.slope * trend_avg
-            _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
-            _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
@@ -367,7 +351,19 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                _pp_ratio_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                # Architectural: vol-anchored absolute giveback gate fused with ratio.
+                # Ratio-based pp_pressure can fire on small peaks where vol noise creates
+                # apparent giveback (peak 0.04, 0.022 absolute giveback = 55% ratio = full
+                # pressure even though absolute move is one noise stdev). Add absolute
+                # giveback ramp anchored to realized_vol: lower band at 1.5*realized_vol,
+                # full at 4.0*realized_vol. Final pp_pressure = MIN(ratio, absolute) — both
+                # gates must agree before exit fires. Decouples pp_pressure from position
+                # quality at small peaks while preserving ratio behavior at substantial peaks.
+                _gb_abs_lower = 1.5 * realized_vol
+                _gb_abs_upper = 4.0 * realized_vol
+                _pp_abs_pressure = max(0.0, min(1.0, (_giveback - _gb_abs_lower) / max(_gb_abs_upper - _gb_abs_lower, 1e-6)))
+                _pp_pressure = min(_pp_ratio_pressure, _pp_abs_pressure)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
