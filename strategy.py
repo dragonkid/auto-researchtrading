@@ -377,7 +377,13 @@ class Strategy:
                 # Uses same robust median exit-slope for consistency within exit subsystem.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
+                # Architectural: symmetric momentum hold bonus. Original was one-sided
+                # (only extended max_hold when slope agrees). Now slope-against also
+                # SHORTENS max_hold by up to MOMENTUM_HOLD_BONUS bars. Smooth via
+                # _slope_strength (continuous magnitude scaling). Time-pressure becomes
+                # a bidirectional momentum coupling rather than agree-only extension.
+                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -1.0)
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
