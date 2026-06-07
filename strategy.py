@@ -119,8 +119,6 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
-        # Adverse-exit memory: pnl at last exit (0.0 if no prior exit). Negative -> extend cooldown.
-        self._last_exit_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -228,13 +226,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Architectural: adverse-exit cooldown extension (new state-aware mechanism).
-            # When prior exit was at negative pnl, extend cooldown by tanh-smoothed amount
-            # up to +1.5 bars. Filters noise-driven re-entry into the same setup that
-            # just lost. Uses _last_exit_pnl state populated on every exit.
-            _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            _adverse_ext = 1.5 * np.tanh(max(0.0, -_last_pnl) / 0.01)  # 0..1.5 bars on -1% loss
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < (COOLDOWN_BARS * cooldown_trend_strength + _adverse_ext)
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -431,12 +423,6 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Capture pnl-at-exit BEFORE clearing entry_prices.
-                    if symbol in self.entry_prices:
-                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            _exit_pnl = -_exit_pnl
-                        self._last_exit_pnl[symbol] = _exit_pnl
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
