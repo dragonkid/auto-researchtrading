@@ -148,7 +148,14 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+            # Architectural simplification: removed trend-magnitude dyn_threshold reduction.
+            # Was: dyn_threshold *= 1 - TREND_THRESHOLD_SCALE * f(|ret_long|), reducing
+            # dyn_threshold in trends by up to TREND_THRESHOLD_SCALE=0.25. Redundant with
+            # strength_scale (line 241) which ALREADY couples size to trend magnitude (floor
+            # 2.6 in low-trend, transitions to ret_short/dyn_threshold in trends). Both gate
+            # signal sensitivity and size on the same |ret_long| signal — correlated coupling
+            # with no mechanism distinguishing them. Removing this layer keeps dyn_threshold
+            # purely vol-conditioned (orthogonal signal source from realized_vol).
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
