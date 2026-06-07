@@ -250,15 +250,7 @@ class Strategy:
             _cap_high_t = max(0.0, min(1.0, (vol_ratio - MAX_COMBINED_VOL_HIGH) / 0.3))
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
-            # Architectural: smooth saturation cap (replaces hard min() kink).
-            # Hard min(combined_mult, cap_total) creates a noise-sensitive boundary at
-            # combined_mult=cap. Replace with cap_total * tanh(combined_mult / cap_total) —
-            # below cap, output ~ combined_mult (linear), above cap, smoothly approaches
-            # cap_total without hard kink. Preserves cap as approximate ceiling while
-            # eliminating boundary noise channel where small combined_mult fluctuations
-            # near cap produce large flips between capped/uncapped sizing.
-            _cap_total = _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85)
-            combined_mult = _cap_total * np.tanh(combined_mult / max(_cap_total, 1e-6))
+            combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
