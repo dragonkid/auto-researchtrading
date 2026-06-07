@@ -119,6 +119,8 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Bar count since last peak update (for stale-peak decay).
+        self._bars_since_peak = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -316,8 +318,19 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._bars_since_peak[symbol] = 0
                 else:
-                    self.peak_pnl[symbol] = _curr_peak
+                    # Architectural: stale-peak slow decay. When peak hasn't been
+                    # updated for >4 bars, bleed peak toward current pos_pnl at
+                    # ~6% per bar above the stale threshold. Continuous, smooth.
+                    # Prevents peak getting stuck after pullback during long holds —
+                    # pp_pressure was firing on giveback vs an old high-water mark
+                    # that no longer reflects current trade context. Fresh peaks
+                    # (just updated) decay nothing; old peaks decay toward present.
+                    _bsp = self._bars_since_peak.get(symbol, 0) + 1
+                    self._bars_since_peak[symbol] = _bsp
+                    _decay_factor = max(0.0, min(1.0, (_bsp - 4) * 0.06))
+                    self.peak_pnl[symbol] = _curr_peak - _decay_factor * (_curr_peak - pos_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -408,7 +421,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._bars_since_peak):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
