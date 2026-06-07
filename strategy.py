@@ -251,37 +251,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            # Architectural: multi-source conviction-confirmation post-cap modulator.
-            # Combines TWO orthogonal signal-quality dimensions into a small post-cap
-            # multiplier in [0.95, 1.08]. Same architectural family as efbb4a0 keep
-            # (vol_confirm_mult post-cap), but uses signal-internal agreement metrics
-            # (no new data dependencies on volume/funding — all from existing voters).
-            #   1. Inter-slope agreement (12/16/22-bar entry slopes): low std/mean ratio = high
-            #      directional agreement across windows. Continuous via smoothstep on agreement.
-            #   2. Vote-consensus (std of |conf - 0.5| of dominant side): tight consensus among
-            #      the 6 voters = high signal quality.
-            # Multiplied by orthogonal dimensions (product), then smoothly bounded.
-            # Computed cheaply at entry path; reuses existing _bull_confs, _bear_confs.
-            _entry_slopes = []
-            for _w in (12, 16, 22):
-                _ll = linregress(np.arange(_w), np.log((bd.history["high"].values[-_w:] + bd.history["low"].values[-_w:]) / 2.0))
-                _entry_slopes.append(_ll.slope)
-            _slope_mean_abs = max(np.mean(np.abs(_entry_slopes)), 1e-6)
-            _slope_std = float(np.std(_entry_slopes))
-            # Agreement: 1.0 when std=0 vs mean magnitude, decays smoothly
-            _slope_agree = max(0.0, min(1.0, 1.0 - _slope_std / _slope_mean_abs))
-            # Vote-consensus on dominant side: prefer side with higher strong_sum
-            _dom_confs = _bull_confs if _bull_strong >= _bear_strong else _bear_confs
-            _conf_dev = [abs(c - 0.5) for c in _dom_confs]
-            _conf_mean = max(np.mean(_conf_dev), 1e-6)
-            _conf_std = float(np.std(_conf_dev))
-            _vote_consensus = max(0.0, min(1.0, 1.0 - _conf_std / _conf_mean))
-            # Combined conviction in [0, 1] via product of two agreement dims
-            _conviction = _slope_agree * _vote_consensus
-            # Smoothstep modulator: 0.95 at conviction=0, 1.08 at conviction=1
-            _conv_t = _conviction * _conviction * (3.0 - 2.0 * _conviction)
-            _conviction_mult = 0.95 + 0.13 * _conv_t
-            size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult * _conviction_mult
+            size = equity * BASE_POSITION_SIZE * combined_mult * vol_confirm_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
