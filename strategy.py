@@ -379,18 +379,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: vol_confirm_mult inverse-modulates non-SL exit pressure.
-                # vol_confirm_mult = recent_vol / baseline_vol, clipped [0.98, 1.10]. Volume
-                # rising (>1.0) = trend being confirmed by fresh participants -> hold longer
-                # (dampen exits). Volume fading (<1.0) = trend exhaustion / no fresh demand ->
-                # exit sooner (amplify exits). Inverse multiplier (1/vol_confirm_mult) ranges
-                # [0.91, 1.02]. SL excluded (entry-anchored protection, must remain absolute).
-                # Distinct from rejected dampen-low-vol-exit (b08fd1c): that direction said
-                # "low vol = noisy = ignore exit"; this says "low vol = exhaustion = exit faster"
-                # — opposite primitive. Volume signal is orthogonal to price-derived exit
-                # pressures (slope/peak/time all derive from close/HL2).
-                _vc_inv = 1.0 / max(vol_confirm_mult, VOL_CONFIRM_FLOOR)
-                _exit_pressure = _sl_pressure + _vc_inv * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
