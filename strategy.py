@@ -411,15 +411,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: voter-consensus exit pressure (5th source). Uses _avg_signal
-                # (mean of 6 voter signals) — when voters strongly oppose current position,
-                # add proportional exit pressure. Smooth ramp activation 0.3..0.7 of normalized
-                # signal magnitude. Distinct from existing pressures (sl/slope/pp/time are
-                # price/peak-anchored); voter consensus is signal-anchored. Light weight 0.30
-                # to avoid dominating fusion. New data dependency: voter aggregate -> exit.
-                _avg_against = -_avg_signal if current_pos > 0 else _avg_signal
-                _voter_pressure = max(0.0, min(1.0, (_avg_against - 0.3) / 0.4))
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.30 * _voter_pressure
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
