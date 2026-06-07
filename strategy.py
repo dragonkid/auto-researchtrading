@@ -213,15 +213,6 @@ class Strategy:
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
             _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
             _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
-            # Architectural: voter-dispersion penalty on strong-min thresholds.
-            # When opposite-side strong-sum is itself elevated (voters disagree strongly),
-            # tighten this side's gate proportionally. Captures voter-ensemble disagreement
-            # as a noise signal: high _bear_strong while firing bull entry indicates the
-            # voter ensemble is split, not unanimously bullish. Half-_strong_min reference:
-            # opposite side at 50% of admission threshold => no penalty; at full threshold
-            # (would be flipping itself) => +0.30 tightening.
-            _bull_strong_min += 0.30 * _strong_min * max(0.0, min(1.0, (_bear_strong - 0.5 * _strong_min) / max(0.5 * _strong_min, 1e-6)))
-            _bear_strong_min += 0.30 * _strong_min * max(0.0, min(1.0, (_bull_strong - 0.5 * _strong_min) / max(0.5 * _strong_min, 1e-6)))
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
