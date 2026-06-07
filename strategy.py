@@ -220,8 +220,8 @@ class Strategy:
             # voter ensemble is split, not unanimously bullish. Half-_strong_min reference:
             # opposite side at 50% of admission threshold => no penalty; at full threshold
             # (would be flipping itself) => +0.30 tightening.
-            _bull_strong_min += 0.30 * _strong_min * max(0.0, min(1.0, (_bear_strong - 0.7 * _strong_min) / max(0.3 * _strong_min, 1e-6)))
-            _bear_strong_min += 0.30 * _strong_min * max(0.0, min(1.0, (_bull_strong - 0.7 * _strong_min) / max(0.3 * _strong_min, 1e-6)))
+            _bull_strong_min += 0.30 * _strong_min * max(0.0, min(1.0, (_bear_strong - 0.3 * _strong_min) / max(0.7 * _strong_min, 1e-6)))
+            _bear_strong_min += 0.30 * _strong_min * max(0.0, min(1.0, (_bull_strong - 0.3 * _strong_min) / max(0.7 * _strong_min, 1e-6)))
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
