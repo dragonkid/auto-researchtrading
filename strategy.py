@@ -97,10 +97,13 @@ def ema(values, span):
     return result
 
 # Position accumulation (build position over bars)
-# Architectural simplification: collapsed vol-conditioned initial frac to constant.
-# The vol-tanh modulation (~[0.36, 0.50]) was redundant with the larger size-cap
-# mechanism that already vol-modulates total position size.
-ENTRY_INITIAL_FRAC = 0.43
+# Architectural: vol-conditioned initial commit. Base 0.43, modulated by vol_ratio
+# via tanh: low vol -> larger initial frac (~0.50, capture rally/sideways momentum
+# with less first-bar lag); high vol -> smaller initial frac (~0.36, less DD on
+# wrong-side first bar in crash). Continuous, bounded ~[0.36, 0.50].
+ENTRY_INITIAL_FRAC_BASE = 0.43
+ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
+ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 
@@ -253,6 +256,11 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Architectural: vol-conditioned initial commit fraction. Continuous tanh
+            # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
+            # exposure from a constant in regimes where initial-bar noise risk varies.
+            _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
+
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
@@ -275,11 +283,11 @@ class Strategy:
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
                 if _bull_strong >= _bull_strong_min and _bull_admit:
-                    target = size * ENTRY_INITIAL_FRAC
+                    target = size * _entry_frac_dyn
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
-                    target = -size * ENTRY_INITIAL_FRAC
+                    target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * ENTRY_INITIAL_FRAC
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -391,10 +399,10 @@ class Strategy:
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
-                    # as entry's first bar). Anchor at ENTRY_INITIAL_FRAC, then scale up with
+                    # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
                     # vol_ratio (full flip in high-vol crash for protection; conservative
                     # flip in low-vol where noise risk dominates).
-                    _flip_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * min(1.0, vol_ratio / 1.5))
+                    _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
