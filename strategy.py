@@ -386,12 +386,19 @@ class Strategy:
                 # (1.2 at bar 0, 1.0 at bar ENTRY_FULL_BARS). Protects winning scale-in
                 # from noise-driven premature exits while letting losing scale-in exit
                 # normally (no protection — losing positions are noise-vulnerable too).
-                # Stop-loss is exempt (full _sl_pressure forces exit regardless).
-                _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
-                if _sl_pressure >= 0.95:
-                    _exit_thresh = 1.0
+                # Stop-loss exemption: smooth ramp on _sl_pressure (was hard >=0.95 cliff).
+                # Architectural: replaced TWO hard binary switches with smooth versions
+                # to remove noise-sensitive boundaries.
+                #   1. pos_pnl > 0 hard switch -> smooth tanh ramp on pos_pnl (positive-side only)
+                #   2. _sl_pressure >= 0.95 hard exemption -> smooth (1 - smoothstep) interpolation
+                # Smooth tanh on pos_pnl: in [0, 1], saturates at pos_pnl ~ STOP/2.
+                _pnl_protect = max(0.0, np.tanh(pos_pnl / (abs(STOP_LOSS_PCT) * 0.5)))
+                _bars_ramp = max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS)
+                _scale_protect = 0.20 * _pnl_protect * _bars_ramp
+                # Smooth SL exemption: smoothstep on _sl_pressure over [0.85, 0.98].
+                _sl_t = max(0.0, min(1.0, (_sl_pressure - 0.85) / 0.13))
+                _sl_exempt = _sl_t * _sl_t * (3.0 - 2.0 * _sl_t)  # smoothstep, 0->1
+                _exit_thresh = 1.0 + _scale_protect * (1.0 - _sl_exempt)
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
