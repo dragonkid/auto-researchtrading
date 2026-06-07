@@ -379,7 +379,20 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: Lp-norm exit fusion (p=1.5) replaces linear sum.
+                # Linear sum allows 4 mid-range pressures (~0.3 each) to add up to
+                # threshold (1.0+), causing noise-driven exits where no single source
+                # has confirmed firing. Lp(1.5) weights strongest source more — single
+                # saturated source still fires (norm ~1.0); multiple mid-range ones
+                # add sub-linearly (e.g., 4×0.3 → norm ~0.79 < 1.0). Reduces "weak
+                # signal stack-up" noise channel in fusion. Stop-loss kept at unit weight.
+                _ep_components = (
+                    _sl_pressure,
+                    _w_slope * _sl_slope_pressure,
+                    _w_pp * _pp_pressure,
+                    _w_time * _time_pressure,
+                )
+                _exit_pressure = sum(c ** 1.5 for c in _ep_components) ** (1.0 / 1.5)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
