@@ -434,8 +434,20 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
+                # Architectural: opposite-side dominance gate on flips. Flip win rate
+                # is structurally low (~10-13%) — many flips are noise-driven near-tie
+                # bars where both _bull_strong and _bear_strong are firing. Require the
+                # opposite (flip-target) side strong-sum to exceed the current-direction
+                # strong-sum by a small inertia buffer. New data dependency: flip gate
+                # compares BOTH strong-sums symmetrically rather than only checking the
+                # opposite side's threshold crossing. Continuous: dominance ratio must
+                # exceed 1.10 (10% inertia buffer). Smooth tanh saturation: in clear
+                # reversals (opp >> own) gate is trivially passed; in near-ties it
+                # rejects.
+                _flip_inertia_ok = ((current_pos > 0 and _bear_strong >= 1.10 * _bull_strong) or
+                                    (current_pos < 0 and _bull_strong >= 1.10 * _bear_strong))
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                if not in_cooldown and _flip_inertia_ok and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
