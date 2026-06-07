@@ -403,6 +403,21 @@ class Strategy:
                     # vol_ratio (full flip in high-vol crash for protection; conservative
                     # flip in low-vol where noise risk dominates).
                     _flip_frac = min(1.0, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5))
+                    # Architectural: _avg_signal as smooth flip-size amplifier (one-sided).
+                    # Variance-reduced linear-average voter signal as conviction proxy in the
+                    # NEW direction. Different signal source than prior rejected
+                    # conviction-margin family (quintic-amplified strong-sum/min) which
+                    # over-coupled to extreme-voter noise. _avg_signal averages over moderate
+                    # voter signals — smoother, more stable in low-vol regimes.
+                    # ONE-SIDED amp [1.0, 1.10]: amplifies when voters strongly support the
+                    # flip direction; never shrinks flip below baseline (avoids noise-driven
+                    # under-sized flips during legit reversals). Branch_revert insight from
+                    # conviction-margin SIZE modulation (d0cdd12): direction worth re-test
+                    # with smoother source.
+                    _flip_dir = -1.0 if current_pos > 0 else 1.0
+                    _flip_conv = max(0.0, _avg_signal * _flip_dir)
+                    _flip_amp = 1.0 + 0.10 * np.tanh(2.0 * _flip_conv)
+                    _flip_frac = min(1.0, _flip_frac * _flip_amp)
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
