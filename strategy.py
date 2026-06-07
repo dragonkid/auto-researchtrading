@@ -119,6 +119,11 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Architectural: flip-origin tracker. True when current position originated
+        # from a flip (high-conviction reversal: both vote count AND trend sign +
+        # opposite-side strong-min admission). Used in exit logic to give flips
+        # extra maturation time before the exit-pressure gate can fire.
+        self._from_flip = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -261,6 +266,7 @@ class Strategy:
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
+            _is_flip_this_bar = False
 
             # Architectural: vol-conditioned initial commit fraction. Continuous tanh
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
@@ -439,6 +445,17 @@ class Strategy:
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: flip-origin exit-threshold protection. Positions that
+                # originated from a flip are higher-conviction reversals (passed both
+                # vote-count AND trend-sign AND opposite-side strong-min gates). Give
+                # them extra maturation: smooth additive bonus to _exit_thresh that
+                # decays linearly over the first 3 bars after flip. New state +
+                # control-flow path that distinguishes flip-origin from cold-entry
+                # positions in the exit-pressure decision. Stop-loss exemption below
+                # already overrides this protection on real adverse moves.
+                if self._from_flip.get(symbol, False):
+                    _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
+                    _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -447,6 +464,7 @@ class Strategy:
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                    _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
@@ -473,7 +491,9 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
+                    self._from_flip.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._from_flip[symbol] = _is_flip_this_bar
 
         return signals
