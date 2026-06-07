@@ -402,7 +402,12 @@ class Strategy:
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
-                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
+                # Architectural: trend-strength dampening on peak-profit weight.
+                # In strong trends (rsi_trend_str ~1), peak-profit giveback often fires on
+                # trend pullbacks rather than real trend exhaustion — reduce _w_pp so pullbacks
+                # don't trigger premature exits. In chop (rsi_trend_str ~0), keep full _w_pp
+                # because there is no continuation to ride. Continuous, one-sided dampening.
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w * (1.0 - 0.25 * rsi_trend_str)
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
