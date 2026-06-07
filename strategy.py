@@ -125,6 +125,25 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-symbol soft trend signals for cross-symbol exit dampener.
+        # Pre-loop computation of soft tanh trend per symbol from MED2_WINDOW return.
+        # New cross-symbol data dependency on the EXIT subsystem (previously only entry
+        # had cross-symbol coupling via _xs_boost — exits were strictly per-symbol).
+        # Mechanism: when holding a position with same-direction trend agreement from
+        # OTHER symbols, the exit pressure is multiplicatively dampened — macro-aligned
+        # moves are more durable, so soft exits should be more reluctant. Idiosyncratic
+        # moves (no agreement) keep full exit pressure.
+        _xs_trend = {}
+        for _sym in ACTIVE_SYMBOLS:
+            if _sym not in bar_data:
+                continue
+            _bd = bar_data[_sym]
+            if len(_bd.history) < MED2_WINDOW + 1:
+                continue
+            _c = _bd.history["close"].values
+            _r = (_c[-1] - _c[-MED2_WINDOW]) / _c[-MED2_WINDOW]
+            _xs_trend[_sym] = np.tanh(_r / 0.01)  # soft sign of MED2_WINDOW return
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -418,7 +437,19 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: cross-symbol exit dampener. When OTHER symbols still
+                # agree with this position's direction (soft trend signal sign matches),
+                # macro-aligned move likely persists — dampen soft exit pressures.
+                # One-sided: only dampens (factor in [0.85, 1.0]); idiosyncratic or
+                # disagreeing moves get full pressure. Not applied to stop-loss
+                # (entry-anchored hard protection always fires).
+                _others = [_xs_trend[_s] for _s in ACTIVE_SYMBOLS if _s != symbol and _s in _xs_trend]
+                _agree = 0.0
+                if _others:
+                    _own_sign = 1.0 if current_pos > 0 else -1.0
+                    _agree = max(0.0, _own_sign * (sum(_others) / len(_others)))
+                _xs_exit_damp = 1.0 - 0.15 * _agree  # [0.85, 1.0]
+                _exit_pressure = _sl_pressure + _xs_exit_damp * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
