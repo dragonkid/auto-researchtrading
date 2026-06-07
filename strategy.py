@@ -287,19 +287,7 @@ class Strategy:
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    # Architectural: _avg_signal directional alignment as smooth size modulator.
-                    # Meanrev currently relies on RSI as sole conviction signal (rsi<49 / rsi>51
-                    # are binary). Adding voter-aggregate alignment via _avg_signal (mean of 6
-                    # voter signals, variance-reduced) filters wrong-side meanrev entries in
-                    # bull/crash pullbacks where voter ensemble has slight bias against the
-                    # meanrev direction. Smooth multiplicative: size *= 0.5 + 0.5*tanh(...) so
-                    # full size when avg_signal aligns strongly, half size when neutral, near
-                    # zero when avg_signal opposes. Different mechanism from strong-sum gating
-                    # (which failed): _avg_signal averages signal magnitudes (constructive even
-                    # when no voter dominates), strong-sum quintic-ramps extreme conviction.
-                    _mr_side = 1.0 if rsi < MEANREV_RSI_OVERSOLD else -1.0
-                    _mr_align = 0.5 + 0.5 * np.tanh(2.0 * _avg_signal * _mr_side)
-                    target = _mr_side * size * _entry_frac_dyn * _mr_align
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
