@@ -379,7 +379,11 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Opposite-voter pressure: 5th exit source (architectural).
+                _opp_signal = -_avg_signal if current_pos > 0 else _avg_signal
+                _w_opp = 1.0 + 0.30 * max(0.0, -_pnl_scale)
+                _opp_pressure = max(0.0, min(0.30, 0.30 * np.tanh(2.0 * max(0.0, _opp_signal))))
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_opp * _opp_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
