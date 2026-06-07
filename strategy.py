@@ -413,14 +413,6 @@ class Strategy:
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: same-side conviction-relaxation of exit threshold. When the
-                # entry-side strong-sum is still well above its admission threshold (the entry
-                # signal is being re-confirmed by the voter ensemble bar-after-bar), the exit
-                # threshold rises smoothly. Couples exit-decision to live entry-signal
-                # strength via tanh(margin/0.5), one-sided positive only. Range +0..+0.20.
-                # Independent of _scale_in_winning ramp (additive).
-                _pos_side_margin = max(0.0, _bull_margin if current_pos > 0 else _bear_margin)
-                _exit_thresh = _exit_thresh + 0.20 * np.tanh(_pos_side_margin / 0.5)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
