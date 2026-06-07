@@ -451,7 +451,19 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: noisy-OR exit fusion. Treat each pressure as independent
+                # probability of exit; aggregate via 1 - prod(1 - p_i). Differs from additive
+                # sum by saturating at 1.0 (no single source can dominate via overflow) and
+                # giving multi-source agreement non-linearly higher pressure than any one
+                # source alone. Weights applied as exponents (p**w) to preserve weighted
+                # influence. Multiplied by 4.0 to keep the same _exit_thresh=1.0 default
+                # (max value 4.0 ~ original max_sum 4 components).
+                _p_sl    = max(0.0, min(0.999, _sl_pressure))
+                _p_slope = max(0.0, min(0.999, _sl_slope_pressure)) ** (1.0 / max(_w_slope, 1e-6))
+                _p_pp    = max(0.0, min(0.999, _pp_pressure))       ** (1.0 / max(_w_pp,    1e-6))
+                _p_time  = max(0.0, min(0.999, _time_pressure))     ** (1.0 / max(_w_time,  1e-6))
+                _noisy_or = 1.0 - (1.0 - _p_sl) * (1.0 - _p_slope) * (1.0 - _p_pp) * (1.0 - _p_time)
+                _exit_pressure = 2.0 * _noisy_or
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
