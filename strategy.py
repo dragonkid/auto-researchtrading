@@ -323,6 +323,8 @@ class Strategy:
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                _prev2_pnl_v = self._prev2_pnl.get(symbol, pos_pnl)
+                self._prev2_pnl[symbol] = _prev_pnl
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
@@ -367,7 +369,21 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                _pp_ratio_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                # Architectural: 2-bar consistent-decline gate on pp_pressure (state-aware).
+                # Tracks pnl over 2 prior bars (_prev2_pnl previously dead state). Computes
+                # a smooth indicator of consistent decline: per-bar pnl drop normalized by
+                # realized_vol summed over 2 bars. Single-bar dips (noise oscillation around
+                # peak) yield small indicator → pp_pressure dampened. Genuine 2-bar decline
+                # → indicator near 1 → full pp_pressure. Dampening bounded [0.4, 1.0] so
+                # legitimate single-bar large-magnitude givebacks still fire (via ratio gate).
+                _drop1 = max(0.0, _prev_pnl - pos_pnl)
+                _drop2 = max(0.0, _prev2_pnl_v - _prev_pnl)
+                _decline_norm = (_drop1 + _drop2) / max(2.0 * realized_vol, 1e-6)
+                _decline_t = max(0.0, min(1.0, (_decline_norm - 0.3) / 1.2))
+                _decline_smooth = _decline_t * _decline_t * (3.0 - 2.0 * _decline_t)
+                _pp_decline_gate = 0.4 + 0.6 * _decline_smooth
+                _pp_pressure = _pp_ratio_pressure * _pp_decline_gate
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
