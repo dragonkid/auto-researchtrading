@@ -213,6 +213,15 @@ class Strategy:
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
             _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
             _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
+            # Architectural: post-exit confidence ramp (continuous, distinct from binary
+            # cooldown). Within 4 bars of an exit, require up to 15% higher strong-sum
+            # for new entries, decaying linearly to 0 by bar 4. Smooths the exit->entry
+            # transition to filter whipsaw re-entries (exit-on-noise, immediately
+            # re-enter-on-noise) without binary blocking. Continuous, no switch points.
+            _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
+            _post_exit_ramp = 1.0 + 0.15 * max(0.0, 1.0 - _bars_since_exit / 4.0)
+            _bull_strong_min *= _post_exit_ramp
+            _bear_strong_min *= _post_exit_ramp
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
