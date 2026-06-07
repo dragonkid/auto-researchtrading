@@ -125,22 +125,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Architectural: cross-symbol trend pre-computation. New data dependency
-        # between symbols (the loop is otherwise per-symbol independent). For
-        # each symbol, compute a soft trend signal from MED2_WINDOW return; later
-        # used as a post-cap agreement multiplier on the active-symbol size.
-        # Continuous tanh on each symbol's ret to avoid hard sign boundaries.
-        _xs_signals = {}
-        for _xs_sym in ACTIVE_SYMBOLS:
-            if _xs_sym not in bar_data:
-                continue
-            _xs_bd = bar_data[_xs_sym]
-            if len(_xs_bd.history) < MED2_WINDOW + 1:
-                continue
-            _xs_closes = _xs_bd.history["close"].values
-            _xs_ret = (_xs_closes[-1] - _xs_closes[-MED2_WINDOW]) / _xs_closes[-MED2_WINDOW]
-            _xs_signals[_xs_sym] = np.tanh(_xs_ret / 0.01)  # soft signal in [-1, 1]
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -262,23 +246,6 @@ class Strategy:
             # is NOT subject to cap.
             _xa_chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
             _xa_boost = 1.0 + 0.08 * _xa_chop_gate
-            # Architectural: cross-symbol trend agreement post-cap multiplier.
-            # New data dependency between symbols — when OTHER symbols' soft trend
-            # signals agree in sign with this symbol's trend_avg, apply a small
-            # multiplicative boost. This is genuinely cross-symbol (the prior
-            # CROSS_ASSET_FIXED_BOOST is single-asset misnamed). Mechanism:
-            # macro-aligned moves carry more durable directional signal than
-            # idiosyncratic moves. Continuous: agreement = mean(sign-aligned
-            # tanh signals from OTHER symbols), one-sided positive boost.
-            _own_xs = _xs_signals.get(symbol, 0.0)
-            _own_dir = np.tanh(trend_avg / 0.005)  # soft sign of this symbol's trend gate
-            _other_xs = [v for k, v in _xs_signals.items() if k != symbol]
-            if len(_other_xs) > 0 and abs(_own_dir) > 0.05:
-                _agree_score = sum(_o * _own_dir for _o in _other_xs) / len(_other_xs)
-                _agree_score = max(0.0, _agree_score)  # one-sided
-            else:
-                _agree_score = 0.0
-            _xs_boost = 1.0 + 0.05 * _agree_score
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
@@ -290,7 +257,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _xs_boost
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -451,19 +418,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: noisy-OR exit fusion. Treat each pressure as independent
-                # probability of exit; aggregate via 1 - prod(1 - p_i). Differs from additive
-                # sum by saturating at 1.0 (no single source can dominate via overflow) and
-                # giving multi-source agreement non-linearly higher pressure than any one
-                # source alone. Weights applied as exponents (p**w) to preserve weighted
-                # influence. Multiplied by 4.0 to keep the same _exit_thresh=1.0 default
-                # (max value 4.0 ~ original max_sum 4 components).
-                _p_sl    = max(0.0, min(0.999, _sl_pressure))
-                _p_slope = max(0.0, min(0.999, _sl_slope_pressure)) ** (1.0 / max(_w_slope, 1e-6))
-                _p_pp    = max(0.0, min(0.999, _pp_pressure))       ** (1.0 / max(_w_pp,    1e-6))
-                _p_time  = max(0.0, min(0.999, _time_pressure))     ** (1.0 / max(_w_time,  1e-6))
-                _noisy_or = 1.0 - (1.0 - _p_sl) * (1.0 - _p_slope) * (1.0 - _p_pp) * (1.0 - _p_time)
-                _exit_pressure = 2.0 * _noisy_or
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
