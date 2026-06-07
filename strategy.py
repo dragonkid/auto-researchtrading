@@ -119,10 +119,6 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
-        # Slope-against pressure persistence buffer: previous bar's _sl_slope_pressure
-        # per symbol. Used to ramp full pressure only after 2 consecutive bars of
-        # slope-reversal evidence (single-bar slope flips often noise).
-        self._prev_sl_slope_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -357,17 +353,7 @@ class Strategy:
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure_raw = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Architectural: 2-bar persistence on slope-against pressure.
-                # Single-bar slope flip from price chop is a noise channel; require
-                # consecutive-bar evidence before reaching full pressure. Use the
-                # MIN of current and previous bar (two consecutive bars must both
-                # see strong slope-against to fire). Smoother than averaging
-                # (averaging diffuses signal); MIN forces conjunctive evidence.
-                # On bar-0 of a position (no prior pressure), trust current bar.
-                _prev_slpr = self._prev_sl_slope_pressure.get(symbol, _sl_slope_pressure_raw)
-                _sl_slope_pressure = min(_sl_slope_pressure_raw, max(_prev_slpr, _sl_slope_pressure_raw * 0.5))
-                self._prev_sl_slope_pressure[symbol] = _sl_slope_pressure_raw
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
@@ -443,7 +429,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._prev_sl_slope_pressure):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
