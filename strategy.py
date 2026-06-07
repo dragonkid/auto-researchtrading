@@ -192,8 +192,24 @@ class Strategy:
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
-            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            # Architectural: vol-conditioned voter weight smooth modulation.
+            # In high vol, short-window voter (ret_short) noise dominates; in low vol,
+            # long-window voters (slope_16, EMA_slope) lag during transitions and add
+            # less marginal information. Smoothly shift weights via tanh on (vol_ratio-1.0):
+            # high vol -> downweight ret_short, upweight slope_16/EMA_slope; low vol -> reverse.
+            # Normalized to sum=6.0 so scale is preserved.
+            _vw_shift = np.tanh((vol_ratio - 1.0) / 0.5)  # in [-1, 1]
+            _vw_amp = 0.10
+            _voter_weights_raw = (
+                0.7  - _vw_amp * _vw_shift,
+                1.25,
+                1.10,
+                1.00,
+                0.85 + 0.5 * _vw_amp * _vw_shift,
+                1.10 + 0.5 * _vw_amp * _vw_shift,
+            )
+            _vw_sum = sum(_voter_weights_raw)
+            _voter_weights = tuple(w * 6.0 / _vw_sum for w in _voter_weights_raw)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
