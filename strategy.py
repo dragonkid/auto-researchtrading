@@ -294,11 +294,24 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up (no vote confirmation needed)
-                # Rationale: vote check during accumulation is a noise channel.
-                # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Architectural: conviction-gated scale-in pace.
+                # Originally scale-in was purely time-based (linear ramp ENTRY_INITIAL_FRAC->1.0
+                # over ENTRY_FULL_BARS bars). Now the per-bar increment is modulated by
+                # _avg_signal alignment with position direction: when voters continue to
+                # support the position direction, scale-in proceeds at full pace; when
+                # voters weaken or oppose, the increment is throttled (down to 50%).
+                # This is a one-sided gate on the INCREMENT, not the floor — position
+                # cannot shrink during scale-in (still time-monotone non-decreasing).
+                # New control flow: scale-in tracks ongoing voter conviction.
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    _pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _conv_align = _avg_signal * _pos_dir   # >0 when voters still support direction
+                    # Smooth conviction throttle: full pace when aligned, 50% when neutral/opposed.
+                    # tanh(_conv_align * 4.0) maps small positive conviction to ~full speed.
+                    _scale_pace = 0.5 + 0.5 * 0.5 * (1.0 + np.tanh(_conv_align * 4.0))   # in [0.5, 1.0]
+                    _time_progress = bars_held / ENTRY_FULL_BARS   # 1/3, 2/3, 1.0
+                    _adj_progress = min(1.0, _time_progress * _scale_pace)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _adj_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
