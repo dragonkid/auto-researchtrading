@@ -229,9 +229,6 @@ class Strategy:
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
-            # Architectural: lift _trend_biased out of entry-only scope to allow flip-path
-            # symmetry (flip currently uses raw trend_avg sign check; entry uses _trend_biased).
-            _trend_biased = trend_avg + 0.005 * np.tanh(_avg_signal)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -283,7 +280,7 @@ class Strategy:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
                 # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
                 # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                # _trend_biased lifted to outer scope for flip-path symmetry.
+                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
                 # Architectural: replaced binary deadzone vote-tiebreak with continuous
                 # strong-conviction admission. When _bull_strong significantly exceeds
                 # _strong_min (margin = (strong - min) / min), the trend-sign requirement
@@ -418,13 +415,8 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_biased sign, vol-scaled).
-                # Architectural symmetry: flip uses _trend_biased (same continuous bias as entry)
-                # instead of raw trend_avg. _trend_biased = trend_avg + 0.005*tanh(_avg_signal)
-                # combines trend gate with voter-signal bias; common-mode noise cancels at the
-                # decision boundary. Brings flip-side trend admission semantics in line with
-                # entry-side. Reduces near-zero trend_avg flip-flop where _avg_signal disagrees.
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and _trend_biased < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and _trend_biased > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
                     # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
