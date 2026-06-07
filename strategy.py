@@ -353,11 +353,7 @@ class Strategy:
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                # Architectural: _avg_signal modulates pp giveback band (signal-aware exit).
-                # Aligned voters -> wider band (give room); opposed -> tighter band (lock gains faster).
-                _pp_align = _avg_signal if current_pos > 0 else -_avg_signal
-                _pp_band_mod = 1.0 + 0.20 * np.tanh(_pp_align)  # [0.80, 1.20]
-                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band) * _pp_band_mod
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
