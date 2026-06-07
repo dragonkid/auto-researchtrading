@@ -259,6 +259,18 @@ class Strategy:
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
+            # Architectural: directional-confluence first-bar amplifier.
+            # When 16-bar log-price slope (_lr.slope) aligns in sign and magnitude
+            # with the trend_avg gate, the entry is a high-confluence event — two
+            # orthogonal-window signals agree. Continuous tanh on the product
+            # _lr.slope * trend_avg (positive = same direction, scale by typical
+            # trending magnitudes 0.0005 * 0.02 = 1e-5). One-sided positive boost
+            # only (negative product stays at 0). Adds [+0.0, +0.06] to first-bar
+            # frac. Does NOT couple to entry voter signals — uses two trend-window
+            # primitives that are not in the strong-sum.
+            _confluence_raw = _lr.slope * trend_avg
+            _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / 1e-5)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
