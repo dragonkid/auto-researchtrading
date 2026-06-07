@@ -294,24 +294,11 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: signal-modulated scale-up.
-                # Architectural: scale-in progress per bar attenuated by side-aligned
-                # strong-sum sustainment. Initial entry was a single-bar decision; if
-                # the signal evaporates before full-size, the increment beyond initial
-                # frac is gated on continued signal strength. Continuous attenuation
-                # via tanh of side-strong-margin, NOT a binary block. Preserves
-                # commitment-style scale-in when signal sustains, avoids compounding
-                # exposure on noise-spike entries that immediately fade.
+                # Position accumulation: deterministic scale-up (no vote confirmation needed)
+                # Rationale: vote check during accumulation is a noise channel.
+                # Entry decision was already validated on bar 0; scale-in is commitment.
                 if bars_held <= ENTRY_FULL_BARS:
-                    _side_strong = _bull_strong if current_pos > 0 else _bear_strong
-                    _side_min = _bull_strong_min if current_pos > 0 else _bear_strong_min
-                    # Scale-in increment factor: 1.0 when side-strong sustains above min,
-                    # smoothly attenuated toward 0.5 when signal drops to half of min.
-                    _signal_sustain = 0.5 + 0.5 * np.tanh((_side_strong / max(_side_min, 1e-6) - 0.85) / 0.15)
-                    _signal_sustain = max(0.5, min(1.0, _signal_sustain))
-                    _base_progress = bars_held / ENTRY_FULL_BARS
-                    _attenuated_progress = min(1.0, _base_progress * _signal_sustain)
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _attenuated_progress)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
