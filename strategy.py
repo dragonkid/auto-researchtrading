@@ -277,10 +277,14 @@ class Strategy:
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
 
             if current_pos == 0 and not in_cooldown:
-                # _avg_signal as BIAS to trend_avg gate: instead of hard sign check on smoothed_trend,
-                # require trend_avg + _avg_signal-biased to align with side. Combines two signal sources
-                # (trend gate + voter signal) into one smoother boundary; common-mode noise cancels.
-                _trend_biased = self.smoothed_trend[symbol] + 0.005 * np.tanh(_avg_signal)
+                # Architectural simplification: removed _avg_signal bias from trend gate.
+                # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
+                # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
+                # trend gate created CORRELATED noise amplification at entry — both gates fire
+                # on the same underlying noise. Using raw smoothed_trend decouples the trend
+                # gate from the voter-signal subsystem; trend_avg derives from price-window
+                # returns (orthogonal to per-bar voter signals).
+                _trend_biased = self.smoothed_trend[symbol]
                 # Architectural: replaced binary deadzone vote-tiebreak with continuous
                 # strong-conviction admission. When _bull_strong significantly exceeds
                 # _strong_min (margin = (strong - min) / min), the trend-sign requirement
