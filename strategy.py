@@ -272,7 +272,7 @@ class Strategy:
             # confluence threshold scales down with vol_ratio**2 to maintain
             # similar activation across regimes.
             _confluence_raw = _lr.slope * trend_avg
-            _confluence_scale = 1e-5 * max(0.5, min(2.0, vol_ratio ** 2))
+            _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
             _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
 
