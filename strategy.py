@@ -438,13 +438,5 @@ class Strategy:
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    # Architectural state-hygiene: reset _smoothed_pnl on entry/flip.
-                    # Previously _smoothed_pnl carried prior direction's pnl into the new
-                    # position, polluting the confirmed-peak gate (pos_pnl >= _prev_pnl)
-                    # on the first 1-2 bars after flip — _prev_pnl was the OLD direction's
-                    # last pnl, semantically incoherent with new direction's pos_pnl.
-                    # On flip especially, this caused spurious peak updates / non-updates.
-                    self._smoothed_pnl.pop(symbol, None)
-                    self._prev2_pnl.pop(symbol, None)
 
         return signals
