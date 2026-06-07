@@ -119,10 +119,6 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
-        # Last-exit pnl for pnl-conditioned cooldown (architectural).
-        # After winning exit, cooldown stays at base; after losing exit, cooldown
-        # extends — avoid re-entering during continued adverse move that drove the loss.
-        self._last_exit_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -234,17 +230,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Architectural: pnl-conditioned cooldown extension. After a losing exit,
-            # cooldown_extension grows smoothly with loss magnitude (saturating at
-            # |STOP_LOSS_PCT|): pnl=0 -> +0 bars, pnl=-STOP -> +1.5 bars.
-            # After a winning exit, no extension (stays at base cooldown). Mechanism:
-            # losing exits often correspond to adverse-move continuation; re-entering
-            # immediately catches the same adverse move. Winning exits don't have this
-            # asymmetric risk. New state-conditioned cooldown distinct from
-            # cooldown_trend_strength (price-derived) — uses position outcome state.
-            _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            _cd_extend = 1.5 * max(0.0, min(1.0, -_last_pnl / abs(STOP_LOSS_PCT)))
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < (COOLDOWN_BARS * cooldown_trend_strength + _cd_extend)
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -473,18 +459,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Capture exit pnl for pnl-conditioned cooldown.
-                    if current_pos != 0 and symbol in self.entry_prices:
-                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            _exit_pnl = -_exit_pnl
-                        self._last_exit_pnl[symbol] = _exit_pnl
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    # Reset last-exit pnl on flip (new position starts; previous loss not relevant).
-                    self._last_exit_pnl.pop(symbol, None)
 
         return signals
