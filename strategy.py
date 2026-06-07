@@ -304,7 +304,16 @@ class Strategy:
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
-                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
+                    # Architectural: mean-rev fallback uses scaled-down initial frac.
+                    # Mean-rev fires when no strong-side gate fires AND on noisy RSI extremes
+                    # (49/51 thresholds) — these are low-conviction entries. Decouple sizing
+                    # from strong-side path: mean-rev gets 0.7x of _entry_frac_dyn to express
+                    # lower conviction. Different from prior failed conviction-gating attempts:
+                    # this only modulates SIZE (not the gate), and only on the orphaned
+                    # mean-rev path which produces low-WR entries (per crash insight that
+                    # mean-rev path is load-bearing for crash protection but produces less
+                    # reliable signals than strong-sum).
+                    target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn * 0.7
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
