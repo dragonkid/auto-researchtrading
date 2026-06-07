@@ -379,17 +379,6 @@ class Strategy:
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
-                # Architectural: slope-coupled peak-profit pressure modulation.
-                # When _exit_slope agrees with position direction (momentum continues),
-                # dampen peak-profit pressure (let winners run further before giveback
-                # triggers exit). When _exit_slope opposes, amplify peak-profit pressure
-                # (momentum dying — lock gains via giveback exit).
-                # Continuous tanh on _exit_slope * sign(current_pos), bounded one-sided
-                # multipliers in [0.85, 1.15]. New data dependency: peak-profit weight
-                # is now coupled to multi-window slope sign/magnitude.
-                _pp_slope_align = _exit_slope * (1.0 if current_pos > 0 else -1.0)
-                _pp_slope_mod = 1.0 - 0.15 * np.tanh(_pp_slope_align / 0.0006)
-                _pp_pressure = _pp_pressure * _pp_slope_mod
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
