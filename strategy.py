@@ -382,7 +382,14 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)        # heavier in loss
+                # Architectural: scale-in-aware slope-pressure attenuator. During the first
+                # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
+                # to micro-noise on a position not yet at full size. Attenuate _w_slope
+                # smoothly with bars_held so slope-against pressure ramps up with position
+                # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
+                # and onward. New data dependency: slope-pressure weight on bars_held.
+                _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
                 _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)         # heavier in profit
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
