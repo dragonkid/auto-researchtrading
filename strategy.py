@@ -402,16 +402,7 @@ class Strategy:
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
-                # Architectural: flip-readiness amplifies _w_pp. When opposite-side strong-sum
-                # is approaching its admission threshold (rising bear_margin while long, or
-                # bull_margin while short), increase peak-profit pressure proportionally —
-                # impending flip = real reversal momentum = lock gains before flip executes.
-                # Linear in normalized opposite strong (clamp 0..1 vs _strong_min). Light
-                # coupling 0.20 to avoid oscillation when opposite side is noise-driven.
-                _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
-                _opp_min = _bear_strong_min if current_pos > 0 else _bull_strong_min
-                _flip_proximity = max(0.0, min(1.0, _opp_strong / max(_opp_min, 1e-6)))
-                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w * (1.0 + 0.20 * _flip_proximity)
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
