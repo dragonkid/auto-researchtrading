@@ -357,15 +357,7 @@ class Strategy:
                 for _w in (12, 16, 22):
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
-                # Architectural: short-window-weighted exit slope (was uniform mean).
-                # Mean equally weights 12/16/22 windows; the 22-window slope lags reversals
-                # most and dilutes the more responsive 12-window. Weighted aggregation
-                # 0.5/0.3/0.2 makes exit-slope more responsive to recent slope reversal,
-                # helping cut losers faster while preserving multi-window noise robustness.
-                # Asymmetric architecture: entry uses single 16-window slope; exit now uses
-                # a different weighted-multi aggregation, fully decoupling exit-slope noise
-                # from entry-slope noise.
-                _exit_slope = 0.5 * _slopes[0] + 0.3 * _slopes[1] + 0.2 * _slopes[2]
+                _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
