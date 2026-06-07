@@ -314,8 +314,16 @@ class Strategy:
                 # Position accumulation: deterministic scale-up (no vote confirmation needed)
                 # Rationale: vote check during accumulation is a noise channel.
                 # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Architectural: monotonic scale-in. Take MAX of nominal scale_frac and
+                # current position fraction so a flip (which lands at _flip_frac, often
+                # > ENTRY_INITIAL_FRAC) is preserved rather than shrunk on the next bar.
+                # Adds a new data dependency (current_pos magnitude) to the scale-in path,
+                # ensuring scale-in only grows the position and never shrinks below its
+                # initial commit. Symmetric for both long/short via abs.
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    nominal_frac = ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS
+                    _curr_frac = abs(current_pos) / size if size > 1e-6 else nominal_frac
+                    scale_frac = min(1.0, max(nominal_frac, _curr_frac))
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
