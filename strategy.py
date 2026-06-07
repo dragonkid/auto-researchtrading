@@ -125,6 +125,25 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-asset trend-agreement scalar. Compute LONG_WINDOW
+        # log-returns for all 3 symbols (orthogonal data sources from per-symbol
+        # voter signals). Agreement = mean(sign(ret_i)*tanh(|ret_i|/0.04)) — bounded
+        # in [-1,+1]. Used to modulate the existing constant CROSS_ASSET_FIXED_BOOST.
+        # When 3 symbols agree strongly in same direction (|agreement|→1), boost
+        # full; when mixed (agreement→0), boost zero. Continuous, no binary switch.
+        # Replaces the constant CROSS_ASSET_FIXED_BOOST which was applied uniformly.
+        # New cross-symbol data dependency injected before the per-symbol loop.
+        _xa_terms = []
+        for _xs in ACTIVE_SYMBOLS:
+            if _xs not in bar_data:
+                continue
+            _xc = bar_data[_xs].history["close"].values
+            if len(_xc) < LONG_WINDOW + 1:
+                continue
+            _xr = (_xc[-1] - _xc[-LONG_WINDOW]) / _xc[-LONG_WINDOW]
+            _xa_terms.append(np.sign(_xr) * np.tanh(abs(_xr) / 0.04))
+        _xa_agreement = abs(sum(_xa_terms) / len(_xa_terms)) if _xa_terms else 0.0
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -238,7 +257,7 @@ class Strategy:
 
             vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * _xa_agreement * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
