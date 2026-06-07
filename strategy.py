@@ -115,6 +115,9 @@ class Strategy:
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         self._prev2_pnl = {}
+        # Architectural: track bar of last peak update for peak-decay aging.
+        # When peak hasn't been refreshed for many bars, peak slowly decays toward pos_pnl.
+        self._peak_bar = {}
         # Persistence buffers: last 2 bars of strong-side firings per symbol.
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
@@ -351,8 +354,20 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count
                 else:
-                    self.peak_pnl[symbol] = _curr_peak
+                    # Architectural: stale-peak decay. When peak hasn't been refreshed
+                    # for several bars but position is still profitable, peak slowly
+                    # decays toward current pos_pnl. This shifts the giveback reference
+                    # from a stale historic high toward recent realized profit, so
+                    # pp_pressure measures RECENT giveback, not cumulative drift.
+                    # Decay rate = 0.04 per bar after 4-bar grace, capped so it never
+                    # decays below max(pos_pnl, _pp_min_floor). Continuous, smooth.
+                    # New data dependency: peak update gated on bars-since-peak.
+                    _bars_stale = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
+                    _decay_rate = 0.04 * max(0.0, min(1.0, (_bars_stale - 4) / 6.0))
+                    _decayed_peak = _curr_peak - _decay_rate * max(0.0, _curr_peak - pos_pnl)
+                    self.peak_pnl[symbol] = max(_decayed_peak, pos_pnl) if _curr_peak > 0 else _curr_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -470,7 +485,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev2_pnl, self._peak_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
