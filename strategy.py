@@ -220,11 +220,11 @@ class Strategy:
             # voter ensemble is split, not unanimously bullish. Half-_strong_min reference:
             # opposite side at 50% of admission threshold => no penalty; at full threshold
             # (would be flipping itself) => +0.30 tightening.
-            # Penalty magnitude scaled by chop (1-rsi_trend_str): full in chop, zero in trends.
-            # Spares trending regimes where opposite-side firing during transitions is meaningful.
-            _disp_scale = 1.0 - rsi_trend_str
-            _bull_strong_min += 0.30 * _disp_scale * _strong_min * max(0.0, min(1.0, (_bear_strong - 0.5 * _strong_min) / max(0.5 * _strong_min, 1e-6)))
-            _bear_strong_min += 0.30 * _disp_scale * _strong_min * max(0.0, min(1.0, (_bull_strong - 0.5 * _strong_min) / max(0.5 * _strong_min, 1e-6)))
+            # Penalty magnitude scaled: 0.10 floor + 0.20 chop ramp (full at rsi_trend_str=0).
+            # Floor preserves modest dispersion penalty in trends; chop ramp adds extra during low-trend.
+            _disp_scale = 0.10 + 0.20 * (1.0 - rsi_trend_str)
+            _bull_strong_min += _disp_scale * _strong_min * max(0.0, min(1.0, (_bear_strong - 0.5 * _strong_min) / max(0.5 * _strong_min, 1e-6)))
+            _bear_strong_min += _disp_scale * _strong_min * max(0.0, min(1.0, (_bull_strong - 0.5 * _strong_min) / max(0.5 * _strong_min, 1e-6)))
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
