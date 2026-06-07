@@ -335,11 +335,18 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: deterministic scale-up (no vote confirmation needed)
-                # Rationale: vote check during accumulation is a noise channel.
-                # Entry decision was already validated on bar 0; scale-in is commitment.
+                # Position accumulation: pos_pnl-gated scale-up.
+                # Architectural: scale-in ramp pace adapts to position pnl. Winning
+                # scale-ins commit fully (signal was right on bar 0). Losing scale-ins
+                # attenuate the per-bar increment via continuous tanh on pos_pnl scaled
+                # by stop magnitude — pos_pnl=0 -> full ramp, pos_pnl=-STOP -> no further
+                # scale-up (frozen at current level). New data dependency: scale-in
+                # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * bars_held / ENTRY_FULL_BARS)
+                    _ramp_attn = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
+                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
+                    _eff_progress = max(0.0, min(1.0, _eff_progress))
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
