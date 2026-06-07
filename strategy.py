@@ -117,6 +117,8 @@ class Strategy:
         self._prev2_pnl = {}
         # Persistence buffers: last 2 bars of strong-side firings per symbol.
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
+        self._bull_strong_hist = {}
+        self._bear_strong_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -198,12 +200,22 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural simplification: removed isolated-spike penalty (history-based
-            # _strong_min tightening). The voter-conf clipping [0.1, 0.9] + quintic ramp
-            # + weighted strong-sum already provide noise filtering at the strong-sum gate;
-            # the additional history-based penalty is redundant noise filtering on the same signal.
-            _bull_strong_min = _strong_min
-            _bear_strong_min = _strong_min
+            # Architectural: isolated-spike penalty on entry threshold.
+            # Track last 2 bars of strong-side firings; if current strong-sum crossed
+            # _strong_min but the prior 2 bars sat well below it, the crossing is
+            # likely a noise spike. Penalize by tightening _strong_min proportional to
+            # how far prior bars were below the firing line. Continuous: penalty =
+            # 0.10 * max(0, 1 - mean_prior_above_ratio). Adds new state and history-aware
+            # control flow to the entry gate.
+            _bh = self._bull_strong_hist.get(symbol, [])
+            _eh = self._bear_strong_hist.get(symbol, [])
+            _bull_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 2.0 if len(_bh) == 2 else 1.0
+            _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
+            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
+            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
+            # Update history (always) — buffer of length 2.
+            self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
+            self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
             # Architectural co-gate: averaged voter signal. Variance-reduced single signal that
             # acts as an additional alignment check at entry. Common-mode noise cancels in the
             # average. Adds ONE smooth boundary in parallel to existing gates rather than tightening.
