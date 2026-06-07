@@ -268,8 +268,12 @@ class Strategy:
             # only (negative product stays at 0). Adds [+0.0, +0.06] to first-bar
             # frac. Does NOT couple to entry voter signals — uses two trend-window
             # primitives that are not in the strong-sum.
+            # Vol-adaptive scale: in low-vol both signals shrink, so the
+            # confluence threshold scales down with vol_ratio**2 to maintain
+            # similar activation across regimes.
             _confluence_raw = _lr.slope * trend_avg
-            _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / 1e-5)
+            _confluence_scale = 1e-5 * max(0.3, min(2.0, vol_ratio ** 2))
+            _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
 
             if current_pos == 0 and not in_cooldown:
