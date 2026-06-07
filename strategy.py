@@ -232,7 +232,14 @@ class Strategy:
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
-            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
+            # Architectural: asymmetric volume-confirmation. Previously symmetric clip [0.98, 1.10]
+            # penalized low-volume bars. Restructured to one-sided positive-only modulation:
+            # base=1.0 (no penalty on low volume), boost only on confirmed high volume.
+            # New functional form: smooth tanh ramp on POSITIVE excess of vol_ratio_raw above 1.0.
+            # Removes the down-side modulation channel entirely (one less noise source from the
+            # volume signal), keeps the up-side confirmation that drove efbb4a0 keep gain.
+            _vol_ratio_raw = np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])
+            vol_confirm_mult = 1.0 + (VOL_CONFIRM_CAP - 1.0) * np.tanh(max(0.0, _vol_ratio_raw - 1.0) * 2.0)
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             # Architectural: vol_confirm_mult applied POST-CAP rather than absorbed in cap calc.
             # Previously vol_confirm_mult was part of pre-cap product; when cap binds (high-vol regimes),
