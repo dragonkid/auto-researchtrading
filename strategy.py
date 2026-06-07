@@ -295,19 +295,10 @@ class Strategy:
                 # gate eliminates correlated-noise amplification at the entry decision boundary
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
-                # Architectural: conviction-margin-modulated entry fraction (mirrors flip-side
-                # _flip_conv_adj). High-margin entries (strong-sum well above strong-min) get
-                # a small additive boost to initial commit fraction. One-sided positive — only
-                # high-conviction events expand commit; marginal entries use base frac.
-                # Continuous tanh maps margin/0.30 -> [0, 0.03]. New data dependency between
-                # entry conviction (margin) and initial sizing — distinct from prior _entry_frac_dyn
-                # primitives (vol-adaptive base, confluence amplifier).
                 if _bull_strong >= _bull_strong_min and _bull_admit:
-                    _entry_conv_adj = 0.03 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _entry_frac_dyn
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
-                    _entry_conv_adj = 0.03 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _entry_frac_dyn
                 elif abs(ret_long) < MEANREV_TREND_THRESHOLD and (rsi < MEANREV_RSI_OVERSOLD or rsi > MEANREV_RSI_OVERBOUGHT):
                     target = (size if rsi < MEANREV_RSI_OVERSOLD else -size) * _entry_frac_dyn
             elif current_pos != 0:
