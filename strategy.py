@@ -367,18 +367,7 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                _pp_ratio_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
-                # Architectural: vol-anchored multiplicative attenuator on ratio-pressure.
-                # Ratio-based pp_pressure can fire on small peaks where vol noise creates
-                # apparent giveback. Soft attenuator smoothstep on |giveback| / realized_vol
-                # from 0.5 -> 2.0 attenuates pp_pressure when absolute giveback is sub-noise
-                # while preserving ratio behavior at substantial giveback. Less restrictive
-                # than MIN-gate (proved too conservative): pressure smoothly dampens rather
-                # than gating off entirely.
-                _gb_norm = _giveback / max(realized_vol, 1e-6)
-                _gb_attn_t = max(0.0, min(1.0, (_gb_norm - 0.5) / 1.5))
-                _gb_attn = _gb_attn_t * _gb_attn_t * (3.0 - 2.0 * _gb_attn_t)
-                _pp_pressure = _pp_ratio_pressure * _gb_attn
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
