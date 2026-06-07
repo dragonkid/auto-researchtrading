@@ -309,26 +309,15 @@ class Strategy:
                 # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
-                # Architectural: 3-bar median peak anchor replaces rising-confirmation gate.
-                # Previous gate (pos_pnl > prev_peak AND pos_pnl >= prev_pnl) is a binary
-                # AND of two conditions; single-bar pos_pnl noise can either falsely raise
-                # the peak (one-bar spike) OR falsely block legitimate rises (single bar
-                # of dip during ascent). Median-of-3 anchors to consensus across the last
-                # 3 bars: peak only shifts when median(curr, prev, prev2) > curr_peak,
-                # which inherently requires at least 2 of 3 bars above the prior peak.
-                # Continuous filter — no binary boundary. Activates the previously-
-                # initialized but unused _prev2_pnl state.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _prev2_pnl = self._prev2_pnl.get(symbol, _prev_pnl)
+                self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                _pnl_median = float(np.median([pos_pnl, _prev_pnl, _prev2_pnl]))
-                if _pnl_median > _curr_peak:
-                    self.peak_pnl[symbol] = _pnl_median
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                    self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
-                # Update history: shift _smoothed_pnl into _prev2_pnl, then current into _smoothed_pnl
-                self._prev2_pnl[symbol] = _prev_pnl
-                self._smoothed_pnl[symbol] = pos_pnl
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
