@@ -189,7 +189,11 @@ class Strategy:
             # bull has elevated vol that triggered the same threshold rise. Restrict scaling
             # to vol_ratio > 1.2 (above bull-typical) using smooth tanh ramp — crash with
             # vol_ratio >= 1.5 still gets the noise filter; bull stays at baseline 0.00015.
-            _slope16_scale = 1.0 + 0.30 * max(0.0, np.tanh((vol_ratio - 1.2) / 0.2))
+            # Step 3: tighter and higher gate — only deep-chop (vol_ratio > 1.5) raises
+            # threshold. Bull typically vol_ratio<1.5 so unaffected; crash vol_ratio>=1.6
+            # gets the noise filter. Smaller magnitude (+0.20) to avoid over-suppressing
+            # legit signals. Centered at 1.5 with narrow band 0.15.
+            _slope16_scale = 1.0 + 0.20 * max(0.0, np.tanh((vol_ratio - 1.5) / 0.15))
             _slope16_thresh = 0.00015 * _slope16_scale
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
