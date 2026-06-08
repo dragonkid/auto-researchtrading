@@ -119,6 +119,12 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: prior-bar slope tracker for signal-acceleration confluence.
+        # Stores last bar's _lr.slope per symbol. Used to compute slope acceleration
+        # (current - prior) as a one-sided positive entry-frac amplifier when the
+        # acceleration is in the direction of the entry. New cross-bar data
+        # dependency: entry frac depends on whether trend slope is accelerating.
+        self._prev_lr_slope = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -315,7 +321,24 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: signal-acceleration confluence amplifier on entry frac.
+            # Compute slope acceleration = current _lr.slope - prior bar's _lr.slope.
+            # When acceleration shares sign with current slope (slope magnitude
+            # increasing in same direction), this signals a *strengthening* trend,
+            # not just a continuing one. One-sided positive: only same-sign-and-
+            # accelerating amplifies; decelerating or reversing acceleration is
+            # ignored (kept at 0 — no penalty primitive). Continuous tanh on
+            # accel * sign(slope) scaled by typical accel magnitude (~5e-5).
+            # Adds [+0.0, +0.03] to entry frac. Distinct from existing
+            # _confluence_adj which gates on level alignment — this is a derivative
+            # primitive (rate of change) on the slope itself.
+            _prev_slope = self._prev_lr_slope.get(symbol, _lr.slope)
+            _slope_accel = _lr.slope - _prev_slope
+            _slope_sign_soft = np.tanh(_lr.slope / 0.0004)  # smooth sign, magnitude ~1
+            _accel_aligned = max(0.0, _slope_accel * _slope_sign_soft)  # only same-sign accel
+            _accel_adj = 0.03 * np.tanh(_accel_aligned / 5e-5)
+            self._prev_lr_slope[symbol] = _lr.slope
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _accel_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
