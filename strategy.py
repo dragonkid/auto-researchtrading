@@ -205,9 +205,12 @@ class Strategy:
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
-            # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
-            # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural simplification: removed sideways-aware strong-sum threshold.
+            # Prior coupling (tighten in low-trend, relax in trends) was a regime-coupled
+            # gate that overlaps with the trend-coupling already present in dyn_threshold,
+            # _strength_scale, and trend_avg gating. Use uniform STRONG_WEIGHT_MIN across
+            # all regimes to remove duplicated regime-conditioning at the entry gate.
+            _strong_min = STRONG_WEIGHT_MIN
 
             # Architectural: isolated-spike penalty on entry threshold.
             # Track last 2 bars of strong-side firings; if current strong-sum crossed
