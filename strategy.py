@@ -487,6 +487,22 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
+                # Architectural: trend-aligned profit hold-extension.
+                # Distinct control-flow path activating ONLY for mature positions
+                # (bars_held > ENTRY_FULL_BARS) that are simultaneously (a) in profit
+                # and (b) trend-aligned with position direction. Adds smooth additive
+                # bonus to _exit_thresh proportional to trend strength * profit ratio.
+                # Mechanism: existing _w_pp downweights pp_pressure in profit, but a
+                # fully matured trend-aligned winner can still hit _exit_pressure>=1.0
+                # via combined _sl_slope_pressure + _time_pressure. This adds a NEW
+                # gate distinct from scale-in protection (bars_held<=3) and flip
+                # protection — riding mature trend-aligned winners.
+                # Stop-loss exemption below preserves protection on real adverse moves.
+                if bars_held > ENTRY_FULL_BARS and pos_pnl > 0:
+                    _pos_dir_e = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_e = max(0.0, np.tanh(trend_avg * _pos_dir_e / 0.012))
+                    _profit_ratio_e = min(1.0, pos_pnl / 0.020)
+                    _exit_thresh = _exit_thresh + 0.10 * _trend_align_e * _profit_ratio_e
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
