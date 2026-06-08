@@ -205,19 +205,6 @@ class Strategy:
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
-            # Architectural: vol-gated 16-bar return-skewness directional amplifier.
-            # Skewness measures distribution asymmetry (orthogonal to vol/trend/slope).
-            # In high-vol regimes (vol_ratio > 0.9: crash and elevated-vol bars), skew
-            # carries genuine directional information about asymmetric move dominance.
-            # In low-vol regimes (rally/calm), skew is noise-dominated and natural
-            # positive skew creates spurious bull bias. Vol-gate via smooth ramp.
-            # One-sided multiplicative boost on matching-side _strong (max +12%).
-            _ret16 = np.diff(np.log(closes[-17:]))
-            _skew_std = np.std(_ret16) + 1e-10
-            _skew = np.mean(((_ret16 - np.mean(_ret16)) / _skew_std) ** 3)
-            _skew_vol_gate = max(0.0, min(1.0, (vol_ratio - 0.9) / 0.3))
-            _bull_strong *= 1.0 + 0.12 * _skew_vol_gate * np.tanh(max(0.0, _skew) / 0.5)
-            _bear_strong *= 1.0 + 0.12 * _skew_vol_gate * np.tanh(max(0.0, -_skew) / 0.5)
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
