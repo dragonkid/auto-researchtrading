@@ -524,14 +524,8 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Flip mechanism (architectural simplification: removed FLIP_MIN_VOTES count gate,
-                # symmetric with entry-path removal of MIN_VOTES). bull_votes/bear_votes derive from
-                # the same _bull_confs/_bear_confs values that drive _bull_strong/_bear_strong, so
-                # the count gate creates correlated-noise amplification at the flip decision boundary.
-                # Strong-sum (uses voter weights and quintic ramp) is the primary discriminator;
-                # trend_avg sign gate independently validates direction. Removing count gate
-                # decouples one redundant signal pathway on the flip-decision boundary.
-                if not in_cooldown and ((current_pos > 0 and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
