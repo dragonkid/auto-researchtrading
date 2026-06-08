@@ -119,10 +119,6 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
-        # Architectural: cold-entry conviction margin at entry time (separate from flips).
-        # Stored at first-bar entry, used in exit logic to give high-conviction cold
-        # entries a 3-bar maturation bonus (parallel to _from_flip protection).
-        self._entry_conv = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -355,11 +351,9 @@ class Strategy:
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
                     target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
-                    self._entry_conv[symbol] = max(0.0, _bull_margin)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
                     target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
-                    self._entry_conv[symbol] = max(0.0, _bear_margin)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -524,18 +518,6 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
-                else:
-                    # Architectural: cold-entry conviction-graded exit-threshold protection.
-                    # Symmetric counterpart to _from_flip bonus. High-conviction cold entries
-                    # (margin well above strong_min) earn 3-bar maturation. Bonus scales
-                    # smoothly with conviction margin via tanh, and decays linearly over 3
-                    # bars (parallel to flip path). Marginal cold entries (low margin) get
-                    # near-zero bonus — protection is conviction-graded, not blanket.
-                    # Max bonus 0.10 (smaller than 0.15 flip bonus — flips are higher-conviction
-                    # by virtue of passing 3 gates including opposite-side strong-min).
-                    _conv_at_entry = self._entry_conv.get(symbol, 0.0)
-                    _conv_age_decay = max(0.0, 1.0 - bars_held / 3.0)
-                    _exit_thresh = _exit_thresh + 0.10 * np.tanh(_conv_at_entry / 0.30) * _conv_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -572,12 +554,8 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
-                    self._entry_conv.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
-                    if _is_flip_this_bar:
-                        # Flip path: clear cold-entry conviction (was set on prior cold entry, no longer applies).
-                        self._entry_conv.pop(symbol, None)
 
         return signals
