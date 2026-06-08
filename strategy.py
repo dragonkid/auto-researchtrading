@@ -524,18 +524,8 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Architectural: ret_vshort confirmation gate on flip admission.
-                # Adds a third orthogonal-timescale check: ret_vshort (8-bar smoothed
-                # return, micro-momentum) must agree in sign with the new direction
-                # OR be near-neutral (|ret_vshort| < dyn_threshold*0.5). Filters flips
-                # where trend_avg/strong-sum agree but recent micro-flow is still in
-                # old direction (entry-into-fade). New cross-timescale gate primitive
-                # on flip path; orthogonal to MED2/LONG_WINDOW signals already in flip.
-                _vshort_neutral = abs(ret_vshort) < dyn_threshold * 0.5
-                _vshort_ok_long_to_short = ret_vshort < 0 or _vshort_neutral
-                _vshort_ok_short_to_long = ret_vshort > 0 or _vshort_neutral
-                # Flip mechanism (votes + trend_avg sign + vshort confirmation, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _vshort_ok_long_to_short) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _vshort_ok_short_to_long)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
