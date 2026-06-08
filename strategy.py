@@ -420,11 +420,29 @@ class Strategy:
                 for _w in (12, 16, 22):
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
-                _exit_slope = float(np.mean(_slopes))
-                _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Architectural: per-window slope pressures with consensus aggregation.
+                # Compute pressure independently per window (12/16/22), then aggregate
+                # via geometric mean (multiplicative consensus). Single-window noise
+                # generating high pressure on one window but low on others gets damped
+                # by the geometric mean (any near-zero pressure pulls consensus toward 0).
+                # All-windows-agree firings retain near-1.0 pressure.
+                # Topologically distinct from prior mean-then-pressure: was a single
+                # pressure derived from one averaged slope; now consensus of 3 independent
+                # pressures, each window contributes via its own pressure curve.
+                _per_win_pressures = []
+                for _s in _slopes:
+                    _sa = -_s if current_pos > 0 else _s
+                    _p = max(0.0, min(1.0, (_sa - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                    _per_win_pressures.append(_p)
+                # Geometric-mean consensus with epsilon floor to keep gradient
+                # (pure geometric mean would zero out on any single near-zero window).
+                _eps = 0.05
+                _gm = ((_per_win_pressures[0] + _eps) * (_per_win_pressures[1] + _eps) * (_per_win_pressures[2] + _eps)) ** (1.0 / 3.0)
+                _sl_slope_pressure = max(0.0, min(1.0, _gm - _eps))
+                _exit_slope = float(np.mean(_slopes))  # retained for downstream _slope_agrees / _slope_strength uses
+                _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
