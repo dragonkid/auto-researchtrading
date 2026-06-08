@@ -521,12 +521,9 @@ class Strategy:
                 # patience when trend_avg aligns with position direction (legitimate
                 # winning trend) AND in profit. Avoids sideways chop holding losing/
                 # neutral positions through more noise.
-                _pos_dir_x = 1.0 if current_pos > 0 else -1.0
-                _trend_align = max(0.0, np.tanh(trend_avg * _pos_dir_x / 0.012))  # in [0,1]
                 _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))    # in [0,1]
-                _up_factor = _trend_align * _profit_gate
                 _down_adj = -0.05 * np.tanh(max(0.0, vol_ratio - 1.0) / 0.5)
-                _up_adj = 0.05 * _up_factor * np.tanh(max(0.0, 1.0 - vol_ratio) / 0.5)
+                _up_adj = 0.05 * _profit_gate * np.tanh(max(0.0, 1.0 - vol_ratio) / 0.5)
                 _exit_thresh_base = 1.0 + _down_adj + _up_adj
                 _exit_thresh = _exit_thresh_base + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else _exit_thresh_base
                 # Architectural: flip-origin exit-threshold protection. Positions that
