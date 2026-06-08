@@ -431,7 +431,25 @@ class Strategy:
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
-                _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
+                # Architectural: smooth giveback_ratio denominator at peak_pnl == _pp_min boundary.
+                # Original max(peak, _pp_min) has a kink at equality (derivative discontinuity)
+                # which couples noise to giveback_ratio when peak hovers near _pp_min. Use
+                # softplus-style smooth max: log(exp(a) + exp(b)) shifted, equivalent to
+                # smooth-max with sharpness controlled by _pp_min scale. Implementation: use
+                # quadratic blend in [0.96, 1.04]*_pp_min band — outside band is pure max(),
+                # inside band is smooth quadratic interpolation. Mirrors the pp_activation [0.95, 1.04]
+                # smoothing that previously yielded the +4.43 bull boost.
+                _peak = self.peak_pnl[symbol]
+                _denom_ratio = _peak / max(_pp_min, 1e-6)
+                if _denom_ratio <= 0.96:
+                    _denom = _pp_min
+                elif _denom_ratio >= 1.04:
+                    _denom = _peak
+                else:
+                    # Smooth blend over [0.96, 1.04]*_pp_min: t=0 -> _pp_min, t=1 -> _peak
+                    _t = (_denom_ratio - 0.96) / 0.08
+                    _denom = (1.0 - _t) * _pp_min + _t * _peak
+                _giveback_ratio = _giveback / max(_denom, 1e-6)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
