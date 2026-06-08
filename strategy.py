@@ -489,7 +489,15 @@ class Strategy:
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _time_pressure
+                # Architectural extension: time-pressure asymmetric weight by pnl_scale.
+                # In profit: heavier time pressure (lock in gains via time exit).
+                # In loss: lighter time pressure (give losing positions room to recover
+                # before time-killing — alignment with slope-against doing the loss-cutting).
+                # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
+                # (let slope-against do loss-cutting; avoid sideways small-loss jitter
+                # destabilizing time pressure).
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
