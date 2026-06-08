@@ -340,20 +340,20 @@ class Strategy:
                 # gate eliminates correlated-noise amplification at the entry decision boundary
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
-                # Architectural: conviction-margin SIZE modulation on cold entry path.
-                # Symmetric to flip-path _flip_conv_adj. When the strong-sum is well above
-                # its admission threshold (high conviction entry), first-bar commitment
-                # is larger; marginal entries (low or negative margin) get standard size.
-                # One-sided positive: only positive margin amplifies, negative is treated
-                # as zero (avoids cutting size on legitimate but marginal entries near
-                # the gate boundary). New data dependency: first-bar size depends on
-                # conviction margin for cold entries (was independent before).
+                # Architectural simplification: removed cold-entry conviction-margin
+                # SIZE modulator (was 0.06 * tanh(max(0, margin)/0.30) added to
+                # _entry_frac_dyn). Two reasons: (1) the strong-sum admission threshold
+                # already filters by margin (gate fires at margin >= 0); the size adjust
+                # adds another modulation on the SAME underlying signal — correlated noise
+                # amplification across gate and size primitives. (2) Flip-path
+                # _flip_conv_adj is load-bearing (62e6952 keep) but cold-entry path has
+                # the count gate already removed and tighter MIN_VOTES protection — adding
+                # margin-size duplication is redundant. Simplification removes 6 LOC and
+                # one correlated noise channel.
                 if _bull_strong >= _bull_strong_min and _bull_admit:
-                    _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _entry_frac_dyn
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
-                    _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _entry_frac_dyn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
