@@ -348,25 +348,12 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: pullback/retracement-aware entry sizing.
-                # Computes pullback_ratio = (recent_extreme - mid) / recent_extreme over 8-bar HL2.
-                # For bull entries: distance from recent HIGH (entering on pullback is ideal).
-                # For bear entries: distance from recent LOW (shorting on bounce is ideal).
-                # Continuous tanh modulation: pullback < 0.5% (entering at extreme) → -0.04 attenuation;
-                # pullback 1.5%+ (true dip/bounce) → +0.04 boost. New data dependency on rolling
-                # 8-bar HL2 extremum and current price; orthogonal to slope/trend/vol primitives.
-                _pb_n = 8
-                _pb_hl2 = (bd.history["high"].values[-_pb_n:] + bd.history["low"].values[-_pb_n:]) / 2.0
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    _pb_ratio = (np.max(_pb_hl2) - mid) / max(np.max(_pb_hl2), 1e-10)
-                    _pb_adj = 0.04 * np.tanh((_pb_ratio - 0.005) / 0.010)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _pb_adj)
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    _pb_ratio = (mid - np.min(_pb_hl2)) / max(np.min(_pb_hl2), 1e-10)
-                    _pb_adj = 0.04 * np.tanh((_pb_ratio - 0.005) / 0.010)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _pb_adj)
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
