@@ -455,7 +455,20 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                # Architectural: flip-origin slope-window contamination attenuator.
+                # The exit-slope mean uses 12/16/22-bar windows. After a flip, bars
+                # 12..22 ago still reflect the OLD direction's trajectory, biasing
+                # _sl_slope_pressure HIGH in the first ~3 bars post-flip (slope-against
+                # is artificially elevated on a fresh flip simply because its long
+                # window remembers the prior leg). Smooth attenuation 0.6x at bar 0
+                # decaying to 1.0x at bar 4 — distinct from _scale_in_w (which
+                # attenuates by position-build progress; this attenuates by slope-
+                # window staleness post-flip). New data dependency: slope-pressure
+                # weight on flip-origin status.
+                _flip_slope_atten = 1.0
+                if self._from_flip.get(symbol, False):
+                    _flip_slope_atten = 0.6 + 0.4 * min(1.0, bars_held / 4.0)
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w * _flip_slope_atten  # heavier in loss, lighter during scale-in, attenuated for fresh flips
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
