@@ -459,18 +459,18 @@ class Strategy:
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
-                # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
-                # Uses same robust median exit-slope for consistency within exit subsystem.
-                _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
+                # Architectural: continuous slope-agreement instead of binary.
+                # Replace _slope_agrees boolean with tanh-smoothed signed agreement —
+                # _slope_align in [-1, +1] proportional to signed slope*pos_dir scaled
+                # by typical exit-slope magnitude. Eliminates binary discontinuity at
+                # _exit_slope==0 where the ternary flips between +1 and -_short_atten.
+                # Continuous transitions through zero, retaining vol-conditioned
+                # asymmetry: positive agreement extends hold full-strength; negative
+                # disagreement shortens hold attenuated by _short_atten in low-vol.
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                # Architectural: vol-conditioned symmetric momentum hold bonus.
-                # Slope-against shortens max_hold but only at full strength when
-                # slope is signal-dominated (high vol). In low-vol (rally chop) the
-                # shortening is attenuated by min(1, vol_ratio) — slope noise in
-                # rally would otherwise create noise-driven early time exits.
-                # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
-                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                _slope_align = np.tanh(_exit_slope * (1.0 if current_pos > 0 else -1.0) / 0.0004)
+                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (max(0.0, _slope_align) - max(0.0, -_slope_align) * _short_atten)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
