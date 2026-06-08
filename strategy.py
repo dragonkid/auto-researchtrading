@@ -514,14 +514,13 @@ class Strategy:
                 _decel_raw = (_ll_prev.slope - _ll_curr.slope) * _pos_dir_e
                 _prior_favorable = max(0.0, np.tanh(_ll_prev.slope * _pos_dir_e / 0.0006))
                 _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                # Giveback gate: deceleration only fires when price is already meaningfully
-                # retreating from peak (giveback_ratio > 0.10). Tighter than 0.05 to filter
-                # out bull pullback-recovery deceleration which can show small giveback
-                # transiently. Combined with weight 0.15 (down from 0.30) to keep bull/crash
-                # score loss bounded while preserving rally/sideways gain.
-                _decel_gb_gate = max(0.0, np.tanh((_giveback_ratio - 0.10) / 0.05))
+                # Giveback gate: deceleration only fires when price is already retreating
+                # from peak (giveback_ratio > 0.05). In bull regime, slope often decelerates
+                # during pullback-recovery without giveback — that's a legitimate pause,
+                # not exhaustion. Requiring concurrent giveback rules out the pullback case.
+                _decel_gb_gate = max(0.0, np.tanh((_giveback_ratio - 0.05) / 0.05))
                 _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate * _decel_gb_gate
-                _w_decel = 0.15
+                _w_decel = 0.30
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_decel * _decel_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
