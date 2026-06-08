@@ -508,7 +508,7 @@ class Strategy:
                 # Architectural: vol-conditioned + pnl-conditioned _w_time. High vol
                 # (crash) reduces time pressure so positions ride out vol; low vol (chop)
                 # raises time pressure (faster cycle); pnl-asymmetric remains.
-                _vol_time_factor = 1.0 - 0.20 * np.tanh((vol_ratio - 1.0) / 0.5)  # [0.8, 1.2]
+                _vol_time_factor = 1.0 - 0.10 * np.tanh((vol_ratio - 1.0) / 0.5)  # [0.9, 1.1]
                 _w_time  = _vol_time_factor * (1.0 + 0.20 * max(0.0, _pnl_scale) - 0.30 * max(0.0, -_pnl_scale))
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
