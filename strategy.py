@@ -119,9 +119,6 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
-        # Architectural: prior MACD histogram per symbol for acceleration computation.
-        # Acceleration = current_hist - prior_hist; orthogonal to histogram value voter.
-        self._prev_macd_diff = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -186,14 +183,6 @@ class Strategy:
             # vote-count semantics (sum stays in [0, 6]) while reducing flip-rate near boundaries.
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
-            # Architectural: MACD histogram acceleration tracking (state).
-            # Acceleration = current_macd_diff - prior_macd_diff; orthogonal to the
-            # MACD voter (which uses histogram VALUE). Acceleration captures whether
-            # MACD momentum is BUILDING (positive accel on positive hist) or DECAYING.
-            # Stored as state for use in cold-entry frac modulation below.
-            _prev_md = self._prev_macd_diff.get(symbol, _macd_diff)
-            _macd_accel = _macd_diff - _prev_md
-            self._prev_macd_diff[symbol] = _macd_diff
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
@@ -359,22 +348,12 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: MACD-acceleration-aligned entry frac amplifier.
-                # When MACD momentum acceleration agrees in sign with intended position
-                # direction (bull entry + positive _macd_accel; bear + negative), the
-                # entry has momentum BUILDING — higher quality. Continuous tanh on
-                # signed acceleration scaled by typical magnitude. One-sided positive
-                # boost only (negative accel matches stays at 0). Adds [+0.0, +0.04]
-                # to first-bar frac. Orthogonal to MACD voter (value vs derivative).
-                _macd_accel_scale = 1.5e-5  # typical _macd_diff magnitude is ~3e-4
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    _macd_accel_adj = 0.04 * np.tanh(max(0.0, _macd_accel) / _macd_accel_scale)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _macd_accel_adj)
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    _macd_accel_adj = 0.04 * np.tanh(max(0.0, -_macd_accel) / _macd_accel_scale)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _macd_accel_adj)
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
