@@ -511,22 +511,15 @@ class Strategy:
                 _pos_dir_e = 1.0 if current_pos > 0 else -1.0
                 _ll_curr = linregress(np.arange(8), np.log(_hl2[-8:]))
                 _ll_prev = linregress(np.arange(8), np.log(_hl2[-12:-4]))
-                _prev_slope_dir = _ll_prev.slope * _pos_dir_e
-                _curr_slope_dir = _ll_curr.slope * _pos_dir_e
-                # Relative deceleration: fraction of prior slope lost. Anchor on prior
-                # slope magnitude with floor to avoid divide-by-noise in sideways.
-                _prior_anchor = max(_prev_slope_dir, 0.00040)
-                _decel_frac = (_prev_slope_dir - _curr_slope_dir) / _prior_anchor
-                # Prior-favorable gate: prior slope must have been meaningfully positive
-                # in position direction. Saturates at 1.0 above 0.0006.
-                _prior_favorable = max(0.0, np.tanh(_prev_slope_dir / 0.0006))
+                _decel_raw = (_ll_prev.slope - _ll_curr.slope) * _pos_dir_e
+                _prior_favorable = max(0.0, np.tanh(_ll_prev.slope * _pos_dir_e / 0.0006))
                 _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                # Giveback gate: only fire when price already retreating from peak.
+                # Giveback gate: deceleration only fires when price is already retreating
+                # from peak (giveback_ratio > 0.05). In bull regime, slope often decelerates
+                # during pullback-recovery without giveback — that's a legitimate pause,
+                # not exhaustion. Requiring concurrent giveback rules out the pullback case.
                 _decel_gb_gate = max(0.0, np.tanh((_giveback_ratio - 0.05) / 0.05))
-                # Activation: fraction of slope lost, smooth tanh saturating at 1.0
-                # when half the slope is gone (decel_frac=0.5). Filters chop-noise
-                # decel by requiring substantial fractional drop.
-                _decel_pressure = max(0.0, np.tanh(_decel_frac / 0.5)) * _prior_favorable * _profit_gate * _decel_gb_gate
+                _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate * _decel_gb_gate
                 _w_decel = 0.30
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_decel * _decel_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
