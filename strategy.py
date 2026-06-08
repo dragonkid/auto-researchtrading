@@ -514,12 +514,12 @@ class Strategy:
                 _decel_raw = (_ll_prev.slope - _ll_curr.slope) * _pos_dir_e
                 _prior_favorable = max(0.0, np.tanh(_ll_prev.slope * _pos_dir_e / 0.0006))
                 _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                # Giveback gate: deceleration only fires when price is already retreating
-                # from peak (giveback_ratio > 0.05). In bull regime, slope often decelerates
-                # during pullback-recovery without giveback — that's a legitimate pause,
-                # not exhaustion. Requiring concurrent giveback rules out the pullback case.
-                _decel_gb_gate = max(0.0, np.tanh((_giveback_ratio - 0.05) / 0.05))
-                _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate * _decel_gb_gate
+                # Trend-strength gate: suppress deceleration pressure in strong trends
+                # (bull) where pullback-recovery transiently decelerates slope without
+                # ending the trend. (1 - rsi_trend_str)**0.5 keeps near-1 in weak trends
+                # (sideways/rally chop) where deceleration is meaningful.
+                _decel_trend_gate = (1.0 - rsi_trend_str) ** 0.5
+                _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate * _decel_trend_gate
                 _w_decel = 0.30
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_decel * _decel_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
