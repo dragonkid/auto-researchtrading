@@ -496,15 +496,8 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                # Architectural: bars-held-aware pp-weight amplification. Age factor grows
-                # smoothly from 1.0 at bar ENTRY_FULL_BARS to 1.15 at bar 12+. Mature positions
-                # deserve tighter giveback protection — gains held many bars are worth
-                # protecting more aggressively (avoid letting hard-won profit slip back).
-                # Multiplicative on _w_pp only; orthogonal to _w_time (which is asymmetric pnl)
-                # and _scale_in_w (which is scale-in attenuation). Continuous tanh saturation.
-                _age_factor = 1.0 + 0.15 * np.tanh(max(0.0, bars_held - ENTRY_FULL_BARS) / 6.0)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
-                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w * _age_factor  # heavier in profit, lighter scale-in, age-amplified
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
