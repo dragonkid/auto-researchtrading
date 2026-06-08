@@ -315,7 +315,21 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: MED2/LONG return-sign disagreement attenuator on first-bar.
+            # ret_med2 = 10-bar return; ret_long = 20-bar return. When they disagree in
+            # sign (one positive, one negative), trend across the two timescales is
+            # inconsistent (short-window snapped opposite long-window). Continuous via
+            # one-sided tanh on min(0, ret_med2 * ret_long / scale): negative product
+            # (sign-disagreement) attenuates _entry_frac_dyn by up to -0.05; agreement
+            # leaves _entry_frac_dyn unchanged. Distinct primitive from _confluence_adj
+            # (which uses slope*trend product as POSITIVE amplifier) — this is a
+            # multi-window-return CONSISTENCY gate, one-sided NEGATIVE only. New data
+            # dependency: first-bar size depends on trend-consistency across MED2 and
+            # LONG return windows.
+            _ret_med2 = (closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]
+            _ret_disagree = -min(0.0, _ret_med2 * ret_long / 4e-5)
+            _disagree_adj = -0.05 * np.tanh(_ret_disagree)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _disagree_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
