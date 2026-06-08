@@ -518,9 +518,14 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
-                # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
-                if _sl_pressure >= 0.95:
-                    _exit_thresh = 1.0
+                # Architectural: smooth SL exemption ramp. Replace hard binary _sl_pressure>=0.95
+                # gate with continuous blend in [0.80, 0.98]: blend_factor smoothly pulls
+                # _exit_thresh toward 1.0 as _sl_pressure approaches saturation. Eliminates
+                # noise discontinuity at _sl_pressure=0.95 where exit_thresh switches abruptly
+                # between protective values (flip+scale_in boosts) and 1.0. SL still fires
+                # via _exit_pressure including _sl_pressure already.
+                _sl_blend = max(0.0, min(1.0, (_sl_pressure - 0.80) / 0.18))
+                _exit_thresh = _exit_thresh * (1.0 - _sl_blend) + 1.0 * _sl_blend
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
