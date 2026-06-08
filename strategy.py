@@ -507,21 +507,6 @@ class Strategy:
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: momentum-continuation exit-threshold lift.
-                # When BOTH ret_short and exit_slope strongly align with position direction
-                # (clear continuation signal: short-window return AND multi-window slope agree),
-                # raise _exit_thresh smoothly to give the position more room to ride the trend.
-                # Continuous tanh on the product of two soft sign indicators (ret_short_align
-                # and slope_align), each scaled by typical magnitudes. One-sided positive only —
-                # negative product (signals disagree) gets zero lift, no penalty. New data
-                # dependency: exit threshold depends on the product of two continuation primitives
-                # that are NOT used in current exit pressure terms (ret_short used in entry only,
-                # exit_slope sign-agrees only feeds _hold_adj for _max_hold, not threshold).
-                _pos_dir_lift = 1.0 if current_pos > 0 else -1.0
-                _ret_short_align = np.tanh(ret_short * _pos_dir_lift / 0.004)
-                _slope_align_lift = np.tanh(_exit_slope * _pos_dir_lift / 0.0005)
-                _continuation = max(0.0, _ret_short_align * _slope_align_lift)
-                _exit_thresh = _exit_thresh + 0.15 * _continuation
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
