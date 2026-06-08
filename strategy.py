@@ -440,7 +440,7 @@ class Strategy:
                 # to _giveback_ratio. New data dependency: giveback ratio scales with
                 # absolute profit magnitude not just relative giveback.
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * np.tanh(_profit_magnitude / 0.7))
+                _giveback_ratio = _giveback_ratio * (1.0 + 0.14 * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
@@ -505,11 +505,7 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                # Architectural: vol-conditioned + pnl-conditioned _w_time. High vol
-                # (crash) reduces time pressure so positions ride out vol; low vol (chop)
-                # raises time pressure (faster cycle); pnl-asymmetric remains.
-                _vol_time_factor = 1.0 - 0.20 * np.tanh((vol_ratio - 1.0) / 0.5)  # [0.8, 1.2]
-                _w_time  = _vol_time_factor * (1.0 + 0.20 * max(0.0, _pnl_scale) - 0.30 * max(0.0, -_pnl_scale))
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) - 0.30 * max(0.0, -_pnl_scale)  # [0.7, 1.2] asymmetric
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
