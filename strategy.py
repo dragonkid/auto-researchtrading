@@ -315,28 +315,6 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            # Architectural: wick-asymmetry rejection signal as size modulator.
-            # Per-bar: upper_rej = high - close (price retreated from high → bearish);
-            # lower_rej = close - low (price recovered from low → bullish). 5-bar smoothed
-            # signed asymmetry = mean((lower_rej - upper_rej) / (lower_rej + upper_rej)).
-            # Positive = bullish rejection dominant; negative = bearish rejection dominant.
-            # Used as side-aware additive modulator on _entry_frac_dyn — boost when wick
-            # pattern aligns with candidate direction. Orthogonal to all current primitives:
-            # vol_ratio (magnitude), ER (path efficiency), trend_avg (net direction over
-            # MED2_WINDOW), slope (linear trajectory). Wick asymmetry captures intra-bar
-            # buying/selling pressure structure not visible in close-to-close metrics.
-            # Uses only high/low/close (no open dependency — open is noise-immune in
-            # test methodology, would inflate stab artificially).
-            _wick_n = 5
-            _hi = bd.history["high"].values[-_wick_n:]
-            _lo = bd.history["low"].values[-_wick_n:]
-            _cl = closes[-_wick_n:]
-            _upper_rej = _hi - _cl
-            _lower_rej = _cl - _lo
-            _wick_total = _upper_rej + _lower_rej
-            _wick_per_bar = np.where(_wick_total > 1e-10, (_lower_rej - _upper_rej) / np.maximum(_wick_total, 1e-10), 0.0)
-            _wick_asym = float(np.mean(_wick_per_bar))  # in [-1, +1]
-            # Sign-aware: applied as +/- in entry decision below via _wick_asym variable.
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
@@ -372,13 +350,10 @@ class Strategy:
                 # conviction margin for cold entries (was independent before).
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    # Wick-asymmetry side-aware adj: +0.04 max when bullish rejection dominates.
-                    _wick_adj = 0.04 * np.tanh(_wick_asym / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _wick_adj)
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    _wick_adj = 0.04 * np.tanh(-_wick_asym / 0.30)  # negate for bear side
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _wick_adj)
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
