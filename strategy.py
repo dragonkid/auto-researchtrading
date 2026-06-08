@@ -497,19 +497,27 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: slope-deceleration exit-pressure using existing _slopes
-                # (12/16/22-bar HL2 slopes already computed). Decel = long-window slope
-                # MINUS short-window slope, in position direction. If 12-bar slope is less
-                # positive than 22-bar slope, recent trend is weaker than prior → decelerating.
-                # Orthogonal to slope-against (first derivative) and giveback (pnl-relative).
-                # No additional linregress calls; reuses _slopes [12,16,22].
+                # Architectural: slope-deceleration exit-pressure. Second-derivative
+                # signal orthogonal to slope-against (first derivative) and giveback
+                # (pnl-relative). Compute slope on the trailing 8-bar HL2 window vs
+                # the 8-bar window ending 4 bars ago. If position-direction slope is
+                # decelerating (current_slope * pos_dir < prior_slope * pos_dir, both
+                # positive in profit), trend is losing momentum — emit smooth pressure.
+                # Continuous tanh on (prior_slope - current_slope)*pos_dir scaled by
+                # typical slope magnitude. One-sided positive: only deceleration in
+                # the favorable direction triggers (acceleration or reversal handled
+                # by other primitives). Activates only when in profit (pos_pnl>0)
+                # AND prior_slope*pos_dir was positive (the trend was working).
                 _pos_dir_e = 1.0 if current_pos > 0 else -1.0
-                _slope_short = _slopes[0]   # 12-bar
-                _slope_long = _slopes[2]    # 22-bar
-                _decel_raw = (_slope_long - _slope_short) * _pos_dir_e
-                _prior_favorable = max(0.0, np.tanh(_slope_long * _pos_dir_e / 0.0006))
+                _ll_curr = linregress(np.arange(8), np.log(_hl2[-8:]))
+                _ll_prev = linregress(np.arange(8), np.log(_hl2[-12:-4]))
+                _decel_raw = (_ll_prev.slope - _ll_curr.slope) * _pos_dir_e
+                _prior_favorable = max(0.0, np.tanh(_ll_prev.slope * _pos_dir_e / 0.0006))
                 _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                # Giveback gate: only fire when price already retreating from peak.
+                # Giveback gate: deceleration only fires when price is already retreating
+                # from peak (giveback_ratio > 0.05). In bull regime, slope often decelerates
+                # during pullback-recovery without giveback — that's a legitimate pause,
+                # not exhaustion. Requiring concurrent giveback rules out the pullback case.
                 _decel_gb_gate = max(0.0, np.tanh((_giveback_ratio - 0.05) / 0.05))
                 _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate * _decel_gb_gate
                 _w_decel = 0.30
