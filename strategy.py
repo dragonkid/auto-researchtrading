@@ -497,21 +497,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: soft-OR fusion (probabilistic complement) replacing
-                # additive sum. soft-OR(p1..p4) = 1 - prod(1 - clip(p_i,0,1)). Treats
-                # each source as an independent failure probability and computes the
-                # probability that at least one source has fired. Mathematically:
-                # - Two weak sources at 0.3 each: sum=0.6, soft-OR=0.51 (less alarmist)
-                # - One strong (0.9) + three at 0.1: sum=1.2, soft-OR=0.93 (faithful)
-                # - Three at 0.5: sum=1.5, soft-OR=0.875 (still triggers but later)
-                # Output bounded to [0,1] (vs unbounded sum), threshold rescaled to 0.55.
-                # Multi-variable change: fusion operator AND threshold scale AND scale-in
-                # ramp magnitude AND flip-protection magnitude — all rescaled for new range.
-                _p_sl = max(0.0, min(1.0, _sl_pressure))
-                _p_slope = max(0.0, min(1.0, _w_slope * _sl_slope_pressure))
-                _p_pp = max(0.0, min(1.0, _w_pp * _pp_pressure))
-                _p_time = max(0.0, min(1.0, _w_time * _time_pressure))
-                _exit_pressure = 1.0 - (1.0 - _p_sl) * (1.0 - _p_slope) * (1.0 - _p_pp) * (1.0 - _p_time)
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -520,10 +506,7 @@ class Strategy:
                 # normally (no protection — losing positions are noise-vulnerable too).
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
-                # Threshold rescaled for soft-OR range [0,1]. Baseline 0.55: positions
-                # exit when probabilistic OR of sources reaches ~55% (e.g., one strong
-                # 0.55 source, OR two at 0.35 each, OR three at 0.25 each).
-                _exit_thresh = 0.55 + 0.11 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 0.55
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
@@ -534,10 +517,10 @@ class Strategy:
                 # already overrides this protection on real adverse moves.
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
-                    _exit_thresh = _exit_thresh + 0.08 * _flip_age_decay  # rescaled for soft-OR
+                    _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
-                    _exit_thresh = 0.55
+                    _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
