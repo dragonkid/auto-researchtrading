@@ -505,10 +505,7 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                # Architectural: dead-zone + asymmetric pnl-time weight. Only modulate
-                # when |pos_pnl| > 0.4*|STOP| so near-zero pnl bars (chop) keep _w_time=1.0.
-                _pnl_active = max(0.0, abs(_pnl_scale) - 0.4) / 0.6  # [0,1] beyond dead-zone
-                _w_time  = 1.0 + (0.20 if _pnl_scale > 0 else -0.35) * _pnl_active * (1.0 if _pnl_scale > 0 else 1.0)  # asymmetric with chop dead-zone
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) - 0.35 * max(0.0, -_pnl_scale)  # [0.65, 1.2] asymmetric
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
