@@ -315,7 +315,26 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: lag-1 autocorrelation of recent returns as size modulator.
+            # Computes Pearson correlation of consecutive 1-bar log-returns over 24-bar
+            # window (r[i] vs r[i-1]). Positive AC = momentum regime (recent moves
+            # persist); negative AC = mean-reverting regime (recent moves reverse).
+            # Strategy is purely momentum, so positive-AC bars are signal-rich for
+            # first-bar entries; negative-AC bars are mean-reverting and momentum entries
+            # tend to fade. Continuous tanh modulation in [-0.03, +0.03] additive to
+            # _entry_frac_dyn. Orthogonal primitive: AC measures temporal-persistence
+            # structure of returns, distinct from vol_ratio (magnitude), ER (path-efficiency),
+            # trend_avg (net direction), slope (linear trajectory).
+            _ac_window = 24
+            _ac_rets = np.diff(np.log(closes[-_ac_window - 1:]))
+            _ac_a = _ac_rets[1:]
+            _ac_b = _ac_rets[:-1]
+            _ac_a_c = _ac_a - _ac_a.mean()
+            _ac_b_c = _ac_b - _ac_b.mean()
+            _ac_denom = np.sqrt((_ac_a_c * _ac_a_c).sum() * (_ac_b_c * _ac_b_c).sum())
+            _autocorr = float((_ac_a_c * _ac_b_c).sum() / _ac_denom) if _ac_denom > 1e-10 else 0.0
+            _ac_adj = 0.03 * np.tanh(_autocorr / 0.15)  # in [-0.03, +0.03]
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _ac_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
