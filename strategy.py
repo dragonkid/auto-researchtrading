@@ -534,14 +534,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: flip maturation gate. Flips can only fire after the
-                # current position has been held >= 2 bars. Position not yet through
-                # scale-in cannot be confidently labeled "wrong" — flipping at bars_held<2
-                # is whipsaw-prone in chop (flip_wr ~12% across regimes). New control-flow
-                # gate adding a state dependency on bars_held to the flip decision.
-                # Stop-loss exit path remains the loss-cutter for fresh positions.
-                _flip_mature = bars_held >= 2
-                if _flip_mature and not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
