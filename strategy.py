@@ -518,6 +518,20 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
+                # Architectural: profit-cushion exit-threshold protection. Distinct
+                # from scale-in-winning (which protects bars 0..ENTRY_FULL_BARS) and
+                # from flip-origin (bars 0..3 after flip). This activates AFTER
+                # scale-in completes (bars_held > ENTRY_FULL_BARS), and ONLY when the
+                # position has built a meaningful profit cushion (pos_pnl > 0.5*_pp_min).
+                # The bonus decays smoothly with giveback ratio: full bonus when peak
+                # holds, zero when full giveback. Protects mature profitable trend-rides
+                # from transient noise spikes (~1.0 boundary). One-sided positive only.
+                # New state-dependent control-flow path: exit threshold now depends on
+                # post-scale-in profit-cushion state distinct from scale-in winning ramp.
+                if bars_held > ENTRY_FULL_BARS and pos_pnl > 0.5 * _pp_min:
+                    _cushion_act = max(0.0, min(1.0, (pos_pnl - 0.5 * _pp_min) / (0.5 * _pp_min)))
+                    _giveback_decay = max(0.0, 1.0 - _giveback_ratio / PEAK_PROFIT_GIVEBACK)
+                    _exit_thresh = _exit_thresh + 0.08 * _cushion_act * _giveback_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
