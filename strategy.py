@@ -505,7 +505,7 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                _w_time  = 1.0 + 0.10 * max(0.0, _pnl_scale) - 0.30 * max(0.0, -_pnl_scale)  # [0.7, 1.1] asymmetric
+                _w_time  = 1.0 + 0.30 * max(0.0, _pnl_scale) - 0.30 * max(0.0, -_pnl_scale)  # [0.7, 1.3] symmetric
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
