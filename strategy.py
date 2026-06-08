@@ -143,7 +143,7 @@ class Strategy:
             # 200-bar log-return std per symbol; smooth (no boundary), continuous.
             _long_n = min(200, len(closes) - 1)
             _baseline_vol = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
-            _target_vol_dyn = 0.5 * TARGET_VOL + 0.5 * _baseline_vol
+            _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
             vol_ratio = realized_vol / _target_vol_dyn
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
