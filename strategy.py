@@ -436,17 +436,16 @@ class Strategy:
                 # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
                 # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
                 # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
-                # Narrow boundary smoothing only: linear ramp in [0.95, 1.05]*_pp_min.
-                # Outside this band, baseline binary preserved. Goal: capture noise-stab
-                # benefit at the boundary while preserving load-bearing baseline behavior
-                # everywhere else.
+                # Narrow boundary smoothing only: linear ramp in [0.97, 1.03]*_pp_min.
+                # Outside this band, baseline binary preserved. Tighter band reduces the
+                # "leak" of pp_pressure outside the load-bearing baseline regime.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                if _pp_ratio <= 0.95:
+                if _pp_ratio <= 0.97:
                     _pp_activation = 0.0
-                elif _pp_ratio >= 1.05:
+                elif _pp_ratio >= 1.03:
                     _pp_activation = 1.0
                 else:
-                    _pp_activation = (_pp_ratio - 0.95) / 0.10
+                    _pp_activation = (_pp_ratio - 0.97) / 0.06
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
