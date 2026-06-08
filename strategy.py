@@ -184,13 +184,15 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: vol-conditioned slope_16 voter threshold (asymmetric, one-sided).
-            # Step 1 (sqrt scaling) helped crash (+0.38) but collapsed bull (-4.41) because
-            # bull has elevated vol that triggered the same threshold rise. Restrict scaling
-            # to vol_ratio > 1.2 (above bull-typical) using smooth tanh ramp — crash with
-            # vol_ratio >= 1.5 still gets the noise filter; bull stays at baseline 0.00015.
-            _slope16_scale = 1.0 + 0.30 * max(0.0, np.tanh((vol_ratio - 1.2) / 0.2))
-            _slope16_thresh = 0.00015 * _slope16_scale
+            # Architectural: vol-conditioned slope_16 voter threshold. Slope magnitudes
+            # scale with vol — fixed 0.00015 threshold means in low-vol the bar is harder
+            # to clear (true slopes are tiny) and in high-vol it's noise-dominated. Scale
+            # the threshold by sqrt(vol_ratio) so a "strong slope" at vol_ratio=1.0 reads
+            # 0.00015, scales down to ~0.00010 at vol_ratio=0.5 (calm) and up to ~0.00021
+            # at vol_ratio=2.0 (choppy). Continuous, smooth — replaces a fixed structural
+            # threshold with a data-conditioned one. Same rationale as why dyn_threshold
+            # already scales with vol_ratio for ret_short.
+            _slope16_thresh = 0.00015 * max(0.7, min(1.5, vol_ratio ** 0.5))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
