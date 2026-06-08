@@ -431,12 +431,7 @@ class Strategy:
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
-                # Architectural: smooth giveback denominator (peak + _pp_min) replacing
-                # max(peak, _pp_min). Eliminates slope discontinuity at peak == _pp_min
-                # (the max() corner). Peak << _pp_min: denom ≈ _pp_min (similar weak ratio).
-                # Peak >> _pp_min: denom ≈ peak (similar strong ratio). Peak ≈ _pp_min: smooth
-                # blend instead of sharp corner. Removes a noise-sensitive primitive boundary.
-                _giveback_ratio = _giveback / (self.peak_pnl[symbol] + _pp_min)
+                _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification.
                 # When peak_pnl is large relative to _pp_min (big win), the giveback ratio
                 # is amplified to lock in gains earlier (tighter trailing). When peak_pnl
