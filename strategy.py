@@ -110,6 +110,9 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # Architectural: equity peak tracker for portfolio-level drawdown-aware sizing.
+        # New global state: shrink position size smoothly when portfolio is in drawdown.
+        self._equity_peak = 0.0
         # Persistence buffers: last 2 bars of strong-side firings per symbol.
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
@@ -124,6 +127,15 @@ class Strategy:
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
+        # Architectural: portfolio-equity drawdown-aware size scalar.
+        # Track running equity peak; when equity drops below peak, shrink size
+        # smoothly (continuous tanh on relative drawdown). Caps the loss-streak
+        # extension during deep equity drawdown — independent of per-symbol pnl.
+        # Light: max 8% size attenuation at 5% portfolio drawdown.
+        if equity > self._equity_peak:
+            self._equity_peak = equity
+        _eq_dd = max(0.0, (self._equity_peak - equity) / max(self._equity_peak, 1.0))
+        _dd_size_scale = 1.0 - 0.08 * np.tanh(_eq_dd / 0.03)
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -262,7 +274,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _dd_size_scale
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
