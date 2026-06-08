@@ -488,7 +488,9 @@ class Strategy:
                 # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
-                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
+                # 2-bar EMA on pos_pnl input to reduce noise injection in sideways chop.
+                _pnl_for_scale = 0.5 * pos_pnl + 0.5 * _prev_pnl
+                _pnl_scale = np.tanh(_pnl_for_scale / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 # Architectural: scale-in-aware slope-pressure attenuator. During the first
                 # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
                 # to micro-noise on a position not yet at full size. Attenuate _w_slope
