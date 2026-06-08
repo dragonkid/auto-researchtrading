@@ -515,7 +515,13 @@ class Strategy:
                 # normally (no protection — losing positions are noise-vulnerable too).
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: vol-conditioned base exit threshold. High vol (crash) ->
+                # slightly lower threshold (easier exits, protect from extended losses).
+                # Low vol (rally/calm) -> slightly higher threshold (more patience).
+                # Smooth tanh on (vol_ratio-1.0)/0.5, magnitude 0.05. Continuous, no
+                # boundary discontinuity. Replaces fixed 1.0 baseline.
+                _exit_thresh_base = 1.0 - 0.05 * np.tanh((vol_ratio - 1.0) / 0.5)
+                _exit_thresh = _exit_thresh_base + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else _exit_thresh_base
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
