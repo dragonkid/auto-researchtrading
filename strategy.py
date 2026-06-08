@@ -119,11 +119,6 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
-        # Architectural: multi-bar trend persistence buffer. Last 3 bars of trend_avg
-        # per symbol. Used to gate flip admission: flips require the opposite-direction
-        # trend signal to have been persistent (≥2 of 3 prior bars same sign) — filters
-        # single-bar trend-noise flips. Adds new state-tracking primitive on the flip path.
-        self._trend_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -239,8 +234,6 @@ class Strategy:
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
-            # Architectural: maintain 3-bar trend_avg history buffer for flip persistence gate.
-            self._trend_hist[symbol] = (self._trend_hist.get(symbol, []) + [trend_avg])[-3:]
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -531,19 +524,8 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Architectural: multi-bar trend-persistence flip gate. Requires that
-                # the opposite-direction trend signal was present in ≥2 of past 3 bars.
-                # Filters single-bar trend-noise flips. _th = list of last 3 trend_avg
-                # values; persistence_neg = count where trend_avg<0 (for current long->flip
-                # to short), persistence_pos = count where trend_avg>0 (for current short->flip
-                # to long). Persistence must be ≥2 to admit flip.
-                _th = self._trend_hist.get(symbol, [])
-                _persist_neg = sum(1 for t in _th if t < 0)
-                _persist_pos = sum(1 for t in _th if t > 0)
-                _flip_persist_ok_long = current_pos > 0 and _persist_neg >= 2
-                _flip_persist_ok_short = current_pos < 0 and _persist_pos >= 2
-                # Flip mechanism (votes + trend_avg sign, vol-scaled, persistence-gated)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _flip_persist_ok_long) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _flip_persist_ok_short)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled)
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
