@@ -506,7 +506,19 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: soft-OR fusion of non-SL exit pressures via log-sum-exp.
+                # Linear sum allows many small pressures to add up to a trigger (correlated
+                # noise across slope/pp/time can co-fire on the same chop). LSE saturates
+                # at max single-channel pressure: only one channel approaching 1.0 triggers
+                # exit, two half-firing channels stay below threshold. Decision topology
+                # changes from "any combination summing to 1" to "any single channel near 1".
+                # SL remains additive (hard structural protection unaffected by fusion).
+                # New cross-channel data dependency: exit pressure is now a nonlinear
+                # combination of weighted channels rather than linear sum.
+                _T = 0.35  # softness temperature; smaller -> harder OR, larger -> closer to sum
+                _channels = (_w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure)
+                _lse = _T * np.log(np.exp(_channels[0] / _T) + np.exp(_channels[1] / _T) + np.exp(_channels[2] / _T))
+                _exit_pressure = _sl_pressure + _lse
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
