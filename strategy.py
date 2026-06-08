@@ -317,16 +317,6 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
-            # Architectural: continuous post-cooldown size ramp. Cooldown is a binary
-            # gate; immediately AFTER cooldown ends, the next entry is often a
-            # whipsaw re-entry on a signal that just whip-flipped. Attenuate first-bar
-            # frac via smooth ramp on bars-since-exit (0.85 at cooldown-end, 1.0 at
-            # bars-since-exit >= 5). Continuous; no decision boundary. New data
-            # dependency: first-bar entry frac scales with re-entry recency.
-            _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _post_cd_ramp = max(0.0, min(1.0, (_bars_since_exit - COOLDOWN_BARS) / 4.0))
-            _post_cd_attn = 0.85 + 0.15 * _post_cd_ramp  # in [0.85, 1.0]
-
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
@@ -360,10 +350,10 @@ class Strategy:
                 # conviction margin for cold entries (was independent before).
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _post_cd_attn
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _post_cd_attn
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
