@@ -512,7 +512,7 @@ class Strategy:
                 # Giveback gate: only fire when price already retreating from peak.
                 _decel_gb_gate = max(0.0, np.tanh((_giveback_ratio - 0.05) / 0.05))
                 _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate * _decel_gb_gate
-                _w_decel = 0.30
+                _w_decel = 0.18
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_decel * _decel_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
