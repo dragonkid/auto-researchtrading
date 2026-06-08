@@ -80,7 +80,6 @@ TREND_GATE_DEADZONE = 0.018
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
 MIN_VOTES = 2.5
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
-COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
 
@@ -226,8 +225,6 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
-
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
@@ -308,7 +305,7 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
-            if current_pos == 0 and not in_cooldown:
+            if current_pos == 0:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -493,7 +490,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                if ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
