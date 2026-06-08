@@ -205,9 +205,23 @@ class Strategy:
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Compute vol_confirm_mult here (needed by strong-sum threshold modulation below).
+            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: volume-confirmation modulates strong-sum threshold.
+            # vol_confirm_mult is a 12-bar/24-bar volume ratio in [0.98, 1.10]. Map this
+            # to a strong-sum threshold adjustment: high volume confirmation (>1.05)
+            # reduces _strong_min by up to 0.10 (admit signals on high-volume bars);
+            # low volume confirmation (<1.0) raises _strong_min by up to 0.10 (filter
+            # signals on low-volume bars where moves may be unrepresentative). Continuous
+            # tanh on (vol_confirm_mult - 1.04) / 0.04, additive ±0.10. New cross-primitive
+            # coupling: volume signal modulates entry threshold (was only modulating SIZE
+            # via post-cap path). Adds new dependency between the volume primitive and
+            # the entry decision threshold.
+            _vc_thresh_adj = -0.10 * np.tanh((vol_confirm_mult - 1.04) / 0.04)
+            _strong_min = max(STRONG_WEIGHT_MIN - 0.10, _strong_min + _vc_thresh_adj)
 
             # Architectural: isolated-spike penalty on entry threshold.
             # Track last 2 bars of strong-side firings; if current strong-sum crossed
@@ -241,7 +255,6 @@ class Strategy:
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
-            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             # Architectural: ADDITIONAL chop-only post-cap boost (smaller magnitude 0.08).
