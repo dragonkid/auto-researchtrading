@@ -436,10 +436,14 @@ class Strategy:
                 # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
                 # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
                 # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
-                _pp_smooth_w = cooldown_trend_strength  # 0 in chop, 1 in trends
-                _pp_activation_smooth = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0) * 2.0)))
-                _pp_activation_binary = 1.0 if self.peak_pnl[symbol] > _pp_min else 0.0
-                _pp_activation = _pp_smooth_w * _pp_activation_smooth + (1.0 - _pp_smooth_w) * _pp_activation_binary
+                # Asymmetric: smooth only ABOVE _pp_min; sharp below.
+                # Peak < _pp_min: activation 0 (matches baseline). Peak > _pp_min:
+                # activation ramps from 0 toward 1.0 over [_pp_min, 1.5*_pp_min]
+                # — this gives pp_pressure a soft start above peak floor instead of
+                # baseline's instant-1.0. Should let peaks fully form before pp_pressure
+                # saturates, reducing premature exits in low-trend regimes.
+                _pp_above = max(0.0, self.peak_pnl[symbol] - _pp_min)
+                _pp_activation = max(0.0, min(1.0, _pp_above / max(_pp_min * 0.5, 1e-6))) if self.peak_pnl[symbol] > _pp_min else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
