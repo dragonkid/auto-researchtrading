@@ -432,7 +432,7 @@ class Strategy:
                 # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
                 # This is a primitive change to pp_pressure activation: was binary gate,
                 # now continuous mixture between unconditional pp_pressure and zero.
-                _pp_activation = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.2) * 4.0)))
+                _pp_activation = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0) * 10.0)))
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
