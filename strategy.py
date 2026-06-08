@@ -348,25 +348,12 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: soft trend-gate margin → size modulator.
-                # Existing _bull_admit/_bear_admit are binary admit/reject at trend_biased
-                # threshold. Add continuous size attenuation based on HOW DEEP into the
-                # admit region: when _trend_biased just barely exceeds the negative
-                # deadzone (marginal admission), attenuate first-bar size; when deep into
-                # admit region (strong same-direction trend), full size. Smooths the
-                # binary admit boundary. Continuous: factor = tanh(distance_into_admit /
-                # TREND_GATE_DEADZONE). Multiplied as 0.85 + 0.15*factor for [0.85, 1.0]
-                # multiplier on entry size — at most 15% attenuation near boundary.
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    _gate_depth = (_trend_biased + TREND_GATE_DEADZONE) / TREND_GATE_DEADZONE
-                    _gate_size_mult = 0.85 + 0.15 * max(0.0, min(1.0, np.tanh(_gate_depth / 1.5)))
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _gate_size_mult
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    _gate_depth = (TREND_GATE_DEADZONE - _trend_biased) / TREND_GATE_DEADZONE
-                    _gate_size_mult = 0.85 + 0.15 * max(0.0, min(1.0, np.tanh(_gate_depth / 1.5)))
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _gate_size_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
