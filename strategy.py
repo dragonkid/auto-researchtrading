@@ -311,8 +311,10 @@ class Strategy:
             _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
             _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
             _er = _er_net / max(_er_path, 1e-10)
-            # Center near 0.3 (typical ER for moderate trend). tanh maps deviation to [-1,1].
-            _er_adj = 0.04 * np.tanh((_er - 0.30) / 0.15)
+            # One-sided: only suppress low ER (chop), don't amplify high ER.
+            # tanh on negative side only — when ER > 0.30, _er_adj = 0; below, attenuates
+            # toward -0.04 as ER -> 0. Reduces size variance across ER conditions.
+            _er_adj = -0.04 * max(0.0, np.tanh((0.30 - _er) / 0.15))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
