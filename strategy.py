@@ -507,16 +507,6 @@ class Strategy:
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
-                # Architectural: per-source exit-pressure OR gate.
-                # Sum-then-threshold fusion requires multiple weak signals to align.
-                # Decoupled OR-gate: any single pressure source exceeding its dedicated
-                # high threshold fires exit alone. Captures strong-but-isolated exit
-                # signals (e.g., severe slope-against alone, large giveback alone) that
-                # the sum-fusion would miss when other pressures are quiet. Continuous —
-                # dedicated thresholds at 0.85 (above noise floor) for slope/pp pairs.
-                # SL already binary-fires on its own at _sl_pressure >= 0.95 below.
-                _solo_slope_fire = _w_slope * _sl_slope_pressure >= 0.85
-                _solo_pp_fire = _w_pp * _pp_pressure >= 0.85
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -540,7 +530,7 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if (_exit_pressure >= _exit_thresh or _solo_slope_fire or _solo_pp_fire) and target != 0:
+                if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
