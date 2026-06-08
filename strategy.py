@@ -432,7 +432,14 @@ class Strategy:
                 # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
                 # This is a primitive change to pp_pressure activation: was binary gate,
                 # now continuous mixture between unconditional pp_pressure and zero.
-                _pp_activation = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0) * 10.0)))
+                # Trend-gated smooth activation: smooth ramp only in trending regimes
+                # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
+                # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
+                # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
+                _pp_smooth_w = cooldown_trend_strength  # 0 in chop, 1 in trends
+                _pp_activation_smooth = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0) * 2.0)))
+                _pp_activation_binary = 1.0 if self.peak_pnl[symbol] > _pp_min else 0.0
+                _pp_activation = _pp_smooth_w * _pp_activation_smooth + (1.0 - _pp_smooth_w) * _pp_activation_binary
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
