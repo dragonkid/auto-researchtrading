@@ -505,7 +505,12 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                _w_time  = 1.0 + 0.30 * max(0.0, _pnl_scale) - 0.30 * max(0.0, -_pnl_scale)  # [0.7, 1.3] symmetric
+                # Architectural: trend-gated symmetric _w_time. Modulation magnitude
+                # scales with rsi_trend_str so chop regime keeps near-binary _w_time=1.0
+                # (avoiding sideways stab degradation), while trending regimes (bull/crash)
+                # get full asymmetric pnl-conditioning.
+                _wt_mag = 0.30 * rsi_trend_str
+                _w_time  = 1.0 + _wt_mag * _pnl_scale  # symmetric, scaled by trend strength
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
