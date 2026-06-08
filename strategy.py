@@ -135,7 +135,16 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
-            vol_ratio = realized_vol / TARGET_VOL
+            # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
+            # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
+            # 0.5 weight. Long-window vol is each symbol's structural baseline (BTC ~0.012,
+            # SOL ~0.022); blending with anchor preserves global scaling but reduces SOL's
+            # bias toward "always-elevated" vol_ratio. New cross-bar data dependency on
+            # 200-bar log-return std per symbol; smooth (no boundary), continuous.
+            _long_n = min(200, len(closes) - 1)
+            _baseline_vol = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
+            _target_vol_dyn = 0.5 * TARGET_VOL + 0.5 * _baseline_vol
+            vol_ratio = realized_vol / _target_vol_dyn
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
