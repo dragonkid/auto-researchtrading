@@ -493,16 +493,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: symmetrize flip trend gate with cold-entry trend gate.
-                # Cold entries get conviction-margin softened deadzone (_bull_admit/_bear_admit).
-                # Flip path previously used hard trend_avg sign — flips at trend_avg≈0 with
-                # high opposite-side conviction were rejected. Replace with margin-softened
-                # gate matching cold-entry symmetry: high opposite-side conviction can flip
-                # through near-flat trend. Keeps the absolute deadzone ceiling
-                # (-/+TREND_GATE_DEADZONE) so genuinely wrong-direction trends still block flips.
-                _flip_bear_admit = trend_avg < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and trend_avg < TREND_GATE_DEADZONE
-                _flip_bull_admit = trend_avg > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and trend_avg > -TREND_GATE_DEADZONE
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and _flip_bear_admit) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and _flip_bull_admit)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
