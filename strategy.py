@@ -522,7 +522,9 @@ class Strategy:
                 # winning trend) AND in profit. Avoids sideways chop holding losing/
                 # neutral positions through more noise.
                 _down_adj = -0.10 * np.tanh(max(0.0, vol_ratio - 1.0) / 0.5)
-                _exit_thresh_base = 1.0 + _down_adj
+                _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _up_adj = 0.03 * _profit_gate * np.tanh(max(0.0, 1.0 - vol_ratio) / 0.5)
+                _exit_thresh_base = 1.0 + _down_adj + _up_adj
                 _exit_thresh = _exit_thresh_base + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else _exit_thresh_base
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
