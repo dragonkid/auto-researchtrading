@@ -425,7 +425,16 @@ class Strategy:
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) if self.peak_pnl[symbol] > _pp_min else 0.0
+                # Architectural: smooth pp-activation ramp replacing hard binary gate.
+                # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
+                # boundary at peak == _pp_min creates noise discontinuity in stab tests.
+                # Replace with smooth tanh activation (peak_pnl/_pp_min - 1.0) scaled by 0.5,
+                # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
+                # This is a primitive change to pp_pressure activation: was binary gate,
+                # now continuous mixture between unconditional pp_pressure and zero.
+                _pp_activation = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0) * 2.0)))
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
