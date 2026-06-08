@@ -379,6 +379,16 @@ class Strategy:
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
+                    # Architectural: deep-loss scale-in cap. When pos_pnl is severely
+                    # negative during scale-in, the original signal is materializing as
+                    # a wrong-direction commitment. Clip scale_frac smoothly so further
+                    # scale-up does not amplify the losing position. Continuous one-sided
+                    # gate via tanh: pos_pnl < -0.5*STOP starts attenuating, pos_pnl <= STOP
+                    # caps scale_frac at the bar-1 entry fraction (no further accumulation).
+                    # Asymmetric: only fires on losses, no impact on profitable scale-in.
+                    # New data dependency: scale-in cap tied to pos_pnl level not just sign.
+                    _deep_loss_gate = max(0.0, min(1.0, (-pos_pnl - 0.5 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT))))
+                    scale_frac = scale_frac * (1.0 - _deep_loss_gate) + ENTRY_INITIAL_FRAC * _deep_loss_gate
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
