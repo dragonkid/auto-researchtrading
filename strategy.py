@@ -114,6 +114,9 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Architectural: prior-bar exit pressure for 1-bar EMA smoothing.
+        # Reduces single-bar noise spikes triggering premature exits.
+        self._prev_exit_pressure = {}
         # Architectural: flip-origin tracker. True when current position originated
         # from a flip (high-conviction reversal: both vote count AND trend sign +
         # opposite-side strong-min admission). Used in exit logic to give flips
@@ -506,7 +509,20 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                _exit_pressure_raw = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: 1-bar EMA smoothing on exit pressure (NEW cross-bar dependency).
+                # Single-bar noise spikes (e.g., transient slope-against from a wick) won't
+                # trigger exits unless sustained. SL pressure exempt: when SL saturates,
+                # use raw value (loss-cutting must remain immediate).
+                # Smoothing alpha 0.7 (current) / 0.3 (prior): mild smoothing — prior bar
+                # contributes 30% so noise spikes attenuate but real signal still fires
+                # within 1-2 bars. Persists across bars regardless of position state.
+                _prev_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
+                if _sl_pressure >= 0.95:
+                    _exit_pressure = _exit_pressure_raw
+                else:
+                    _exit_pressure = 0.7 * _exit_pressure_raw + 0.3 * _prev_ep
+                self._prev_exit_pressure[symbol] = _exit_pressure_raw
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -559,7 +575,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev_exit_pressure):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
