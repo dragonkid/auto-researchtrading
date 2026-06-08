@@ -497,26 +497,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: slope-deceleration exit-pressure. Second-derivative
-                # signal orthogonal to slope-against (first derivative) and giveback
-                # (pnl-relative). Compute slope on the trailing 8-bar HL2 window vs
-                # the 8-bar window ending 4 bars ago. If position-direction slope is
-                # decelerating (current_slope * pos_dir < prior_slope * pos_dir, both
-                # positive in profit), trend is losing momentum — emit smooth pressure.
-                # Continuous tanh on (prior_slope - current_slope)*pos_dir scaled by
-                # typical slope magnitude. One-sided positive: only deceleration in
-                # the favorable direction triggers (acceleration or reversal handled
-                # by other primitives). Activates only when in profit (pos_pnl>0)
-                # AND prior_slope*pos_dir was positive (the trend was working).
-                _pos_dir_e = 1.0 if current_pos > 0 else -1.0
-                _ll_curr = linregress(np.arange(8), np.log(_hl2[-8:]))
-                _ll_prev = linregress(np.arange(8), np.log(_hl2[-12:-4]))
-                _decel_raw = (_ll_prev.slope - _ll_curr.slope) * _pos_dir_e
-                _prior_favorable = max(0.0, np.tanh(_ll_prev.slope * _pos_dir_e / 0.0006))
-                _profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _decel_pressure = max(0.0, np.tanh(_decel_raw / 0.0005)) * _prior_favorable * _profit_gate
-                _w_decel = 0.30
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_decel * _decel_pressure
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
