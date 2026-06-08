@@ -298,6 +298,18 @@ class Strategy:
             _rl_sign_soft = np.tanh(ret_long / 0.02)           # smooth sign of long-return
             _triple_agree = max(0.0, _ea_sign_soft * _rl_sign_soft)  # both same sign
             _confluence_adj *= 1.0 + 0.5 * _triple_agree
+            # Architectural: cross-timeframe slope-divergence dampener.
+            # When long-window EMA slope (_ea_slope) and long-window return (ret_long)
+            # have OPPOSITE signs, the trend is in a transition (one signal flipping).
+            # Suppress _entry_frac_dyn smoothly via the negative half of _ea_sign_soft *
+            # _rl_sign_soft. Symmetric counterpart to _triple_agree (which AMPLIFIES on
+            # agreement). Continuous, one-sided negative: zero when signs agree, up to
+            # -0.04 attenuation when fully opposite. Reduces first-bar size during
+            # contradictory long-horizon regime transitions where entry conviction is
+            # structurally lower. Adds new control flow to entry frac without
+            # introducing binary boundaries (tanh*tanh product is smooth).
+            _divergence = max(0.0, -(_ea_sign_soft * _rl_sign_soft))  # both opposite-sign
+            _divergence_adj = -0.04 * _divergence
             # Architectural: Kaufman efficiency ratio gate on initial commitment.
             # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
             # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
@@ -315,7 +327,7 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _divergence_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
