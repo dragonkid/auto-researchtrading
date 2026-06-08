@@ -489,8 +489,23 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if _exit_pressure >= _exit_thresh and target != 0:
-                    target = 0.0
+                # Architectural: graduated partial-exit ramp before full exit.
+                # When _exit_pressure crosses 70% of _exit_thresh but stays under full
+                # threshold, scale position toward zero linearly (de-risk smoothly).
+                # At pressure = 0.7*thresh: position unchanged (factor=1.0).
+                # At pressure = 1.0*thresh: position fully exited (factor=0.0).
+                # Stop-loss exemption preserves binary force-exit on real adverse moves
+                # (already overrides _exit_thresh to 1.0 above). New control flow:
+                # exit decision is no longer binary; size becomes a smooth function
+                # of exit-pressure in the upper band, distinct primitive from threshold gate.
+                _partial_lo = 0.7 * _exit_thresh
+                if _sl_pressure >= 0.95 and target != 0:
+                    target = 0.0  # force exit on stop-loss
+                elif _exit_pressure >= _exit_thresh and target != 0:
+                    target = 0.0  # full exit at or above threshold
+                elif _exit_pressure >= _partial_lo and target != 0:
+                    _exit_factor = max(0.0, min(1.0, (_exit_thresh - _exit_pressure) / (_exit_thresh - _partial_lo)))
+                    target = target * _exit_factor
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
