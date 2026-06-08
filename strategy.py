@@ -119,6 +119,9 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: 1-bar history of slope_against per symbol for persistence-weighted
+        # slope-pressure. Smooths single-bar slope spikes via 0.6 current + 0.4 prior weighting.
+        self._prev_slope_against = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -422,9 +425,16 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
+                # Architectural: persistence-weighted slope_against. Single-bar slope spikes
+                # contribute to noise-driven exits; blend 0.6*current + 0.4*prior_bar to require
+                # 2-bar persistence for full pressure activation. New state self._prev_slope_against.
+                # First-bar fallback uses current value (no penalty for fresh entries).
+                _prev_sa = self._prev_slope_against.get(symbol, _slope_against)
+                _slope_against_smoothed = 0.6 * _slope_against + 0.4 * _prev_sa
+                self._prev_slope_against[symbol] = _slope_against
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against_smoothed - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
@@ -562,7 +572,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev_slope_against):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
