@@ -251,6 +251,18 @@ class Strategy:
             # is NOT subject to cap.
             _xa_chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
             _xa_boost = 1.0 + 0.08 * _xa_chop_gate
+            # Architectural: directional-certainty size attenuator. When both bull_strong
+            # and bear_strong are simultaneously high (both sides voting strongly — chop
+            # signature where signals cancel rather than agree), reduce size. Continuous
+            # gate via min(bull_strong, bear_strong) / max(bull_strong, bear_strong) — the
+            # ratio of the LOSER to the WINNER. Ratio close to 1.0 = both sides nearly equal
+            # (low directional certainty), ratio near 0.0 = one side dominates (high certainty).
+            # Smooth attenuation [0.92, 1.0] so high-certainty entries get full size, ambiguous
+            # entries get -8% reduction. New cross-component signal: couples bull_strong and
+            # bear_strong (they were independently evaluated previously).
+            _max_strong = max(_bull_strong, _bear_strong, 1e-6)
+            _ambiguity = min(_bull_strong, _bear_strong) / _max_strong
+            _certainty_mult = 1.0 - 0.08 * _ambiguity
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
@@ -262,7 +274,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _certainty_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
