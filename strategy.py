@@ -190,7 +190,7 @@ class Strategy:
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr.slope - 0.00015) / 0.00010,
-                (_ea_slope - 0.0005) / 0.00025,
+                (_ea_slope - 0.0005) / 0.00040,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
