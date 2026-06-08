@@ -497,14 +497,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: replaced ADDITIVE exit-pressure fusion with SOFT-MAX fusion.
-                # Original: sum of weighted sources (multiple weak sources could stack to
-                # trigger exit). New: take the MAX of the four sources — exit fires only
-                # when at least ONE source is strongly active, not from accumulated weak
-                # sources. This eliminates source-stacking false positives in chop where
-                # all four sources sit at 0.2-0.3 and sum past 1.0 from noise. Multi-variable
-                # change: fusion operator (sum -> max) AND threshold scale (1.0 -> ~0.65).
-                _exit_pressure = max(_sl_pressure, _w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure)
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -513,9 +506,7 @@ class Strategy:
                 # normally (no protection — losing positions are noise-vulnerable too).
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
-                # Threshold rescaled to 0.65 baseline (max-fusion produces smaller values
-                # than sum-fusion). Scale-in winning protection scales proportionally.
-                _exit_thresh = 0.65 + 0.13 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 0.65
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
@@ -526,10 +517,10 @@ class Strategy:
                 # already overrides this protection on real adverse moves.
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
-                    _exit_thresh = _exit_thresh + 0.10 * _flip_age_decay  # rescaled for max-fusion
+                    _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
-                    _exit_thresh = 0.65
+                    _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
