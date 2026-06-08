@@ -105,7 +105,7 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 class Strategy:
     def __init__(self):
-        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar, self.trough_pnl = {}, {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -398,6 +398,15 @@ class Strategy:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
+                # Architectural: trough_pnl tracker (mirror of peak_pnl).
+                # Tracks worst pnl reached this position. Used for loss-recovery exit:
+                # if pos_pnl rebounds from trough by >= 0.6*|STOP|, exit at current
+                # (small) loss rather than waiting for full break-even recovery.
+                _curr_trough = self.trough_pnl.get(symbol, 0.0)
+                if pos_pnl < _curr_trough and pos_pnl <= _prev_pnl:
+                    self.trough_pnl[symbol] = pos_pnl
+                else:
+                    self.trough_pnl[symbol] = _curr_trough
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -506,7 +515,21 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: loss-recovery exit pressure (mirror of pp_pressure).
+                # When pos_pnl rebounds from trough by >= 0.6*|STOP| AND trough was meaningful
+                # (<=  -0.4*|STOP|), this is a mean-reversion signal. Exit current (small) loss
+                # rather than waiting for full break-even (which often doesn't come). One-sided:
+                # only fires when pos_pnl is still in loss but rebounding strongly.
+                # Continuous tanh ramp on rebound magnitude.
+                _trough = self.trough_pnl[symbol]
+                _trough_meaningful = max(0.0, min(1.0, (-_trough - 0.4 * _stop_abs) / (0.4 * _stop_abs)))
+                _rebound = max(0.0, pos_pnl - _trough)
+                _rebound_thresh = 0.6 * _stop_abs
+                _rebound_ratio = _rebound / max(_rebound_thresh, 1e-6)
+                # Only fires while pos_pnl still in loss (we want to exit recovered loss, not winning trades)
+                _still_in_loss = max(0.0, min(1.0, -pos_pnl / (0.1 * _stop_abs)))
+                _rec_pressure = max(0.0, min(1.0, _rebound_ratio - 1.0)) * _trough_meaningful * _still_in_loss * 0.5
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _rec_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -559,12 +582,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self.trough_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self.trough_pnl[symbol] = 0.0
                     self._from_flip[symbol] = _is_flip_this_bar
 
         return signals
