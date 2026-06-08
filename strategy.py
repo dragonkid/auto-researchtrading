@@ -203,20 +203,8 @@ class Strategy:
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            # Architectural: consensus-based outlier voter down-weighting. For each side,
-            # compute the median voter conf; voters whose conf deviates from the median
-            # by more than 0.30 get smoothly down-weighted (factor 1 -> 0.5 over deviation
-            # 0.30 -> 0.60). New data dependency: per-voter weight depends on the cohort.
-            # An isolated noise-flipped voter contributes proportionally less. Continuous
-            # — no hard discard, no decision boundary. Bull and bear sides use separate
-            # consensus checks (asymmetric: a strong bull-side spike does not down-weight
-            # the bear-side reading of the same voter).
-            _bull_med = float(np.median(_bull_confs))
-            _bear_med = float(np.median(_bear_confs))
-            _bull_outlier_w = tuple(1.0 - 0.5 * max(0.0, min(1.0, (abs(c - _bull_med) - 0.30) / 0.30)) for c in _bull_confs)
-            _bear_outlier_w = tuple(1.0 - 0.5 * max(0.0, min(1.0, (abs(c - _bear_med) - 0.30) / 0.30)) for c in _bear_confs)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w * ow for c, w, ow in zip(_bull_confs, _voter_weights, _bull_outlier_w))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w * ow for c, w, ow in zip(_bear_confs, _voter_weights, _bear_outlier_w))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
