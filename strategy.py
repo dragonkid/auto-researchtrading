@@ -119,10 +119,6 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
-        # Architectural: short-window pnl history (last 5 bars) for intermediate-timescale
-        # peak tracking. Distinct from peak_pnl which is full-position high-water mark.
-        # Used to detect intermediate-timescale momentum loss (5-bar peak vs full peak ratio).
-        self._pnl_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -510,23 +506,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: intermediate-timescale momentum loss detector via 5-bar
-                # peak ratio. Track last 5 bars of pos_pnl; when peak_short / peak_full
-                # drops below 0.7, intermediate momentum has eroded even if full-peak
-                # giveback pressure hasn't fully activated yet. Adds smooth pressure
-                # source (up to 0.20 max). Continuous tanh on (0.7 - ratio) one-sided
-                # positive. Only fires when peak_full is meaningful (>_pp_min) to avoid
-                # firing on tiny early-trade peaks. New state self._pnl_history (deque-like).
-                _ph = self._pnl_history.get(symbol, [])
-                _ph = (_ph + [pos_pnl])[-5:]
-                self._pnl_history[symbol] = _ph
-                _peak_short = max(_ph) if _ph else pos_pnl
-                _peak_full = self.peak_pnl[symbol]
-                _mid_pressure = 0.0
-                if _peak_full > _pp_min and len(_ph) >= 3:
-                    _ratio_sf = _peak_short / max(_peak_full, 1e-6)
-                    _mid_pressure = 0.20 * np.tanh(max(0.0, 0.7 - _ratio_sf) / 0.15)
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _mid_pressure
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -582,7 +562,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._pnl_history):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
