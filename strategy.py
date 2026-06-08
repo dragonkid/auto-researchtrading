@@ -207,13 +207,7 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            # Architectural: ADD vol-conditioned tightening. Higher vol => higher noise
-            # in voter signals => need more conviction to admit entries. Smooth tanh
-            # mapping vol_ratio (1.0 baseline). At vol_ratio=1.5 add up to +0.15;
-            # at vol_ratio<=1.0 add 0. One-sided positive (only tighten in high vol,
-            # never relax below baseline). Orthogonal to existing rsi_trend_str
-            # conditioning — adds a vol-dimension to admission gate.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + 0.15 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
             # Architectural: isolated-spike penalty on entry threshold.
             # Track last 2 bars of strong-side firings; if current strong-sum crossed
