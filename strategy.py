@@ -497,19 +497,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: divergence-detection exit pressure. When position is in
-                # profit but short-window momentum (ret_short) opposes the position direction,
-                # this signals a momentum-reversal — earlier warning than slope-against
-                # (which uses smoothed multi-window slope). Orthogonal source: ret_short is
-                # used in entry voting only, NOT in any exit pressure term currently.
-                # One-sided in two ways: (1) only fires when in profit (max(0, _pnl_scale)),
-                # avoiding false positives during loss noise; (2) only fires when ret_short
-                # opposes position direction (max(0, -ret_short_align)). Continuous tanh
-                # gives smooth ramp. Adds [0, 0.5] to exit pressure, weighted by profit level.
-                _div_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _div_ret_align = np.tanh(ret_short * _div_pos_dir / 0.004)
-                _divergence = max(0.0, -_div_ret_align) * max(0.0, _pnl_scale)
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.50 * _divergence
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
