@@ -506,16 +506,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: soft-saturation on non-stop-loss summed pressure.
-                # Replace pure additive fusion (prone to "3 weak co-noise sources stack
-                # above threshold") with: SL pressure stays additive (protective),
-                # other 3 pressures are tanh-saturated at 1.5*tanh(sum/1.5). When any
-                # single source dominates (~1.0), output ~0.92 (small reduction);
-                # when 3 weak sources sum to 1.5 from co-noise, output saturates at
-                # ~1.14 instead of 1.5 — reducing noise-stacked exits.
-                _other_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
-                _other_soft = 1.5 * np.tanh(_other_sum / 1.5)
-                _exit_pressure = _sl_pressure + _other_soft
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
