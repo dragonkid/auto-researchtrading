@@ -119,6 +119,11 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: cold-entry conviction-margin tracker. Stores the entry-side
+        # strong-margin at cold-entry time, used to give high-conviction cold entries
+        # extra maturation (analogous to _from_flip but driven by strong-margin
+        # magnitude, one-sided positive only — never penalizes marginal entries).
+        self._entry_margin = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -351,9 +356,11 @@ class Strategy:
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
                     target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    self._entry_margin[symbol] = max(0.0, _bull_margin)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
                     target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    self._entry_margin[symbol] = max(0.0, _bear_margin)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -527,6 +534,16 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
+                else:
+                    # Architectural: cold-entry conviction-margin exit-threshold
+                    # protection (one-sided positive). Symmetric to flip-origin
+                    # bonus but driven by entry strong-margin magnitude. High-
+                    # conviction cold entries (margin >> 0) get +0.10 max
+                    # exit_thresh decaying linearly over 4 bars. Low-conviction
+                    # entries (margin near 0) get ~0 bonus — never penalized.
+                    _em = self._entry_margin.get(symbol, 0.0)
+                    _entry_age_decay = max(0.0, 1.0 - bars_held / 4.0)
+                    _exit_thresh = _exit_thresh + 0.10 * np.tanh(_em / 0.30) * _entry_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -563,6 +580,7 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
+                    self._entry_margin.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
