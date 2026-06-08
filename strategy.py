@@ -516,6 +516,16 @@ class Strategy:
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: 2D vol-time exit_thresh modulator.
+                # New data dependency: exit_thresh additionally scales with both vol_ratio
+                # AND bars_held simultaneously (continuous tanh fusion). In low-vol AND
+                # mid-life (bars 4-12), exits are noise-dominated — raise threshold mildly.
+                # In high-vol OR very young/very old positions, leave threshold alone.
+                # Continuous, no boundaries. Adds new cross-bar control logic distinct
+                # from existing scale-in/flip protections (different bars range, different gate).
+                _vol_calm = max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35))   # in [0,1], 1 at low vol
+                _mid_life = max(0.0, min(1.0, 1.0 - abs((bars_held - 8.0) / 6.0)))  # peaks at bar 8
+                _exit_thresh = _exit_thresh + 0.10 * _vol_calm * _mid_life
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
