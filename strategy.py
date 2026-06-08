@@ -298,7 +298,22 @@ class Strategy:
             _rl_sign_soft = np.tanh(ret_long / 0.02)           # smooth sign of long-return
             _triple_agree = max(0.0, _ea_sign_soft * _rl_sign_soft)  # both same sign
             _confluence_adj *= 1.0 + 0.5 * _triple_agree
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj)
+            # Architectural: Kaufman efficiency ratio gate on initial commitment.
+            # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
+            # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
+            # Low ER (<0.2) = path was choppy relative to net move (noise-rich, even if
+            # net direction matches voters). Orthogonal to all current primitives:
+            # vol_ratio measures magnitude, trend_avg measures net direction, slope measures
+            # linear trajectory — ER measures path efficiency. Continuous tanh modulation
+            # of _entry_frac_dyn: low ER attenuates, high ER amplifies (range -0.04..+0.04).
+            # 12-bar window over smoothed_closes (already noise-attenuated for input parity).
+            _er_window = 12
+            _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
+            _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
+            _er = _er_net / max(_er_path, 1e-10)
+            # Center near 0.3 (typical ER for moderate trend). tanh maps deviation to [-1,1].
+            _er_adj = 0.04 * np.tanh((_er - 0.30) / 0.15)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
