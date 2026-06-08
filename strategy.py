@@ -506,7 +506,20 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: vol-acceleration damping on non-SL exit pressure.
+                # Compute vol_accel = std(recent 6 log-rets) / std(prior 6 log-rets). When
+                # vol is sharply rising (vol_accel > 1.3), single-bar slope/giveback spikes
+                # are more likely noise than real reversals; smooth tanh attenuator reduces
+                # non-SL pressure by up to 15%. Stop-loss exempt (already protected separately).
+                # Continuous: damping = 1.0 - 0.15 * tanh(max(0, vol_accel - 1.3) / 0.5).
+                # Orthogonal to vol_ratio (which is level not change), and to _vt_factor
+                # (which fires in low-vol mid-life).
+                _vr = np.diff(np.log(closes[-13:]))
+                _vol_recent = max(np.std(_vr[-6:]), 1e-6)
+                _vol_prior = max(np.std(_vr[:6]), 1e-6)
+                _vol_accel = _vol_recent / _vol_prior
+                _vol_damp = 1.0 - 0.15 * np.tanh(max(0.0, _vol_accel - 1.3) / 0.5)
+                _exit_pressure = _sl_pressure + _vol_damp * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
