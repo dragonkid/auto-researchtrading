@@ -119,6 +119,10 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: per-symbol last-flip bar tracker for flip-cooldown gate.
+        # Suppresses back-to-back flips (within 3 bars) which historically have
+        # very low WR (10-13% across regimes, deeply negative pnl).
+        self._last_flip_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -534,7 +538,13 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Architectural: flip cooldown — suppress flips within 3 bars of
+                # the last flip on this symbol (continuous attenuation via age).
+                # Back-to-back flips have ~12% WR historically; the second flip
+                # is structurally noise-driven (whipsaw across the same direction).
+                _flip_age = self.bar_count - self._last_flip_bar.get(symbol, -999)
+                _flip_cooldown_ok = _flip_age >= 3
+                if _flip_cooldown_ok and not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
@@ -566,5 +576,7 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
+                    if _is_flip_this_bar:
+                        self._last_flip_bar[symbol] = self.bar_count
 
         return signals
