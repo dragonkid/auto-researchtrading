@@ -420,19 +420,7 @@ class Strategy:
                 for _w in (12, 16, 22):
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
-                # Architectural: pnl-state asymmetric slope fusion. In profit, weight
-                # shorter window (12) higher to catch reversals fast and preserve gains.
-                # In loss, weight longer window (22) higher for confirmation (avoid
-                # chop-noise-driven exits during recovery). Continuous tanh on pos_pnl
-                # scaled by stop magnitude. Replaces symmetric mean with state-dependent
-                # weighted mean. New data dependency: slope-fusion weights depend on
-                # realized pnl during exit decision.
-                _pnl_w = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))  # in [-1, 1]
-                # Base equal weights (1/3, 1/3, 1/3); shift up to 0.20 mass between ends
-                _short_w = 1.0/3.0 + 0.20 * max(0.0, _pnl_w)   # +0.20 in profit
-                _long_w  = 1.0/3.0 + 0.20 * max(0.0, -_pnl_w)  # +0.20 in loss
-                _mid_w   = 1.0 - _short_w - _long_w
-                _exit_slope = float(_short_w * _slopes[0] + _mid_w * _slopes[1] + _long_w * _slopes[2])
+                _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
