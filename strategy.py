@@ -8,6 +8,7 @@ ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 MED_WINDOW_MIN = 8
 MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
+SHORT_WINDOW = 8
 LONG_WINDOW = 20
 
 # EMA parameters
@@ -145,6 +146,13 @@ class Strategy:
             _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
             vol_ratio = realized_vol / _target_vol_dyn
 
+            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
+            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            smoothed_closes = np.empty_like(closes, dtype=float)
+            smoothed_closes[0] = closes[0]
+            for _si in range(1, len(closes)):
+                smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
             dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
@@ -155,14 +163,11 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for ret_short signal (noise immunity at signal source).
-            # Architectural simplification: removed per-bar EMA pre-smoothing of closes
-            # (smoothed_closes loop) — it was redundant with the 5-bar median below and
-            # with the existing tanh voter contribution smoothing. Also removed dead
-            # ret_vshort/_med_ref_short (declared but never consumed). Smoothing burden
-            # now solely on the median (signal-source level) plus voter tanh (decision level).
-            _med_ref_med = np.median(closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_short = (closes[-1] - _med_ref_med) / _med_ref_med
+            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
+            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
+            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
@@ -301,10 +306,10 @@ class Strategy:
             # vol_ratio measures magnitude, trend_avg measures net direction, slope measures
             # linear trajectory — ER measures path efficiency. Continuous tanh modulation
             # of _entry_frac_dyn: low ER attenuates, high ER amplifies (range -0.04..+0.04).
-            # 12-bar window over raw closes (smoothed_closes pre-EMA removed in simplification).
+            # 12-bar window over smoothed_closes (already noise-attenuated for input parity).
             _er_window = 12
-            _er_path = np.sum(np.abs(np.diff(closes[-_er_window - 1:])))
-            _er_net = abs(closes[-1] - closes[-_er_window - 1])
+            _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
+            _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
             _er = _er_net / max(_er_path, 1e-10)
             # One-sided deep-chop suppression: only fire on very low ER (<0.15),
             # smaller magnitude to avoid uniform size-attenuation across regimes.
