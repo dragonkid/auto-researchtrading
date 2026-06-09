@@ -222,19 +222,6 @@ class Strategy:
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
             _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
             _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
-            # Architectural: funding-rate-aware admission bias. New orthogonal data source
-            # (funding_rate column, previously unused). Funding cost for held position is
-            # mean of recent 8 funding samples per bar. Positive funding => longs pay shorts
-            # (mild headwind for bull entries, tailwind for bear). Tighten the disfavored
-            # side's admission threshold by smooth tanh on net funding cost. Continuous,
-            # one-sided per direction, additive to strong_min via small magnitude factor 0.04.
-            # Funding values typically in 1e-5..1e-4 range (hourly), scaled by 5e-5 typical.
-            _fund_recent = bd.history["funding_rate"].values[-8:]
-            _fund_mean = float(np.mean(_fund_recent))
-            _fund_bull_penalty = 0.04 * max(0.0, np.tanh(_fund_mean / 5e-5))   # positive funding => penalize bull
-            _fund_bear_penalty = 0.04 * max(0.0, np.tanh(-_fund_mean / 5e-5))  # negative funding => penalize bear
-            _bull_strong_min = _bull_strong_min * (1.0 + _fund_bull_penalty)
-            _bear_strong_min = _bear_strong_min * (1.0 + _fund_bear_penalty)
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
