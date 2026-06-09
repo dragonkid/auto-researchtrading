@@ -506,7 +506,19 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: soft-source consensus modulator on the soft sum.
+                # Sum the activations of (slope, pp, time) — each in [0,1]. When their
+                # collective activation is high (2+ sources firing), the soft sum is
+                # consensus-driven and trustworthy. When only one source fires (sum~1),
+                # it may be a single-source noise spike. Multiply the (slope+pp+time)
+                # sum by a smooth gate: gate = 0.85 + 0.15*tanh((sum_acts-0.7)/0.5),
+                # ranging ~0.85 (low consensus) to ~1.00 (high consensus). _sl_pressure
+                # exempt (hard protective). Decouples noise-spike single-source firings
+                # from real multi-source exits without changing aggregate behavior at
+                # consensus.
+                _soft_acts = _sl_slope_pressure + _pp_pressure + _time_pressure
+                _consensus_gate = 0.85 + 0.15 * 0.5 * (1.0 + np.tanh((_soft_acts - 0.7) / 0.5))
+                _exit_pressure = _sl_pressure + _consensus_gate * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
