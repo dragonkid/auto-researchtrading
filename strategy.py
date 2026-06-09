@@ -168,11 +168,18 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
+            # Architectural: dual-window mean for ret_short (primary entry voter signal).
+            # Replace single 5-bar-median anchor at adaptive_med with mean of two anchors:
+            # adaptive_med (vol-scaled, ~8-16) and a fixed shorter window (SHORT_WINDOW=8).
+            # Dual-window confluence reduces single-window noise sensitivity in voter #1
+            # — symmetric to multi-window slope mean used in exit subsystem. New cross-
+            # window data dependency in primary entry signal; both windows must agree
+            # in magnitude/direction for voter #1 to express full confidence.
             _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
-            ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            _ret_at_short = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
+            _ret_at_med = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
+            ret_short = 0.5 * (_ret_at_short + _ret_at_med)
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
