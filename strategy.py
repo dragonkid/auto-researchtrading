@@ -184,26 +184,12 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: multi-window slope-consensus voter replaces single 16-bar
-            # linregress slope voter. Compute slopes at 3 windows (10/16/22) on
-            # log-HL2 prices. Voter signal = mean of (slope_w - 0.00015)/0.00010 across
-            # windows. New aggregation: cross-window agreement is built INTO the voter
-            # signal (vs single-window output). Reduces single-window noise sensitivity
-            # at the slope-voter level — replicates the exit-subsystem multi-window
-            # robustness pattern in the entry subsystem. New data dependency: voter
-            # depends on 3 separately-fit linregress windows over HL2.
-            _hl2_entry = (bd.history["high"].values + bd.history["low"].values) / 2.0
-            _entry_slope_signals = []
-            for _w in (10, 16, 22):
-                _ll = linregress(np.arange(_w), np.log(_hl2_entry[-_w:]))
-                _entry_slope_signals.append((_ll.slope - 0.00015) / 0.00010)
-            _slope_consensus = float(np.mean(_entry_slope_signals))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                _slope_consensus,
+                (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
