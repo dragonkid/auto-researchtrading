@@ -125,6 +125,26 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-symbol direction signal pre-loop. New data dependency
+        # between symbols (loop is otherwise per-symbol). Each symbol's MED2_WINDOW
+        # log-return is mapped through soft tanh to a direction in [-1, +1]. Used
+        # below to modulate per-side _strong_min entry gates by ±5% based on
+        # agreement of the OTHER symbols (excluding self). When other symbols
+        # confirm direction, gate relaxes slightly (entry easier); when they
+        # disagree, gate tightens (entry harder). Distinct from prior _xs_boost
+        # (which was a post-cap SIZE multiplier) — this is a GATE modulator at
+        # entry-side admission, not a size lift.
+        _xs_dir = {}
+        for _xs_sym in ACTIVE_SYMBOLS:
+            if _xs_sym not in bar_data:
+                continue
+            _xs_bd = bar_data[_xs_sym]
+            if len(_xs_bd.history) < MED2_WINDOW + 1:
+                continue
+            _xs_c = _xs_bd.history["close"].values
+            _xs_r = (_xs_c[-1] - _xs_c[-MED2_WINDOW]) / _xs_c[-MED2_WINDOW]
+            _xs_dir[_xs_sym] = np.tanh(_xs_r / 0.012)
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -220,8 +240,15 @@ class Strategy:
             _eh = self._bear_strong_hist.get(symbol, [])
             _bull_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 2.0 if len(_bh) == 2 else 1.0
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
-            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
-            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
+            # Cross-symbol direction-agreement modulator on per-side _strong_min.
+            # _xs_other_avg = mean direction signal of OTHER symbols (excludes self).
+            # When _xs_other_avg > 0 (others bullish), bull-side gate relaxes by up to
+            # 5% and bear-side tightens by up to 5%; symmetric for _xs_other_avg < 0.
+            # Continuous, smooth (input is soft tanh), no boundary; range [-1, +1].
+            _xs_others = [v for k, v in _xs_dir.items() if k != symbol]
+            _xs_other_avg = sum(_xs_others) / len(_xs_others) if _xs_others else 0.0
+            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio)) * (1.0 - 0.05 * _xs_other_avg)
+            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio)) * (1.0 + 0.05 * _xs_other_avg)
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
