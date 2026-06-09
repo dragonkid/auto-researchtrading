@@ -466,7 +466,28 @@ class Strategy:
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                _pp_pressure = _pp_raw * _pp_activation
+                # Architectural: directional volume imbalance modulator on _pp_pressure.
+                # Compute signed volume over last 6 bars: +vol on up-bars (close>=open),
+                # -vol on down-bars. Normalize by total volume to get _dvi in [-1, 1].
+                # _dvi > 0 = buying-dominated tape, _dvi < 0 = selling-dominated.
+                # When position direction aligns with _dvi (buying for longs), the tape
+                # confirms continuation — attenuate pp_pressure (let winner run). When
+                # tape opposes position direction, sellers (for longs) are dominating —
+                # amplify pp_pressure (lock gains before further giveback).
+                # Continuous tanh modulation in [0.85, 1.15], one-sided per direction.
+                # New cross-bar data dependency: directional volume flow (orthogonal to
+                # close-based slope and magnitude-based vol_confirm). HL2-equivalent
+                # noise exposure: signed by close move so AR(1) noise on close affects
+                # bar sign at zero-crossings only (rare for hourly OHLCV).
+                _dvi_window = 6
+                _h = bd.history.iloc[-_dvi_window:]
+                _signed_vol = ((_h["close"].values - _h["open"].values) >= 0).astype(float) * 2.0 - 1.0
+                _vol_arr = _h["volume"].values
+                _dvi = float(np.sum(_signed_vol * _vol_arr) / max(np.sum(_vol_arr), 1e-10))
+                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
+                _dvi_align = _dvi * _pos_dir_pp  # in [-1, 1]: +1 tape with us, -1 against
+                _pp_dvi_mult = max(0.85, min(1.15, 1.0 - 0.15 * _dvi_align))
+                _pp_pressure = _pp_raw * _pp_activation * _pp_dvi_mult
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
