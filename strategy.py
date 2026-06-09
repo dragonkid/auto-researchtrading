@@ -262,24 +262,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            # Architectural: cross-symbol same-direction concurrency dampener.
-            # When other symbols already hold same-side positions, correlated
-            # draw amplifies DD. Count same-direction concurrents (excluding
-            # self-symbol) and attenuate size via smooth tanh. New cross-symbol
-            # data dependency: per-symbol size now depends on other symbols'
-            # current positions. One-sided (only attenuates, never amplifies).
-            # Direction inferred from primary admission signal ranking; if no
-            # clear admission yet, no attenuation.
-            _self_dir = 1.0 if _bull_strong > _bear_strong else -1.0
-            _concurrent_same = sum(
-                1 for _s in ACTIVE_SYMBOLS
-                if _s != symbol and (
-                    (_self_dir > 0 and portfolio.positions.get(_s, 0.0) > 0) or
-                    (_self_dir < 0 and portfolio.positions.get(_s, 0.0) < 0)
-                )
-            )
-            _conc_atten = 1.0 - 0.10 * np.tanh(_concurrent_same / 1.5)
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _conc_atten
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
