@@ -570,18 +570,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: exit-slope confluence on flip threshold. Flip path
-                # currently uses MED2/LONG-window trend_avg as direction filter; add
-                # cross-subsystem confirmation from the multi-window mean slope (12/16/22)
-                # used by the exit subsystem. When exit-slope sign DISAGREES with the
-                # proposed flip direction, raise the effective FLIP_MIN_VOTES smoothly.
-                # Continuous: penalty = 0.30 * max(0, -tanh(_exit_slope*new_dir/0.0006)).
-                # No effect when slope agrees; up to +0.30 vote penalty when slope strongly
-                # opposes. New cross-subsystem dependency: flip entry now reads exit-slope.
-                _flip_new_dir = -1.0 if current_pos > 0 else 1.0
-                _flip_slope_penalty = 0.30 * max(0.0, -np.tanh(_exit_slope * _flip_new_dir / 0.0006))
-                _flip_min_eff = FLIP_MIN_VOTES + _flip_slope_penalty
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
