@@ -475,7 +475,8 @@ class Strategy:
                 # damped to 70%; at parity with admission threshold, full pp. New cross-
                 # subsystem fusion: exit (giveback) gated by entry (voter strong-sum).
                 _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
-                _opp_conf = 0.88 + 0.12 * max(0.0, min(1.0, (_opp_strong / max(_strong_min, 1e-6) - 0.4) / 0.6))
+                _opp_ratio = _opp_strong / max(_strong_min, 1e-6)
+                _opp_conf = 1.0 - 0.10 * max(0.0, min(1.0, (0.3 - _opp_ratio) / 0.3))
                 _pp_pressure = _pp_raw * _pp_activation * _opp_conf
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
