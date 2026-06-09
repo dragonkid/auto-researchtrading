@@ -374,8 +374,22 @@ class Strategy:
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
                     _trend_agree = max(0.0, np.tanh(trend_avg * _pos_dir / 0.012))  # in [0,1]
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
-                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    # Architectural: signal-reaffirmation scale-in gating. Per-bar increment
+                    # depends on whether the strong-sum on the SAME side as the position
+                    # still exceeds its admission threshold. If voters reaffirm position
+                    # direction (signal continues to validate), full ramp; if signal fades
+                    # below admission, scale-in increment attenuates. New data dependency:
+                    # scale-in trajectory depends on per-bar voter strength, not just
+                    # entry-bar strength. Continuous via margin (strong - min)/min mapped
+                    # through tanh; one-sided positive (negative margin attenuates, positive
+                    # passes at full strength). Distinct from existing trend_agree (trend_avg
+                    # is a price-window primitive; strong-sum is a multi-voter aggregate).
+                    _own_strong_margin = _bull_margin if current_pos > 0 else _bear_margin
+                    _signal_reaffirm = 0.5 * (1.0 + np.tanh(_own_strong_margin / 0.30))  # in [0,1]
+                    # Blend: full ramp when trend OR signal agrees, pnl-attenuated otherwise.
+                    # _trend_agree and _signal_reaffirm combined via max (either confirms = full).
+                    _confirm = max(_trend_agree, _signal_reaffirm)
+                    _ramp_attn = _confirm + (1.0 - _confirm) * _ramp_attn_pnl
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
