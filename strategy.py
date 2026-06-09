@@ -579,11 +579,12 @@ class Strategy:
                 # No effect when slope agrees; up to +0.30 vote penalty when slope strongly
                 # opposes. New cross-subsystem dependency: flip entry now reads exit-slope.
                 _flip_new_dir = -1.0 if current_pos > 0 else 1.0
-                # Slope-confluence as SIZE attenuator (not gate): preserves flip latency
-                # but reduces commitment when slope opposes flip direction. Up to -20% on
-                # flip size when slope strongly opposes. Keeps gates unchanged.
-                _flip_slope_size_attn = 1.0 - 0.20 * max(0.0, -np.tanh(_exit_slope * _flip_new_dir / 0.0006))
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Wider opposition threshold (0.0012 vs 0.0006): penalty engages only
+                # when slope STRONGLY opposes flip direction — preserves crash flips
+                # where slope lags but isn't strongly counter-aligned.
+                _flip_slope_penalty = 0.30 * max(0.0, -np.tanh(_exit_slope * _flip_new_dir / 0.0012))
+                _flip_min_eff = FLIP_MIN_VOTES + _flip_slope_penalty
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
@@ -602,7 +603,7 @@ class Strategy:
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
-                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj)) * _flip_slope_size_attn
+                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
