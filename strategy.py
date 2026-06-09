@@ -506,7 +506,21 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: wick-bar exit-pressure attenuator. On bars with
+                # unusually large intra-bar range (high-low)/close vs the 12-bar
+                # average, the close-derived slope/pp/time pressures are likely
+                # noise-corrupted (wick spikes). Suppress soft-pressure components
+                # (NOT _sl_pressure which must always fire on real adverse moves)
+                # by multiplicative factor [0.80, 1.0]. New control-flow gate that
+                # treats outlier bars as untrusted for soft-exit decisions.
+                # Continuous tanh ramp begins at range_ratio > 1.4, saturates by 2.0.
+                # Range over high/low is partially noise-immune (high/low less perturbed
+                # than close in noise test; close-anchored normalization preserves AR(1)).
+                _bar_range = (bd.history["high"].values[-1] - bd.history["low"].values[-1]) / max(mid, 1e-10)
+                _avg_range = float(np.mean((bd.history["high"].values[-13:-1] - bd.history["low"].values[-13:-1]) / np.maximum(bd.history["close"].values[-13:-1], 1e-10)))
+                _range_ratio = _bar_range / max(_avg_range, 1e-10)
+                _wick_atten = 1.0 - 0.20 * max(0.0, min(1.0, (_range_ratio - 1.4) / 0.6))
+                _exit_pressure = _sl_pressure + _wick_atten * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
