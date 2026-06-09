@@ -506,7 +506,22 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: volume-divergence modulator on slope-against pressure.
+                # New data path: volume into exit subsystem (was only in entry sizing).
+                # When position is in loss AND price moves against direction, check volume:
+                # - HIGH recent volume vs baseline = high-conviction reversal -> amplify
+                # - LOW recent volume vs baseline = low-conviction reversal (likely chop)
+                #   -> attenuate (give it room to mean-revert).
+                # Continuous tanh modulation of slope-against pressure only (slope is the
+                # against-direction primitive that volume divergence is meaningful for).
+                # Range: 0.85x .. 1.15x. Orthogonal to existing exit primitives (vol_ratio is
+                # log-return magnitude; volume is dollar conviction).
+                _vol_recent = float(np.mean(bd.history["volume"].values[-3:]))
+                _vol_base = float(np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:]))
+                _vol_div = (_vol_recent / max(_vol_base, 1e-6) - 1.0)  # ~0 baseline, +0.5 high vol
+                _vol_div_mult = 1.0 + 0.15 * np.tanh(_vol_div / 0.4)  # in [0.85, 1.15]
+                _sl_slope_pressure_mod = _sl_slope_pressure * _vol_div_mult
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure_mod + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
