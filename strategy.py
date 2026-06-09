@@ -579,11 +579,10 @@ class Strategy:
                 # No effect when slope agrees; up to +0.30 vote penalty when slope strongly
                 # opposes. New cross-subsystem dependency: flip entry now reads exit-slope.
                 _flip_new_dir = -1.0 if current_pos > 0 else 1.0
-                # Conviction-gated: full penalty only when new-side margin is low; high
-                # conviction (margin>0.3) bypasses slope penalty (legitimate fast reversals).
-                _flip_new_margin = (_bull_margin if current_pos < 0 else _bear_margin)
-                _flip_conv_gate = max(0.0, 1.0 - max(0.0, _flip_new_margin) / 0.30)
-                _flip_slope_penalty = 0.30 * max(0.0, -np.tanh(_exit_slope * _flip_new_dir / 0.0006)) * _flip_conv_gate
+                # Wider opposition threshold (0.0012 vs 0.0006): penalty engages only
+                # when slope STRONGLY opposes flip direction — preserves crash flips
+                # where slope lags but isn't strongly counter-aligned.
+                _flip_slope_penalty = 0.30 * max(0.0, -np.tanh(_exit_slope * _flip_new_dir / 0.0012))
                 _flip_min_eff = FLIP_MIN_VOTES + _flip_slope_penalty
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
