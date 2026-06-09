@@ -119,6 +119,8 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: prior-bar trend_avg per symbol for 2-bar persistence check.
+        self._prev_trend_avg = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -234,6 +236,9 @@ class Strategy:
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
+            # Update prior-bar trend tracker AFTER reading prior value below
+            # (read happens in entry block; we update here for next bar)
+            _trend_for_next = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -332,8 +337,21 @@ class Strategy:
                 # softens proportionally: very strong conviction can override small-magnitude
                 # wrong-sign trend. Smooth replacement for the binary deadzone clause —
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
-                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                # Architectural: 2-bar trend persistence modulates deadzone.
+                # When current and prior trend_avg agree in sign, deadzone tightens
+                # (signal is confirmed across 2 bars — admit more entries).
+                # When they disagree, deadzone widens (trend is flipping — block
+                # marginal entries on the noise boundary). Continuous via tanh
+                # of the soft sign product. New state dependency: deadzone is
+                # data-dependent on prior bar.
+                _prev_trend = self._prev_trend_avg.get(symbol, _trend_biased)
+                _trend_persist = np.tanh(_trend_biased / 0.012) * np.tanh(_prev_trend / 0.012)  # in [-1, 1]
+                # Multiplier in [0.85, 1.15]: tighten by up to 15% when persistent same-sign,
+                # widen by up to 15% when sign-flipping.
+                _dz_mult = 1.0 - 0.15 * _trend_persist
+                _eff_dz = TREND_GATE_DEADZONE * _dz_mult
+                _bull_admit = _trend_biased > -_eff_dz * min(1.0, _bull_margin / 0.3) and _trend_biased > -_eff_dz
+                _bear_admit = _trend_biased < _eff_dz * min(1.0, _bear_margin / 0.3) and _trend_biased < _eff_dz
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
                 # count gate since both derive from the same _bull_confs values. Removing the count
@@ -569,5 +587,8 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
+
+            # Update prior-bar trend_avg tracker (consumed next bar in entry deadzone modulation)
+            self._prev_trend_avg[symbol] = _trend_for_next
 
         return signals
