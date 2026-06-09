@@ -466,7 +466,19 @@ class Strategy:
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                _pp_pressure = _pp_raw * _pp_activation
+                # Architectural: slope-confirmation gate on pp_pressure. Profit-giveback
+                # exits should fire when momentum has reversed against the position, not
+                # during transient pullbacks within a continuing trend. Couples pp exit
+                # to confirmed trend reversal: full pp_pressure when slope strongly opposes
+                # position (trend reversal confirms profit-locking), attenuated when slope
+                # still agrees with position (just a pullback, let the trend resume). Smooth
+                # tanh on _slope_against scaled by 0.0004 (typical exit-slope magnitude).
+                # New cross-component data dependency: pp_pressure (existing source) gated
+                # by exit-slope direction (different source). Continuous, one-sided positive
+                # — when slope agrees, pp_pressure is reduced to 0.6x (not zero, preserves
+                # trail-stop logic); when slope opposes, full 1.0x.
+                _pp_slope_gate = 0.6 + 0.4 * max(0.0, np.tanh(_slope_against / 0.0004))
+                _pp_pressure = _pp_raw * _pp_activation * _pp_slope_gate
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
