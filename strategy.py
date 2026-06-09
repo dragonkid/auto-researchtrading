@@ -539,7 +539,7 @@ class Strategy:
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 # Architectural: trend-conditional flip threshold — spike-penalty applies
                 # in chop, blended-out in trends. Inline form to preserve LOC count.
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min + (_bear_strong_min - _strong_min) * (1.0 - rsi_trend_str ** 0.5) and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min + (_bull_strong_min - _strong_min) * (1.0 - rsi_trend_str ** 0.5) and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min + (_bear_strong_min - _strong_min) * (1.0 - rsi_trend_str) and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min + (_bull_strong_min - _strong_min) * (1.0 - rsi_trend_str) and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
