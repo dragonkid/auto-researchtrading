@@ -563,18 +563,6 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
-                # Architectural: same-side conviction tolerance on exit threshold.
-                # When the position-direction strong-sum is well above admission floor,
-                # ongoing voter consensus still supports the position — give it more
-                # room before exit pressure fires. New cross-subsystem fusion: exit
-                # tolerance gated by ENTRY voter strong-sum margin (orthogonal to
-                # _opp_conf which gates on opposite-side strength). Continuous tanh
-                # on (same_strong / _strong_min - 1.0), one-sided positive, capped at
-                # +0.10 additive to _exit_thresh. New data path: ongoing entry-
-                # signal conviction modulates exit-side patience.
-                _same_strong = _bull_strong if current_pos > 0 else _bear_strong
-                _same_margin = max(0.0, _same_strong / max(_strong_min, 1e-6) - 1.0)
-                _exit_thresh = _exit_thresh + 0.10 * np.tanh(_same_margin / 0.30)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
