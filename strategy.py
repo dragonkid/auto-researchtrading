@@ -533,6 +533,21 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
+                # Architectural: voter-consensus-reversal early exit gate (bars 1-2 only).
+                # If during scale-in window the entry voter strong-sum has flipped against
+                # the position direction by a meaningful margin, the entry signal was wrong
+                # — exit immediately rather than waiting for slope/pp/time pressures to
+                # accumulate. Cross-subsystem data dependency: entry-side strong-sums
+                # inform the exit subsystem on early bars only. Bounded to bars 1-2 to
+                # avoid over-exiting mature trades on transient voter inversions.
+                # Fires only when the OPPOSITE strong-sum exceeds the same-side strong-sum
+                # by 30% (smooth conviction margin), ensuring this is a meaningful inversion
+                # not a single noisy voter flipping. Continuous via reuse of strong-sum aggregates.
+                if 1 <= bars_held <= 2 and target != 0:
+                    if current_pos > 0 and _bear_strong > _bull_strong * 1.3 and _bear_strong >= _bear_strong_min:
+                        target = 0.0
+                    elif current_pos < 0 and _bull_strong > _bear_strong * 1.3 and _bull_strong >= _bull_strong_min:
+                        target = 0.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
