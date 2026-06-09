@@ -408,18 +408,22 @@ class Strategy:
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
-                # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
-                # robustness. Single _lr.slope (16-bar) is shared with entry voter — coupling
-                # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
-                # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
-                # Multi-window slope MEAN (not median): mean averages out window-specific noise
-                # better than median in low-vol where all 3 slopes are small and noise-dominated.
-                # Median can flip on a single window; mean spreads the contribution.
+                # Slope-against pressure: closed-form vectorized slopes over 5 windows
+                # (8/12/16/22/28). Closed-form slope = (n*sum(xy)-sum(x)*sum(y))/(n*sum(x^2)-sum(x)^2)
+                # avoids linregress per-window overhead so we can afford 5 windows for finer
+                # noise averaging. Mean of 5 windows reduces window-specific noise more than
+                # the previous 3-window mean. Architectural: new compute primitive (closed-form
+                # formula replacing linregress) AND broadened window panel.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slopes = []
-                for _w in (12, 16, 22):
-                    _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
-                    _slopes.append(_ll.slope)
+                for _w in (8, 12, 16, 22, 28):
+                    _y = np.log(_hl2[-_w:])
+                    _x_sum = _w * (_w - 1) * 0.5
+                    _x2_sum = (_w - 1) * _w * (2 * _w - 1) / 6.0
+                    _y_sum = _y.sum()
+                    _xy_sum = (np.arange(_w) * _y).sum()
+                    _denom = _w * _x2_sum - _x_sum * _x_sum
+                    _slopes.append((_w * _xy_sum - _x_sum * _y_sum) / _denom)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
