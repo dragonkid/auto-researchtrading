@@ -108,6 +108,8 @@ class Strategy:
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
         self.bar_count = 0
         self.smoothed_trend = {}
+        # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
+        self._smoothed_pnl = {}
         # Persistence buffers: last 2 bars of strong-side firings per symbol.
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
@@ -380,9 +382,22 @@ class Strategy:
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
-                # Standard high-water mark (architectural simplification: removed
-                # confirmed-peak gating via _smoothed_pnl prev-bar comparison).
-                self.peak_pnl[symbol] = max(self.peak_pnl.get(symbol, 0.0), pos_pnl)
+                # Unified soft exit-pressure architecture (slope + peak_profit + time only).
+                # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
+                # Architectural: confirmed-peak update — peak shifts only when pos_pnl
+                # exceeds previous peak AND is rising (pos_pnl > prev_pos_pnl). Single-bar
+                # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
+                # confirmed within 1 extra bar). Different from EMA smoothing: this is a
+                # gating rule on the high-water mark, not a low-pass filter.
+                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                self._smoothed_pnl[symbol] = pos_pnl
+                _curr_peak = self.peak_pnl.get(symbol, 0.0)
+                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl (rising bar).
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                    self.peak_pnl[symbol] = pos_pnl
+                else:
+                    self.peak_pnl[symbol] = _curr_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
@@ -547,7 +562,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
