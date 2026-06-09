@@ -537,15 +537,9 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: trend-conditional flip threshold. In high-trend regimes
-                # (rsi_trend_str high) flips are real reversals; the new-side spike penalty
-                # unfairly elevates threshold (history is structurally low after holding
-                # opposite side). In low-trend (chop) the penalty correctly discriminates
-                # noise flips. Continuous interpolation: flip threshold blends raw _strong_min
-                # (high trend) with full penalized _strong_min (low trend).
-                _flip_thresh_bear = _strong_min + (_bear_strong_min - _strong_min) * (1.0 - rsi_trend_str)
-                _flip_thresh_bull = _strong_min + (_bull_strong_min - _strong_min) * (1.0 - rsi_trend_str)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _flip_thresh_bear and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _flip_thresh_bull and trend_avg > 0)):
+                # Architectural: trend-conditional flip threshold — spike-penalty applies
+                # in chop, blended-out in trends. Inline form to preserve LOC count.
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _strong_min + (_bear_strong_min - _strong_min) * (1.0 - rsi_trend_str) and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _strong_min + (_bull_strong_min - _strong_min) * (1.0 - rsi_trend_str) and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
