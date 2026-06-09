@@ -539,7 +539,23 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: round-trip exit pressure (sub-_pp_min giveback gap).
+                # Existing _pp_pressure only fires when peak_pnl >= ~0.95*_pp_min (~2.4%).
+                # Below that, positions that briefly profit (e.g., +1.5%) and fully give
+                # back the gain have NO protective signal until SL/time fires. This bleeds
+                # slow-decay losers in chop. Round-trip pressure fires only when:
+                #   peak_pnl > 0.005 (had meaningful profit, > 0.5%)
+                #   AND peak_pnl < _pp_min (below pp coverage zone — gap)
+                #   AND pos_pnl < 0.3 * peak_pnl (gave back >70% of gain)
+                # Continuous ramp on giveback fraction; bounded [0, 1]; gated by smooth
+                # gap-coverage window (peak in (0.005, _pp_min)) so it doesn't double-count
+                # with _pp_pressure. New cross-bar data dependency on peak_pnl in the
+                # below-_pp_min range — fills exit subsystem coverage gap.
+                _peak = self.peak_pnl[symbol]
+                _rt_gap = max(0.0, min(1.0, (_pp_min - _peak) / max(_pp_min - 0.005, 1e-6))) if _peak > 0.005 else 0.0
+                _rt_giveback = max(0.0, (_peak - pos_pnl) / max(_peak, 1e-6)) if _peak > 0.005 else 0.0
+                _rt_pressure = max(0.0, min(1.0, (_rt_giveback - 0.70) / 0.25)) * _rt_gap
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.5 * _rt_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
