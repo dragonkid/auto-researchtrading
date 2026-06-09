@@ -537,18 +537,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: post-flip oscillation lockout. When the current position
-                # originated from a flip (self._from_flip True), the flip-back threshold
-                # tightens proportionally to flip-recency. Prevents oscillating flip-flop
-                # chains under noise where two consecutive flips realize negative pnl.
-                # Continuous decay via bars_held: bonus = 0.30 * max(0, 1 - bars_held/4),
-                # decaying to 0 by bar 4. New state usage (self._from_flip already exists);
-                # new control flow at flip path. Stop-loss path remains unaffected.
-                _flip_lockout = 0.30 * max(0.0, 1.0 - bars_held / 4.0) if self._from_flip.get(symbol, False) else 0.0
-                _flip_thresh = FLIP_MIN_VOTES + _flip_lockout
-                _flip_strong_bull = _bull_strong_min * (1.0 + 0.10 * (_flip_lockout / 0.30))
-                _flip_strong_bear = _bear_strong_min * (1.0 + 0.10 * (_flip_lockout / 0.30))
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_thresh and _bear_strong >= _flip_strong_bear and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_thresh and _bull_strong >= _flip_strong_bull and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
