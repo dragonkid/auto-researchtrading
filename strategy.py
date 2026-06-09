@@ -299,17 +299,6 @@ class Strategy:
             _confluence_raw = _lr.slope * trend_avg
             _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
             _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
-            # Architectural: triple-source confluence amplifier. When EMA slope sign
-            # agrees with ret_long sign (long-window EMA confirms long-window return),
-            # this is a third-source agreement on top of the slope*trend_avg confluence.
-            # Triple-confluence is rare and high-quality; amplify _confluence_adj by
-            # smooth factor up to 1.5x. Continuous on smooth product of soft sign
-            # indicators, not binary. Adds new data dependency: _confluence_adj scales
-            # with cross-timescale agreement (EMA vs LR_slope vs MED2 trend_avg).
-            _ea_sign_soft = np.tanh(_ea_slope / 0.0008)        # smooth sign of EMA slope
-            _rl_sign_soft = np.tanh(ret_long / 0.02)           # smooth sign of long-return
-            _triple_agree = max(0.0, _ea_sign_soft * _rl_sign_soft)  # both same sign
-            _confluence_adj *= 1.0 + 0.5 * _triple_agree
             # Architectural: Kaufman efficiency ratio gate on initial commitment.
             # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
             # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
