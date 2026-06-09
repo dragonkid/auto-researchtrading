@@ -114,6 +114,11 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
+        # Architectural: persistent EMA of vol_ratio per symbol. Smooths the vol
+        # primitive consumed by ~6 downstream computations (combined_mult cap,
+        # _band_half, _strong_min, _slope_thresh, _pp_min, _w_slope). Reduces
+        # bar-to-bar vol_ratio jitter at the source.
+        self._vol_ratio_ema = {}
         # Architectural: flip-origin tracker. True when current position originated
         # from a flip (high-conviction reversal: both vote count AND trend sign +
         # opposite-side strong-min admission). Used in exit logic to give flips
@@ -144,7 +149,13 @@ class Strategy:
             _long_n = min(200, len(closes) - 1)
             _baseline_vol = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
             _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
-            vol_ratio = realized_vol / _target_vol_dyn
+            _vol_ratio_raw = realized_vol / _target_vol_dyn
+            # Architectural: EMA-smooth vol_ratio with alpha=0.4 (effective span ~4 bars).
+            # New cross-bar persistent state per symbol, reducing single-bar vol jitter
+            # consumed by ~6 downstream gates. Continuous, no boundary.
+            _vr_prev = self._vol_ratio_ema.get(symbol, _vol_ratio_raw)
+            vol_ratio = 0.4 * _vol_ratio_raw + 0.6 * _vr_prev
+            self._vol_ratio_ema[symbol] = vol_ratio
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
