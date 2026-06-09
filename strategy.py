@@ -429,8 +429,14 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
+                # Architectural primitive change: giveback uses 2-bar AVERAGED pos_pnl
+                # (current + prior) as the deflated value rather than raw pos_pnl. Single-bar
+                # negative spikes that immediately recover get half their giveback-ratio
+                # impact, reducing noise-driven pp_pressure firings without lagging real
+                # giveback events (sustained giveback bars still register fully).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
+                _avg_pos_pnl = 0.5 * (pos_pnl + _prev_pnl)
+                _giveback = max(0.0, self.peak_pnl[symbol] - _avg_pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification.
                 # When peak_pnl is large relative to _pp_min (big win), the giveback ratio
