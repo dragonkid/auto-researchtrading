@@ -119,13 +119,6 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
-        # Architectural: prior-trade duration tracker. Records bars_held of the most
-        # recently exited position per symbol. Used as a continuous signal-quality
-        # proxy: short prior hold (immediate exit) tightens next-entry strong-sum
-        # threshold (recent signal quality is poor); long prior hold relaxes it
-        # (recent signal validated by sustained trade). Decays toward neutral after
-        # cooldown. Continuous: no binary gate, just a smooth threshold modulation.
-        self._last_hold_bars = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -227,19 +220,8 @@ class Strategy:
             _eh = self._bear_strong_hist.get(symbol, [])
             _bull_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _bh) / 2.0 if len(_bh) == 2 else 1.0
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
-            # Architectural: prior-trade-duration threshold modulation. Short prior
-            # hold (last position exited within 3 bars) tightens strong-sum threshold
-            # by up to +0.15 (signal-quality proxy: previous entry didn't validate).
-            # Long prior hold (>=10 bars) leaves threshold untouched. Smooth tanh
-            # interpolation between. New cross-trade memory channel — distinct from
-            # _bull_prior_ratio (which is a 2-bar voter-firing history) because
-            # _last_hold_bars is the realized duration of the LAST CLOSED trade,
-            # capturing actual signal-followthrough rather than per-bar firing pattern.
-            _last_hold = self._last_hold_bars.get(symbol, 8.0)  # neutral default = 8 bars
-            _short_hold_factor = max(0.0, 1.0 - _last_hold / 7.0)  # 1 at 0 bars, 0 at 7+ bars
-            _last_hold_adj = 0.15 * _short_hold_factor
-            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio) + _last_hold_adj)
-            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio) + _last_hold_adj)
+            _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
+            _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
@@ -580,16 +562,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Record realized duration of closing trade for next-entry threshold modulation.
-                    self._last_hold_bars[symbol] = self.bar_count - self.entry_bar.get(symbol, self.bar_count)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    # On flip: record duration of the side being closed before entry on opposite side.
-                    if current_pos != 0:
-                        self._last_hold_bars[symbol] = self.bar_count - self.entry_bar.get(symbol, self.bar_count)
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
 
