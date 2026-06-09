@@ -517,13 +517,8 @@ class Strategy:
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
                 # Architectural: 2D vol-time exit_thresh modulator combined with scale-in winning protection
                 # via a single multiplicative form. _vt_factor ramps with low-vol AND mid-life.
-                # NEW: symmetric high-vol early-life FAST-CUT factor — when vol_ratio > 1.15 AND
-                # bars_held <= 4 AND position is losing, tighten exit_thresh by up to -10% to
-                # exit wrong-side high-vol starts faster (crash protection). Asymmetric on pnl:
-                # only fires when pos_pnl < 0 (don't fast-cut profitable scale-ins).
                 _vt_factor = max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, 1.0 - abs((bars_held - 8.0) / 6.0)))
-                _vt_fastcut = max(0.0, min(1.0, (vol_ratio - 1.15) / 0.35)) * max(0.0, 1.0 - bars_held / 4.0) * max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) * (1.0 + 0.10 * _vt_factor) * (1.0 - 0.10 * _vt_fastcut)
+                _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) * (1.0 + 0.10 * _vt_factor)
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
