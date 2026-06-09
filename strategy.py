@@ -403,7 +403,13 @@ class Strategy:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
                 # high vol (crash) -> wide band (absorbs larger noise excursions).
                 # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
-                _stop_abs = abs(STOP_LOSS_PCT)
+                # Architectural: vol-adaptive STOP_LOSS_PCT itself (was constant -0.024).
+                # Continuous tanh on (vol_ratio - 1.0): low-vol regimes get tighter stop
+                # (~-0.019 floor), high-vol regimes get wider stop (~-0.029 ceiling). Smooth,
+                # bounded ~[-0.029, -0.019]. Replaces hardcoded constant with vol-dependent
+                # primitive consumed by SL-pressure band, _band_half, scale-in attenuator.
+                _stop_dyn = STOP_LOSS_PCT * (1.0 + 0.21 * np.tanh((vol_ratio - 1.0) / 0.4))
+                _stop_abs = abs(_stop_dyn)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
