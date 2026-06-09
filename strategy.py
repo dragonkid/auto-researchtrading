@@ -241,11 +241,7 @@ class Strategy:
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
-            _vol_recent = bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]
-            _vol_base = bd.history["volume"].values[-VOL_CONFIRM_BASE:]
-            _vc_med = np.median(_vol_recent) / np.median(_vol_base)
-            _vc_mean = np.mean(_vol_recent) / np.mean(_vol_base)
-            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, rsi_trend_str * _vc_mean + (1.0 - rsi_trend_str) * _vc_med))
+            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.median(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.median(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * HIGH_VOTE_BOOST_MULT * vol_confirm_mult
             # Architectural: ADDITIONAL chop-only post-cap boost (smaller magnitude 0.08).
