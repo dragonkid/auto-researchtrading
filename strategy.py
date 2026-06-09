@@ -130,27 +130,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Architectural: cross-symbol pnl-mean exit-pressure modulator.
-        # Computed once per bar BEFORE per-symbol loop. Mean unrealized pnl across all
-        # currently-held positions. When systemic-loss signal fires (mean << 0), exit
-        # pressure is amplified for ALL symbols (regime-wide stress detection).
-        # New cross-symbol data dependency: each symbol's exit decision now reads
-        # other symbols' pnl state. Continuous tanh mapping; one-sided positive
-        # amplification only (does NOT damp exits when other symbols are winning).
-        _cross_pnls = []
-        for _csym in ACTIVE_SYMBOLS:
-            if _csym in bar_data and _csym in self.entry_prices:
-                _cp = portfolio.positions.get(_csym, 0.0)
-                if _cp != 0:
-                    _cmid = bar_data[_csym].close
-                    _cpnl = (_cmid - self.entry_prices[_csym]) / self.entry_prices[_csym]
-                    if _cp < 0:
-                        _cpnl = -_cpnl
-                    _cross_pnls.append(_cpnl)
-        _cross_pnl_mean = float(np.mean(_cross_pnls)) if _cross_pnls else 0.0
-        # Stress factor: smoothly ramps from 0 to 1 as cross-mean falls from 0 to -2*|STOP|.
-        _stress = max(0.0, min(1.0, -_cross_pnl_mean / (2.0 * abs(STOP_LOSS_PCT))))
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -556,11 +535,6 @@ class Strategy:
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
-                # Cross-symbol stress amplifier: when cross-symbol mean pnl signals
-                # systemic loss, amplify exit pressure (only on losing positions to
-                # avoid premature exits on winners during temporary cross-stress).
-                if pos_pnl < 0:
-                    _exit_pressure *= 1.0 + 0.15 * _stress
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
