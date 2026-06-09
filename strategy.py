@@ -470,16 +470,15 @@ class Strategy:
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
-                _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
-                _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                # Architectural: vol-conditioned symmetric momentum hold bonus.
-                # Slope-against shortens max_hold but only at full strength when
-                # slope is signal-dominated (high vol). In low-vol (rally chop) the
-                # shortening is attenuated by min(1, vol_ratio) — slope noise in
-                # rally would otherwise create noise-driven early time exits.
-                # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
+                # Architectural: replace binary _slope_agrees gate with continuous tanh alignment.
+                # Original had hard switch at _exit_slope=0 (sign flip = noise boundary). Continuous
+                # form: _slope_align = tanh(_exit_slope * pos_dir / 0.0006) in [-1,1]; positive =
+                # agrees, negative = against. Magnitude encodes strength. _hold_adj scales linearly
+                # with _slope_align with vol-attenuation only on negative side (matches prior behavior).
                 _short_atten = min(1.0, vol_ratio)
-                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                _pos_dir = 1.0 if current_pos > 0 else -1.0
+                _slope_align = np.tanh(_exit_slope * _pos_dir / 0.0006)
+                _hold_adj = MOMENTUM_HOLD_BONUS * (max(0.0, _slope_align) - _short_atten * max(0.0, -_slope_align))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
