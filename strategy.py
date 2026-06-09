@@ -119,6 +119,8 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: prior-bar exit slope per symbol for slope-acceleration source.
+        self._prev_exit_slope = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -422,9 +424,25 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
+                # Architectural: slope-acceleration component on slope-against pressure.
+                # Tracks per-symbol prior exit slope, computes delta. When slope is decelerating
+                # AGAINST position (slope itself negative for long, becoming more negative),
+                # the rate of deterioration is high — exit pressure should ramp faster than
+                # raw slope alone implies. Continuous, one-sided positive (only adds pressure
+                # when slope worsens against position). New cross-bar state dependency.
+                _prev_slope = self._prev_exit_slope.get(symbol, _exit_slope)
+                _slope_delta = _exit_slope - _prev_slope
+                _slope_accel_against = -_slope_delta if current_pos > 0 else _slope_delta
+                _slope_accel_pressure = max(0.0, np.tanh(_slope_accel_against / 0.0003))
+                self._prev_exit_slope[symbol] = _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Acceleration boost: when slope worsens against position fast, amplify
+                # the slope-pressure by up to 15%. Multiplicative, gated to existing pressure
+                # (no effect when _sl_slope_pressure == 0 — preserves null state).
+                _sl_slope_pressure = _sl_slope_pressure * (1.0 + 0.15 * _slope_accel_pressure)
+                _sl_slope_pressure = min(1.0, _sl_slope_pressure)
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
@@ -562,7 +580,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev_exit_slope):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
