@@ -506,21 +506,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: loss-only funding-cost exit pressure (5th source).
-                # Funding is a real P&L cost on perpetual positions — when funding has
-                # been persistently against the position direction across the last
-                # 6 bars AND the position is losing (pos_pnl < 0), fund-against-cost
-                # is a confirming signal that the trade thesis is broken. Restrict
-                # firing to losing positions only — this exempts the winning-bull-trend
-                # failure mode of prior funding-pressure attempts. Smooth tanh on
-                # mean(funding) signed by position direction, gated by a one-sided
-                # tanh on (-pos_pnl) so pressure activates only as pos_pnl drops below 0.
-                # Continuous, no boundary; magnitude bounded to 1.0.
-                _fund = bd.history["funding_rate"].values[-6:]
-                _fund_against = -float(np.mean(_fund)) if current_pos > 0 else float(np.mean(_fund))
-                _fund_loss_gate = max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT)))  # 0 at pnl>=0, ramps to 1 toward stop
-                _funding_pressure = _fund_loss_gate * max(0.0, min(1.0, np.tanh(_fund_against / 0.00012)))
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.30 * _funding_pressure
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
