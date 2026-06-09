@@ -466,7 +466,17 @@ class Strategy:
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                _pp_pressure = _pp_raw * _pp_activation
+                # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
+                # Currently _pp_pressure fires on giveback alone — purely path-derived.
+                # Fuse with voter-subsystem evidence: when opposite-side strong-sum is
+                # itself elevated, the giveback is more likely a real reversal (not noise).
+                # Continuous tanh on (opp_strong / _strong_min - 0.7) scaled to [0.7, 1.0]
+                # multiplier on _pp_pressure. If opposite-side has zero conviction, pp
+                # damped to 70%; at parity with admission threshold, full pp. New cross-
+                # subsystem fusion: exit (giveback) gated by entry (voter strong-sum).
+                _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
+                _opp_conf = 0.7 + 0.3 * max(0.0, min(1.0, (_opp_strong / max(_strong_min, 1e-6) - 0.4) / 0.6))
+                _pp_pressure = _pp_raw * _pp_activation * _opp_conf
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
