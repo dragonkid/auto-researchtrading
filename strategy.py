@@ -119,6 +119,9 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
+        # Architectural: outcome-aware cooldown — store last-trade pos_pnl at exit.
+        # Used to extend cooldown after losing trades and shorten after winners.
+        self._last_exit_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -235,7 +238,19 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
+            # Architectural: outcome-aware cooldown extension. Cooldown duration scales
+            # not only with trend strength but with outcome of the last closed trade.
+            # Loss outcome (last_pnl < 0) extends cooldown by up to 1 bar smoothly via
+            # tanh on -last_pnl/STOP_LOSS_PCT; win outcome shortens by similar amount.
+            # New cross-trade state dependency: cooldown on bar t depends on pnl realized
+            # at last exit. Continuous (no boundary except sign of last_pnl). Zero effect
+            # when no prior trade exists (default 0.0).
+            _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
+            _outcome_adj = np.tanh(-_last_pnl / abs(STOP_LOSS_PCT))  # in [-1, 1]: positive when last was loss
+            _cd_ext = max(0.0, _outcome_adj) * 1.0      # +1 bar if big loss
+            _cd_red = max(0.0, -_outcome_adj) * 0.5     # -0.5 bar if big win
+            _cd_bars = COOLDOWN_BARS * cooldown_trend_strength + _cd_ext - _cd_red
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < _cd_bars
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -562,6 +577,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    # Capture exit pnl for outcome-aware cooldown.
+                    if symbol in self.entry_prices:
+                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                        if current_pos < 0:
+                            _exit_pnl = -_exit_pnl
+                        self._last_exit_pnl[symbol] = _exit_pnl
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
