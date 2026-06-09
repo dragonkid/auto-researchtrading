@@ -114,11 +114,6 @@ class Strategy:
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
         self._bear_strong_hist = {}
-        # Architectural: prior-bar exit_pressure for 2-bar confirmation.
-        # Soft-source exits (slope/pp/time) require persistence — single-bar exit_pressure
-        # >= _exit_thresh fires only when the prior bar also showed elevated pressure
-        # (above a lower confirm threshold). Stop-loss path remains single-bar (entry-anchored).
-        self._prev_exit_pressure = {}
         # Architectural: flip-origin tracker. True when current position originated
         # from a flip (high-conviction reversal: both vote count AND trend sign +
         # opposite-side strong-min admission). Used in exit logic to give flips
@@ -538,21 +533,8 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Architectural: 2-bar persistence confirmation for soft-source exits.
-                # Single-bar exit_pressure crossings can be noise-driven (one slope/pp spike).
-                # Require BOTH current bar AND prior bar to exceed a confirm-threshold
-                # (0.85 * _exit_thresh) to fire a soft exit. Stop-loss remains single-bar:
-                # if _sl_pressure >= 0.95 (saturated stop), bypass persistence requirement.
-                # New cross-bar state: per-symbol prior-bar _exit_pressure. Continuous;
-                # confirm-band 0.85x means transient single-bar 1.0x crossings still don't
-                # fire unless previous bar was already at >=0.85x (true persistence).
-                _prev_ep = self._prev_exit_pressure.get(symbol, 0.0)
-                _confirm_thresh = 0.85 * _exit_thresh
-                _persistence_confirm = _prev_ep >= _confirm_thresh
-                _sl_force = _sl_pressure >= 0.95
-                if (_exit_pressure >= _exit_thresh and (_persistence_confirm or _sl_force)) and target != 0:
+                if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                self._prev_exit_pressure[symbol] = _exit_pressure
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
@@ -580,7 +562,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev_exit_pressure):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
