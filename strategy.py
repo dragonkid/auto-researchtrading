@@ -423,10 +423,8 @@ class Strategy:
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                # Architectural: replace linear-clip band activation with tanh smooth-step.
-                # One-parameter shape (no _slope_band) — tanh is smoother at the activation
-                # boundary than linear-clip, reducing flip-rate at the slope-pressure threshold.
-                _sl_slope_pressure = 0.5 * (1.0 + np.tanh((_slope_against - _slope_thresh) / (0.5 * _slope_thresh)))
+                _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
