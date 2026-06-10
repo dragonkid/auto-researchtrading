@@ -457,11 +457,8 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                # Architectural: one-sided pnl-aware slope threshold. Only widen threshold
-                # in profit (slope-against on a winner is mostly noise); keep baseline in
-                # loss (slope-against on a loser remains meaningful at standard threshold).
-                # Multiplicative [1.0, 1.30] via tanh(max(0,pos_pnl)/|STOP|).
-                _slope_thresh = (0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * (1.0 + 0.30 * np.tanh(max(0.0, pos_pnl) / abs(STOP_LOSS_PCT)))
+                # Two-sided pnl-aware slope threshold (smaller magnitude 0.15).
+                _slope_thresh = (0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * (1.0 + 0.15 * np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
