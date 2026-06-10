@@ -123,6 +123,11 @@ class Strategy:
         # buildup of strong-side conviction (not just current-bar spike). Flip
         # path is exempt (preserves single-bar reversal latency).
         self._bull_strong_ema, self._bear_strong_ema = {}, {}
+        # Architectural: per-symbol entry conviction state. Captures the strong-side
+        # margin at entry/flip bar; later decays. Used to attenuate time_pressure
+        # for high-conviction entries (longer hold). Cross-subsystem fusion: exit
+        # timing now reads entry-decision conviction (was bars_held-only).
+        self._entry_conv = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -563,7 +568,14 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural: entry-conviction time_pressure attenuator. High-conviction
+                # entries get longer hold by reducing _w_time over the first ~12 bars.
+                # _entry_conv stored at entry bar (max of bull/bear margin). Decays linearly
+                # over 12 bars. Cross-subsystem fusion: exit timing reads entry conviction.
+                _ec = self._entry_conv.get(symbol, 0.0)
+                _ec_decay = max(0.0, 1.0 - bars_held / 12.0)
+                _ec_atten = 0.10 * np.tanh(max(0.0, _ec) / 0.30) * _ec_decay
+                _w_time  = (1.0 + 0.20 * max(0.0, _pnl_scale)) * (1.0 - _ec_atten)         # [-1,1] -> [1.0, 1.2], minus conviction discount
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -625,12 +637,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_conv):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
+                    self._entry_conv[symbol] = _bull_margin if target > 0 else _bear_margin
 
         return signals
