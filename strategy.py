@@ -398,14 +398,14 @@ class Strategy:
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Branch step 13: step 6 form with sharper _ramp_attn_pnl scale (0.7*|STOP|).
-                    # Tighter pnl-tanh — winning bars pass through 0.5 sooner, losing scale-in
-                    # attenuates faster. Step 6 trend_agree preserved.
+                    # Branch step 12: step 6 trend_agree, replace blend with MAX.
+                    # Step 6 _trend_agree (best AST) but blend = max(trend_agree, ramp_attn_pnl)
+                    # — either signal commits to scale-in fully, no weighted attenuation.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
                     _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.3)
-                    _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / (0.7 * abs(STOP_LOSS_PCT))))
-                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
-                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
+                    # MAX blend: scale-in proceeds when EITHER trend_agrees OR pnl is winning.
+                    _ramp_attn = max(_trend_agree, _ramp_attn_pnl)
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
