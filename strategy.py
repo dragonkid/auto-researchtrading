@@ -462,7 +462,7 @@ class Strategy:
                 # over-tightening while preserving most of the bull/sideways stab gains.
                 _slope_agree = abs(_exit_slope) / max(np.mean(np.abs(_slopes)), 1e-10)
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
-                _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4)) * (1.0 - 0.25 * _slope_agree)
+                _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4)) * (1.0 - 0.3 * _slope_agree)
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
