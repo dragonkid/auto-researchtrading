@@ -564,7 +564,15 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: chop-only RSI-extreme exit pressure (cross-subsystem fusion).
+                # Activates only in deep chop (cooldown_trend_strength<0.3) — bull/crash gated off.
+                # In sideways/rally chop, mean-reverting RSI extremes signal exhaustion. New
+                # data dependency: exit subsystem reads RSI (was only an entry voter input).
+                # Smooth tanh on RSI vs 70/30 thresholds, scaled by chop gate (smooth in [0,1]).
+                _chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
+                _rsi_excess = (rsi - 70.0) / 8.0 if current_pos > 0 else (30.0 - rsi) / 8.0
+                _rsi_extreme_pressure = _chop_gate * max(0.0, min(1.0, _rsi_excess))
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.30 * _rsi_extreme_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
