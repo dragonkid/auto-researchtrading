@@ -599,7 +599,8 @@ class Strategy:
                 # In deep chop, require higher vote conviction to flip. Smooth chop_gate.
                 # New cross-component fusion: flip GATE depends on cooldown_trend_strength.
                 _flip_chop_gate = max(0.0, min(1.0, (0.4 - cooldown_trend_strength) / 0.25))
-                _flip_min_eff = FLIP_MIN_VOTES + 0.15 * _flip_chop_gate
+                _same_ema = _bull_ema if current_pos > 0 else _bear_ema
+                _flip_min_eff = FLIP_MIN_VOTES + 0.15 * _flip_chop_gate + 0.10 * max(0.0, min(1.0, (_same_ema / max(_strong_min, 1e-6) - 1.0) / 0.5))
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
