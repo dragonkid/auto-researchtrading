@@ -457,8 +457,11 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                # Two-sided pnl-aware slope threshold (mag 0.15, tighter scale 0.7*|STOP|).
-                _slope_thresh = (0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * (1.0 + 0.15 * np.tanh(pos_pnl / (0.7 * abs(STOP_LOSS_PCT))))
+                # Asymmetric two-sided pnl-aware slope threshold: heavier in loss
+                # (stronger narrowing), lighter in profit (mild widening). Loss-side
+                # narrowing is what produced the stab gain in step 1; preserve it.
+                _pnl_t = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))
+                _slope_thresh = (0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * (1.0 + 0.10 * max(0.0, _pnl_t) - 0.20 * max(0.0, -_pnl_t))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
