@@ -419,14 +419,15 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Architectural: EMA-smoothed peak update replaces 2-bar confirmed gating.
-                # Original: peak shifts when pos_pnl > prev_peak AND pos_pnl >= prev_pnl
-                # (binary confirmed-rising gate). Replace with continuous EMA smoothing of
-                # pos_pnl (alpha=0.7, span~2.3) — the peak tracks max(prev_peak, ema_pnl).
-                # Smooth low-pass replaces the binary gate; single-bar spikes still
-                # filtered (alpha<1) but no discrete gating boundary on rising-bar logic.
+                # Architectural: vol-conditioned EMA-smoothed peak update.
+                # Alpha scales with vol_ratio: low vol -> alpha=0.9 (fast tracking,
+                # tight chop giveback); high vol -> alpha=0.6 (more smoothing,
+                # preserves crash benefit). Continuous interpolation over vol_ratio
+                # band [0.5, 1.2]. Single-bar spikes still filtered; smooth alpha
+                # transition avoids regime-switch boundary.
                 _prev_ema_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _ema_pnl = 0.7 * pos_pnl + 0.3 * _prev_ema_pnl
+                _peak_alpha = 0.9 - 0.3 * max(0.0, min(1.0, (vol_ratio - 0.5) / 0.7))
+                _ema_pnl = _peak_alpha * pos_pnl + (1.0 - _peak_alpha) * _prev_ema_pnl
                 self._smoothed_pnl[symbol] = _ema_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 self.peak_pnl[symbol] = max(_curr_peak, _ema_pnl)
