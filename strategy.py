@@ -495,15 +495,6 @@ class Strategy:
                     _pp_activation = 1.0
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
-                # Architectural: EMA-smooth giveback ratio (alpha=0.7) — filters
-                # single-bar giveback spikes without delaying peak tracking. New
-                # state on giveback signal (not peak), so chop peaks anchor immediately
-                # while pp_pressure noise is reduced.
-                _gr_prev = getattr(self, '_giveback_ema', {}).get(symbol, _giveback_ratio)
-                _giveback_ratio = 0.7 * _giveback_ratio + 0.3 * _gr_prev
-                if not hasattr(self, '_giveback_ema'):
-                    self._giveback_ema = {}
-                self._giveback_ema[symbol] = _giveback_ratio
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
                 # Currently _pp_pressure fires on giveback alone — purely path-derived.
