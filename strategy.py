@@ -299,7 +299,15 @@ class Strategy:
             # Vol-adaptive scale: in low-vol both signals shrink, so the
             # confluence threshold scales down with vol_ratio**2 to maintain
             # similar activation across regimes.
-            _confluence_raw = _lr.slope * trend_avg
+            # Architectural: decouple confluence slope from entry voter slope.
+            # Entry voter uses _lr (16-bar HL2 slope); confluence uses
+            # _lr_conf (24-bar HL2 slope) — independent window. Removes
+            # correlated noise between entry decision boundary and the
+            # entry-frac confluence amplifier (both previously read from
+            # the same 16-bar slope, so a noise-perturbed slope value
+            # affected both paths simultaneously).
+            _lr_conf = linregress(np.arange(24), np.log((bd.history["high"].values[-24:] + bd.history["low"].values[-24:]) / 2.0))
+            _confluence_raw = _lr_conf.slope * trend_avg
             _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
             _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
             # Architectural: triple-source confluence amplifier. When EMA slope sign
