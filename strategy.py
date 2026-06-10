@@ -457,9 +457,15 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
+                # Slope-sign confluence attenuator: when the 3 window slopes disagree in
+                # sign, slope pressure is less reliable (window-dependent noise dominates).
+                # _sign_agree in [0..3] counts agreement with mean-slope sign; map to [0.7..1.0].
+                _mean_sign = 1.0 if _exit_slope > 0 else (-1.0 if _exit_slope < 0 else 0.0)
+                _sign_agree = sum(1 for _s in _slopes if (_s > 0 and _mean_sign > 0) or (_s < 0 and _mean_sign < 0))
+                _slope_conf = 0.7 + 0.1 * _sign_agree
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                _sl_slope_pressure = _slope_conf * max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
