@@ -426,7 +426,7 @@ class Strategy:
                 # band [0.5, 1.2]. Single-bar spikes still filtered; smooth alpha
                 # transition avoids regime-switch boundary.
                 _prev_ema_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _peak_alpha = 0.85 - 0.15 * max(0.0, min(1.0, (vol_ratio - 0.5) / 0.7))
+                _peak_alpha = 0.9 - 0.3 * max(0.0, min(1.0, (vol_ratio - 0.5) / 0.7))
                 _ema_pnl = _peak_alpha * pos_pnl + (1.0 - _peak_alpha) * _prev_ema_pnl
                 self._smoothed_pnl[symbol] = _ema_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
