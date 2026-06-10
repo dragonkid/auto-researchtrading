@@ -432,7 +432,7 @@ class Strategy:
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
-                    self.peak_pnl[symbol] = _curr_peak
+                    self.peak_pnl[symbol] = _curr_peak * (1.0 - 0.05 * max(0.0, min(1.0, (bars_held - 8.0) / 6.0)))
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
