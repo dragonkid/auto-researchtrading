@@ -192,23 +192,11 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * _rsi_dir_soft
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: MACD-from-EMA-cross orthogonalization.
-            # MACD signal and EMA_cross both derive from fast/slow EMA differences.
-            # Their voter contributions are highly correlated — when EMA_cross fires,
-            # MACD typically does too. This creates STRUCTURAL agreement that inflates
-            # strong-sum without adding information. Subtract a fraction of the EMA_cross
-            # signal (proportional, scaled to match magnitudes) from MACD voter input
-            # to remove the shared component, leaving only MACD-specific signal (the
-            # signal-line crossing dynamics not captured by raw EMA difference).
-            # New cross-voter data dependency: MACD voter signal = raw_macd - 0.5 * normalized_ema_cross.
-            _ema_cross_sig = (_ef - _es) / (mid * 0.0008)
-            _macd_sig_raw = (_macd_diff - 0.0003) / 0.00012
-            _macd_sig_orth = _macd_sig_raw - 0.5 * _ema_cross_sig
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                _ema_cross_sig,
+                (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
-                _macd_sig_orth,
+                (_macd_diff - 0.0003) / 0.00012,
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
