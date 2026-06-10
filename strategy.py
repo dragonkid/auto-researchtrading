@@ -453,24 +453,12 @@ class Strategy:
                 # Multi-window slope MEAN (not median): mean averages out window-specific noise
                 # better than median in low-vol where all 3 slopes are small and noise-dominated.
                 # Median can flip on a single window; mean spreads the contribution.
-                # Architectural: inverse-stderr² weighted multi-window slope fusion.
-                # Each linregress returns a stderr on the slope estimate (function of
-                # residual variance and window length). A noisy window (chop, low signal)
-                # has high stderr; a clean trending window has low stderr. Inverse-variance
-                # weighting downweights noisy windows AUTOMATICALLY without a vol-gate or
-                # regime classifier — it's the optimal linear unbiased estimator under
-                # Gaussian residual assumption. New data dependency: exit-slope weighting
-                # adapts to per-window residual quality (noise estimate), not just the
-                # window length. Continuous and smooth (no thresholds).
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _slopes, _slope_weights = [], []
+                _slopes = []
                 for _w in (12, 16, 22):
                     _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
                     _slopes.append(_ll.slope)
-                    # stderr can be tiny under near-perfect fit; floor prevents weight blow-up.
-                    _slope_weights.append(1.0 / max(_ll.stderr, 1e-7) ** 2)
-                _w_total = sum(_slope_weights)
-                _exit_slope = float(sum(s * w for s, w in zip(_slopes, _slope_weights)) / _w_total)
+                _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
