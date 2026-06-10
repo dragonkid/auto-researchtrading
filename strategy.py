@@ -419,13 +419,22 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Architectural: light EMA-smoothed peak (alpha=0.95, ~5% smoothing).
-                # Near-original behavior with minimal smoothing on peak input.
-                _prev_ema_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _ema_pnl = 0.95 * pos_pnl + 0.05 * _prev_ema_pnl
-                self._smoothed_pnl[symbol] = _ema_pnl
+                # Architectural: hybrid peak — max(confirmed-peak, EMA-smoothed-pnl).
+                # Confirmed-peak (binary rising-bar gate) preserves chop responsiveness.
+                # EMA-pnl floor lifts peak in trending regimes where pos_pnl rises smoothly
+                # and the rising-bar gate occasionally rejects valid micro-rises. Hybrid
+                # captures both: noise-filtered binary peak in chop, smooth EMA tracking
+                # in trends. New floor mechanism, not a replacement.
+                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                _ema_pnl = 0.5 * pos_pnl + 0.5 * _prev_pnl
+                self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                self.peak_pnl[symbol] = max(_curr_peak, _ema_pnl)
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
+                    _new_peak = pos_pnl
+                else:
+                    _new_peak = _curr_peak
+                # EMA floor only lifts peak; never lowers it.
+                self.peak_pnl[symbol] = max(_new_peak, _ema_pnl) if _ema_pnl > _curr_peak else _new_peak
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
