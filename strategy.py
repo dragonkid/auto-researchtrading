@@ -500,7 +500,17 @@ class Strategy:
                     _pp_activation = 1.0
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                # Architectural: absolute-giveback floor on pp_pressure. _giveback_ratio
+                # is purely relative — a tiny peak (just above _pp_min) with 22% giveback
+                # fires pp_pressure full strength even if absolute drop is only ~0.55%
+                # (noise-scale in low-vol). Add absolute floor: scale pp by smooth tanh
+                # of (absolute_giveback / floor - 1.0), where floor scales with vol_ratio
+                # (low vol -> tighter floor 0.003, high vol -> wider 0.008). Continuous
+                # one-sided multiplier in [0.5, 1.0]. Cross-component fusion: pp_pressure
+                # now reads absolute drop magnitude AND relative ratio.
+                _abs_giveback_floor = 0.003 + 0.005 * min(1.0, vol_ratio)
+                _abs_gb_factor = 0.5 + 0.5 * max(0.0, min(1.0, np.tanh((_giveback - _abs_giveback_floor) / max(_abs_giveback_floor, 1e-6))))
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) * _abs_gb_factor
                 # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
                 # Currently _pp_pressure fires on giveback alone — purely path-derived.
                 # Fuse with voter-subsystem evidence: when opposite-side strong-sum is
