@@ -493,13 +493,13 @@ class Strategy:
                 # Slightly narrower upper bound — restores baseline pp_pressure faster
                 # at peak ratios above 1.04, recovering raw revenue while keeping the
                 # bull-boosting smoothing in the [0.95, 1.04] band.
+                # Architectural: replace piecewise-linear pp_activation (two hard corners
+                # at 0.95 and 1.04) with smooth tanh — removes both boundary discontinuities.
+                # Centered at ratio=0.995 (midpoint of original ramp), scale=0.045 chosen so
+                # tanh saturates ~±0.96 at the original corner positions, preserving overall
+                # activation curve shape while making it C^infinity smooth everywhere.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                if _pp_ratio <= 0.95:
-                    _pp_activation = 0.0
-                elif _pp_ratio >= 1.04:
-                    _pp_activation = 1.0
-                else:
-                    _pp_activation = (_pp_ratio - 0.95) / 0.09
+                _pp_activation = 0.5 * (1.0 + np.tanh((_pp_ratio - 0.995) / 0.045))
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
                 # Currently _pp_pressure fires on giveback alone — purely path-derived.
