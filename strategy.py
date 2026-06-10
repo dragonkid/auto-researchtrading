@@ -586,8 +586,16 @@ class Strategy:
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Flip mechanism (votes + trend_avg sign, vol-scaled).
+                # Architectural: cross-side margin dominance gate. Beyond absolute
+                # new-side strong-sum admission, require the new side's margin to
+                # exceed the OLD side's margin by 0.10. Filters flips where both
+                # sides have moderate conviction (chop) — keeps only flips where
+                # new side is clearly dominant. New cross-data dependency: flip
+                # admission now reads BOTH sides' margins, not just new-side absolute.
+                _flip_margin_dom = (current_pos > 0 and (_bear_margin - _bull_margin) > 0.10) or \
+                                   (current_pos < 0 and (_bull_margin - _bear_margin) > 0.10)
+                if not in_cooldown and _flip_margin_dom and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
