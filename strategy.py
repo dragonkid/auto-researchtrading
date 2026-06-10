@@ -78,7 +78,6 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.5
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -168,10 +167,8 @@ class Strategy:
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
-            # 5-bar median for both signals (maximum noise immunity, returns sacrificed for stability)
-            _med_ref_short = np.median(smoothed_closes[-SHORT_WINDOW - 2: -SHORT_WINDOW + 3])
+            # 5-bar median for ret_short (maximum noise immunity, returns sacrificed for stability)
             _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
-            ret_vshort = (smoothed_closes[-1] - _med_ref_short) / _med_ref_short
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
