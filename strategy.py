@@ -508,7 +508,7 @@ class Strategy:
                 # (low vol -> tighter floor 0.003, high vol -> wider 0.008). Continuous
                 # one-sided multiplier in [0.5, 1.0]. Cross-component fusion: pp_pressure
                 # now reads absolute drop magnitude AND relative ratio.
-                _abs_giveback_floor = 0.003 + 0.005 * min(1.0, vol_ratio)
+                _abs_giveback_floor = 0.10 * _pp_min
                 _abs_gb_factor = 0.5 + 0.5 * max(0.0, min(1.0, np.tanh((_giveback - _abs_giveback_floor) / max(_abs_giveback_floor, 1e-6))))
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) * _abs_gb_factor
                 # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
