@@ -374,8 +374,8 @@ class Strategy:
                 # voter aggregate (was independent before). Attenuator multiplicative in [0.92, 1.0],
                 # smooth tanh on opp-strong-ratio, one-sided (zero attenuation when opp near zero).
                 # Distinct from existing _opp_conf on _pp_pressure (that gates exit, this gates entry size).
-                _bull_opp_ratio = _bear_ema / max(_strong_min, 1e-6)
-                _bear_opp_ratio = _bull_ema / max(_strong_min, 1e-6)
+                _bull_opp_ratio = _bear_strong / max(_strong_min, 1e-6)
+                _bear_opp_ratio = _bull_strong / max(_strong_min, 1e-6)
                 _bull_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bull_opp_ratio - 0.3) / 0.3))
                 _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
