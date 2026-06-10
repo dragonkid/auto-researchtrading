@@ -574,8 +574,16 @@ class Strategy:
                 # positions in the exit-pressure decision. Stop-loss exemption below
                 # already overrides this protection on real adverse moves.
                 if self._from_flip.get(symbol, False):
+                    # Architectural: vol-adaptive flip protection magnitude.
+                    # Replace fixed 0.15 additive bonus with vol-conditioned magnitude:
+                    # high-vol regimes (crash) need MORE protection time (giveback
+                    # noise is larger), low-vol (sideways) needs LESS (chop noise can
+                    # spuriously trigger flip-protection on weak flips). Multiplicative
+                    # form on bonus preserves the additive _exit_thresh scaling. Continuous
+                    # tanh on (vol_ratio - 1.0) maps roughly [0.10, 0.20] across regimes.
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
-                    _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
+                    _flip_mag = 0.15 + 0.05 * np.tanh((vol_ratio - 1.0) / 0.5)
+                    _exit_thresh = _exit_thresh + _flip_mag * _flip_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
