@@ -464,14 +464,7 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                # Architectural: trend-fused peak-profit minimum. Previously _pp_min
-                # depended on vol_ratio alone. Now fuse with rsi_trend_str: in strong
-                # trends profits run further so require a higher peak before pp gate
-                # activates; in chop allow lower peak threshold (faster confirmation).
-                # New cross-source data dependency: _pp_min reads BOTH vol AND trend
-                # strength. Continuous, multiplicative.
-                _pp_trend_mult = 1.0 + 0.20 * rsi_trend_str
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * _pp_trend_mult
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification.
