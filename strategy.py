@@ -457,8 +457,8 @@ class Strategy:
                     _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                # Two-sided pnl-aware slope threshold (mag 0.15, tighter scale 0.7*|STOP|).
-                _slope_thresh = (0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * (1.0 + 0.15 * np.tanh(pos_pnl / (0.7 * abs(STOP_LOSS_PCT))))
+                # Two-sided pnl-aware slope threshold (magnitude 0.20).
+                _slope_thresh = (0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))) * (1.0 + 0.20 * np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
