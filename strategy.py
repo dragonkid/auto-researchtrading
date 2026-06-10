@@ -402,7 +402,7 @@ class Strategy:
                     # Step 1 form preserved at threshold; multiply _trend_agree by min(1, vol_ratio**0.3)
                     # — calmer regimes use less trend_agree boost, letting _ramp_attn_pnl dominate.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.4)
+                    _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.2)
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
