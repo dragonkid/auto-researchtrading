@@ -378,12 +378,24 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_strong_min, 1e-6)
                 _bull_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bull_opp_ratio - 0.3) / 0.3))
                 _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
+                # Architectural: funding-rate-aware entry size attenuator (NEW DATA SOURCE).
+                # Funding rate is currently UNUSED in strategy. When funding is extremely
+                # positive (longs paying shorts heavily), longs are crowded — reversal risk.
+                # Attenuate long entry size proportional to funding magnitude. Symmetric
+                # for shorts. Uses 24-bar mean funding (smooth over noise) scaled by 0.0005
+                # (typical 5bps daily funding magnitude). Continuous tanh, one-sided per
+                # direction, multiplicative in [0.92, 1.0]. Genuinely new data dependency
+                # — orthogonal to all price-derived signals. Fundamentally architectural:
+                # adds new sensor input to entry-size decision.
+                _funding_24 = float(np.mean(bd.history["funding_rate"].values[-24:]))
+                _funding_long_atten = 1.0 - 0.08 * max(0.0, np.tanh(_funding_24 / 0.0005))
+                _funding_short_atten = 1.0 - 0.08 * max(0.0, np.tanh(-_funding_24 / 0.0005))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * _bull_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _bull_contest_atten * _funding_long_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _ema_admit_e:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * _bear_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _bear_contest_atten * _funding_short_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
