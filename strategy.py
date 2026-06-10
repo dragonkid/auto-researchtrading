@@ -123,11 +123,6 @@ class Strategy:
         # buildup of strong-side conviction (not just current-bar spike). Flip
         # path is exempt (preserves single-bar reversal latency).
         self._bull_strong_ema, self._bear_strong_ema = {}, {}
-        # Architectural: per-symbol persistent voter signal EMA for noisiest voter.
-        # Operates BEFORE quintic ramp (distinct from EMA-of-strong-sum which integrates
-        # AFTER ramping). Smooths ret_short voter signal to reduce 1-bar noise spikes
-        # at the source. alpha=0.4 (span~4) preserves direction transition latency.
-        self._ret_short_sig_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -197,19 +192,8 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * _rsi_dir_soft
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: persistent ret_short voter signal EMA (pre-quintic).
-            # ret_short is the noisiest voter (weight 0.7); smoothing its raw signal
-            # input via EMA(alpha=0.4, span~4) reduces 1-bar median-driven flips at
-            # the source. Distinct from existing EMA-of-strong-sum (post-quintic).
-            # Operates pre-tanh, so the voter still saturates symmetrically; only
-            # transition speed near zero is reduced. New cross-bar data dependency
-            # on a single voter's raw signal magnitude.
-            _ret_short_sig_raw = (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6)
-            _ret_short_sig_prev = self._ret_short_sig_ema.get(symbol, _ret_short_sig_raw)
-            _ret_short_sig_smooth = 0.4 * _ret_short_sig_raw + 0.6 * _ret_short_sig_prev
-            self._ret_short_sig_ema[symbol] = _ret_short_sig_smooth
             _voter_signals_bull = [
-                _ret_short_sig_smooth,
+                (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
