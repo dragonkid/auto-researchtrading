@@ -419,20 +419,17 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Architectural: confirmed-peak update — peak shifts only when pos_pnl
-                # exceeds previous peak AND is rising (pos_pnl > prev_pos_pnl). Single-bar
-                # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
-                # confirmed within 1 extra bar). Different from EMA smoothing: this is a
-                # gating rule on the high-water mark, not a low-pass filter.
-                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                self._smoothed_pnl[symbol] = pos_pnl
+                # Architectural: EMA-smoothed peak update replaces 2-bar confirmed gating.
+                # Original: peak shifts when pos_pnl > prev_peak AND pos_pnl >= prev_pnl
+                # (binary confirmed-rising gate). Replace with continuous EMA smoothing of
+                # pos_pnl (alpha=0.7, span~2.3) — the peak tracks max(prev_peak, ema_pnl).
+                # Smooth low-pass replaces the binary gate; single-bar spikes still
+                # filtered (alpha<1) but no discrete gating boundary on rising-bar logic.
+                _prev_ema_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                _ema_pnl = 0.7 * pos_pnl + 0.3 * _prev_ema_pnl
+                self._smoothed_pnl[symbol] = _ema_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
-                # pos_pnl >= prev_pos_pnl (rising bar).
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
-                    self.peak_pnl[symbol] = pos_pnl
-                else:
-                    self.peak_pnl[symbol] = _curr_peak
+                self.peak_pnl[symbol] = max(_curr_peak, _ema_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
