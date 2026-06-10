@@ -164,6 +164,20 @@ class Strategy:
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            # Architectural: cross-window slope agreement on cold entry size.
+            # Slope agreement = abs(mean(slopes)) / mean(abs(slopes)) over 3 windows
+            # (12/16/22 on HL2 log). High agreement (~1.0) = all slopes same sign and
+            # magnitude — strong directional confluence; low agreement (~0.0) = mixed
+            # signs across windows = chop. Cold-entry size attenuated up to 10% in
+            # chop. Mechanism-orthogonal to pp_pressure (entry-side filter, not exit).
+            # Distinct from prior session attempts that applied agreement at exit gate.
+            _hl2_full = (bd.history["high"].values + bd.history["low"].values) / 2.0
+            _agree_slopes = []
+            for _aw in (12, 16, 22):
+                _aslr = linregress(np.arange(_aw), np.log(_hl2_full[-_aw:]))
+                _agree_slopes.append(_aslr.slope)
+            _slope_agree = abs(np.mean(_agree_slopes)) / max(np.mean(np.abs(_agree_slopes)), 1e-12)
+            _entry_agree_atten = 1.0 - 0.10 * (1.0 - _slope_agree)
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -380,10 +394,10 @@ class Strategy:
                 _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * _bull_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _bull_contest_atten * _entry_agree_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _ema_admit_e:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * _bear_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _bear_contest_atten * _entry_agree_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
