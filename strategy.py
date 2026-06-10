@@ -506,20 +506,9 @@ class Strategy:
                 # multiplier on _pp_pressure. If opposite-side has zero conviction, pp
                 # damped to 70%; at parity with admission threshold, full pp. New cross-
                 # subsystem fusion: exit (giveback) gated by entry (voter strong-sum).
-                # Architectural: cross-bar persistence on opp-conf via EMA fusion.
-                # Single-bar _opp_strong can spike on noise; blending with the maintained
-                # _bear_strong_ema/_bull_strong_ema (already used at cold-entry admission)
-                # adds history-awareness to the exit-side fusion gate. Mean of current-bar
-                # and EMA opp ratios is more persistent than current-bar alone and reuses
-                # existing state (no new state added). New cross-bar dependency on the
-                # EXIT path: _opp_conf now reads cross-bar persistence of opposite-side
-                # voter conviction, not just current-bar value.
                 _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
-                _opp_ema = _bear_ema if current_pos > 0 else _bull_ema
                 _opp_ratio = _opp_strong / max(_strong_min, 1e-6)
-                _opp_ema_ratio = _opp_ema / max(_strong_min, 1e-6)
-                _opp_ratio_blend = 0.5 * _opp_ratio + 0.5 * _opp_ema_ratio
-                _opp_conf = 1.0 - 0.05 * max(0.0, min(1.0, (0.3 - _opp_ratio_blend) / 0.3))
+                _opp_conf = 1.0 - 0.05 * max(0.0, min(1.0, (0.3 - _opp_ratio) / 0.3))
                 _pp_pressure = _pp_raw * _pp_activation * _opp_conf
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
