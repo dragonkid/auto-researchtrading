@@ -192,10 +192,17 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * _rsi_dir_soft
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: vol-conditioned RSI voter normalization. Fixed denom 4.0
+            # makes RSI voter saturate fast in high-vol (RSI swings more) — binary-like
+            # behavior is noise-prone. Scale the normalizer with sqrt(vol_ratio) clamped
+            # [0.7, 1.5] so high-vol gets wider band (RSI must move more to flip), low-
+            # vol gets narrower band (sensitive to small RSI moves). New cross-source
+            # data dependency: RSI voter normalization depends on realized vol.
+            _rsi_norm = 4.0 * max(0.7, min(1.5, vol_ratio ** 0.5))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
-                (rsi - _rsi_thresh) / 4.0,
+                (rsi - _rsi_thresh) / _rsi_norm,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
