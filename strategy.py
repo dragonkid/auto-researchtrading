@@ -1,14 +1,6 @@
 import numpy as np
+from scipy.stats import linregress
 from prepare import Signal, PortfolioState, BarData
-
-
-def _slope(y):
-    # Closed-form OLS slope on x = arange(n), y given.
-    # slope = (n*sum(xy) - sum(x)*sum(y)) / (n*sum(x^2) - sum(x)^2)
-    n = len(y)
-    x = np.arange(n)
-    sx = x.sum()
-    return (n * (x * y).sum() - sx * y.sum()) / (n * (x * x).sum() - sx * sx)
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
@@ -171,7 +163,7 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr_slope = _slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -205,7 +197,7 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr_slope - 0.00015) / 0.00010,
+                (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
@@ -307,7 +299,7 @@ class Strategy:
             # Vol-adaptive scale: in low-vol both signals shrink, so the
             # confluence threshold scales down with vol_ratio**2 to maintain
             # similar activation across regimes.
-            _confluence_raw = _lr_slope * trend_avg
+            _confluence_raw = _lr.slope * trend_avg
             _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
             _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
             # Architectural: triple-source confluence amplifier. When EMA slope sign
@@ -461,7 +453,8 @@ class Strategy:
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slopes = []
                 for _w in (12, 16, 22):
-                    _slopes.append(_slope(np.log(_hl2[-_w:])))
+                    _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
+                    _slopes.append(_ll.slope)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
