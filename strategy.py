@@ -174,14 +174,8 @@ class Strategy:
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
             _ret_long_lagged = (closes[-2] - closes[-LONG_WINDOW - 1]) / closes[-LONG_WINDOW - 1]
             rsi_trend_str = min(abs(_ret_long_lagged) / RSI_TREND_BIAS_DECAY, 1.0)
-            # Architectural: smooth blend between fixed RSI windows 6 and 8 by rsi_trend_str.
-            # Original int(round(6+2*rsi_trend_str)) creates discrete window jumps at
-            # rsi_trend_str=0.25 and 0.75 — boundary noise. Compute RSI at both ends, blend.
-            _rd6 = np.diff(closes[-7:])
-            _rd8 = np.diff(closes[-9:])
-            _rsi6 = 100 - 100 / (1 + np.mean(np.maximum(_rd6, 0)) / max(np.mean(np.maximum(-_rd6, 0)), 1e-10))
-            _rsi8 = 100 - 100 / (1 + np.mean(np.maximum(_rd8, 0)) / max(np.mean(np.maximum(-_rd8, 0)), 1e-10))
-            rsi = (1.0 - rsi_trend_str) * _rsi6 + rsi_trend_str * _rsi8
+            _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
+            rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
