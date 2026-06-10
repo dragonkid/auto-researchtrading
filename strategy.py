@@ -545,7 +545,7 @@ class Strategy:
                 # Vol-conditioned blend: smooth-form in low-vol (rally chop) where stability gain
                 # is largest; original max(0,...) form in high-vol (crash) where pp_pressure
                 # needs hard rapid response. Continuous interpolation via vol_ratio.
-                _smooth_blend = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))  # 1 at vol_ratio<=0.7, 0 at >=1.0
+                _smooth_blend = max(0.0, min(1.0, (1.4 - vol_ratio) / 0.5))  # full smooth for vol<=0.9, fades 0.9-1.4
                 _w_slope_smooth = 0.15 * 0.5 * (1.0 - np.tanh(_pnl_scale * 1.5))
                 _w_slope_hard = 0.15 * max(0.0, -_pnl_scale)
                 _w_slope = (1.0 + _smooth_blend * _w_slope_smooth + (1.0 - _smooth_blend) * _w_slope_hard) * _scale_in_w
