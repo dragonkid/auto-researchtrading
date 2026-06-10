@@ -207,19 +207,12 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Strong-sum with per-voter noise-sensitivity weights.
+            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            # Architectural: tanh-saturator replacing quintic ramp.
-            # Quintic (c-0.5)^5 * 97.66 has near-binary boundary around c=0.65 — small
-            # noise-driven margin shifts there cause large strong-sum changes (the noise
-            # boundary). Replace with tanh((c-0.65)/0.07)*0.5+0.5 scaled to match max
-            # contribution (~0.4 at c=0.9). Output range ~[0, 0.4] preserved; transition
-            # band wider (0.07 vs quintic's effective 0.04). Primitive substitution to
-            # strong-sum nonlinearity — fundamentally smoother admission boundary.
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, 0.4 * (0.5 + 0.5 * np.tanh((c - 0.65) / 0.07))) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, 0.4 * (0.5 + 0.5 * np.tanh((c - 0.65) / 0.07))) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
