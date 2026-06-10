@@ -552,19 +552,10 @@ class Strategy:
                 # so attenuation should be lighter). Cross-component fusion: scale-in
                 # weight now reads vol_ratio, decoupling exit-pressure attenuation from
                 # pure-bars-held timing.
-                # Architectural simplification: _scale_in_w applies ONLY to _w_slope.
-                # Rationale: during scale-in (bars_held ≤ 3), pp_pressure rarely fires
-                # because peak_pnl rarely exceeds _pp_min within 3 bars (peak ≈ 0 at entry,
-                # _pp_min ~ 0.025). Time-pressure structurally doesn't fire (HOLD_DECAY_START=6).
-                # The _scale_in_w multiplier on _w_pp and _w_time was a no-op cost. Slope-
-                # against IS the noise-vulnerable pressure during scale-in (ambiguous
-                # direction signal as position forms), so attenuation is meaningful only there.
-                # Removes the redundant scale_in_w coupling on pp/time, reducing complexity
-                # of the exit-weight fusion. Multi-variable: changes _w_slope and _w_pp.
                 _scale_in_floor = 0.5 + 0.3 * min(1.0, vol_ratio)
                 _scale_in_w = _scale_in_floor + (1.0 - _scale_in_floor) * min(1.0, bars_held / ENTRY_FULL_BARS)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
-                _w_pp    = 1.0 + 0.20 * max(0.0, _pnl_scale)                    # heavier in profit; scale-in attenuation removed (rare firing)
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
