@@ -192,13 +192,22 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * _rsi_dir_soft
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: vol-adaptive normalization on slope-derivative voters.
+            # _lr.slope and _ea_slope have magnitudes that scale roughly linearly
+            # with realized vol. Fixed-constant normalizers (0.00010 / 0.00025)
+            # under-divide in crash (slopes naturally larger -> false high-conf)
+            # and over-divide in calm (slopes naturally smaller -> false low-conf).
+            # Multiply normalizers by sqrt(vol_ratio) clamped to [0.75, 1.5] to
+            # match each regime's natural slope-magnitude scale. Continuous,
+            # smoothly bounded — no regime switch.
+            _vol_norm = max(0.75, min(1.5, vol_ratio ** 0.5))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
-                (_ea_slope - 0.0005) / 0.00025,
+                (_lr.slope - 0.00015) / (0.00010 * _vol_norm),
+                (_ea_slope - 0.0005) / (0.00025 * _vol_norm),
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
