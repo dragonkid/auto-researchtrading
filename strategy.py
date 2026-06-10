@@ -557,12 +557,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: smooth ONLY the time-pressure component (slow structural).
-                # Slope/pp/sl pressures stay raw to preserve exit reactivity in crash/rally.
-                _tp_prev = self._exit_press_ema.get(symbol, _time_pressure)
-                _tp_smooth = 0.7 * _time_pressure + 0.3 * _tp_prev
-                self._exit_press_ema[symbol] = _tp_smooth
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _tp_smooth
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -589,7 +584,13 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if _exit_pressure >= _exit_thresh and target != 0:
+                # Architectural: light EMA smoothing (alpha=0.85, 15% prior) on exit_pressure.
+                # Reduces single-bar noise spikes while keeping reactivity for trend exits.
+                _ep_prev = self._exit_press_ema.get(symbol, _exit_pressure)
+                _ep_smooth = 0.85 * _exit_pressure + 0.15 * _ep_prev
+                self._exit_press_ema[symbol] = _ep_smooth
+                _gate_pressure = _exit_pressure if _sl_pressure >= 0.95 else _ep_smooth
+                if _gate_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
