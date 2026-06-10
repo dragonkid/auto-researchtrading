@@ -595,7 +595,13 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
+                # Architectural: chop-conditioned flip vote threshold lift. In deep chop
+                # (cooldown_trend_strength<0.4), require higher vote conviction to flip.
+                # Lifts FLIP_MIN_VOTES by up to +0.30 in chop. New cross-component fusion:
+                # flip GATE depends on cooldown_trend_strength (was constant threshold).
+                _flip_chop_gate = max(0.0, min(1.0, (0.4 - cooldown_trend_strength) / 0.25))
+                _flip_min_eff = FLIP_MIN_VOTES + 0.30 * _flip_chop_gate
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
@@ -614,17 +620,8 @@ class Strategy:
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
-                    # Architectural: chop-conditioned flip size attenuator. Flip win rates
-                    # are lowest in deep chop (sideways/rally have flip_wr ~13%, bull ~10%).
-                    # In deep chop where trend strength is low, the flip signal more often
-                    # represents noise than a real reversal. Smooth chop_gate (closes in
-                    # bull/crash where cooldown_trend_strength near 1) attenuates flip size
-                    # by up to 12% — protective in chop, neutral in trends. New cross-
-                    # component dependency: flip size reads cooldown_trend_strength.
-                    _flip_chop_gate = max(0.0, min(1.0, (0.4 - cooldown_trend_strength) / 0.25))
-                    _flip_chop_atten = 1.0 - 0.12 * _flip_chop_gate
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
-                    target = (-size if current_pos > 0 else size) * _flip_frac * _flip_chop_atten
+                    target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
