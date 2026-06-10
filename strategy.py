@@ -311,7 +311,7 @@ class Strategy:
             # with cross-timescale agreement (EMA vs LR_slope vs MED2 trend_avg).
             _ea_sign_soft = np.tanh(_ea_slope / 0.0008)        # smooth sign of EMA slope
             _rl_sign_soft = np.tanh(ret_long / 0.02)           # smooth sign of long-return
-            _triple_agree = 0.5 * (_ea_sign_soft * _rl_sign_soft + np.sqrt((_ea_sign_soft * _rl_sign_soft) ** 2 + 0.0064))  # smooth half-rect, eps=0.0064 (~0.04 floor at zero, removes noise boundary)
+            _triple_agree = max(0.0, _ea_sign_soft * _rl_sign_soft)  # both same sign
             _confluence_adj *= 1.0 + 0.5 * _triple_agree
             # Architectural: Kaufman efficiency ratio gate on initial commitment.
             # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
