@@ -77,7 +77,7 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
 FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
@@ -192,6 +192,18 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * _rsi_dir_soft
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: 7th voter — trend-persistence ratio (signed).
+            # Fraction of recent 30 bars where 1-bar log-return sign agrees with ret_long sign.
+            # Persistent trend regimes (bull/crash) score high; chop scores ~0. Output is
+            # signed via tanh(ret_long/0.005) so chop produces near-zero (neutral 0.5 conf
+            # contribution), trends produce strong directional signal. New data dependency:
+            # rolling sign-agreement count — orthogonal to all 6 existing voters which read
+            # short-window momentum/EMAs. Reduces false-positive entries in sideways.
+            _persist_lookback = 30
+            _ret1 = np.diff(np.log(closes[-_persist_lookback - 1:]))
+            _rl_sign = 1.0 if ret_long > 0 else (-1.0 if ret_long < 0 else 0.0)
+            _persist_frac = float(np.mean(np.sign(_ret1) == _rl_sign))  # in [0,1]
+            _persist_signal = (_persist_frac - 0.5) * 2.0 * np.tanh(ret_long / 0.005)  # signed in [-1,1]
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -199,6 +211,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr.slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                _persist_signal / 0.20,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -208,9 +221,10 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
-            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, persist].
+            # Weights inverse to estimated noise sensitivity (sum=7.0, preserves scale).
+            # Persist voter: low noise sensitivity (rolling 30-bar majority), weight 1.05.
+            _voter_weights = (0.7, 1.20, 1.05, 0.95, 0.80, 1.05, 1.25)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
