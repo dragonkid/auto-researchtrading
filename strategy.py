@@ -539,21 +539,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: multi-source exit-consensus amplifier on soft-exit sum.
-                # Soft sources (slope-against, peak-profit, time) are independent primitives;
-                # when 2+ fire together it is high-confidence reversal, when 1 fires alone it
-                # is likely path noise. Soft activation count via tanh-soft-step at 0.3 yields
-                # _active_count in [0,3]; map to multiplier [0.92, 1.10] via tanh((c-1.5)/0.6).
-                # SL kept additive separately — it is a hard protective gate that should not be
-                # gated by soft-source consensus. New cross-source data dependency on the soft
-                # sub-aggregate.
-                _soft_act_slope = 0.5 * (1.0 + np.tanh((_sl_slope_pressure - 0.3) / 0.18))
-                _soft_act_pp = 0.5 * (1.0 + np.tanh((_pp_pressure - 0.3) / 0.18))
-                _soft_act_time = 0.5 * (1.0 + np.tanh((_time_pressure - 0.3) / 0.18))
-                _active_count = _soft_act_slope + _soft_act_pp + _soft_act_time
-                _consensus_mult = 1.0 + 0.09 * np.tanh((_active_count - 1.5) / 0.6)
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
-                _exit_pressure = _sl_pressure + _consensus_mult * _soft_sum
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
