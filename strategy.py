@@ -407,7 +407,7 @@ class Strategy:
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
                     _short_align = max(0.0, np.tanh(ret_short * _pos_dir / 0.008))
                     _long_align = max(0.0, np.tanh(ret_long * _pos_dir / 0.020))
-                    _trend_agree = 0.5 * (_short_align + _long_align)  # arithmetic mean
+                    _trend_agree = (_short_align * _long_align) ** 0.5  # geometric mean
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
