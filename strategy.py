@@ -109,6 +109,12 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # Architectural: persistence-counter peak architecture. Tracks peak_candidate
+        # separately; peak_pnl shifts to peak_candidate only after K consecutive bars
+        # of confirmation (rising or stable). Filters single-bar noise spikes from
+        # anchoring the peak, which is the source of premature pp_pressure firing.
+        self._peak_candidate = {}
+        self._peak_persist = {}
         # Persistence buffers: last 2 bars of strong-side firings per symbol.
         # Used to TIGHTEN _strong_min on isolated single-bar firing spikes (noise filter).
         self._bull_strong_hist = {}
@@ -427,10 +433,30 @@ class Strategy:
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
-                # pos_pnl >= prev_pos_pnl (rising bar).
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
-                    self.peak_pnl[symbol] = pos_pnl
+                # Persistence-counter peak: candidate peak shifts on any pos_pnl > _curr_peak,
+                # but the OFFICIAL peak_pnl shifts only after K=2 consecutive bars of the
+                # candidate being stable (pos_pnl >= 0.99*peak_candidate). Single-bar spikes
+                # update the candidate but never reach the peak — noise spikes don't anchor
+                # downstream pp_pressure. New state: _peak_candidate, _peak_persist.
+                _candidate = self._peak_candidate.get(symbol, _curr_peak)
+                _persist = self._peak_persist.get(symbol, 0)
+                if pos_pnl > _candidate:
+                    _candidate = pos_pnl
+                    _persist = 1
+                elif pos_pnl >= 0.99 * _candidate:
+                    _persist = _persist + 1
+                else:
+                    # candidate decays gracefully toward current pnl when not confirming
+                    _candidate = max(_curr_peak, pos_pnl)
+                    _persist = 0
+                self._peak_candidate[symbol] = _candidate
+                self._peak_persist[symbol] = _persist
+                # Promote candidate to peak after K=2 confirms (or immediate if pos_pnl
+                # is rising AND > peak — preserves prior single-bar-confirm behavior for
+                # rising peaks; the new gate ONLY filters the case where candidate spike
+                # is then immediately reverted).
+                if _candidate > _curr_peak and (_persist >= 2 or pos_pnl >= _prev_pnl):
+                    self.peak_pnl[symbol] = _candidate
                 else:
                     self.peak_pnl[symbol] = _curr_peak
 
@@ -625,7 +651,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._peak_candidate, self._peak_persist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
