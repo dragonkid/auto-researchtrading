@@ -564,17 +564,6 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: stagnation-aware time pressure. New control-flow path
-                # that gates time pressure on peak-achievement state. When peak_pnl has
-                # NEVER crossed _pp_min (position is "stagnant"), AND bars_held > 4,
-                # boost _w_time by up to +0.25 via smooth ramp. New cross-bar data
-                # dependency: exit subsystem reads peak-state lifecycle, distinguishing
-                # "winning" (peaked) vs "stagnant" (never peaked) positions. Smooth
-                # tanh on (1 - peak_pnl/_pp_min) gives one-sided activation only when
-                # peak hasn't reached threshold; bars_held>4 gate via smooth tanh.
-                _stagnation = max(0.0, np.tanh((1.0 - self.peak_pnl[symbol] / max(_pp_min, 1e-6)) / 0.30))
-                _stag_age = max(0.0, np.tanh((bars_held - 4.0) / 3.0))
-                _w_time = _w_time * (1.0 + 0.25 * _stagnation * _stag_age)
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
