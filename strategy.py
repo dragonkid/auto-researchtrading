@@ -459,12 +459,7 @@ class Strategy:
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
-                # Architectural primitive substitution: smoothstep (cubic Hermite, C1 continuous)
-                # replaces piecewise-linear ramp on _sl_slope_pressure. Same domain
-                # [(1-band/2)*thresh, (1+band/2)*thresh] but zero-derivative at both endpoints —
-                # eliminates corner-kink discontinuities that act as noise-flip boundaries.
-                _slope_t = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                _sl_slope_pressure = _slope_t * _slope_t * (3.0 - 2.0 * _slope_t)
+                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
