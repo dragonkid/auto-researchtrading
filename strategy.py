@@ -564,18 +564,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: vol-adaptive fusion. In low-vol (sideways/rally),
-                # additive sum preserves fast multi-pressure exits in mean reversion;
-                # in high-vol (crash/strong trends), partial soft-max fusion filters
-                # correlated-pressure noise exits during cascading moves. Smooth blend
-                # via vol_ratio. _exit_lse approximates max() at high vol with beta=4;
-                # _exit_sum is the original additive form. Blend factor f = clamp((vol-0.7)/0.5).
-                _press_arr = (_sl_pressure, _w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure)
-                _exit_sum = sum(_press_arr)
-                _press_max = max(_press_arr)
-                _exit_lse = _press_max + np.log(sum(np.exp(4.0 * (_p - _press_max)) for _p in _press_arr)) / 4.0
-                _lse_blend = max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
-                _exit_pressure = (1.0 - _lse_blend) * _exit_sum + _lse_blend * _exit_lse
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
