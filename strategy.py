@@ -619,7 +619,16 @@ class Strategy:
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
-                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
+                    # Architectural: opposite-side EMA-persistence damper on flip size.
+                    # When opposite-side EMA-of-strong-sum has built up (sustained reversal
+                    # signal), keep full flip size; when only current bar has spiked
+                    # (transient noise), attenuate. Smooth one-sided in [0.92, 1.0] via
+                    # tanh of (opp_ema/strong_min - 0.6). Cross-component fusion: flip path
+                    # reads buildup history (was instant-only). Distinct from cold-entry EMA
+                    # gate which filters; this modulates SIZE.
+                    _flip_opp_ema = _bear_ema if current_pos > 0 else _bull_ema
+                    _flip_persist = 1.0 - 0.08 * max(0.0, np.tanh((0.6 - _flip_opp_ema / max(_strong_min, 1e-6)) / 0.3))
+                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj)) * _flip_persist
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
