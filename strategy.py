@@ -529,16 +529,7 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Architectural: peak-profit-aware max_hold extension. When peak_pnl is
-                # solidly above _pp_min (a real win has been captured), extend max_hold
-                # to give the trailing-stop mechanism time to lock the win via giveback.
-                # Different mechanism from slope: slope tracks momentum continuation,
-                # peak-aware extension protects realized winners from premature time exit.
-                # Continuous tanh on (peak_pnl/_pp_min - 1.0), one-sided positive — adds
-                # up to +2.0 bars when peak is well above pp_min. New cross-source data
-                # dependency: time-pressure timing scales with realized win magnitude.
-                _peak_hold_ext = 2.0 * np.tanh(max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0) / 0.5)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj + _peak_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
