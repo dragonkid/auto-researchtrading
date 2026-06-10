@@ -564,7 +564,15 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: log-sum-exp soft-max exit pressure fusion (was additive sum).
+                # With beta=4, log-sum-exp approximates max() smoothly. Exit fires when ANY
+                # single pressure is dominant, not when MULTIPLE moderate pressures correlate.
+                # Reduces correlation-driven noise exits (each pressure below threshold but
+                # sum exceeds) while preserving single-source dominant-pressure exits.
+                # Mechanism: changes exit decision semantics from sum-fusion to max-fusion.
+                _press_arr = (_sl_pressure, _w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure)
+                _press_max = max(_press_arr)
+                _exit_pressure = _press_max + np.log(sum(np.exp(4.0 * (_p - _press_max)) for _p in _press_arr)) / 4.0
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
