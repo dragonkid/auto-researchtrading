@@ -599,15 +599,7 @@ class Strategy:
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
-                    # Architectural: flip-path decoupling from _er_adj path-efficiency suppression.
-                    # Flips are intent-driven reversals (passed FLIP_MIN_VOTES + opposite-side
-                    # strong-min + trend-sign gates) — chop-suppression via path-efficiency is
-                    # mis-applied because legitimate reversals OFTEN occur during chop transitions.
-                    # Compute flip base without _er_adj. _confluence_adj is naturally zero for
-                    # flips (slope*trend opposite-sign). New control flow: flip frac uses
-                    # path-efficiency-independent base, distinct from cold-entry path.
-                    _flip_base = min(0.55, _entry_frac_dyn - _er_adj)
-                    _flip_frac = min(1.0, max(0.30, _flip_base + (1.0 - _flip_base) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
+                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
                     target = (-size if current_pos > 0 else size) * _flip_frac
 
             if abs(target - current_pos) > 1.0:
