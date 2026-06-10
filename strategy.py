@@ -564,24 +564,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: same-side conviction-drop as 5th exit pressure source.
-                # When the position-side voter strong-sum drops sharply from prior bar,
-                # that's a momentum-weakness signal NOT captured by slope or peak-profit.
-                # New data path: voter-aggregate dynamics into exit subsystem (was used
-                # only for entry threshold tightening before). Continuous in [0,1] from
-                # ratio (prev_same - curr_same) / _strong_min capped at 1.0. Weight 0.30
-                # (smaller than slope/pp/time to add only marginal pressure on conviction
-                # weakness). One-sided: only drop signals — recovery (gain in conviction)
-                # adds zero pressure.
-                _same_hist = self._bull_strong_hist.get(symbol, []) if current_pos > 0 else self._bear_strong_hist.get(symbol, [])
-                _curr_same = _bull_strong if current_pos > 0 else _bear_strong
-                if len(_same_hist) >= 2:
-                    _prev_same = _same_hist[-2]
-                    _conv_drop = max(0.0, min(1.0, (_prev_same - _curr_same) / max(_strong_min, 1e-6)))
-                else:
-                    _conv_drop = 0.0
-                _w_conv = 0.30
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_conv * _conv_drop
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
