@@ -401,20 +401,20 @@ class Strategy:
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Architectural: dual-window trend-agreement override.
-                    # Replace single trend_avg with confluence of short-window (ret_short)
-                    # AND long-window (ret_long) — both must agree with position direction
-                    # for full ramp. Geometric mean of two soft alignments. Reduces single-
-                    # window noise on scale-in ramp control. New data dependency: scale-in
-                    # ramp now reads dual-window returns, not just trend_avg.
+                    # Architectural simplification: removed pnl-attenuation layer from
+                    # scale-in ramp. Original blended _trend_agree (dual-window confluence,
+                    # orthogonal voter primitives) with _ramp_attn_pnl (tanh of pos_pnl/STOP).
+                    # The pnl path created circular feedback: bad first-bar entry -> negative
+                    # pos_pnl -> attenuated ramp -> stuck at low frac while signal still
+                    # legitimately points; while a noise-driven momentary winner gets full
+                    # ramp before signal confirms. Removing the pnl path keeps the cleaner
+                    # signal-derived gate (_trend_agree) and lets bad entries exit via the
+                    # exit subsystem rather than freeze in scale-in. Reduced layered logic.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
                     _short_align = max(0.0, np.tanh(ret_short * _pos_dir / 0.008))
                     _long_align = max(0.0, np.tanh(ret_long * _pos_dir / 0.020))
                     _trend_agree = (_short_align * _long_align) ** 0.5  # geometric mean
-                    _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
-                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
-                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
+                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _trend_agree
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
