@@ -579,9 +579,14 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
-                # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
-                if _sl_pressure >= 0.95:
-                    _exit_thresh = 1.0
+                # Architectural: smooth stop-loss exemption ramp replacing hard binary at 0.95.
+                # Original hard switch at _sl_pressure=0.95 forces _exit_thresh=1.0 — discontinuity
+                # creates a noise boundary (single bar oscillating across 0.95 toggles the
+                # protection bonus on/off). Smooth blend over [0.85, 0.95]: weight ramps 0->1
+                # as _sl_pressure approaches saturation, blending _exit_thresh toward 1.0.
+                # Continuous transition replacing binary regime switch.
+                _sl_exempt_w = max(0.0, min(1.0, (_sl_pressure - 0.85) / 0.10))
+                _exit_thresh = _exit_thresh * (1.0 - _sl_exempt_w) + 1.0 * _sl_exempt_w
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
