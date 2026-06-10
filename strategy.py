@@ -494,12 +494,12 @@ class Strategy:
                 # at peak ratios above 1.04, recovering raw revenue while keeping the
                 # bull-boosting smoothing in the [0.95, 1.04] band.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                if _pp_ratio <= 0.95:
-                    _pp_activation = 0.0
-                elif _pp_ratio >= 1.04:
-                    _pp_activation = 1.0
-                else:
-                    _pp_activation = (_pp_ratio - 0.95) / 0.09
+                # Architectural primitive substitution: smoothstep (cubic Hermite, C1
+                # continuous at both endpoints) replaces piecewise-linear pp_activation.
+                # Cubic 3t^2-2t^3 over [0.95, 1.04]*_pp_min has zero derivative at both
+                # endpoints (corners removed); same domain as piecewise; fewer LOC.
+                _pp_t = max(0.0, min(1.0, (_pp_ratio - 0.95) / 0.09))
+                _pp_activation = _pp_t * _pp_t * (3.0 - 2.0 * _pp_t)
                 # Architectural: absolute-giveback floor on pp_pressure. _giveback_ratio
                 # is purely relative — a tiny peak (just above _pp_min) with 22% giveback
                 # fires pp_pressure full strength even if absolute drop is only ~0.55%
