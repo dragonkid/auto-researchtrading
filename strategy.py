@@ -614,8 +614,17 @@ class Strategy:
                     # treated as zero — avoids cutting flip size when noise drives margin
                     # negative on legitimate but marginal flips.
                     _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
+                    # Architectural: chop-conditioned flip size attenuator. Flip win rates
+                    # are lowest in deep chop (sideways/rally have flip_wr ~13%, bull ~10%).
+                    # In deep chop where trend strength is low, the flip signal more often
+                    # represents noise than a real reversal. Smooth chop_gate (closes in
+                    # bull/crash where cooldown_trend_strength near 1) attenuates flip size
+                    # by up to 12% — protective in chop, neutral in trends. New cross-
+                    # component dependency: flip size reads cooldown_trend_strength.
+                    _flip_chop_gate = max(0.0, min(1.0, (0.4 - cooldown_trend_strength) / 0.25))
+                    _flip_chop_atten = 1.0 - 0.12 * _flip_chop_gate
                     _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
-                    target = (-size if current_pos > 0 else size) * _flip_frac
+                    target = (-size if current_pos > 0 else size) * _flip_frac * _flip_chop_atten
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
