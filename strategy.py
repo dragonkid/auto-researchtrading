@@ -424,19 +424,12 @@ class Strategy:
                 # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
-                # Architectural: 2-bar prior-pnl history for robust peak confirmation.
-                # Replace single-bar look-back with median of last 2 bars. Single noisy
-                # prior bar can mis-confirm a peak; median filters one outlier. New cross-
-                # bar dependency in peak-update gate.
-                _prev_hist = self._smoothed_pnl.get(symbol, [pos_pnl])
-                if not isinstance(_prev_hist, list):
-                    _prev_hist = [_prev_hist]
-                _prev_median = float(np.median(_prev_hist)) if len(_prev_hist) > 0 else pos_pnl
-                self._smoothed_pnl[symbol] = (_prev_hist + [pos_pnl])[-2:]
+                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
-                # pos_pnl >= median(last 2 bars) (rising bar, robust).
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_median:
+                # pos_pnl >= prev_pos_pnl (rising bar).
+                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
                 else:
                     self.peak_pnl[symbol] = _curr_peak
