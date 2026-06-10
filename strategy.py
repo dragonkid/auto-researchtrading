@@ -547,11 +547,21 @@ class Strategy:
                 # from noise-driven premature exits while letting losing scale-in exit
                 # normally (no protection — losing positions are noise-vulnerable too).
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
-                _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
+                # Architectural: smooth scale-in winning protection — replace binary
+                # gate (bars_held <= ENTRY_FULL_BARS AND pos_pnl > 0) with continuous
+                # pos_pnl-conditioned protection. The original binary gate creates a
+                # noise-discontinuity at pos_pnl=0: a position 0.001 above zero gets
+                # full +20% threshold protection, 0.001 below gets none. Smooth tanh
+                # on pos_pnl scaled to ~50bps gives gradual protection growth around
+                # the zero-pnl crossing — eliminates per-bar binary flip behavior in
+                # near-zero-pnl scale-in bars.
+                _scale_in_age = max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS)
+                _scale_in_pnl_w = 0.5 * (1.0 + np.tanh(pos_pnl / 0.005))   # in [0, 1]
+                _scale_in_protect = 0.20 * _scale_in_age * _scale_in_pnl_w
                 # Architectural: 2D vol-time exit_thresh modulator combined with scale-in winning protection
                 # via a single multiplicative form. _vt_factor ramps with low-vol AND mid-life.
                 _vt_factor = max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, 1.0 - abs((bars_held - 8.0) / 6.0)))
-                _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) * (1.0 + 0.10 * _vt_factor)
+                _exit_thresh = (1.0 + _scale_in_protect) * (1.0 + 0.10 * _vt_factor)
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
