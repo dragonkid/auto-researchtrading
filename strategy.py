@@ -557,10 +557,12 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: smooth ONLY the time-pressure component (slow structural).
-                # Slope/pp/sl pressures stay raw to preserve exit reactivity in crash/rally.
+                # Architectural: trend-conditioned EMA on time_pressure. Sideways needs
+                # fast time-exit (chop reverses quickly), trends benefit from smoothed
+                # time-pressure (avoid noise spikes triggering early time-exits).
+                _tp_alpha = 0.7 + 0.3 * (1.0 - rsi_trend_str)  # 0.7 trends, 1.0 sideways
                 _tp_prev = self._exit_press_ema.get(symbol, _time_pressure)
-                _tp_smooth = 0.7 * _time_pressure + 0.3 * _tp_prev
+                _tp_smooth = _tp_alpha * _time_pressure + (1.0 - _tp_alpha) * _tp_prev
                 self._exit_press_ema[symbol] = _tp_smooth
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _tp_smooth
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
