@@ -398,12 +398,15 @@ class Strategy:
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Branch step 13: step 6 form with sharper _ramp_attn_pnl scale (0.7*|STOP|).
-                    # Tighter pnl-tanh — winning bars pass through 0.5 sooner, losing scale-in
-                    # attenuates faster. Step 6 trend_agree preserved.
+                    # Branch step 14: restore ORIGINAL dual-window trend_agree, add EMA-cross
+                    # as an OR-fallback in the MAX of (geometric mean, vol-damped EMA-cross).
+                    # Reverts to dual-window baseline form but EMA-cross can boost when small.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.3)
-                    _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / (0.7 * abs(STOP_LOSS_PCT))))
+                    _short_align = max(0.0, np.tanh(ret_short * _pos_dir / 0.008))
+                    _long_align = max(0.0, np.tanh(ret_long * _pos_dir / 0.020))
+                    _ema_align = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.3)
+                    _trend_agree = max((_short_align * _long_align) ** 0.5, _ema_align)
+                    _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
