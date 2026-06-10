@@ -542,16 +542,8 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                # Vol-conditioned blend: smooth-form in low-vol (rally chop) where stability gain
-                # is largest; original max(0,...) form in high-vol (crash) where pp_pressure
-                # needs hard rapid response. Continuous interpolation via vol_ratio.
-                _smooth_blend = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))  # 1 at vol_ratio<=0.7, 0 at >=1.0
-                _w_slope_smooth = 0.15 * 0.5 * (1.0 - np.tanh(_pnl_scale * 1.5))
-                _w_slope_hard = 0.15 * max(0.0, -_pnl_scale)
-                _w_slope = (1.0 + _smooth_blend * _w_slope_smooth + (1.0 - _smooth_blend) * _w_slope_hard) * _scale_in_w
-                _w_pp_smooth = 0.20 * 0.5 * (1.0 + np.tanh(_pnl_scale * 1.5))
-                _w_pp_hard = 0.20 * max(0.0, _pnl_scale)
-                _w_pp = (1.0 + _smooth_blend * _w_pp_smooth + (1.0 - _smooth_blend) * _w_pp_hard) * _scale_in_w
+                _w_slope = (1.0 + 0.15 * 0.5 * (1.0 - np.tanh(_pnl_scale * 1.5))) * _scale_in_w  # smooth boundary at pos_pnl=0
+                _w_pp    = (1.0 + 0.10 * 0.5 * (1.0 + np.tanh(_pnl_scale * 1.5))) * _scale_in_w  # halved pp amplitude (was 0.20)
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
