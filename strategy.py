@@ -542,8 +542,8 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                _w_slope = (1.0 + 0.15 * 0.5 * (1.0 + np.tanh((-_pnl_scale - 0.3) * 3.0))) * _scale_in_w  # smooth shifted sigmoid: ~0 at pnl=0, full at pnl=loss
-                _w_pp    = (1.0 + 0.20 * 0.5 * (1.0 + np.tanh((_pnl_scale - 0.3) * 3.0))) * _scale_in_w  # smooth shifted sigmoid: ~0 at pnl=0, full at pnl=win
+                _w_slope = (1.0 + 0.15 * 0.5 * (1.0 + np.tanh((-_pnl_scale - 0.15) * 2.0))) * _scale_in_w  # smooth shifted sigmoid (mid)
+                _w_pp    = (1.0 + 0.20 * 0.5 * (1.0 + np.tanh((_pnl_scale - 0.15) * 2.0))) * _scale_in_w  # smooth shifted sigmoid (mid)
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
