@@ -460,6 +460,15 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Architectural: opp-conf cross-subsystem fusion on slope-pressure (mirrors
+                # the same fusion already applied to _pp_pressure). When opposite-side voter
+                # strong-sum is very weak (opp_ratio<0.3), slope-against is more likely noise
+                # (no voter-confirmation of reversal). One-sided -5% attenuation. New cross-
+                # subsystem dependency: slope-pressure now reads entry-voter evidence.
+                _slope_opp_strong = _bear_strong if current_pos > 0 else _bull_strong
+                _slope_opp_ratio = _slope_opp_strong / max(_strong_min, 1e-6)
+                _slope_opp_conf = 1.0 - 0.05 * max(0.0, min(1.0, (0.3 - _slope_opp_ratio) / 0.3))
+                _sl_slope_pressure = _sl_slope_pressure * _slope_opp_conf
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
