@@ -250,17 +250,7 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Architectural: smooth cooldown gate. Original binary in_cooldown becomes
-            # a continuous residual on cold-entry size. The flip path retains binary
-            # in_cooldown (flip is high-conviction reversal — should still be hard-gated).
-            # Cold-entry size attenuated up to 50% during cooldown residual; smoothly
-            # fades to no attenuation as cooldown elapses. Mechanism-orthogonal to
-            # pp_pressure: entry-side noise filter via size, not entry gate hard cut.
-            _cd_required = COOLDOWN_BARS * cooldown_trend_strength
-            _cd_elapsed = self.bar_count - self.exit_bar.get(symbol, -999)
-            _cooldown_residual = max(0.0, 1.0 - _cd_elapsed / max(1e-3, _cd_required))
-            in_cooldown = _cd_elapsed < _cd_required
-            _cooldown_atten = 1.0 - 0.5 * _cooldown_residual
+            in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -342,7 +332,7 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
-            if current_pos == 0:
+            if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -390,10 +380,10 @@ class Strategy:
                 _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * _bull_contest_atten * _cooldown_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _bull_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _ema_admit_e:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * _bear_contest_atten * _cooldown_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _bear_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
