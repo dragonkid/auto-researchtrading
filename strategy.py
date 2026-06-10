@@ -365,12 +365,22 @@ class Strategy:
                 # Filters single-bar conviction spikes; flip path is exempt (preserves latency).
                 _ema_admit_b = _bull_ema >= 0.50 * _bull_strong_min
                 _ema_admit_e = _bear_ema >= 0.50 * _bear_strong_min
+                # Architectural: opposite-side strong-sum contestation attenuator on cold entry size.
+                # When the OPPOSITE side has non-trivial strong-sum (>0.3*_strong_min), entry is
+                # contested — the new data dependency: SIZE on cold entry now depends on opposite
+                # voter aggregate (was independent before). Attenuator multiplicative in [0.92, 1.0],
+                # smooth tanh on opp-strong-ratio, one-sided (zero attenuation when opp near zero).
+                # Distinct from existing _opp_conf on _pp_pressure (that gates exit, this gates entry size).
+                _bull_opp_ratio = _bear_strong / max(_strong_min, 1e-6)
+                _bear_opp_ratio = _bull_strong / max(_strong_min, 1e-6)
+                _bull_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bull_opp_ratio - 0.3) / 0.3))
+                _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _bull_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _ema_admit_e:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _bear_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
