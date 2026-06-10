@@ -471,8 +471,9 @@ class Strategy:
                 # on (peak_pnl/_pp_min - 1.0), one-sided positive. Adds [0, 0.20] amplification
                 # to _giveback_ratio. New data dependency: giveback ratio scales with
                 # absolute profit magnitude not just relative giveback.
-                _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * np.tanh(_profit_magnitude / 0.7)) * (1.0 + 0.02 * np.tanh(_profit_magnitude))
+                _profit_magnitude = self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0
+                _pm_mag = 0.18 * (0.5 + 0.5 * min(1.0, vol_ratio))
+                _giveback_ratio = _giveback_ratio * (1.0 + _pm_mag * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
