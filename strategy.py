@@ -508,9 +508,7 @@ class Strategy:
                 # (low vol -> tighter floor 0.003, high vol -> wider 0.008). Continuous
                 # one-sided multiplier in [0.5, 1.0]. Cross-component fusion: pp_pressure
                 # now reads absolute drop magnitude AND relative ratio.
-                _abs_giveback_floor = 0.20 * _pp_min
-                _abs_gb_factor = 0.5 + 0.5 * max(0.0, min(1.0, np.tanh((_giveback - _abs_giveback_floor) / max(_abs_giveback_floor, 1e-6))))
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) * _abs_gb_factor
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
                 # Currently _pp_pressure fires on giveback alone — purely path-derived.
                 # Fuse with voter-subsystem evidence: when opposite-side strong-sum is
@@ -578,7 +576,14 @@ class Strategy:
                 # Architectural: 2D vol-time exit_thresh modulator combined with scale-in winning protection
                 # via a single multiplicative form. _vt_factor ramps with low-vol AND mid-life.
                 _vt_factor = max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, 1.0 - abs((bars_held - 8.0) / 6.0)))
-                _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) * (1.0 + 0.10 * _vt_factor)
+                # Architectural: noise-scale giveback exit-thresh bonus.
+                # When absolute giveback is below noise floor (vol-scaled), raise
+                # exit threshold smoothly. Distinct from pp_pressure attenuation:
+                # this delays the exit decision globally (covers slope/time too)
+                # rather than just pp_pressure. Continuous one-sided bonus [0, +0.08].
+                _abs_floor = 0.003 + 0.005 * min(1.0, vol_ratio)
+                _abs_thresh_bonus = 0.08 * max(0.0, min(1.0, (_abs_floor - _giveback) / max(_abs_floor, 1e-6)))
+                _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) * (1.0 + 0.10 * _vt_factor + _abs_thresh_bonus)
                 # Architectural: flip-origin exit-threshold protection. Positions that
                 # originated from a flip are higher-conviction reversals (passed both
                 # vote-count AND trend-sign AND opposite-side strong-min gates). Give
