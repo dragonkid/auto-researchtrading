@@ -476,7 +476,7 @@ class Strategy:
                 # absolute profit magnitude not just relative giveback.
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * np.tanh(_profit_magnitude / 0.7))
-                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio) + 0.10 * max(0.0, min(1.0, np.tanh((0.005 - _giveback) / 0.005)))
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
@@ -508,14 +508,7 @@ class Strategy:
                 # (low vol -> tighter floor 0.003, high vol -> wider 0.008). Continuous
                 # one-sided multiplier in [0.5, 1.0]. Cross-component fusion: pp_pressure
                 # now reads absolute drop magnitude AND relative ratio.
-                # Architectural: absolute-giveback BOOST on pp_pressure (one-sided positive).
-                # When abs giveback exceeds vol-scaled threshold, boost pp_pressure
-                # responsiveness. Continuous tanh, multiplicative factor [1.0, 1.15].
-                # Different from prior step: this is one-sided boost (never reduces
-                # pp_pressure), preserving baseline pp_pressure for marginal-win cases.
-                _abs_boost_thresh = 0.005 + 0.008 * min(1.0, vol_ratio)
-                _abs_gb_boost = 1.0 + 0.15 * max(0.0, min(1.0, np.tanh((_giveback - _abs_boost_thresh) / max(_abs_boost_thresh, 1e-6))))
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band))) * _abs_gb_boost
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 # Architectural: opposite-side strong-sum confirmation on _pp_pressure.
                 # Currently _pp_pressure fires on giveback alone — purely path-derived.
                 # Fuse with voter-subsystem evidence: when opposite-side strong-sum is
