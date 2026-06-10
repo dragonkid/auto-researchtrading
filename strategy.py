@@ -535,13 +535,17 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                # Architectural: scale-in-aware slope-pressure attenuator. During the first
-                # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
-                # to micro-noise on a position not yet at full size. Attenuate _w_slope
-                # smoothly with bars_held so slope-against pressure ramps up with position
-                # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
-                # and onward. New data dependency: slope-pressure weight on bars_held.
-                _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
+                # Architectural: vol-conditioned scale-in slope/pp attenuator.
+                # Original was bars_held-only linear ramp (0.5 -> 1.0 over ENTRY_FULL_BARS).
+                # New: scale-in floor scales with vol_ratio — calm regimes (rally/sideways)
+                # keep tight 0.5 floor (slope noise is biggest concern at scale-in there);
+                # high-vol regimes (crash) lift the floor toward 0.8 (slope-against during
+                # scale-in is more likely real reversal signal in cascading crash moves
+                # so attenuation should be lighter). Cross-component fusion: scale-in
+                # weight now reads vol_ratio, decoupling exit-pressure attenuation from
+                # pure-bars-held timing.
+                _scale_in_floor = 0.5 + 0.3 * min(1.0, vol_ratio)
+                _scale_in_w = _scale_in_floor + (1.0 - _scale_in_floor) * min(1.0, bars_held / ENTRY_FULL_BARS)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
