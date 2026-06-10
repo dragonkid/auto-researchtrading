@@ -576,6 +576,16 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
+                else:
+                    # Architectural: cold-entry maturation bonus. Symmetric to flip-age
+                    # protection but smaller magnitude (0.08 vs 0.15) and shorter decay
+                    # (2 bars vs 3). Protects fresh cold entries from noise-driven exits
+                    # during the early bars when slope can transiently oppose direction
+                    # before the position commits. Distinct from _scale_in_winning (which
+                    # only protects winning scale-ins). New control-flow path differentiating
+                    # fresh-cold-entry from mature cold positions.
+                    _cold_age_decay = max(0.0, 1.0 - bars_held / 2.0)
+                    _exit_thresh = _exit_thresh + 0.08 * _cold_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
