@@ -186,7 +186,13 @@ class Strategy:
             # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
             # 0/1 except in a narrow band around the threshold where it transitions smoothly. Keeps original
             # vote-count semantics (sum stays in [0, 6]) while reducing flip-rate near boundaries.
-            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
+            # Architectural: smooth ret_long sign on RSI threshold bias.
+            # Original hard sign switch (-1 if ret_long>0 else 1) is a binary
+            # discontinuity at ret_long=0 — a noise-flip boundary. Replace with
+            # tanh(ret_long/0.005) which is ~±1 for |ret_long|>0.01 (real trends)
+            # but smoothly interpolates through zero to remove the noise boundary.
+            _rsi_dir_soft = -np.tanh(ret_long / 0.005)
+            _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * _rsi_dir_soft
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
             _voter_signals_bull = [
