@@ -542,16 +542,12 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                # Vol-conditioned blend: smooth-form in low-vol (rally chop) where stability gain
-                # is largest; original max(0,...) form in high-vol (crash) where pp_pressure
-                # needs hard rapid response. Continuous interpolation via vol_ratio.
-                _smooth_blend = max(0.0, min(1.0, (1.4 - vol_ratio) / 0.5))  # full smooth for vol<=0.9, fades 0.9-1.4
-                _w_slope_smooth = 0.15 * 0.5 * (1.0 - np.tanh(_pnl_scale * 1.5))
-                _w_slope_hard = 0.15 * max(0.0, -_pnl_scale)
-                _w_slope = (1.0 + _smooth_blend * _w_slope_smooth + (1.0 - _smooth_blend) * _w_slope_hard) * _scale_in_w
-                _w_pp_smooth = 0.20 * 0.5 * (1.0 + np.tanh(_pnl_scale * 1.5))
-                _w_pp_hard = 0.20 * max(0.0, _pnl_scale)
-                _w_pp = (1.0 + _smooth_blend * _w_pp_smooth + (1.0 - _smooth_blend) * _w_pp_hard) * _scale_in_w
+                # Smooth form (step 1) but with smaller _w_pp magnitude in low-vol
+                # to protect rally pullbacks. _w_pp baseline keeps full 0.20 in high-vol
+                # (crash needs aggressive trailing). Continuous tanh on vol_ratio.
+                _pp_amp = 0.10 + 0.10 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))  # 0.10 in calm, 0.20 in choppy
+                _w_slope = (1.0 + 0.15 * 0.5 * (1.0 - np.tanh(_pnl_scale * 1.5))) * _scale_in_w
+                _w_pp    = (1.0 + _pp_amp * 0.5 * (1.0 + np.tanh(_pnl_scale * 1.5))) * _scale_in_w
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
