@@ -398,12 +398,11 @@ class Strategy:
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Branch step 11: max of EMA-cross alignment (vol-damped) and triple_agree.
-                    # _triple_agree was computed earlier (line ~314) and equals
-                    # max(0, _ea_sign_soft * _rl_sign_soft) — both EMA slope and ret_long agree.
-                    # Use as fallback signal when EMA-cross magnitude is small but trend exists.
+                    # Branch step 6: revert to step 1 threshold (0.0008) and apply vol-damp.
+                    # Step 1 form preserved at threshold; multiply _trend_agree by min(1, vol_ratio**0.3)
+                    # — calmer regimes use less trend_agree boost, letting _ramp_attn_pnl dominate.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _trend_agree = max(max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.3), _triple_agree * 0.5)
+                    _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.35)
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
