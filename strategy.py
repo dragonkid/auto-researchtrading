@@ -398,14 +398,12 @@ class Strategy:
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Branch step 4: weighted average of EMA-cross and dual-window returns.
-                    # Replace MAX (step 2) with 0.5/0.5 weighted sum — EITHER signal contributes
-                    # to scale-in confidence proportionally, neither dominates.
+                    # Branch step 5: EMA-cross with more permissive threshold (0.0004 vs 0.0008).
+                    # Step 1 form preserved (LOC parity opener); finer threshold means smaller
+                    # EMA cross magnitudes count as agreement — recovers non-bull regimes where
+                    # cross magnitude may be small in chop.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _short_align = max(0.0, np.tanh(ret_short * _pos_dir / 0.008))
-                    _long_align = max(0.0, np.tanh(ret_long * _pos_dir / 0.020))
-                    _ema_align = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008)))
-                    _trend_agree = 0.5 * _ema_align + 0.5 * (_short_align * _long_align) ** 0.5
+                    _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0004)))
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
