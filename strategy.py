@@ -230,11 +230,16 @@ class Strategy:
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
-            # EMA-of-strong-sum (alpha=0.5, span~3) — recent-buildup signal.
+            # EMA-of-strong-sum — vol-conditioned alpha (faster in calm, slower in choppy).
+            # alpha = 0.65 - 0.30 * tanh((vol_ratio-1)/0.5), bounded [0.35, 0.65].
+            # Calm regimes (vol_ratio<<1) -> alpha~0.65 (span~2, fast adapt to true buildups).
+            # Choppy regimes (vol_ratio>>1) -> alpha~0.35 (span~5, more smoothing).
+            # New cross-bar dependency: EMA adaptation pace conditioned on vol regime.
             _bull_ema_prev = self._bull_strong_ema.get(symbol, _bull_strong)
             _bear_ema_prev = self._bear_strong_ema.get(symbol, _bear_strong)
-            _bull_ema = 0.5 * _bull_strong + 0.5 * _bull_ema_prev
-            _bear_ema = 0.5 * _bear_strong + 0.5 * _bear_ema_prev
+            _ema_alpha = 0.65 - 0.30 * np.tanh((vol_ratio - 1.0) / 0.5)
+            _bull_ema = _ema_alpha * _bull_strong + (1.0 - _ema_alpha) * _bull_ema_prev
+            _bear_ema = _ema_alpha * _bear_strong + (1.0 - _ema_alpha) * _bear_ema_prev
             self._bull_strong_ema[symbol] = _bull_ema
             self._bear_strong_ema[symbol] = _bear_ema
             # Conviction margins (relative excess of strong-sum over its admission threshold).
