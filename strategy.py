@@ -378,20 +378,12 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_strong_min, 1e-6)
                 _bull_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bull_opp_ratio - 0.3) / 0.3))
                 _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
-                # Architectural: slope-magnitude entry-size attenuator. New data dependency
-                # on |_lr.slope| at the cold-entry size decision. When slope magnitude is
-                # below 0.0001 (deep chop, signal-poor regime), attenuate entry size up to
-                # 8% via smooth tanh. Distinct from _confluence_adj which only adjusts
-                # first-bar fraction; this scales the FULL target size for the cold entry.
-                # Orthogonal to vol_ratio (which measures dispersion magnitude, not slope
-                # alignment) and to ER (path efficiency, not slope strength).
-                _slope_mag_atten = 1.0 - 0.08 * max(0.0, np.tanh((0.0001 - abs(_lr.slope)) / 0.0001))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * _bull_contest_atten * _slope_mag_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * _bull_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _ema_admit_e:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * _bear_contest_atten * _slope_mag_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * _bear_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
