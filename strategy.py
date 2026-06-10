@@ -557,7 +557,11 @@ class Strategy:
                 # near-zero-pnl scale-in bars.
                 _scale_in_age = max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS)
                 _scale_in_pnl_w = 0.5 * (1.0 + np.tanh(pos_pnl / 0.012))   # in [0, 1]
-                _scale_in_protect = 0.20 * _scale_in_age * _scale_in_pnl_w
+                # Slope-confirmation gate: protection active only when exit-slope agrees with
+                # position direction. Disagreement signals genuine reversal, not micro-noise —
+                # protection should not delay exit in those bars. Smooth gate via tanh.
+                _scale_in_slope_gate = 0.5 * (1.0 + np.tanh((_exit_slope * (1.0 if current_pos > 0 else -1.0)) / 0.0006))
+                _scale_in_protect = 0.25 * _scale_in_age * _scale_in_pnl_w * _scale_in_slope_gate
                 # Architectural: 2D vol-time exit_thresh modulator combined with scale-in winning protection
                 # via a single multiplicative form. _vt_factor ramps with low-vol AND mid-life.
                 _vt_factor = max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, 1.0 - abs((bars_held - 8.0) / 6.0)))
