@@ -557,7 +557,7 @@ class Strategy:
                 # pure-bars-held timing.
                 _scale_in_floor = 0.5 + 0.3 * min(1.0, vol_ratio)
                 _scale_in_w = _scale_in_floor + (1.0 - _scale_in_floor) * min(1.0, bars_held / ENTRY_FULL_BARS)
-                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w * (1.0 + 0.10 * (_slope_agree - 0.5))  # heavier in loss, lighter during scale-in, agreement-modulated
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
