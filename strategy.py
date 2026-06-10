@@ -557,8 +557,7 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _pp_alpha = 0.92 + 0.08 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.3))  # 0.92 calm, 1.0 crash (lighter smoothing magnitude)
-                self._exit_press_ema[symbol] = _pp_smooth = _pp_alpha * _pp_pressure + (1.0 - _pp_alpha) * self._exit_press_ema.get(symbol, _pp_pressure)
+                self._exit_press_ema[symbol] = _pp_smooth = (0.85 + 0.15 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.3))) * _pp_pressure + (1.0 - 0.85 - 0.15 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.3))) * self._exit_press_ema.get(symbol, _pp_pressure)
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_smooth + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
