@@ -398,15 +398,14 @@ class Strategy:
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Branch step 11: max of EMA-cross alignment (vol-damped) and triple_agree.
-                    # _triple_agree was computed earlier (line ~314) and equals
-                    # max(0, _ea_sign_soft * _rl_sign_soft) — both EMA slope and ret_long agree.
-                    # Use as fallback signal when EMA-cross magnitude is small but trend exists.
+                    # Branch step 12: step 6 trend_agree, replace blend with MAX.
+                    # Step 6 _trend_agree (best AST) but blend = max(trend_agree, ramp_attn_pnl)
+                    # — either signal commits to scale-in fully, no weighted attenuation.
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _trend_agree = max(max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.3), _triple_agree * 0.5)
+                    _trend_agree = max(0.0, np.tanh((_ef - _es) * _pos_dir / (mid * 0.0008))) * min(1.0, vol_ratio ** 0.3)
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
-                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    # MAX blend: scale-in proceeds when EITHER trend_agrees OR pnl is winning.
+                    _ramp_attn = max(_trend_agree, _ramp_attn_pnl)
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
