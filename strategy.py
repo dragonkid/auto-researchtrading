@@ -123,6 +123,11 @@ class Strategy:
         # buildup of strong-side conviction (not just current-bar spike). Flip
         # path is exempt (preserves single-bar reversal latency).
         self._bull_strong_ema, self._bear_strong_ema = {}, {}
+        # Architectural: EMA-smoothed exit_pressure (alpha=0.6, span~2.3).
+        # Single-bar exit_pressure spikes from noise can fire the exit gate;
+        # smoothing requires sustained pressure across bars. Stop-loss saturation
+        # bypass keeps fast-loss protection (no smoothing on real adverse moves).
+        self._exit_press_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -579,7 +584,13 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if _exit_pressure >= _exit_thresh and target != 0:
+                # Architectural: EMA-smoothed exit_pressure (alpha=0.6) requires sustained
+                # pressure across bars. Stop-loss saturation bypasses smoothing for fast-loss.
+                _ep_prev = self._exit_press_ema.get(symbol, _exit_pressure)
+                _ep_smooth = 0.6 * _exit_pressure + 0.4 * _ep_prev
+                self._exit_press_ema[symbol] = _ep_smooth
+                _gate_pressure = _exit_pressure if _sl_pressure >= 0.95 else _ep_smooth
+                if _gate_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
@@ -608,7 +619,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._exit_press_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
