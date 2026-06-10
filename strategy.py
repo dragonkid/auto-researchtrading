@@ -584,13 +584,10 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                # Architectural: trend-conditioned EMA-smoothed exit_pressure. In trending
-                # regimes (high rsi_trend_str), smoothing alpha=0.6 (sustained pressure
-                # requirement reduces noise-driven flips). In sideways/chop (low rsi_trend_str),
-                # alpha→1.0 (no smoothing, preserves fast mean-reversion exits to control DD).
-                _ep_alpha = 0.6 + 0.4 * (1.0 - rsi_trend_str)
+                # Architectural: light EMA smoothing (alpha=0.85, 15% prior) on exit_pressure.
+                # Reduces single-bar noise spikes while keeping reactivity for trend exits.
                 _ep_prev = self._exit_press_ema.get(symbol, _exit_pressure)
-                _ep_smooth = _ep_alpha * _exit_pressure + (1.0 - _ep_alpha) * _ep_prev
+                _ep_smooth = 0.85 * _exit_pressure + 0.15 * _ep_prev
                 self._exit_press_ema[symbol] = _ep_smooth
                 _gate_pressure = _exit_pressure if _sl_pressure >= 0.95 else _ep_smooth
                 if _gate_pressure >= _exit_thresh and target != 0:
