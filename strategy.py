@@ -419,19 +419,18 @@ class Strategy:
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
-                # Architectural: EMA-smoothed peak input WITH binary rising-bar gate.
-                # Hybrid: smoothing (alpha=0.7) filters single-bar spikes from peak input,
-                # but the binary "ema rising" gate (ema_pnl >= prev_ema_pnl) prevents the
-                # peak from anchoring on momentary EMA surges. Combines noise-immunity
-                # of EMA smoothing with timely peak-locking of confirmed-rising rule.
+                # Architectural: vol-conditioned EMA-smoothed peak update.
+                # Alpha scales with vol_ratio: low vol -> alpha=0.9 (fast tracking,
+                # tight chop giveback); high vol -> alpha=0.6 (more smoothing,
+                # preserves crash benefit). Continuous interpolation over vol_ratio
+                # band [0.5, 1.2]. Single-bar spikes still filtered; smooth alpha
+                # transition avoids regime-switch boundary.
                 _prev_ema_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                _ema_pnl = 0.7 * pos_pnl + 0.3 * _prev_ema_pnl
+                _peak_alpha = 0.85 - 0.15 * max(0.0, min(1.0, (vol_ratio - 0.5) / 0.7))
+                _ema_pnl = _peak_alpha * pos_pnl + (1.0 - _peak_alpha) * _prev_ema_pnl
                 self._smoothed_pnl[symbol] = _ema_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                if _ema_pnl > _curr_peak and _ema_pnl >= _prev_ema_pnl:
-                    self.peak_pnl[symbol] = _ema_pnl
-                else:
-                    self.peak_pnl[symbol] = _curr_peak
+                self.peak_pnl[symbol] = max(_curr_peak, _ema_pnl)
 
                 # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
                 # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
