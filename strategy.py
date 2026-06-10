@@ -118,11 +118,6 @@ class Strategy:
         # opposite-side strong-min admission). Used in exit logic to give flips
         # extra maturation time before the exit-pressure gate can fire.
         self._from_flip = {}
-        # Architectural: per-symbol EMA-of-strong-sum buffers (alpha=0.5, span~3).
-        # Used as a SECONDARY admission gate on cold entry path: requires recent
-        # buildup of strong-side conviction (not just current-bar spike). Flip
-        # path is exempt (preserves single-bar reversal latency).
-        self._bull_strong_ema, self._bear_strong_ema = {}, {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -233,13 +228,6 @@ class Strategy:
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
-            # EMA-of-strong-sum (alpha=0.5, span~3) — recent-buildup signal.
-            _bull_ema_prev = self._bull_strong_ema.get(symbol, _bull_strong)
-            _bear_ema_prev = self._bear_strong_ema.get(symbol, _bear_strong)
-            _bull_ema = 0.5 * _bull_strong + 0.5 * _bull_ema_prev
-            _bear_ema = 0.5 * _bear_strong + 0.5 * _bear_ema_prev
-            self._bull_strong_ema[symbol] = _bull_ema
-            self._bear_strong_ema[symbol] = _bear_ema
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -363,11 +351,6 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: EMA-of-strong-sum secondary admission gate (cold-entry only).
-                # Require recent buildup (EMA >= 0.50*_strong_min) IN ADDITION to current bar.
-                # Filters single-bar conviction spikes; flip path is exempt (preserves latency).
-                _ema_admit_b = _bull_ema >= 0.50 * _bull_strong_min
-                _ema_admit_e = _bear_ema >= 0.50 * _bear_strong_min
                 # Architectural: opposite-side strong-sum contestation attenuator on cold entry size.
                 # When the OPPOSITE side has non-trivial strong-sum (>0.3*_strong_min), entry is
                 # contested — the new data dependency: SIZE on cold entry now depends on opposite
@@ -378,10 +361,10 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_strong_min, 1e-6)
                 _bull_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bull_opp_ratio - 0.3) / 0.3))
                 _bear_contest_atten = 1.0 - 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.3) / 0.3))
-                if _bull_strong >= _bull_strong_min and _bull_admit and _ema_admit_b:
+                if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
                     target = size * _bull_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _ema_admit_e:
+                elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
                     target = -size * _bear_contest_atten * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
