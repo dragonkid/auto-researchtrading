@@ -123,6 +123,11 @@ class Strategy:
         # buildup of strong-side conviction (not just current-bar spike). Flip
         # path is exempt (preserves single-bar reversal latency).
         self._bull_strong_ema, self._bear_strong_ema = {}, {}
+        # Architectural: post-exit reentry-guard state. Tracks last exit price + dir
+        # per symbol. Cold-entry path tightens _strong_min when proposed entry is in
+        # SAME direction as recent exit AND price is close to that exit price (noise
+        # reentry). New cross-trade state dependency on entry admission.
+        self._last_exit_price, self._last_exit_dir = {}, {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -230,6 +235,20 @@ class Strategy:
             _bear_prior_ratio = sum(min(1.0, s / max(_strong_min, 1e-6)) for s in _eh) / 2.0 if len(_eh) == 2 else 1.0
             _bull_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bull_prior_ratio))
             _bear_strong_min = _strong_min * (1.0 + 0.10 * max(0.0, 1.0 - _bear_prior_ratio))
+            # Architectural: post-exit reentry-guard tightener. If proposed direction
+            # matches a recent exit AND price is within ~0.5% of that exit price, the
+            # entry is likely noise re-entry (we exited noise then re-firing on noise).
+            # Tighten strong_min by up to +0.10 via smooth tanh on price-proximity.
+            # One-sided: only tighten when same-dir AND close-to-exit-price. Cross-trade
+            # state dependency (last exit price/dir from previous trade closure).
+            _lep = self._last_exit_price.get(symbol, None)
+            _led = self._last_exit_dir.get(symbol, 0)
+            if _lep is not None and _lep > 0:
+                _price_prox = 1.0 - min(1.0, abs(mid - _lep) / (_lep * 0.005))
+                if _led > 0:
+                    _bull_strong_min = _bull_strong_min * (1.0 + 0.10 * max(0.0, _price_prox))
+                elif _led < 0:
+                    _bear_strong_min = _bear_strong_min * (1.0 + 0.10 * max(0.0, _price_prox))
             # Update history (always) — buffer of length 2.
             self._bull_strong_hist[symbol] = (_bh + [_bull_strong])[-2:]
             self._bear_strong_hist[symbol] = (_eh + [_bear_strong])[-2:]
@@ -630,6 +649,9 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    # Capture last exit price/dir BEFORE wiping entry state.
+                    self._last_exit_price[symbol] = mid
+                    self._last_exit_dir[symbol] = 1 if current_pos > 0 else -1
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
