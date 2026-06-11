@@ -517,7 +517,11 @@ class Strategy:
                 # multiplier on _pp_pressure. If opposite-side has zero conviction, pp
                 # damped to 70%; at parity with admission threshold, full pp. New cross-
                 # subsystem fusion: exit (giveback) gated by entry (voter strong-sum).
-                _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
+                # Architectural: read EMA-of-opp-strong (smoothed persistence signal)
+                # rather than current-bar opp_strong. Decouples pp_pressure damper from
+                # single-bar voter noise; uses the multi-bar buildup signal already
+                # tracked for cold-entry secondary admission.
+                _opp_strong = _bear_ema if current_pos > 0 else _bull_ema
                 _opp_ratio = _opp_strong / max(_strong_min, 1e-6)
                 _opp_conf = 1.0 - 0.05 * max(0.0, min(1.0, (0.3 - _opp_ratio) / 0.3))
                 _pp_pressure = _pp_raw * _pp_activation * _opp_conf
