@@ -535,7 +535,13 @@ class Strategy:
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Architectural primitive substitution: smoothstep (cubic Hermite, C1
+                # continuous) replaces piecewise-linear time_pressure ramp. 4-bar window
+                # in bar-space — narrow band similar to pp_activation keep where smoothstep
+                # held. Removes corner-kink at ramp endpoints (bars_held=_max_hold-3 and
+                # bars_held=_max_hold+1) which are noise-sensitive boundaries.
+                _tp_t = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                _time_pressure = _tp_t * _tp_t * (3.0 - 2.0 * _tp_t)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
