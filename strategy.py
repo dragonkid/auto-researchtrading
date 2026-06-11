@@ -564,16 +564,12 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: decouple stop-loss from the additive soft-exit sum.
-                # SL retains its hard exemption (line below: if _sl_pressure>=0.95, force
-                # _exit_thresh=1.0). Removing _sl_pressure from the sum makes the additive
-                # exit_pressure a pure 'soft exit' composite (slope+pp+time) — three
-                # path-derived signals — while SL operates as a separate hard gate. This
-                # decouples the noise sensitivity of SL band middle from soft-exit decisions
-                # in winning positions where SL pressure is below the exemption but still
-                # contributing to additive sum. Less correlated noise between protective
-                # (SL) and discretionary (slope/pp/time) channels.
-                _exit_pressure = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: damped SL mid-band contribution (0.4x weight) to recover
+                # sideways stab while preserving raw gain from decoupling. SL exemption
+                # (>=0.95) still operates as hard exit. The mid-band SL contribution helps
+                # discriminate losing positions but at reduced weight so SL band middle
+                # noise doesn't dominate soft-exit decisions.
+                _exit_pressure = 0.4 * _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
