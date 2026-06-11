@@ -216,17 +216,6 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
-            # Architectural: voter-EMA-spread tightener on _strong_min. When the
-            # smoothed bull/bear strong-sums are close (split voters, no clear winner),
-            # tighten admission threshold by up to +0.15. Uses already-tracked
-            # _bull_strong_ema / _bear_strong_ema (NOTE: read from prior-bar values
-            # before update to avoid using same-bar information leak — see below).
-            # Smooth tanh on (1 - spread/_strong_min) one-sided positive. Decouples
-            # admission threshold from a single rsi_trend_str primitive: now reads
-            # multi-bar voter agreement state.
-            _ema_spread_prev = abs(self._bull_strong_ema.get(symbol, 0.0) - self._bear_strong_ema.get(symbol, 0.0))
-            _split_factor = max(0.0, np.tanh((1.0 - _ema_spread_prev / max(_strong_min, 1e-6)) / 0.4))
-            _strong_min = _strong_min + 0.15 * _split_factor
 
             # Architectural: isolated-spike penalty on entry threshold.
             # Track last 2 bars of strong-side firings; if current strong-sum crossed
