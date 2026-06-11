@@ -574,10 +574,7 @@ class Strategy:
                 # over 12 bars. Cross-subsystem fusion: exit timing reads entry conviction.
                 _ec = self._entry_conv.get(symbol, 0.0)
                 _ec_decay = max(0.0, 1.0 - bars_held / 12.0)
-                # Pnl gate: attenuate only when position not yet in clear profit.
-                # tanh(-pnl_scale + 0.3) sharpens around modest profit threshold.
-                _ec_pnl_gate = 0.5 * (1.0 + np.tanh((-_pnl_scale + 0.3) * 2.0))
-                _ec_atten = 0.10 * np.tanh(max(0.0, _ec) / 0.30) * _ec_decay * _ec_pnl_gate
+                _ec_atten = 0.10 * np.tanh(max(0.0, _ec) / 0.30) * _ec_decay
                 _w_time  = (1.0 + 0.20 * max(0.0, _pnl_scale)) * (1.0 - _ec_atten)         # [-1,1] -> [1.0, 1.2], minus conviction discount
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
