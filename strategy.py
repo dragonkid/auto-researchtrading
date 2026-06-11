@@ -573,11 +573,8 @@ class Strategy:
                 # _entry_conv stored at entry bar (max of bull/bear margin). Decays linearly
                 # over 12 bars. Cross-subsystem fusion: exit timing reads entry conviction.
                 _ec = self._entry_conv.get(symbol, 0.0)
-                # Step 1 form restored: decay=12, magnitude=0.10. Add sl_pressure
-                # exemption: skip attenuation when stop-loss is firing (loss cutting
-                # should not be delayed by entry-conviction extending the hold).
                 _ec_decay = max(0.0, 1.0 - bars_held / 12.0)
-                _ec_atten = 0.10 * np.tanh(max(0.0, _ec) / 0.30) * _ec_decay * (1.0 - _sl_pressure)
+                _ec_atten = 0.10 * np.tanh(max(0.0, _ec) / 0.30) * _ec_decay
                 _w_time  = (1.0 + 0.20 * max(0.0, _pnl_scale)) * (1.0 - _ec_atten)         # [-1,1] -> [1.0, 1.2], minus conviction discount
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
