@@ -569,7 +569,7 @@ class Strategy:
                 # (>=0.95) still operates as hard exit. The mid-band SL contribution helps
                 # discriminate losing positions but at reduced weight so SL band middle
                 # noise doesn't dominate soft-exit decisions.
-                _exit_pressure = 0.7 * _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                _exit_pressure = 0.55 * _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
