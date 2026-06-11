@@ -553,6 +553,18 @@ class Strategy:
                 # weight now reads vol_ratio, decoupling exit-pressure attenuation from
                 # pure-bars-held timing.
                 _scale_in_floor = 0.5 + 0.3 * min(1.0, vol_ratio)
+                # Architectural: VOLUME-conditioned scale-in floor lift (orthogonal data).
+                # Volume is a NEW data source for the scale-in attenuator (currently unused
+                # in scale-in subsystem — only used in vol_confirm_mult at entry sizing).
+                # When current-bar volume is below 12-bar median (low-conviction flow),
+                # lift _scale_in_floor by up to +0.10 — exit pressures (slope/pp) get
+                # closer to full strength on weak-flow scale-in bars. Smooth tanh on
+                # log-volume z-score; one-sided (only LIFT floor, never lower it). New
+                # data dependency: scale-in attenuator reads volume divergence.
+                _vol_window = bd.history["volume"].values[-12:]
+                _vol_med = max(np.median(_vol_window), 1e-6)
+                _vol_z = np.log(max(bd.history["volume"].values[-1], 1e-6) / _vol_med)
+                _scale_in_floor = _scale_in_floor + 0.10 * max(0.0, np.tanh(-_vol_z / 0.5))
                 _scale_in_w = _scale_in_floor + (1.0 - _scale_in_floor) * min(1.0, bars_held / ENTRY_FULL_BARS)
                 _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
