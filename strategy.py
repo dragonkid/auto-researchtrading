@@ -330,7 +330,20 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: extreme-stretch entry attenuator (z-score band primitive).
+            # New orthogonal data: 20-bar close cross-sectional dispersion (std). z-score
+            # = (close - mean) / std measures how stretched price is relative to its own
+            # short history. |z|>2 = mean-reversion risk elevated (entry into extreme
+            # excursion). One-sided suppression: only attenuates when |z|>1.6, smooth
+            # tanh ramp, max -0.04. Voters use returns/slopes (path-derived); band
+            # position is cross-sectional dispersion (orthogonal). New entry-size data
+            # dependency on close std band, not previously read.
+            _bb_n = 20
+            _bb_mean = float(np.mean(closes[-_bb_n:]))
+            _bb_std = max(float(np.std(closes[-_bb_n:])), 1e-10)
+            _bb_z = abs(mid - _bb_mean) / _bb_std
+            _bb_adj = -0.04 * max(0.0, np.tanh((_bb_z - 1.6) / 0.6))
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _bb_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
