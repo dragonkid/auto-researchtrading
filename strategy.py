@@ -600,16 +600,7 @@ class Strategy:
                 # New cross-component fusion: flip GATE depends on cooldown_trend_strength.
                 _flip_chop_gate = max(0.0, min(1.0, (0.4 - cooldown_trend_strength) / 0.25))
                 _flip_min_eff = FLIP_MIN_VOTES + 0.15 * _flip_chop_gate
-                # Architectural: smooth trend-sign admission on flip path, mirroring
-                # cold-entry _bull_admit/_bear_admit. Original binary trend_avg<0 at exact
-                # zero is a noise-flippable boundary. Replace with margin-conditioned
-                # admission: high opposite-margin conviction softens the trend requirement
-                # (allows flip even with small wrong-sign trend), capped at TREND_GATE_DEADZONE.
-                # New cross-subsystem fusion at the flip gate (margin-of-strong-sum into
-                # trend-sign decision), mirroring the existing cold-entry structure.
-                _flip_bear_admit = trend_avg < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and trend_avg < TREND_GATE_DEADZONE
-                _flip_bull_admit = trend_avg > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and trend_avg > -TREND_GATE_DEADZONE
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and _flip_bear_admit) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and _flip_bull_admit)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= _flip_min_eff and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= _flip_min_eff and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
