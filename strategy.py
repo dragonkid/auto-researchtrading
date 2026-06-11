@@ -570,6 +570,23 @@ class Strategy:
                 # discriminate losing positions but at reduced weight so SL band middle
                 # noise doesn't dominate soft-exit decisions.
                 _exit_pressure = 0.55 * _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: lone-source consensus damper on mature positions.
+                # Counts soft-fired soft sources (slope/pp/time each >0.5 via tanh) and
+                # damps _exit_pressure when only ONE source is firing strongly AND the
+                # position is mature (bars_held>=5). Single-source firings on mature
+                # positions are noise-prone (a stale slope flip, transient giveback,
+                # time pressure ramping alone). Multi-source firings are real reversals.
+                # SL exemption already overrides this (kept exit on hard adverse moves).
+                # New control flow: exit_pressure post-multiplied by lone-source factor.
+                _c_slope = 0.5 * (1.0 + np.tanh((_sl_slope_pressure - 0.5) / 0.10))
+                _c_pp    = 0.5 * (1.0 + np.tanh((_pp_pressure - 0.5) / 0.10))
+                _c_time  = 0.5 * (1.0 + np.tanh((_time_pressure - 0.5) / 0.10))
+                _c_count = _c_slope + _c_pp + _c_time
+                _mature_gate = max(0.0, min(1.0, (bars_held - 5.0) / 3.0))
+                # lone-source factor: 1 when count<=1 (lone), 0 when count>=1.5 (consensus), smooth between
+                _lone_factor = max(0.0, min(1.0, (1.5 - _c_count) / 0.5))
+                _consensus_mult = 1.0 - 0.08 * _mature_gate * _lone_factor
+                _exit_pressure = _exit_pressure * _consensus_mult
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
