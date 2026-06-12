@@ -1,2 +1,3 @@
 commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
 47355ae	8.22	8.97	2.08	12.16	9.37	6.63	7.72	keep	BASELINE (score-v5): momentum_voting with flip_streak_gate. min_stab=0.762. raw_composite=11.22.
+185bdbf	8.22	8.98	2.08	12.16	9.37	6.65	7.72	discard	exp: profit-state gated flip strong-min (architectural) — gate had near-zero effect; raw -0.0003, stab -0.001
