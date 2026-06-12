@@ -640,9 +640,10 @@ def compute_score(result: BacktestResult) -> float:
     if result.max_drawdown_pct > 95.0:
         return -999.0
 
-    # Sharpe score: tanh mapping that preserves sign and has gradient everywhere
-    # sharpe=-3 → ~-0.95, sharpe=0 → 0, sharpe=1 → ~0.76, sharpe=3 → ~0.995
-    sharpe_score = math.tanh(result.sharpe)
+    # Sharpe score: bounded linear mapping that preserves gradient at extremes
+    # sharpe / (1 + |sharpe|): maps to (-1, +1) but decays slower than tanh
+    # sharpe=-3 → -0.75, sharpe=-1 → -0.50, sharpe=0 → 0, sharpe=1 → 0.50, sharpe=3 → 0.75
+    sharpe_score = result.sharpe / (1.0 + abs(result.sharpe))
 
     # Gates only apply when Sharpe is positive (reward dimension).
     # When Sharpe is negative, gates would REDUCE the absolute penalty

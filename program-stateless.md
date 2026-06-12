@@ -165,7 +165,8 @@ Legacy rows (6 columns) may remain in the file for historical reference but are 
 Each regime is scored via `compute_score()`, then combined:
 
 ```
-score = tanh(sharpe) × dd_gate × turnover_gate  (only when sharpe > 0; otherwise score = tanh(sharpe))
+score = sharpe_score × dd_gate × turnover_gate  (only when sharpe > 0; otherwise score = sharpe_score)
+sharpe_score = sharpe / (1 + |sharpe|)
 
 dd_gate = 1 / (1 + MaxDD% / 100)
 turnover_gate = 1 / (1 + trades_per_day / 10)
@@ -176,7 +177,7 @@ Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bo
 Simplicity bonus = max(0, (575 - effective_LOC)) * 0.001   # reward shorter strategy.py
 ```
 
-The `tanh(sharpe)` maps Sharpe ratio to (-1, +1) with smooth gradient everywhere — negative Sharpe produces negative scores, enabling optimization from deeply-negative territory.
+The `sharpe / (1 + |sharpe|)` maps Sharpe ratio to (-1, +1) with smooth gradient everywhere and no saturation at extremes — negative Sharpe produces negative scores with preserved differentiation.
 When Sharpe is negative, score = tanh(sharpe) directly (gates skipped to avoid reverse incentive).
 When Sharpe is positive, gates apply: `dd_gate` penalizes drawdown, `turnover_gate` penalizes trading frequency.
 The composite rewards strategies that perform **consistently across all market conditions**.
