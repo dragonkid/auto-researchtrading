@@ -200,7 +200,7 @@ class Strategy:
             # (~0.04% per 8h funding cycle, modest positioning bias). Continuous tanh on
             # (-fund - thresh) for bull side (low/negative funding favors longs).
             _funding_arr = bd.history["funding_rate"].values
-            _funding_mean = np.mean(_funding_arr[-8:])
+            _funding_mean = np.mean(_funding_arr[-24:])
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
