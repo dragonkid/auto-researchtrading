@@ -600,16 +600,19 @@ class Strategy:
                 # other symbols' flip history.
                 _other_flip_syms = sum(1 for s in ACTIVE_SYMBOLS
                                        if s != symbol and 0 <= self.bar_count - self._last_flip_bar.get(s, -999) <= 4)
-                # Architectural pivot: ONE-SIDED CORROBORATION BONUS instead of isolation
-                # tightening. When 1+ other symbol flipped recently, market-wide reversal
-                # is in progress — LOOSEN this symbol's flip strong-min by 10% per other-
-                # symbol flip (max 20% with 2 corroborations). When isolated (0 others),
-                # standard threshold applies (no extra tightening). Asymmetric: only the
-                # corroborated case gets relaxed; isolated flips face the same gate as
-                # the existing _flip_recency_factor enforces.
-                _corroboration = min(2, _other_flip_syms) * 0.10  # 0, 0.10, 0.20
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration)
+                # 0 other flips -> isolated (1.0); 1 other flip -> partial corroboration (0.5);
+                # 2 other flips -> market-wide regime change (0.0, no isolation tightening).
+                _isolation_factor = max(0.0, (2.0 - _other_flip_syms) / 2.0)
+                # Vol+trend gate the isolation tightening: deactivate in high-vol AND in
+                # strong trends. Crash often starts with one symbol breaking down — that
+                # isolated flip IS the protective signal. Strong trend (high rsi_trend_str)
+                # = crash/breakdown context where isolation gate should be off.
+                # In rally chop (low vol AND low trend), isolation tightening is at full strength.
+                _isolation_vol_gate = max(0.0, min(1.0, (1.4 - vol_ratio) / 0.6))
+                _isolation_trend_gate = 1.0 - rsi_trend_str  # 1.0 in chop, 0.0 in strong trend
+                _isolation_factor = _isolation_factor * _isolation_vol_gate * _isolation_trend_gate
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _isolation_factor)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _isolation_factor)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
                 # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
                 # (rally chop, where 1.4x is too easily reached on noisy bars) the
