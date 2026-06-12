@@ -591,8 +591,18 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
+                # Architectural: winning-position flip-conviction amplifier.
+                # When current position is winning (pos_pnl > 0), the existing signal is
+                # still working — flipping requires stronger opposite-side conviction.
+                # Continuous tanh on pos_pnl scaled by stop magnitude: pos_pnl=0 -> no
+                # tightening, pos_pnl=stop_abs -> +0.20 tightening (saturated). One-sided
+                # positive (losing positions get standard flip threshold for protective
+                # reversal — slope-against will exit them via _sl_slope_pressure anyway).
+                # Mechanism: each unnecessary flip costs ~10bps round-trip; this filters
+                # flip noise on positions where the original signal is profitable.
+                _winning_amp = 0.20 * np.tanh(max(0.0, pos_pnl) / abs(STOP_LOSS_PCT))
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _winning_amp)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _winning_amp)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
                 # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
                 # (rally chop, where 1.4x is too easily reached on noisy bars) the
