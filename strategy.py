@@ -520,7 +520,16 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
+                # Architectural symmetric extension: opposite-side voter-margin as exit AMPLIFIER.
+                # When the OPPOSITE-side voter conviction is high (bear_margin if long,
+                # bull_margin if short), the directional signal is genuinely reversing —
+                # exits should fire faster. Smooth tanh on max(0, opposite_margin / 0.30),
+                # adds up to +0.30 amplification to non-SL exit pressures. Same data
+                # source (entry voter sums), opposite directional coupling. Stop-loss
+                # unchanged. New: exit pressure depends BOTH on supporting and opposing voter conviction.
+                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
+                _voter_amp = 1.0 + 0.30 * max(0.0, np.tanh(max(0.0, _opp_margin) / 0.30))
+                _exit_pressure = _sl_pressure + _voter_attn * _voter_amp * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
