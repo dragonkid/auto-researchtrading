@@ -126,6 +126,11 @@ class Strategy:
         self._from_flip = {}
         # Architectural: bar index of last flip per symbol (for flip-recency gate).
         self._last_flip_bar = {}
+        # Architectural: per-symbol recent opposite-side strong-sum history for
+        # sustained-conviction flip gate. List of last 3 bars of (bull_strong, bear_strong).
+        # Flip requires the opposite-side conviction to be sustained over multiple bars,
+        # not a single-bar spike (noise rejection at flip decision).
+        self._recent_strongs = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -223,6 +228,13 @@ class Strategy:
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
+            # Used to gate flips on sustained conviction (filters single-bar noise spikes).
+            _hist = self._recent_strongs.get(symbol, [])
+            _hist.append((_bull_strong, _bear_strong))
+            if len(_hist) > 3:
+                _hist = _hist[-3:]
+            self._recent_strongs[symbol] = _hist
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
@@ -581,7 +593,21 @@ class Strategy:
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
+                # Architectural: sustained-conviction flip gate. The min over the last
+                # 3 bars of opposite-side strong-sum must clear a relaxed (0.7x) flip
+                # min — i.e., the opposite signal must have been at least mildly present
+                # for 3 consecutive bars. Filters single-bar noise spikes from triggering
+                # flips. If history < 3 bars, gate passes (warmup).
+                _sustain_thresh = 0.7
+                if len(_hist) >= 3:
+                    _min_bull_3 = min(h[0] for h in _hist)
+                    _min_bear_3 = min(h[1] for h in _hist)
+                else:
+                    _min_bull_3 = _bull_strong
+                    _min_bear_3 = _bear_strong
+                _bull_flip_sustained = _min_bull_3 >= _sustain_thresh * _bull_flip_min
+                _bear_flip_sustained = _min_bear_3 >= _sustain_thresh * _bear_flip_min
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
