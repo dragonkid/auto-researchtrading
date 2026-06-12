@@ -119,10 +119,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: EMA of realized trade PnL per symbol. Smooth continuous feedback
-        # signal — no regime classifier needed. Negative drag = recent losing streak;
-        # attenuates subsequent position size smoothly.
-        self._trade_pnl_ema = {}
         # Architectural: flip-origin tracker. True when current position originated
         # from a flip (high-conviction reversal: both vote count AND trend sign +
         # opposite-side strong-min admission). Used in exit logic to give flips
@@ -274,15 +270,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            # Architectural: realized-PnL feedback attenuator. EMA of trade-close pos_pnl
-            # is updated on exit (see exit branch). When EMA is negative (recent losing
-            # streak), attenuate position size; when EMA is positive (winning streak),
-            # no boost (one-sided downward — protective, not procyclical). Continuous tanh
-            # on -EMA scaled by stop magnitude. Range [-0.18, 0.0]. Smooth, no boundary,
-            # no binary regime detection. New state dependency: per-symbol trade-pnl EMA.
-            _trade_drag = self._trade_pnl_ema.get(symbol, 0.0)
-            _drag_atten = 1.0 - 0.18 * np.tanh(max(0.0, -_trade_drag) / abs(STOP_LOSS_PCT))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _drag_atten
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -625,26 +613,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Update trade-pnl EMA on close. pos_pnl is the realized return of
-                    # this trade. EMA span ~10 trades (alpha=0.18) — fast enough to react
-                    # to regime shifts but smooth enough to filter single-trade noise.
-                    _close_pnl = (mid - self.entry_prices.get(symbol, mid)) / self.entry_prices.get(symbol, mid)
-                    if current_pos < 0:
-                        _close_pnl = -_close_pnl
-                    _prev_ema = self._trade_pnl_ema.get(symbol, 0.0)
-                    self._trade_pnl_ema[symbol] = 0.18 * _close_pnl + 0.82 * _prev_ema
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
-                    # On flip, close prior trade and update its pnl into EMA
-                    if current_pos != 0 and symbol in self.entry_prices:
-                        _close_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            _close_pnl = -_close_pnl
-                        _prev_ema = self._trade_pnl_ema.get(symbol, 0.0)
-                        self._trade_pnl_ema[symbol] = 0.18 * _close_pnl + 0.82 * _prev_ema
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
                     if _is_flip_this_bar:
