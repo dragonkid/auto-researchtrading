@@ -546,19 +546,7 @@ class Strategy:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: profit-state gated flip conviction. Flip win rate is 10-14%
-                # across all regimes (flip_streak_drag persistently negative). Hypothesis:
-                # flipping out of a profitable position is more often noise-driven than
-                # signal-driven. Add continuous profit-state penalty to flip strong-min
-                # gate: profitable positions require higher opposite-side conviction.
-                # Smooth tanh on pos_pnl scaled by stop magnitude: pos_pnl=0 -> no penalty,
-                # pos_pnl=+STOP -> full +0.30 strong-min tightening (proportional). Losing
-                # positions (pos_pnl<0) -> no penalty (flips are already protective there).
-                _flip_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _flip_strong_bonus = 0.30 * _flip_profit_gate
-                _bull_flip_min = _bull_strong_min * (1.0 + _flip_strong_bonus)
-                _bear_flip_min = _bear_strong_min * (1.0 + _flip_strong_bonus)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
