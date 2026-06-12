@@ -455,11 +455,12 @@ class Strategy:
                 # at peak ratios above 1.04, recovering raw revenue while keeping the
                 # bull-boosting smoothing in the [0.95, 1.04] band.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                # Architectural: smooth tanh _pp_activation, replacing piecewise-linear
-                # ramp with hard boundaries at 0.95 and 1.04. tanh tuned so 0.5 occurs at
-                # _pp_ratio=1.0 with similar slope (saturates near 0.95/1.04). Removes
-                # two hard kinks that were noise-discontinuity points.
-                _pp_activation = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((_pp_ratio - 1.0) / 0.045)))
+                if _pp_ratio <= 0.95:
+                    _pp_activation = 0.0
+                elif _pp_ratio >= 1.04:
+                    _pp_activation = 1.0
+                else:
+                    _pp_activation = (_pp_ratio - 0.95) / 0.09
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
