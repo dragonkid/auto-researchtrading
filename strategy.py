@@ -330,43 +330,26 @@ class Strategy:
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
                 _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
-                # Architectural: portfolio concentration attenuator (cross-symbol coupling).
-                # Count notional exposure already held in OTHER symbols same-direction-as-entry.
-                # When 2 other assets are already long and we're entering a 3rd long, the
-                # portfolio is concentrating into a single directional bet — attenuate
-                # entry frac smoothly so the marginal 3rd-asset entry is smaller. Uses
-                # NOTIONAL (current_pos * mid) to weight by economic exposure not just count.
-                # Continuous tanh on aggregate same-side notional / equity. Range
-                # attenuation up to -0.10 of frac (proportional to portfolio overlap).
-                # New data dependency: entry size depends on cross-symbol portfolio state.
-                # Implementation note: portfolio.positions are at current bar's mark; bd.close
-                # for other symbols may not be in scope here, so use current_pos * mid as
-                # rough notional approximation — actually, use absolute notional via positions
-                # dict and the per-symbol bar_data when available; fall back to position units.
-                _same_side_long_notional = 0.0
-                _same_side_short_notional = 0.0
-                for _osym, _opos in portfolio.positions.items():
-                    if _osym == symbol or _opos == 0.0 or _osym not in bar_data:
-                        continue
-                    _opx = bar_data[_osym].close
-                    _onot = abs(_opos) * _opx
-                    if _opos > 0:
-                        _same_side_long_notional += _onot
-                    else:
-                        _same_side_short_notional += _onot
-                # Concentration ratio: same-side existing notional / equity.
-                # ~0 if no cross-symbol positions; ~0.5+ if portfolio is concentrated.
-                _conc_long = _same_side_long_notional / max(equity, 1e-6)
-                _conc_short = _same_side_short_notional / max(equity, 1e-6)
-                # Smooth attenuator: tanh saturates at -0.10 when concentration ratio ~0.5.
-                _bull_conc_attn = -0.10 * np.tanh(_conc_long / 0.30)
-                _bear_conc_attn = -0.10 * np.tanh(_conc_short / 0.30)
+                # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
+                # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
+                # count gate since both derive from the same _bull_confs values. Removing the count
+                # gate eliminates correlated-noise amplification at the entry decision boundary
+                # (one less hard gate on the same underlying signal). Strong-sum is the primary
+                # discriminator (uses voter weights and quintic ramp); count is a coarser version.
+                # Architectural: conviction-margin SIZE modulation on cold entry path.
+                # Symmetric to flip-path _flip_conv_adj. When the strong-sum is well above
+                # its admission threshold (high conviction entry), first-bar commitment
+                # is larger; marginal entries (low or negative margin) get standard size.
+                # One-sided positive: only positive margin amplifies, negative is treated
+                # as zero (avoids cutting size on legitimate but marginal entries near
+                # the gate boundary). New data dependency: first-bar size depends on
+                # conviction margin for cold entries (was independent before).
                 if _bull_strong >= _bull_strong_min and _bull_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * max(0.20, min(0.55, _entry_frac_dyn + _entry_conv_adj + _bull_conc_attn))
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * max(0.20, min(0.55, _entry_frac_dyn + _entry_conv_adj + _bear_conc_attn))
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
