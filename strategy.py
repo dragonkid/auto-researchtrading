@@ -206,12 +206,12 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
-            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural simplification: remove tuned per-voter noise-sensitivity weights.
+            # Uniform weights (1.0 each, sum=6.0 preserved) eliminate 5 tuned constants and
+            # the implicit assumption that one voter's noise structure is statically
+            # rankable. Voter-quality should emerge from the quintic ramp on conf alone.
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bull_confs)
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) for c in _bear_confs)
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
