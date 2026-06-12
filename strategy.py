@@ -492,7 +492,19 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                # Architectural: trend-alignment slope-pressure attenuator. When trend_avg
+                # strongly agrees with position direction (we're in a confirmed trend),
+                # transient slope-against pulses (e.g., short pullback in rally) should
+                # not fire full slope exit pressure. Continuous tanh on (trend_avg * pos_dir)
+                # scaled by typical trending magnitude (0.012). One-sided: only positive
+                # trend-agreement attenuates (negative trend-agreement leaves pressure
+                # unchanged so adverse-trend slope exits fire normally). Max -0.40 attenuation
+                # when trend strongly agrees. New cross-component coupling: _w_slope
+                # depends on trend_avg, not just pnl + bars_held.
+                _pos_dir_w = 1.0 if current_pos > 0 else -1.0
+                _trend_align = max(0.0, np.tanh(trend_avg * _pos_dir_w / 0.012))  # in [0,1]
+                _trend_align_attn = 1.0 - 0.40 * _trend_align
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w * _trend_align_attn
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
