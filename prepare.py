@@ -462,29 +462,41 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                     # Modifying position
                     old_notional = abs(current_pos)
                     old_entry = portfolio.entry_prices.get(sig.symbol, exec_price)
-                    # Detect flip (direction reversal) — record for stats only
+                    # Detect flip (direction reversal)
                     is_flip = (current_pos > 0 and sig.target_position < 0) or (current_pos < 0 and sig.target_position > 0)
-                    if is_flip and old_entry > 0:
-                        flip_pnl = current_pos * (exec_price - old_entry) / old_entry
+                    if is_flip:
+                        # Flip = full close old + open new (matches live exchange behavior)
+                        if old_entry > 0:
+                            flip_pnl = current_pos * (exec_price - old_entry) / old_entry
+                        else:
+                            flip_pnl = 0
                         flip_pnl_pct = flip_pnl / max(portfolio.equity, 1.0) * 100
                         flip_log.append((sig.symbol, flip_pnl_pct))
-                    # Realize PnL on reduced portion
-                    if abs(sig.target_position) < abs(current_pos):
-                        reduced = abs(current_pos) - abs(sig.target_position)
-                        if old_entry > 0:
-                            pnl = (current_pos / abs(current_pos)) * reduced * (exec_price - old_entry) / old_entry
-                        else:
-                            pnl = 0
-                        portfolio.cash += reduced + pnl
-                    elif abs(sig.target_position) > abs(current_pos):
-                        added = abs(sig.target_position) - abs(current_pos)
-                        portfolio.cash -= added
-                        # Weighted average entry
-                        if old_notional + added > 0:
-                            new_entry = (old_entry * old_notional + exec_price * added) / (old_notional + added)
-                            portfolio.entry_prices[sig.symbol] = new_entry
-                    portfolio.positions[sig.symbol] = sig.target_position
-                    trade_log.append(("modify", sig.symbol, delta, exec_price, 0))
+                        # Realize full old position PnL
+                        portfolio.cash += old_notional + flip_pnl
+                        # Open new position fresh
+                        portfolio.cash -= abs(sig.target_position)
+                        portfolio.entry_prices[sig.symbol] = exec_price
+                        portfolio.positions[sig.symbol] = sig.target_position
+                        trade_log.append(("modify", sig.symbol, delta, exec_price, flip_pnl))
+                    else:
+                        # Same-direction resize (not a flip)
+                        if abs(sig.target_position) < abs(current_pos):
+                            reduced = abs(current_pos) - abs(sig.target_position)
+                            if old_entry > 0:
+                                pnl = (current_pos / abs(current_pos)) * reduced * (exec_price - old_entry) / old_entry
+                            else:
+                                pnl = 0
+                            portfolio.cash += reduced + pnl
+                        elif abs(sig.target_position) > abs(current_pos):
+                            added = abs(sig.target_position) - abs(current_pos)
+                            portfolio.cash -= added
+                            # Weighted average entry
+                            if old_notional + added > 0:
+                                new_entry = (old_entry * old_notional + exec_price * added) / (old_notional + added)
+                                portfolio.entry_prices[sig.symbol] = new_entry
+                        portfolio.positions[sig.symbol] = sig.target_position
+                        trade_log.append(("modify", sig.symbol, delta, exec_price, 0))
 
         # Recalculate equity after trades
         unrealized_pnl = 0.0
