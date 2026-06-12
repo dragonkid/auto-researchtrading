@@ -386,23 +386,12 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: trend-aligned entry size bias. Use ret_long
-                # (20-bar return) as the macro trend indicator, scaled to [-1, 1]
-                # via tanh. Long entries get a size multiplier 1 + bias*ret_long_sgn;
-                # short entries get 1 - bias*ret_long_sgn. Bias caps at ±0.30,
-                # smooth via tanh. Reduces counter-trend entry size in strong
-                # rally/crash regimes where trend-following dominates. New
-                # cross-subsystem data dependency: entry sizing reads ret_long
-                # (already computed for threshold).
-                _trend_bias = 0.30 * np.tanh(ret_long / 0.04)  # in [-0.30, 0.30]
-                _long_size_mult = 1.0 + _trend_bias    # boost long when trend up, cut when down
-                _short_size_mult = 1.0 - _trend_bias   # cut short when trend up, boost when down
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _long_size_mult
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _short_size_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
