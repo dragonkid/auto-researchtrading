@@ -119,10 +119,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: prior-bar position-side strong-sum tracker for momentum-rate
-        # exit-pressure attenuator. Stores last bar's bull_strong/bear_strong to detect
-        # fresh acceleration in voter conviction on position side.
-        self._prev_side_strong = {}
         # Architectural: flip-origin tracker. True when current position originated
         # from a flip (high-conviction reversal: both vote count AND trend sign +
         # opposite-side strong-min admission). Used in exit logic to give flips
@@ -524,20 +520,6 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                # Architectural: rate-of-change voter-conviction attenuator. Uses
-                # delta(side_strong) vs previous bar (orthogonal to absolute margin
-                # used in _voter_attn). Fresh acceleration in voter conviction on
-                # position side indicates the move is strengthening — attenuate
-                # non-stop exit pressures further. Continuous tanh on positive delta
-                # scaled by typical strong-sum scale (~0.5). One-sided positive only;
-                # weakening conviction does NOT reduce attenuation (avoids fragility
-                # at the boundary). Up to additional -0.20 multiplicative when delta
-                # is large. New cross-bar state dependency.
-                _curr_side_strong = _bull_strong if current_pos > 0 else _bear_strong
-                _prev_side_strong = self._prev_side_strong.get(symbol, _curr_side_strong)
-                _strong_delta = _curr_side_strong - _prev_side_strong
-                _accel_attn = 0.20 * max(0.0, np.tanh(max(0.0, _strong_delta) / 0.5))
-                _voter_attn = _voter_attn * (1.0 - _accel_attn)
                 _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -613,14 +595,5 @@ class Strategy:
                     self._from_flip[symbol] = _is_flip_this_bar
                     if _is_flip_this_bar:
                         self._last_flip_bar[symbol] = self.bar_count
-            # Update prior-bar side-strong tracker for next-bar acceleration calc.
-            # Use position direction at end of bar (after target update logic).
-            _final_pos = target if abs(target - current_pos) > 1.0 else current_pos
-            if _final_pos > 0:
-                self._prev_side_strong[symbol] = _bull_strong
-            elif _final_pos < 0:
-                self._prev_side_strong[symbol] = _bear_strong
-            else:
-                self._prev_side_strong.pop(symbol, None)
 
         return signals
