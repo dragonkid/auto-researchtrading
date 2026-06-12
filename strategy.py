@@ -521,6 +521,21 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural: volume-divergence exit pressure (5th exit pressure source).
+                # Hypothesis: when in profit, declining volume relative to recent baseline
+                # signals momentum exhaustion — price gains made on shrinking participation
+                # are unsustainable. Compute volume_ratio = mean(last 6 vol) / mean(last 24 vol).
+                # Pressure activates only when in profit (pos_pnl > 0): no signal in losing
+                # positions where slope-against and stop-loss already drive exit. Continuous
+                # tanh on (1.0 - volume_ratio) with one-sided positive activation. New
+                # data dependency: exit decision uses volume primitive (orthogonal to
+                # vol_confirm_mult which sizes entries; no exit-side use existed prior).
+                _vols = bd.history["volume"].values
+                _vol_recent = np.mean(_vols[-6:])
+                _vol_baseline = np.mean(_vols[-24:])
+                _vol_div_raw = max(0.0, 1.0 - _vol_recent / max(_vol_baseline, 1e-6))
+                _profit_gate = max(0.0, np.tanh(pos_pnl / 0.015))   # [0,1], activates above ~1.5% profit
+                _vol_div_pressure = _profit_gate * np.tanh(_vol_div_raw / 0.20)
                 # Architectural: position-side voter-conviction as exit-pressure attenuator.
                 # When the voters still strongly support position direction (bull_strong
                 # if long, bear_strong if short), the entry signal hasn't reversed —
@@ -532,7 +547,7 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.30 * _vol_div_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
