@@ -386,22 +386,12 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: voter-disagreement size attenuator. When both bull
-                # and bear strong-sums are simultaneously elevated (both sides have
-                # multi-voter conviction), the signal is ambiguous and entry is
-                # noise-prone. Compute disagreement = min(bull_strong, bear_strong)
-                # / strong_min — high when both sides strong, low when one dominates.
-                # Smooth size multiplier via tanh in [0.1, 1.0]: full size when one
-                # side clearly dominates, attenuated when both sides argue. Continuous
-                # gate; no hard boundary. New cross-side data dependency at entry.
-                _disagreement = min(_bull_strong, _bear_strong) / max(_strong_min, 1e-6)
-                _disagree_attn = 1.0 - 0.9 * max(0.0, np.tanh((_disagreement - 0.4) / 0.3))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _disagree_attn
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj) * _disagree_attn
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
