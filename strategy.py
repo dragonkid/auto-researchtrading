@@ -1,6 +1,15 @@
 import numpy as np
-from scipy.stats import linregress
 from prepare import Signal, PortfolioState, BarData
+
+
+def _fast_slope(y):
+    """OLS slope for y against 0..len(y)-1. ~50x faster than scipy linregress."""
+    n = len(y)
+    x_mean = (n - 1) / 2.0
+    x_var = (n * n - 1) / 12.0  # var of 0..n-1
+    y_mean = y.mean()
+    slope = ((np.arange(n) - x_mean) * (y - y_mean)).sum() / (n * x_var)
+    return slope
 
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
@@ -159,7 +168,7 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr = linregress(np.arange(LINREG_PERIOD), np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -189,7 +198,7 @@ class Strategy:
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
-                (_lr.slope - 0.00015) / 0.00010,
+                (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
@@ -273,10 +282,10 @@ class Strategy:
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
             # Architectural: directional-confluence first-bar amplifier.
-            # When 16-bar log-price slope (_lr.slope) aligns in sign and magnitude
+            # When 16-bar log-price slope (_lr_slope) aligns in sign and magnitude
             # with the trend_avg gate, the entry is a high-confluence event — two
             # orthogonal-window signals agree. Continuous tanh on the product
-            # _lr.slope * trend_avg (positive = same direction, scale by typical
+            # _lr_slope * trend_avg (positive = same direction, scale by typical
             # trending magnitudes 0.0005 * 0.02 = 1e-5). One-sided positive boost
             # only (negative product stays at 0). Adds [+0.0, +0.06] to first-bar
             # frac. Does NOT couple to entry voter signals — uses two trend-window
@@ -284,7 +293,7 @@ class Strategy:
             # Vol-adaptive scale: in low-vol both signals shrink, so the
             # confluence threshold scales down with vol_ratio**2 to maintain
             # similar activation across regimes.
-            _confluence_raw = _lr.slope * trend_avg
+            _confluence_raw = _lr_slope * trend_avg
             _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
             _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
             # Architectural: triple-source confluence amplifier. When EMA slope sign
@@ -409,7 +418,7 @@ class Strategy:
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
-                # robustness. Single _lr.slope (16-bar) is shared with entry voter — coupling
+                # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
                 # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
                 # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
                 # Multi-window slope MEAN (not median): mean averages out window-specific noise
@@ -418,8 +427,8 @@ class Strategy:
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slopes = []
                 for _w in (12, 16, 22):
-                    _ll = linregress(np.arange(_w), np.log(_hl2[-_w:]))
-                    _slopes.append(_ll.slope)
+                    _ll = _fast_slope(np.log(_hl2[-_w:]))
+                    _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
