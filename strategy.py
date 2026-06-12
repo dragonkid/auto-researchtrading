@@ -337,6 +337,25 @@ class Strategy:
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
+                # Architectural: entry-persistence gate. Reuses the rolling _hist
+                # (3-bar strong-sum history maintained for flip sustenance) to
+                # require ENTRY-side conviction to be sustained over 2 bars before
+                # admission. Filters single-bar noise spikes that currently drive
+                # high turnover (~9k+ trades). Continuous: persistence factor uses
+                # min over last 2 bars; gate fires when min >= sustain_factor *
+                # _strong_min. Activation is gradual via vol_ratio — strict in
+                # low-vol (rally chop, where noise dominates), relaxed in high-vol
+                # (crash, where reactive entries matter). New control-flow path:
+                # entry depends on 2-bar history, not single bar.
+                _entry_persist_factor = 0.65 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
+                if len(_hist) >= 2:
+                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
+                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                else:
+                    _min_bull_2 = _bull_strong
+                    _min_bear_2 = _bear_strong
+                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -367,10 +386,10 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                if _bull_strong >= _bull_strong_min and _bull_admit:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
                     target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
-                elif _bear_strong >= _bear_strong_min and _bear_admit:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
                     target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
             elif current_pos != 0:
