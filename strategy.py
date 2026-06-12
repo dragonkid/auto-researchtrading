@@ -593,20 +593,21 @@ class Strategy:
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                # Architectural: sustained-conviction flip gate. The min over the last
-                # 3 bars of opposite-side strong-sum must clear a relaxed (0.7x) flip
-                # min — i.e., the opposite signal must have been at least mildly present
-                # for 3 consecutive bars. Filters single-bar noise spikes from triggering
-                # flips. If history < 3 bars, gate passes (warmup).
+                # Architectural: vol-adaptive sustained-conviction flip gate. Sustain
+                # window shrinks in high-vol regimes (crash whipsaw is jagged, multi-bar
+                # sustained signals are rare); window is full 3 bars in low-vol (rally
+                # chop, where sustained conviction matters most for noise filtering).
+                # vol_ratio<=0.8 -> 3-bar sustain; vol_ratio>=1.4 -> 1-bar sustain (no gate).
                 _sustain_thresh = 0.7
-                if len(_hist) >= 3:
-                    _min_bull_3 = min(h[0] for h in _hist)
-                    _min_bear_3 = min(h[1] for h in _hist)
+                _sustain_n = max(1, int(round(3.0 - 2.0 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6)))))
+                if len(_hist) >= _sustain_n:
+                    _min_bull_n = min(h[0] for h in _hist[-_sustain_n:])
+                    _min_bear_n = min(h[1] for h in _hist[-_sustain_n:])
                 else:
-                    _min_bull_3 = _bull_strong
-                    _min_bear_3 = _bear_strong
-                _bull_flip_sustained = _min_bull_3 >= _sustain_thresh * _bull_flip_min
-                _bear_flip_sustained = _min_bear_3 >= _sustain_thresh * _bear_flip_min
+                    _min_bull_n = _bull_strong
+                    _min_bear_n = _bear_strong
+                _bull_flip_sustained = _min_bull_n >= _sustain_thresh * _bull_flip_min
+                _bear_flip_sustained = _min_bear_n >= _sustain_thresh * _bear_flip_min
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
