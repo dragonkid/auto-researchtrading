@@ -2,3 +2,4 @@ commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	statu
 47355ae	8.22	8.97	2.08	12.16	9.37	6.63	7.72	keep	BASELINE (score-v5): momentum_voting with flip_streak_gate. min_stab=0.762. raw_composite=11.22.
 185bdbf	8.22	8.98	2.08	12.16	9.37	6.65	7.72	discard	exp: profit-state gated flip strong-min (architectural) — gate had near-zero effect; raw -0.0003, stab -0.001
 6ac9a94	8.19	8.94	2.03	12.06	9.28	6.66	7.75	discard	exp: flip-outcome memory feedback (architectural) — raw -0.025, comp -0.049; outcome penalty hurt protective flips in crash/bull.
+02c768a	7.94	8.71	2.11	12.08	8.84	6.58	7.34	discard	exp: conviction-modulated scale-in ramp pace (architectural). Raw -0.39, comp -0.31, stab -0.001. All 4 regimes regressed (crash -0.53, rally -0.43); pace modulation overcommitted on noisy entries that signal-confirmed late.
