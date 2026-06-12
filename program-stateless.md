@@ -242,6 +242,8 @@ Do NOT hardcode "proven ineffective" conclusions here — read results.tsv each 
 
 **funding_rate data is all zeros in the current dataset.** The Binance spot OHLCV data used for backtesting does not include funding rates (funding_rate column = 0.0 for all bars). Any strategy component that reads `bd.history["funding_rate"]` will receive constant zeros — it cannot provide a real signal. A "voter" based on funding_rate=0 will produce a fixed constant bias (not a data-responsive signal). Do not use funding_rate as a signal source until real per-exchange funding data is integrated.
 
+**Trading frequency is a dominant cost driver.** At 5bps taker fee, each round-trip costs 10bps. The strategy's signals have positive alpha at zero cost (Sharpe 1.1-2.6 across 3/4 regimes), but with ~40 trades/day the cumulative cost exceeds the alpha. `compute_score` includes a `turnover_gate` that activates when Sharpe turns positive — reducing trades-per-day directly improves the gate and thus the score.
+
 ## Data available
 
 - BTC, ETH, SOL hourly OHLCV + funding rates
