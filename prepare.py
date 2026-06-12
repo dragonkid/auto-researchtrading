@@ -27,8 +27,8 @@ import pyarrow.parquet as pq
 TIME_BUDGET = 120              # backtest time budget in seconds (2 minutes)
 INITIAL_CAPITAL = 100_000.0    # $100K starting capital
 MAKER_FEE = 0.0002             # 2 bps
-TAKER_FEE = 0.0008             # 8 bps
-SLIPPAGE_BPS = 1.0             # 1 bps simulated slippage
+TAKER_FEE = 0.0005      # 5 bps taker (HL Wood tier)
+SLIPPAGE_BPS = 1.0      # 1 bp assumed slippage
 MAX_LEVERAGE = 20              # max leverage allowed
 LOOKBACK_BARS = 500            # history buffer provided to strategy
 BAR_INTERVAL = "1h"
@@ -623,46 +623,50 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
 
 def compute_score(result: BacktestResult) -> float:
     """
-    Multiplicative risk-adjusted score (HIGHER is better).
+    Additive risk-adjusted score (HIGHER is better).
 
-    Inspired by GT-Score and Fitness = PF × SQN / MaxDD:
-    each dimension acts as a gate — any dimension being terrible
-    collapses the entire score. No manual weight tuning needed.
+    Designed to provide smooth gradient from deeply-negative strategies
+    through break-even to profitable. Uses Sharpe as primary signal
+    with multiplicative penalties for drawdown and turnover.
 
-    score = signal_quality × sample_factor × dd_gate × vol_gate × streak_gate
+    score = sharpe_score × dd_gate × turnover_gate
 
-    Hard cutoffs for degenerate strategies.
+    Sharpe_score uses tanh to handle negative values gracefully.
+    Turnover gate penalizes excessive trading frequency.
     """
-    # Hard cutoffs — strict risk limits (safety nets only)
+    # Hard cutoffs — only reject truly degenerate strategies
     if result.num_trades < 10:
         return -999.0
-    if result.max_drawdown_pct > 20.0:
-        return -999.0
-    final_equity = result.equity_curve[-1] if result.equity_curve else INITIAL_CAPITAL
-    if final_equity < INITIAL_CAPITAL * 0.75:
+    if result.max_drawdown_pct > 95.0:
         return -999.0
 
-    # Signal quality: log(1+sharpe) — diminishing returns at high Sharpe
-    signal_quality = math.log(1.0 + max(result.sharpe, 0.0))
+    # Sharpe score: tanh mapping that preserves sign and has gradient everywhere
+    # sharpe=-3 → ~-0.95, sharpe=0 → 0, sharpe=1 → ~0.76, sharpe=3 → ~0.995
+    sharpe_score = math.tanh(result.sharpe)
 
-    # Sample sufficiency: sqrt ramp, full credit at 50+ trades
-    sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))
+    # Gates only apply when Sharpe is positive (reward dimension).
+    # When Sharpe is negative, gates would REDUCE the absolute penalty
+    # (making -0.5 into -0.1), which is reverse incentive. So negative
+    # strategies are scored purely on Sharpe (maximize toward 0, then positive).
+    if sharpe_score <= 0:
+        return sharpe_score
 
-    # Drawdown gate: base 1/(1+DD%) plus mild exponential penalty above 5%
-    # DD=5% → 0.95, DD=8% → 0.68, DD=10% → 0.55, DD=15% → 0.32
-    # Milder slope (divisor=10) to avoid over-incentivizing DD reduction
+    # --- Below here: sharpe_score > 0 (strategy has positive edge) ---
+
+    # Drawdown gate: soft penalty
+    # DD=10% → 0.91, DD=30% → 0.77, DD=50% → 0.67, DD=80% → 0.56
     dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
-    dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
-    dd_gate *= math.exp(-dd_excess / 10.0)
 
-    # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
-    vol_gate = 1.0 / (1.0 + result.return_volatility)
+    # Turnover gate: penalize excessive TRADING FREQUENCY (not volume)
+    # Uses trades-per-day to prevent gaming via position-size reduction.
+    # Agent must actually reduce trade decisions to improve this gate.
+    hours = len(result.equity_curve) - 1 if result.equity_curve else 1
+    trades_per_day = result.num_trades / max(hours / 24.0, 1.0)
+    # Gate: 1/(1 + tpd/10) — 10 trades/day is the neutral point
+    # 5 tpd → 0.67, 10 tpd → 0.50, 20 tpd → 0.33, 40 tpd → 0.20
+    turnover_gate = 1.0 / (1.0 + trades_per_day / 10.0)
 
-    # Consecutive loss gate: exp(-streak/30) — smooth exponential decay
-    # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
-    streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
-
-    score = signal_quality * sample_factor * dd_gate * vol_gate * streak_gate
+    score = sharpe_score * dd_gate * turnover_gate
     return score
 
 # ---------------------------------------------------------------------------

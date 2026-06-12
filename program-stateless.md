@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-Focus on maximizing raw_composite and composite_score. Do NOT sacrifice score to improve stability — experiments that improve stability but reduce raw_composite or composite are not valuable. Stability improvements are only worthwhile when they come WITH score improvements (or at zero score cost).
+Focus on maximizing composite_score (= mean regime scores - 0.5*std + simplicity bonus). Stability test is currently DISABLED — do not consider it.
 
 ## Session protocol
 
@@ -70,24 +70,22 @@ For each experiment:
    **Keep/discard rules:**
 
    An experiment qualifies as `keep` if ALL of the following are met:
-   - `composite_score` improved by at least +0.03 vs baseline, OR `raw_composite` improved vs baseline.
-   - No regime's `max_dd_pct` exceeds the **absolute DD cap** (see below). These caps are fixed and do NOT drift with baseline updates.
-   - `raw_composite` ≥ **10.90** (must not degrade below current baseline floor). Calibrated to current best strategy 47355ae (raw 11.22).
-   - `raw_composite` ≥ baseline - 0.10 (no large score regression allowed).
-   - `min_stability` ≥ baseline - 0.002 (must not regress more than 0.002 from baseline).
-     **Relaxed stab path**: if `composite_score` ≥ baseline + 0.10, the stab constraint relaxes to ≥ baseline - 0.004. This allows strategies with significant composite improvement to pass despite slightly lower noise-test stability.
+   - `composite_score` improved vs baseline (any positive delta counts — strategy is currently net-negative, every improvement matters).
+   - `mean_score` improved vs baseline (average per-regime score must go up).
+   - No regime's `max_dd_pct` exceeds 95% (hard safety net only).
 
-   **Absolute DD caps (hard ceiling, never changes):**
-   - bull_2021: ≤ 7.8%
-   - crash_bear: ≤ 6.9%
-   - sideways: ≤ 5.6%
-   - rally_2024: ≤ 6.0%
+   **Scoring formula** (in `compute_score`):
+   ```
+   score = tanh(sharpe) × dd_gate × turnover_gate
+   dd_gate = 1 / (1 + MaxDD% / 100)
+   turnover_gate = 1 / (1 + annual_turnover_ratio / 200)
+   ```
+   Negative Sharpe → negative score (smooth gradient). Turnover gate directly penalizes excessive trading.
+   Current baseline is deeply negative (mean_score = -0.019).
 
-   **Revenue decline is acceptable only when signal quality improves.** A keep that slightly reduces raw_composite (within -0.10) but improves composite_score is valid — composite penalizes inconsistency and rewards balanced performance. However, large raw_composite drops (more than -0.10 vs baseline) indicate real signal degradation and should be discarded.
+   **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, and per-regime scores directly.
 
-   **Computing raw_composite:** `regime_test.py` now outputs `raw_composite:` directly (pre-penalty composite). Just read it from `run.log` alongside `composite_score:`. No manual computation needed.
-
-   If keep: append a `keep` line with all per-regime scores. The new baseline for ALL subsequent experiments is now this keep. **CRITICAL: after a keep, you MUST compare the next experiment against this new keep's min_stab and composite, not the session-start baseline.** Read the last `keep` row in results.tsv to get the current baseline values.
+   If keep: append a `keep` line with all per-regime scores. The new baseline for ALL subsequent experiments is now this keep. **CRITICAL: after a keep, you MUST compare the next experiment against this new keep's scores, not the session-start baseline.** Read the last `keep` row in results.tsv to get the current baseline values.
    If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
 
 ### Exploration branches (iterate before reverting)
@@ -95,10 +93,8 @@ For each experiment:
 When an experiment does NOT meet full keep criteria but shows architectural promise, you MAY keep the change and open an **exploration branch** instead of reverting. This lets you iterate on a promising direction — fixing weak regimes, tuning the new mechanism — before the final keep/discard decision.
 
 **Entry conditions (any ONE is sufficient):**
-- At least one regime score improved by ≥ +0.3
-- At least one regime stability improved by ≥ +0.002
-- Overall min_stability is unchanged or only slightly worse (≥ -0.003) AND the change introduces a fundamentally new mechanism (not a parameter tweak)
-- The experiment improves composite/raw_composite meaningfully (+0.03) with stability regression explainable and plausibly fixable
+- At least one regime score improved (any positive delta on a per-regime score)
+- The experiment introduces a fundamentally new mechanism (not a parameter tweak)
 
 You do NOT need the experiment to "almost pass" — the point is to allow bold architectural exploration. If you can articulate WHY the regression happened and HOW a follow-up change could fix it, that's sufficient justification to open a branch.
 
@@ -166,29 +162,23 @@ Legacy rows (6 columns) may remain in the file for historical reference but are 
 
 ## Scoring formula
 
-Each regime is scored via multiplicative `compute_score()`, then combined:
+Each regime is scored via `compute_score()`, then combined:
 
 ```
-Base score = log(1+sharpe)         # signal quality
-           × sqrt(trade_factor)    # sample sufficiency
-           × 1/(1 + DD%)           # base drawdown gate
-           × exp(-max(0, DD%-5)/10) # soft DD penalty (mild slope above 5%)
-           × 1/(1 + vol)           # volatility gate
-           × exp(-streak/30)       # consecutive loss gate
+score = tanh(sharpe) × dd_gate × turnover_gate  (only when sharpe > 0; otherwise score = tanh(sharpe))
 
-Per-regime score = base_score × log(1 + annual_return% / 100)   # return gate
+dd_gate = 1 / (1 + MaxDD% / 100)
+turnover_gate = 1 / (1 + trades_per_day / 10)
 
-Hard cutoffs: <10 trades → -999, >20% drawdown → -999, lost >25% → -999
+Hard cutoffs: <10 trades → -999, >95% drawdown → -999
 
 Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
-Simplicity bonus = max(0, (500 - effective_LOC)) * 0.001   # reward shorter strategy.py
+Simplicity bonus = max(0, (575 - effective_LOC)) * 0.001   # reward shorter strategy.py
 ```
 
-The simplicity bonus rewards removing dead code and unnecessary complexity. Effective LOC counts non-empty, non-comment lines in strategy.py. Each line removed below 500 adds +0.001 to composite.
-
-Multiplicative structure: any dimension being terrible collapses the entire score.
-The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.74x, 10%→0.61x, 15%→0.37x.
-The return gate prevents gaming via position-size reduction (smaller positions improve DD/vol gates but reduce returns).
+The `tanh(sharpe)` maps Sharpe ratio to (-1, +1) with smooth gradient everywhere — negative Sharpe produces negative scores, enabling optimization from deeply-negative territory.
+When Sharpe is negative, score = tanh(sharpe) directly (gates skipped to avoid reverse incentive).
+When Sharpe is positive, gates apply: `dd_gate` penalizes drawdown, `turnover_gate` penalizes trading frequency.
 The composite rewards strategies that perform **consistently across all market conditions**.
 
 Search regimes (4 non-overlapping periods):
@@ -197,7 +187,7 @@ Search regimes (4 non-overlapping periods):
 - sideways: 2023-01 ~ 2023-12 (sideways recovery)
 - rally_2024: 2024-01 ~ 2024-12 (ETF + election rally)
 
-## Primary Objective: Maximize raw_composite (score-first)
+## Primary Objective: Maximize composite_score
 
 The noise test uses AR(1) correlated perturbation matching real cross-exchange differences. Penalty tiers:
 
@@ -205,9 +195,9 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 - stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
 - stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
 
-The current baseline (47355ae) scores min_stab=0.762 (per-regime).
+Signal stability test is currently DISABLED. It will be re-enabled when strategies reach positive Sharpe across all regimes. Do not consider stability in keep/discard decisions.
 
-**Stability scoring**: ≥ 0.80 = no penalty. Higher stability beyond 0.80 provides no additional score benefit. Current baseline is at 0.762 which incurs a minor 25% tier penalty — this is acceptable. Do NOT pursue stability improvements that reduce raw_composite or composite_score.
+**Stability scoring**: DISABLED. Stability test will be re-enabled when strategies reach positive Sharpe across all regimes.
 
 ### Diagnostic-first approach (optional, recommended for new sessions)
 
@@ -219,14 +209,14 @@ If results.tsv has < 10 entries or you haven't seen flip-rate data from prior se
 If results.tsv already contains diagnostic insights from prior sessions (grep for "flip rate", "noise", "voter sensitivity"), you may skip re-running diagnostics and proceed directly to experimentation.
 
 ### How to evaluate experiments
-- Check `raw_composite` and `composite_score` — these must improve vs baseline
-- Check `min_stability` — must not regress more than 0.002 vs baseline
-- Check `regime_X_flip_count`, `regime_X_flip_wr`, `regime_X_flip_pnl`, `regime_X_flip_streak_drag` — flip events account for ~60% of trades but have low win rate. `flip_streak_drag` measures cumulative PnL of consecutive-loss flip sequences and is factored into the regime score via a multiplicative gate. If a regime's DD is elevated, check whether flip frequency or flip PnL worsened before adjusting other parameters.
-- The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%), raw_composite ≥ 10.80, and min_stab ≥ baseline - 0.002
+- Check `composite_score` and `mean_score` — both must improve vs baseline
+- Check per-regime scores — ideally all should move toward positive (currently only bull_2021 is positive at +0.013)
+- Check `regime_X_flip_count` and `regime_X_flip_pnl` — these are significant cost contributors
+- The ONLY hard constraint is: no regime MaxDD > 95%
 
 ## Stability constraints (guard rails, not objectives)
 
-Stability is a CONSTRAINT, not a goal. The keep rule requires min_stab ≥ baseline - 0.002. As long as this is satisfied, focus entirely on maximizing raw_composite and composite_score.
+Stability is DISABLED for the current phase. It will be re-enabled when all regime scores are positive.
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
 **HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.

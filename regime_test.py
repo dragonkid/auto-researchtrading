@@ -65,32 +65,16 @@ def _run_regime_worker(args: tuple) -> dict:
     base_score = compute_score(result)
     annual_return = annualize_return(result.total_return_pct, regime_hours)
 
-    # Return gate: penalize low absolute returns (prevents position-size gaming)
-    # ann_return 1000% → gate 2.40, ann_return 100% → gate 0.69, ann_return 0% → gate 0
-    return_gate = math.log(1.0 + max(annual_return, 0.0) / 100.0)
-    score = base_score * return_gate if base_score > 0 else base_score
+    # Score = base_score (already includes sharpe, dd_gate, turnover_gate)
+    # No additional return_gate needed — compute_score handles Sharpe directly
+    score = base_score
 
-    # Signal stability: penalize threshold-sensitive strategies (skip if score already non-positive)
-    from noise_test import compute_signal_stability, STABILITY_THRESHOLD
-    if score > 0:
-        stability = compute_signal_stability(data, result)
-        stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
-        # Tiered penalty: <0.70 = 50%, 0.70-0.80 = 25%, >=0.80 = no penalty
-        # Production strategy 8569cb5 has min_stab=0.778, just below no-penalty zone.
-        # raw_composite floor raised to 7.0 prevents stability-for-Sharpe tradeoffs.
-        if stability < 0.70:
-            stability_factor *= 0.50
-        elif stability < 0.80:
-            stability_factor *= 0.75
-        score = score * stability_factor
-    else:
-        stability = 1.0
-        stability_factor = 1.0
+    # Signal stability: DISABLED during negative-territory exploration.
+    # Re-enable when strategies reach positive Sharpe across regimes.
+    stability = 1.0
+    stability_factor = 1.0
 
-    # Flip streak gate: penalize strategies with heavy consecutive-loss flip drag
-    # flip_streak_total_drag is <= 0 (sum of losing streak PnLs as % of equity)
-    # Normalize by regime bars to get per-bar drag rate (regime-length independent)
-    # Only penalizes when drag is negative; no drag → gate=1.0
+    # Flip streak gate: only apply when score is positive
     flip_streak_drag = result.flip_streak_total_drag  # <= 0
     if flip_streak_drag < 0 and score > 0:
         drag_per_bar = abs(flip_streak_drag) / max(total_bars, 1)
