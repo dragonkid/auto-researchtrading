@@ -207,6 +207,26 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: 7th voter — mean-reversion z-score (Bollinger).
+            # All 6 existing voters are momentum/trend-following (ret_short, EMA_cross,
+            # RSI, MACD, slope, EMA_slope) — they FIRE TOGETHER when price extends.
+            # In rally-2024 chop and sideways, this overcrowded-momentum consensus
+            # repeatedly enters at extension peaks then loses to mean-reversion.
+            # 20-bar Bollinger z-score = (close - SMA20) / StdDev20. Contrarian:
+            # when z is large (extended above mean), bull voter weakens / bear voter
+            # strengthens. Weight is small (0.6) to avoid dominating in real trends
+            # where momentum should win. Uses smoothed_closes for noise parity with
+            # other voters. Dead-zone offset (0.5) means the voter is near-neutral
+            # for |z| < 0.5 (normal price), only contributing when extended.
+            _bb_n = 20
+            _bb_window = smoothed_closes[-_bb_n:]
+            _bb_mean = _bb_window.mean()
+            _bb_std = max(_bb_window.std(), 1e-6)
+            _bb_z = (smoothed_closes[-1] - _bb_mean) / _bb_std
+            # Contrarian voter signal: positive when price below mean (buy mean-reversion),
+            # negative when price above mean (sell mean-reversion). Threshold offset 0.5
+            # means voter is roughly neutral near the mean.
+            _mr_signal = (-_bb_z - 0.0) / 1.5  # tanh saturates at |z| > ~3
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -214,6 +234,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                _mr_signal,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -223,9 +244,10 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
-            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, MR_zscore].
+            # Weights inverse to estimated noise sensitivity (sum=6.6, preserves rough scale).
+            # MR voter weight 0.6 (small): contrarian role, only meaningful at extension extremes.
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, 0.60)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
