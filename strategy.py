@@ -588,7 +588,18 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: split exit decision into two parallel gates with
+                # distinct thresholds. Defensive gate (loss-cutting) uses SL +
+                # slope-against — exits if pressure exceeds defensive_thresh.
+                # Profit-locking gate uses peak-profit + time + vol-expansion —
+                # exits if pressure exceeds locking_thresh. These two subsystems
+                # serve different functions and previously summed into one
+                # threshold; separating decouples loss-cutting reactivity from
+                # gain-locking trigger sensitivity. New control flow: two ORed
+                # exit decisions instead of one summed decision.
+                _defensive_pressure = _sl_pressure + _voter_attn * _w_slope * _sl_slope_pressure
+                _locking_pressure = _voter_attn * (_w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                _exit_pressure = max(_defensive_pressure, _locking_pressure)  # retained for diagnostic
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -615,7 +626,14 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if _exit_pressure >= _exit_thresh and target != 0:
+                # Architectural: two parallel exit gates with distinct thresholds.
+                # Defensive (loss-cutting): threshold = 0.85 * _exit_thresh (more reactive
+                # to adverse moves; cuts losers faster). Profit-locking: threshold =
+                # _exit_thresh (full standard threshold; lets winners breathe).
+                # Either gate firing triggers exit. SL exemption (above) flattens both.
+                _defensive_thresh = 0.85 * _exit_thresh
+                _locking_thresh = _exit_thresh
+                if (_defensive_pressure >= _defensive_thresh or _locking_pressure >= _locking_thresh) and target != 0:
                     target = 0.0
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
