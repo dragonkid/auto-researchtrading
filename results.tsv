@@ -2,4 +2,3 @@ commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	statu
 47355ae	8.22	8.97	2.08	12.16	9.37	6.63	7.72	keep	BASELINE (score-v5): momentum_voting with flip_streak_gate. min_stab=0.762. raw_composite=11.22.
 185bdbf	8.22	8.98	2.08	12.16	9.37	6.65	7.72	discard	exp: profit-state gated flip strong-min (architectural) — gate had near-zero effect; raw -0.0003, stab -0.001
 6ac9a94	8.19	8.94	2.03	12.06	9.28	6.66	7.75	discard	exp: flip-outcome memory feedback (architectural) — raw -0.025, comp -0.049; outcome penalty hurt protective flips in crash/bull.
-f08d18d	7.88	8.71	2.22	12.04	9.21	6.04	7.56	discard	exp: trade-life-cycle phase weights on exit fusion (architectural). Raw -0.48, comp -0.37, stab -0.003. Sideways -0.66 (life-cycle phase weights destabilized mid-life sideways exits where pp_pressure now boosted late-life giveback exits prematurely).
