@@ -222,19 +222,12 @@ class Strategy:
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
-            # Architectural: cubic-ramp strong-sum (was quintic). Quintic 5th power
-            # is extremely peaky — only voters very close to conf=0.9 contribute
-            # meaningfully, so strong-sum is dominated by 1-2 single voters whose
-            # flip-rate dominates noise. Cubic ramp smooths the contribution gradient,
-            # so more voters contribute, reducing single-voter dominance. Scale
-            # constant K=15.625 = 1/0.4^3 keeps per-voter max contribution at 1.0
-            # (matches quintic max), preserving _strong_min thresholds. Functional
-            # change: exit/entry decisions reflect broader voter consensus rather
-            # than a single dominant voter. Per-voter weights unchanged.
+            # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 3 * 15.625) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 3 * 15.625) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
