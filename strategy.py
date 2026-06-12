@@ -526,20 +526,6 @@ class Strategy:
                 if self._from_flip.get(symbol, False):
                     _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
                     _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
-                # Architectural: voter-consensus collapse exit_thresh attenuator.
-                # When the position-side strong-sum has decayed below half its
-                # admission threshold (the original entry rationale is gone), tighten
-                # _exit_thresh so other pressure sources (slope/pp/time) trigger
-                # exit faster. Continuous tanh on (strong / strong_min - 1.0):
-                # at strong = strong_min (entry-quality conviction), no adjustment;
-                # at strong = 0.5 * strong_min, adjustment saturates to -0.10.
-                # Position-side strong-sum is _bull_strong for longs, _bear_strong for shorts.
-                # New cross-subsystem data dependency: voter signals modulate exit-pressure
-                # threshold (was independent before). Sideways-targeted: in low-conviction
-                # chop, position rationale fades fast — exit faster.
-                _pos_strong = _bull_strong if current_pos > 0 else _bear_strong
-                _conv_decay = max(0.0, np.tanh((1.0 - _pos_strong / max(_strong_min, 1e-6)) / 0.5))
-                _exit_thresh = _exit_thresh - 0.10 * _conv_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
