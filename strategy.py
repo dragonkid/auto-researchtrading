@@ -126,11 +126,6 @@ class Strategy:
         self._from_flip = {}
         # Architectural: bar index of last flip per symbol (for flip-recency gate).
         self._last_flip_bar = {}
-        # Architectural: bar index of last stop-loss exit per symbol. Stop-loss
-        # exits indicate adverse moves stronger than expected; whipsaw risk on
-        # immediate re-entry. Used for a vol-adaptive post-stop cooldown that
-        # raises the entry gate strong-min during the recovery window.
-        self._last_stop_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -231,16 +226,6 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
-
-            # Architectural: post-stop cooldown gate. After a stop-loss-driven exit,
-            # raise _strong_min smoothly for ~8 bars to require a higher-conviction
-            # entry. Vol-adaptive recovery window: high-vol regimes need a longer
-            # recovery window (crash whipsaw lasts longer). Smooth decay (no boundary).
-            # New cross-bar state dependency: entry gate depends on most-recent stop bar.
-            _bars_since_stop = self.bar_count - self._last_stop_bar.get(symbol, -999)
-            _stop_window = 6.0 + 4.0 * min(1.0, max(0.0, (vol_ratio - 0.8) / 0.6))
-            _post_stop_factor = max(0.0, 1.0 - _bars_since_stop / _stop_window)
-            _strong_min = _strong_min * (1.0 + 0.25 * _post_stop_factor)
 
             # Architectural simplification: removed isolated-spike penalty buffer.
             # Flip-recency gate now handles the same noise-rejection role at the
@@ -584,11 +569,6 @@ class Strategy:
                     _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                    # Mark stop-loss-driven exits for the post-stop cooldown gate.
-                    # _sl_pressure >= 0.95 is the same condition that forces the
-                    # exemption above — i.e., adverse move dominated this exit.
-                    if _sl_pressure >= 0.95:
-                        self._last_stop_bar[symbol] = self.bar_count
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 # Architectural: flip-recency continuous gate. Flip win rate is 10-14%
