@@ -509,7 +509,17 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: PnL-velocity exit pressure (5th source).
+                # Captures rapid adverse pnl change in a single bar — situations where peak
+                # is high (no peak-profit pressure yet) but the bar just dropped sharply.
+                # _vel = (pos_pnl - prev_pos_pnl). Negative _vel = adverse move this bar.
+                # Smooth tanh on -_vel scaled by 0.012 (≈1.2% adverse 1-bar move = ~0.76).
+                # Only fires when _vel < 0 (one-sided protective). New data dependency:
+                # uses _prev_pnl already maintained for confirmed-peak tracking.
+                _vel = pos_pnl - _prev_pnl
+                _vel_pressure = max(0.0, min(1.0, np.tanh(max(0.0, -_vel) / 0.012)))
+                _w_vel = 0.30 * _scale_in_w  # smaller weight than primary exits, also scale-in-attenuated
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_vel * _vel_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp

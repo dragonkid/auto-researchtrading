@@ -1,2 +1,3 @@
 commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
 47355ae	-0.501	-0.588	0.397	0.038	-0.856	-0.541	-0.994	keep	BASELINE (score-v5-fixed): correct flip PnL + tanh(sharpe) scoring + 5bps fee. Strategy net-negative; bull only regime with positive Sharpe. Gates (dd/turnover) only apply to positive-Sharpe regimes.
+-	-0.517	-0.590	0.396	0.04	-0.86	-0.55	-0.99	discard	portfolio concentration attenuator (cross-symbol entry sizing) — composite -0.016, mean -0.002 vs baseline; all regimes essentially flat, no signal. Cross-symbol coupling did not improve correlated-rally/crash protection.
