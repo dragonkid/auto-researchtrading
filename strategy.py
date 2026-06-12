@@ -520,7 +520,17 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
+                # Architectural: continuous bars-held grace ramp on non-stop exit pressures.
+                # Smoothly attenuate _voter_attn * (slope+pp+time) via tanh on bars_held —
+                # bar 0: 0.40x, bar 1: 0.55x, bar 2: 0.74x, bar 3: 0.89x, bar 4+: ~1.0x.
+                # New positions get noise-protection grace: only stop-loss (_sl_pressure)
+                # can trigger early exit. Distinct from existing _scale_in_w (which only
+                # gates _w_slope and _w_pp linearly): this gates ALL non-SL exit components
+                # including time-pressure, with a smooth tanh ramp. Architectural change
+                # to the exit-pressure aggregation control flow: introduces a unified
+                # grace factor at the fusion level, not at individual weight level.
+                _grace_ramp = 0.40 + 0.60 * np.tanh(bars_held / 2.5)
+                _exit_pressure = _sl_pressure + _grace_ramp * _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
