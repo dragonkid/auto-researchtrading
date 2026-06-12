@@ -130,6 +130,9 @@ class Strategy:
         self._from_flip = {}
         # Architectural: bar index of last flip per symbol (for flip-recency gate).
         self._last_flip_bar = {}
+        # Architectural: recent flip outcomes per symbol (rolling list of last 3 flip PnLs).
+        # Feeds back realized flip profitability into the next flip's strong-min gate.
+        self._flip_outcomes = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -556,8 +559,18 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
+                # Architectural: flip outcome memory. Sum of last 3 flip-originated
+                # position PnLs (closed flips). Negative sum -> recent flips have been
+                # lossy on this symbol -> tighten next flip's strong-min. Smooth tanh
+                # mapping of negative outcome to [0, +0.20] additional strong-min
+                # tightening. New realized-PnL feedback loop into entry decision —
+                # distinct from recency (time) and maturity (position-age) axes.
+                _outcomes = self._flip_outcomes.get(symbol, [])
+                _outcome_sum = sum(_outcomes) if _outcomes else 0.0
+                # Scale by typical |STOP_LOSS_PCT|: if 3 flips averaged -1*STOP each, sum=-3*STOP.
+                _outcome_penalty = 0.20 * np.tanh(max(0.0, -_outcome_sum) / (3.0 * abs(STOP_LOSS_PCT)))
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _outcome_penalty)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _outcome_penalty)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
@@ -582,6 +595,14 @@ class Strategy:
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
+                # Record outcome of flip-originated position when it closes (target=0)
+                # OR is itself flipped (current_pos != 0 and direction changes).
+                _is_close_or_flip = (target == 0) or (current_pos != 0 and ((target > 0 and current_pos < 0) or (target < 0 and current_pos > 0)))
+                if _is_close_or_flip and self._from_flip.get(symbol, False) and symbol in self.entry_prices:
+                    _ep = self.entry_prices[symbol]
+                    _pnl = (mid - _ep) / _ep if current_pos > 0 else (_ep - mid) / _ep
+                    _ol = self._flip_outcomes.get(symbol, [])
+                    self._flip_outcomes[symbol] = (_ol + [_pnl])[-3:]
                 if target == 0:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
