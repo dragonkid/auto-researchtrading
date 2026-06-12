@@ -104,6 +104,7 @@ class BacktestResult:
     flip_count: int = 0
     flip_win_rate_pct: float = 0.0
     flip_total_pnl_pct: float = 0.0     # sum of flip close PnL as % of initial equity
+    flip_streak_total_drag: float = 0.0  # sum of all consecutive-loss flip streaks (% of equity)
 
 # ---------------------------------------------------------------------------
 # Data download
@@ -569,9 +570,20 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         flip_wins = sum(1 for p in flip_pnls if p > 0)
         flip_win_rate_pct = flip_wins / flip_count * 100
         flip_total_pnl_pct = sum(flip_pnls)
+        # Streak total drag: sum of all consecutive-loss flip streaks
+        streak_drag = 0.0
+        flip_streak_total_drag = 0.0
+        for fp in flip_pnls:
+            if fp < 0:
+                streak_drag += fp
+            else:
+                flip_streak_total_drag += streak_drag  # flush (streak_drag <= 0)
+                streak_drag = 0.0
+        flip_streak_total_drag += streak_drag  # flush final streak
     else:
         flip_win_rate_pct = 0.0
         flip_total_pnl_pct = 0.0
+        flip_streak_total_drag = 0.0
 
     return BacktestResult(
         sharpe=sharpe,
@@ -589,6 +601,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         flip_count=flip_count,
         flip_win_rate_pct=flip_win_rate_pct,
         flip_total_pnl_pct=flip_total_pnl_pct,
+        flip_streak_total_drag=flip_streak_total_drag,
     )
 
 # ---------------------------------------------------------------------------

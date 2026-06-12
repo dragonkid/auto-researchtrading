@@ -87,6 +87,18 @@ def _run_regime_worker(args: tuple) -> dict:
         stability = 1.0
         stability_factor = 1.0
 
+    # Flip streak gate: penalize strategies with heavy consecutive-loss flip drag
+    # flip_streak_total_drag is <= 0 (sum of losing streak PnLs as % of equity)
+    # Normalize by regime bars to get per-bar drag rate (regime-length independent)
+    # Only penalizes when drag is negative; no drag → gate=1.0
+    flip_streak_drag = result.flip_streak_total_drag  # <= 0
+    if flip_streak_drag < 0 and score > 0:
+        drag_per_bar = abs(flip_streak_drag) / max(total_bars, 1)
+        flip_streak_gate = 1.0 / (1.0 + drag_per_bar / 0.5)
+        score = score * flip_streak_gate
+    else:
+        flip_streak_gate = 1.0
+
     return {
         "name": name,
         "desc": desc,
@@ -105,6 +117,8 @@ def _run_regime_worker(args: tuple) -> dict:
         "flip_count": result.flip_count,
         "flip_win_rate": result.flip_win_rate_pct,
         "flip_pnl_pct": result.flip_total_pnl_pct,
+        "flip_streak_drag": result.flip_streak_total_drag,
+        "flip_streak_gate": flip_streak_gate,
     }
 
 
@@ -251,6 +265,7 @@ if __name__ == "__main__":
                 print(f"regime_{r['name']}_flip_count: {r.get('flip_count', 0)}")
                 print(f"regime_{r['name']}_flip_wr: {r.get('flip_win_rate', 0.0):.2f}")
                 print(f"regime_{r['name']}_flip_pnl: {r.get('flip_pnl_pct', 0.0):.2f}")
+                print(f"regime_{r['name']}_flip_streak_drag: {r.get('flip_streak_drag', 0.0):.2f}")
 
         stabilities = [r.get("stability", 1.0) for r in results if "error" not in r]
         if stabilities:

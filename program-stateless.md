@@ -221,7 +221,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 ### How to evaluate experiments
 - Check `raw_composite` and `composite_score` — these must improve vs baseline
 - Check `min_stability` — must not regress more than 0.002 vs baseline
-- Check `regime_X_flip_count`, `regime_X_flip_wr`, `regime_X_flip_pnl` — flip events account for ~60% of trades but have low win rate. If a regime's DD is elevated, check whether flip frequency or flip PnL worsened before adjusting other parameters.
+- Check `regime_X_flip_count`, `regime_X_flip_wr`, `regime_X_flip_pnl`, `regime_X_flip_streak_drag` — flip events account for ~60% of trades but have low win rate. `flip_streak_drag` measures cumulative PnL of consecutive-loss flip sequences and is factored into the regime score via a multiplicative gate. If a regime's DD is elevated, check whether flip frequency or flip PnL worsened before adjusting other parameters.
 - The ONLY hard constraints are: DD caps (bull ≤7.8%, crash ≤6.9%, sideways ≤5.6%, rally ≤6.0%), raw_composite ≥ 9.80, and min_stab ≥ baseline - 0.002
 
 ## Stability constraints (guard rails, not objectives)
