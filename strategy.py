@@ -219,9 +219,13 @@ class Strategy:
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, funding].
-            # Funding voter weight 0.6 (low because funding is orthogonal-signal but has
-            # narrow-band noise around small absolute values). Weights sum=6.6.
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, 0.6)
+            # Architectural: funding voter weight scales with |funding| magnitude.
+            # When funding is near zero, voter contribution is meaningless noise — weight
+            # decays toward 0. When funding is in extreme territory (>3e-5/hr ~ 0.024%/8h),
+            # voter contribution is meaningful — weight saturates at 1.2. Continuous tanh
+            # mapping of |funding|/3e-5. Other 6 voters retain their fixed weights.
+            _funding_weight = 1.2 * np.tanh(abs(_funding_mean) / 3e-5)
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, _funding_weight)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
