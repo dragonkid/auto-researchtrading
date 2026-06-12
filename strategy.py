@@ -131,12 +131,6 @@ class Strategy:
         # Flip requires the opposite-side conviction to be sustained over multiple bars,
         # not a single-bar spike (noise rejection at flip decision).
         self._recent_strongs = {}
-        # Architectural: stop-loss-triggered cooldown extension.
-        # When a position exits via stop-loss saturation, mark the symbol so the
-        # next entry must wait N additional bars of cooldown. Stop-loss exits
-        # indicate adverse momentum that often persists; immediate re-entry on
-        # the same noise wastes capital. New state, new control-flow path.
-        self._sl_exit_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -261,16 +255,6 @@ class Strategy:
             self.smoothed_trend[symbol] = trend_avg
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
-            # Architectural: stop-loss-triggered cooldown extension. When the
-            # most recent exit was stop-loss-dominated, the adverse move likely
-            # persists. Add a smooth, vol-conditioned extra cooldown of up to 5
-            # bars decaying linearly. In low-vol the extension stays full-length
-            # (rally chop, where SL-trip = real noise); in high-vol it decays
-            # faster (crash, where SL-trip = real reversal we want to re-enter).
-            _bars_since_sl = self.bar_count - self._sl_exit_bar.get(symbol, -999)
-            _sl_decay_bars = 5.0 - 2.0 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6))
-            if _bars_since_sl < _sl_decay_bars:
-                in_cooldown = True
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -616,11 +600,6 @@ class Strategy:
                     _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                    # Architectural: stop-loss-triggered cooldown marker.
-                    # Track when this exit was stop-loss-dominated for use in
-                    # next-entry cooldown extension.
-                    if _sl_pressure >= 0.85:
-                        self._sl_exit_bar[symbol] = self.bar_count
 
                 # Flip mechanism (votes + trend_avg sign, vol-scaled)
                 # Architectural: flip-recency continuous gate. Flip win rate is 10-14%
