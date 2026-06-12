@@ -83,12 +83,13 @@ MAX_COMBINED_TREND_BOOST = 1.0
 TREND_GATE_MED_WEIGHT_SIDEWAYS = 0.85
 TREND_GATE_MED_WEIGHT_BASE = 0.70
 TREND_GATE_DEADZONE = 0.018
-# Vote / cooldown (6 voters, soft tanh contributions)
+# Vote / cooldown (7 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.5  # required sum of margin-above-0.5 voter contributions
-MIN_VOTES = 2.5
-FLIP_MIN_VOTES = 2.4  # slightly looser to admit protective flips in rally
+# Thresholds scaled 7/6 from 6-voter setup (sum-of-weights = 7.0 with wick_asym voter).
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (was 1.5 for 6 voters)
+MIN_VOTES = 2.92  # 2.5 * 7/6
+FLIP_MIN_VOTES = 2.80  # 2.4 * 7/6
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -207,6 +208,21 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: 7th voter — wick-asymmetry. Reads intra-bar microstructure
+            # (high/low/close) over last 5 bars to detect absorption pressure orthogonal
+            # to the 6 close-derived voters. For each bar: (close - low) - (high - close)
+            # normalized by range. Positive = sustained bullish absorption (selling
+            # rejected, close near high). Negative = bearish absorption. Mean over 5 bars
+            # smooths noise. New data dependency: high/low/close intra-bar relationships,
+            # not just close-to-close. Requires updating _voter_weights tuple, strong_sum
+            # scaling, and MIN_VOTES/FLIP_MIN_VOTES (multi-variable architectural change).
+            _wa_highs = bd.history["high"].values[-5:]
+            _wa_lows = bd.history["low"].values[-5:]
+            _wa_closes = closes[-5:]
+            _wa_range = np.maximum(_wa_highs - _wa_lows, 1e-10)
+            _wa_per_bar = ((_wa_closes - _wa_lows) - (_wa_highs - _wa_closes)) / _wa_range
+            _wick_asym = float(np.mean(_wa_per_bar))  # in approximately [-1, +1]
+
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -214,6 +230,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                _wick_asym / 0.20,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -223,9 +240,10 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
-            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, wick_asym].
+            # Weights inverse to estimated noise sensitivity (sum=7.0, preserves scale).
+            # wick_asym weight 0.90 — orthogonal but noisier per single bar; smoothed via 5-bar mean.
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, 1.00)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
