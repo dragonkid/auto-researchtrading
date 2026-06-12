@@ -126,9 +126,6 @@ class Strategy:
         self._from_flip = {}
         # Architectural: bar index of last flip per symbol (for flip-recency gate).
         self._last_flip_bar = {}
-        # Architectural: stored entry conviction margin per symbol. Captured at the
-        # bar of entry/flip; used during scale-in to modulate ramp pace continuously.
-        self._entry_margin = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -375,15 +372,7 @@ class Strategy:
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
-                    # Architectural: conviction-modulated ramp pace. High-conviction entries
-                    # (large stored margin at originating bar) accelerate scale-in toward full
-                    # position; marginal entries (low or near-zero margin) decelerate.
-                    # Continuous tanh maps stored margin to [0.7..1.3] pace multiplier.
-                    # New state dependency: scale-in trajectory depends on the conviction
-                    # captured at entry, not just on trend/pnl during accumulation.
-                    _stored_margin = self._entry_margin.get(symbol, 0.0)
-                    _conv_pace = 1.0 + 0.3 * np.tanh(_stored_margin / 0.30)
-                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn * _conv_pace
+                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
@@ -583,16 +572,10 @@ class Strategy:
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     self._from_flip.pop(symbol, None)
-                    self._entry_margin.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._from_flip[symbol] = _is_flip_this_bar
                     if _is_flip_this_bar:
                         self._last_flip_bar[symbol] = self.bar_count
-                        # Stored margin for flip-origin positions: use opposite-side margin
-                        self._entry_margin[symbol] = max(0.0, _bear_margin if target < 0 else _bull_margin)
-                    else:
-                        # Stored margin for cold-entry positions: use entry-side margin
-                        self._entry_margin[symbol] = max(0.0, _bull_margin if target > 0 else _bear_margin)
 
         return signals
