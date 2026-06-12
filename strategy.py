@@ -571,7 +571,24 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
+                # Architectural: volatility-expansion exit pressure (5th source).
+                # When recent 6-bar realized vol substantially exceeds 18-bar
+                # realized vol (vol-of-vol expansion), the price regime has
+                # shifted — earlier slope/peak/time signals may be stale. Compute
+                # vol_expansion = vol_6 / vol_18, smooth via tanh, contribute
+                # smooth pressure [0, 0.6]. Acts as a regime-shift detector
+                # orthogonal to slope (direction) and pp (magnitude). New
+                # data-dependent exit pressure term in the fusion sum.
+                _vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+                _vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+                _vol_expansion = _vol_6 / _vol_18
+                # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
+                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Profit-side weight: only fire when in profit (lock gains on
+                # regime shift); don't punish losing positions for vol expansion
+                # since slope-against already handles adverse moves.
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
