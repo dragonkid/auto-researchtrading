@@ -593,21 +593,21 @@ class Strategy:
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                # Architectural: vol-adaptive sustained-conviction flip gate. Threshold
-                # relaxes smoothly with vol_ratio: low-vol (rally chop) requires 3-bar
-                # min ≥ 0.7x flip-min (strong noise filter); high-vol (crash) relaxes
-                # to ≥ 0.30x flip-min (allows jagged but real crash flips).
-                # Continuous: avoids the 2-bar window step in branch step 2 that locked
-                # crash relief to the vol_ratio>1.4 zone.
-                _sustain_thresh = 0.7 - 0.4 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6))
+                # Architectural: sustained-conviction flip gate with single-bar
+                # high-conviction OVERRIDE. Sustain (3-bar min >= 0.5x flip_min) is
+                # the noise filter; but if the current bar's strong-sum is well above
+                # flip_min (>=1.4x), single-bar conviction is high enough to bypass
+                # the sustain check. Protects legitimate high-conviction reversals.
+                _sustain_thresh = 0.5
+                _override_factor = 1.4
                 if len(_hist) >= 3:
                     _min_bull_3 = min(h[0] for h in _hist)
                     _min_bear_3 = min(h[1] for h in _hist)
                 else:
                     _min_bull_3 = _bull_strong
                     _min_bear_3 = _bear_strong
-                _bull_flip_sustained = _min_bull_3 >= _sustain_thresh * _bull_flip_min
-                _bear_flip_sustained = _min_bear_3 >= _sustain_thresh * _bear_flip_min
+                _bull_flip_sustained = (_min_bull_3 >= _sustain_thresh * _bull_flip_min) or (_bull_strong >= _override_factor * _bull_flip_min)
+                _bear_flip_sustained = (_min_bear_3 >= _sustain_thresh * _bear_flip_min) or (_bear_strong >= _override_factor * _bear_flip_min)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
