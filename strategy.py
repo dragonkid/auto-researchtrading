@@ -573,8 +573,10 @@ class Strategy:
                     _o_rec = max(0.0, 1.0 - _o_bars / 6.0)
                     if _o_rec > _max_other_recency:
                         _max_other_recency = _o_rec
-                # Trend-gate: in chop, attenuate cross-symbol factor; in trend, apply fully.
-                _xs_trend_gate = 0.30 + 0.70 * rsi_trend_str  # [0.30, 1.00]
+                # Trend-gate: zero in chop (rsi_trend_str<0.3), full in trend (rsi_trend_str>0.7).
+                # Smooth ramp protects sideways from cross-symbol tightening while preserving
+                # bull/crash gains.
+                _xs_trend_gate = max(0.0, min(1.0, (rsi_trend_str - 0.3) / 0.4))  # [0.0, 1.0]
                 _xs_factor = 0.15 * _max_other_recency * _xs_trend_gate
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
