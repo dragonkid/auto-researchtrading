@@ -311,7 +311,35 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: 16-bar range-position entry-frac modulator (directional).
+            # Computes mid's position within the 16-bar high-low band [0,1]. For long
+            # entries near the top of band (range_pos>0.6), reduce frac (chasing
+            # extension into resistance); for long entries near bottom (range_pos<0.4),
+            # boost frac (better entry). Symmetric for shorts. Continuous tanh, range
+            # [-0.04, +0.04]. New data dependency: entry size depends on intra-window
+            # mid position relative to recent range — orthogonal to all voter signals
+            # (which measure return/slope) and to _confluence_adj/_er_adj (which use
+            # smoothed_closes directionally not range-relative). Sideways-targeted:
+            # in low-trend regimes, entries near range extremes are mean-reversion
+            # candidates; this differentiates good entries from bad regardless of
+            # voter conviction.
+            _rng_high = bd.history["high"].values[-16:].max()
+            _rng_low = bd.history["low"].values[-16:].min()
+            _range_pos = (mid - _rng_low) / max(_rng_high - _rng_low, 1e-6)
+            # Directional-bias indicator: entry direction inferred from current bull/bear
+            # strong-sum dominance (positive favors long, negative favors short).
+            _entry_dir_soft = np.tanh((_bull_strong - _bear_strong) / max(_strong_min, 1e-6))
+            # Range-position adjustment: long-entry penalty when high in range,
+            # bonus when low in range. Symmetric for shorts. Smooth tanh on
+            # (range_pos - 0.5) signed by entry direction.
+            _rp_centered = _range_pos - 0.5  # [-0.5, +0.5]
+            # Long entry (_entry_dir_soft > 0): adjustment = -tanh((rp-0.5)/0.2) * 0.04
+            #   high in range → negative adjustment (penalize chasing)
+            # Short entry (_entry_dir_soft < 0): adjustment = +tanh((rp-0.5)/0.2) * 0.04
+            #   low in range → negative adjustment (penalize chasing into support)
+            # Multiply by |entry_dir_soft| to fade adjustment when no clear direction.
+            _rp_adj = -0.04 * np.tanh(_rp_centered / 0.2) * _entry_dir_soft * min(1.0, abs(_entry_dir_soft))
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _rp_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed _avg_signal bias from trend gate.
