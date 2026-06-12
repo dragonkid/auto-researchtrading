@@ -119,17 +119,8 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: flip-origin tracker. True when current position originated
-        # from a flip (high-conviction reversal: both vote count AND trend sign +
-        # opposite-side strong-min admission). Used in exit logic to give flips
-        # extra maturation time before the exit-pressure gate can fire.
-        self._from_flip = {}
-        # Architectural: bar index of last flip per symbol (for flip-recency gate).
-        self._last_flip_bar = {}
-        # Architectural: per-symbol recent opposite-side strong-sum history for
-        # sustained-conviction flip gate. List of last 3 bars of (bull_strong, bear_strong).
-        # Flip requires the opposite-side conviction to be sustained over multiple bars,
-        # not a single-bar spike (noise rejection at flip decision).
+        # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
+        # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
 
     def on_bar(self, bar_data, portfolio):
@@ -285,7 +276,6 @@ class Strategy:
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
-            _is_flip_this_bar = False
 
             # Architectural: vol-conditioned initial commit fraction. Continuous tanh
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
@@ -601,71 +591,25 @@ class Strategy:
                 # via a single multiplicative form. _vt_factor ramps with low-vol AND mid-life.
                 _vt_factor = max(0.0, min(1.0, (0.85 - vol_ratio) / 0.35)) * max(0.0, min(1.0, 1.0 - abs((bars_held - 8.0) / 6.0)))
                 _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) * (1.0 + 0.10 * _vt_factor)
-                # Architectural: flip-origin exit-threshold protection. Positions that
-                # originated from a flip are higher-conviction reversals (passed both
-                # vote-count AND trend-sign AND opposite-side strong-min gates). Give
-                # them extra maturation: smooth additive bonus to _exit_thresh that
-                # decays linearly over the first 3 bars after flip. New state +
-                # control-flow path that distinguishes flip-origin from cold-entry
-                # positions in the exit-pressure decision. Stop-loss exemption below
-                # already overrides this protection on real adverse moves.
-                if self._from_flip.get(symbol, False):
-                    _flip_age_decay = max(0.0, 1.0 - bars_held / 3.0)
-                    _exit_thresh = _exit_thresh + 0.15 * _flip_age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
                 if _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
 
-                # Flip mechanism (votes + trend_avg sign, vol-scaled)
-                # Architectural: flip-recency continuous gate. Flip win rate is 10-14%
-                # across regimes (flip_count 1700-2300 per year per symbol). Hypothesis:
-                # rapid back-to-back flips are noise-driven (whipsaw). Smoothly tighten
-                # flip strong-min when a recent flip occurred on this symbol; penalty
-                # decays linearly over 6 bars. New state dependency (last_flip_bar)
-                # and new continuous gate factor in flip strong-min computation.
-                _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
-                _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                # Architectural: sustained-conviction flip gate with vol-conditioned
-                # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
-                # (rally chop, where 1.4x is too easily reached on noisy bars) the
-                # override demands 2.2x; in high-vol (crash whipsaw) the override
-                # relaxes to 1.3x to admit jagged but real reversals.
-                # Continuous tanh-driven mapping; smooth gate.
-                _sustain_thresh = 0.5
-                _override_factor = 2.2 - 0.9 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6))
-                if len(_hist) >= 3:
-                    _min_bull_3 = min(h[0] for h in _hist)
-                    _min_bear_3 = min(h[1] for h in _hist)
-                else:
-                    _min_bull_3 = _bull_strong
-                    _min_bear_3 = _bear_strong
-                _bull_flip_sustained = (_min_bull_3 >= _sustain_thresh * _bull_flip_min) or (_bull_strong >= _override_factor * _bull_flip_min)
-                _bear_flip_sustained = (_min_bear_3 >= _sustain_thresh * _bear_flip_min) or (_bear_strong >= _override_factor * _bear_flip_min)
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained)):
-                    _is_flip_this_bar = True
-                    # Architectural: flip uses same vol-conditioned initial fraction as entry.
-                    # Symmetry — flip is a first-bar commitment to a new direction (same role
-                    # as entry's first bar). Anchor at _entry_frac_dyn, then scale up with
-                    # vol_ratio (full flip in high-vol crash for protection; conservative
-                    # flip in low-vol where noise risk dominates).
-                    # Architectural: conviction-margin SIZE modulation on flip path.
-                    # Larger commitment when opposite-side strong-sum is well above its
-                    # admission threshold (high conviction reversal), smaller when marginal.
-                    # Continuous tanh mapping of margin -> [-0.10, +0.10] additive to base
-                    # flip frac. Modulates SIZE only — gates unchanged. Distinct from prior
-                    # margin-as-gate attempts which filtered flips out.
-                    _flip_margin = (_bear_margin if current_pos > 0 else _bull_margin)
-                    # One-sided modulation: positive margin (high conviction) increases
-                    # flip size, negative margin (marginal/below-threshold gate-pass) is
-                    # treated as zero — avoids cutting flip size when noise drives margin
-                    # negative on legitimate but marginal flips.
-                    _flip_conv_adj = 0.10 * np.tanh(max(0.0, _flip_margin) / 0.30)
-                    _flip_frac = min(1.0, max(0.30, _entry_frac_dyn + (1.0 - _entry_frac_dyn) * min(1.0, vol_ratio / 1.5) + _flip_conv_adj))
-                    target = (-size if current_pos > 0 else size) * _flip_frac
+                # Architectural simplification: removed in-place flip mechanism.
+                # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
+                # the dominant cost driver (flip_pnl -560 to -960 per regime).
+                # Replace single-bar reversal with exit-then-cooldown: when opposite-side
+                # conviction passes the flip gate, set target=0. The standard cold-entry
+                # path (with its 2-bar persistence gate) will re-enter in the opposite
+                # direction on a subsequent bar IF conviction sustains. This decouples
+                # reversal from a single-bar decision and routes it through the same
+                # noise-filtering gate that protects fresh entries.
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                if not in_cooldown and _opp_gate:
+                    target = 0.0
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
@@ -673,11 +617,7 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
-                    self._from_flip.pop(symbol, None)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._from_flip[symbol] = _is_flip_this_bar
-                    if _is_flip_this_bar:
-                        self._last_flip_bar[symbol] = self.bar_count
 
         return signals
