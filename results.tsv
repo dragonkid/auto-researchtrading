@@ -1,2 +1,3 @@
 commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
 47355ae	-0.501	-0.588	0.397	0.038	-0.856	-0.541	-0.994	keep	BASELINE (score-v5-fixed): correct flip PnL + tanh(sharpe) scoring + 5bps fee. Strategy net-negative; bull only regime with positive Sharpe. Gates (dd/turnover) only apply to positive-Sharpe regimes.
+-	-0.510	-0.595	0.396	0.04	-0.85	-0.57	-0.99	discard	trend-alignment slope-pressure attenuator (architectural) — composite -0.009, mean -0.007; sideways -0.027 (slope retention extends losing positions in chop), bull/rally/crash flat. Trend-aligned attenuation theory unconfirmed.
