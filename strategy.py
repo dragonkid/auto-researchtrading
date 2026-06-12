@@ -645,27 +645,7 @@ class Strategy:
                     _min_bear_3 = _bear_strong
                 _bull_flip_sustained = (_min_bull_3 >= _sustain_thresh * _bull_flip_min) or (_bull_strong >= _override_factor * _bull_flip_min)
                 _bear_flip_sustained = (_min_bear_3 >= _sustain_thresh * _bear_flip_min) or (_bear_strong >= _override_factor * _bear_flip_min)
-                # Architectural: pnl-conditioned flip-vs-exit dispatch. Flip win rate
-                # is 7-10% globally, but losing positions and winning positions have
-                # very different reversal semantics:
-                #  - Losing position + reversal signal = real adverse move (e.g., crash
-                #    selloff while we're long) — flip to short captures the move.
-                #    Keep the flip path intact for these cases.
-                #  - Winning position + reversal signal = likely chop/noise — voters
-                #    oscillate at peaks. The flip cost (immediate full-size reverse
-                #    trade) usually loses while a clean exit + re-entry through the
-                #    normal entry-persistence gate filters out single-bar noise.
-                #    Replace flip with exit (target=0) on winning positions; the next
-                #    bar's normal entry logic handles re-entry if the signal sustains.
-                # Multi-variable: changes flip control flow to dispatch on pos_pnl sign,
-                # adding new exit-instead-of-flip branch. Continuous transition is not
-                # required because pos_pnl=0 is a measure-zero boundary; semantics are
-                # unambiguous on each side.
-                _flip_gate_fired = not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained))
-                if _flip_gate_fired and pos_pnl > 0:
-                    # Winning + reversal signal -> exit only, let normal entry path re-enter.
-                    target = 0.0
-                elif _flip_gate_fired:
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
