@@ -627,8 +627,29 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
+                # Architectural: Donchian-position flip-gate modulation. Compute
+                # current price's relative position within the 30-bar high-low channel.
+                # _donchian_pos = (close - midchannel) / (range/2), in approximately [-1, +1].
+                # Near +1 (close at 30-bar high): strong rally context — bull-to-bear flip
+                # gate tightens (reject flips fighting structural rallies). Near -1
+                # (close at 30-bar low): strong crash context — bear-to-bull flip gate
+                # tightens (reject premature flips into capitulation). Symmetric one-sided
+                # tightening: only the contrarian flip side gets penalized, not the
+                # trend-aligned side. Continuous tanh, max 0.30 multiplier on flip_min.
+                # New data dependency: flip threshold conditioned on extreme-statistics
+                # of the recent price channel, orthogonal to all return/slope primitives.
+                _dc_window = 30
+                _dc_high = float(np.max(closes[-_dc_window:]))
+                _dc_low = float(np.min(closes[-_dc_window:]))
+                _dc_mid = 0.5 * (_dc_high + _dc_low)
+                _dc_half_range = max(0.5 * (_dc_high - _dc_low), 1e-10)
+                _donchian_pos = (closes[-1] - _dc_mid) / _dc_half_range  # ~[-1, +1]
+                # Bull-to-bear flip (current_pos > 0 -> bear): tighten if rally context
+                # (donchian_pos > 0). Bear-to-bull flip: tighten if crash context (< 0).
+                _bear_flip_dc_factor = 0.30 * max(0.0, np.tanh(_donchian_pos / 0.5))   # 0..0.30
+                _bull_flip_dc_factor = 0.30 * max(0.0, np.tanh(-_donchian_pos / 0.5))  # 0..0.30
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _bull_flip_dc_factor)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _bear_flip_dc_factor)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
                 # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
                 # (rally chop, where 1.4x is too easily reached on noisy bars) the
