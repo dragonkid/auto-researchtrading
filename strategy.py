@@ -395,11 +395,20 @@ class Strategy:
                 else:
                     self.peak_pnl[symbol] = _curr_peak
 
-                # Architectural: stop-loss as smooth pressure source. Vol-adaptive band width:
-                # low vol (rally/sideways) -> narrow band (closer to binary, less near-stop oscillation);
-                # high vol (crash) -> wide band (absorbs larger noise excursions).
-                # Band half-width scales as 0.06 + 0.20*min(1, vol_ratio) of |STOP|.
-                _stop_abs = abs(STOP_LOSS_PCT)
+                # Architectural: ATR-based dynamic stop-loss.
+                # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
+                # ATR(14) on smoothed_closes captures each symbol's structural volatility
+                # (BTC tighter, SOL wider). Stop = K * ATR_pct, clamped to historical range.
+                # Smooth (no boundary): same vol-adaptive band still applies.
+                _atr_n = 14
+                _atr_high = bd.history["high"].values[-_atr_n:]
+                _atr_low = bd.history["low"].values[-_atr_n:]
+                _atr_close = closes[-_atr_n - 1:-1]  # prev closes
+                _tr = np.maximum(_atr_high - _atr_low, np.maximum(np.abs(_atr_high - _atr_close), np.abs(_atr_low - _atr_close)))
+                _atr_pct = np.mean(_tr) / mid
+                # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
+                # similar range to original 0.024 but adapts per-symbol/per-regime.
+                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
