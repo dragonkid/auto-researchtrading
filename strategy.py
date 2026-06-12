@@ -573,11 +573,9 @@ class Strategy:
                     _o_rec = max(0.0, 1.0 - _o_bars / 6.0)
                     if _o_rec > _max_other_recency:
                         _max_other_recency = _o_rec
-                # Trend-gate: zero in chop+early-trend (rsi_trend_str<0.5), full in strong trend
-                # (rsi_trend_str>0.8). Tighter ramp focuses cross-symbol effect on strong-trend
-                # whipsaws specifically.
-                _xs_trend_gate = max(0.0, min(1.0, (rsi_trend_str - 0.5) / 0.3))  # [0.0, 1.0]
-                _xs_factor = 0.15 * _max_other_recency * _xs_trend_gate
+                # Trend-gate: zero in chop (rsi_trend_str<0.3), full in trend (rsi_trend_str>0.7).
+                _xs_trend_gate = max(0.0, min(1.0, (rsi_trend_str - 0.3) / 0.4))  # [0.0, 1.0]
+                _xs_factor = 0.12 * _max_other_recency * _xs_trend_gate
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
