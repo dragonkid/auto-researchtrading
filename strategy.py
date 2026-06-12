@@ -434,7 +434,12 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                # Architectural: ATR-scaled peak profit min. Replaces global PEAK_PROFIT_MIN_BASE
+                # (constant 0.025) with per-symbol ATR-derived takeprofit anchor.
+                # SOL needs bigger move before trailing stop trips; BTC trips sooner.
+                # Anchor = 1.05 * ATR_pct (balanced between fast trip and headroom).
+                _pp_anchor = max(0.012, min(0.040, 1.05 * _atr_pct))
+                _pp_min = _pp_anchor * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification.
