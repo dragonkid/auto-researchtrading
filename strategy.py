@@ -184,23 +184,13 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 7 voters with smooth tanh contribution: hard binary except at threshold boundary.
+            # 6 voters with smooth tanh contribution: hard binary except at threshold boundary.
             # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
             # 0/1 except in a narrow band around the threshold where it transitions smoothly. Keeps original
-            # vote-count semantics (sum stays in [0, 7]) while reducing flip-rate near boundaries.
+            # vote-count semantics (sum stays in [0, 6]) while reducing flip-rate near boundaries.
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: funding-rate contrarian voter (7th voter, new signal source).
-            # Funding is fundamentally orthogonal to all price-derived voters: it measures
-            # cross-trader positioning bias (longs pay shorts when crowded long, vice versa).
-            # Hyperliquid funding is per-hour scale. Use mean of last 8 bars as the persistent
-            # funding bias signal (smooths single-bar funding spikes). Positive funding ->
-            # crowded long -> contrarian BEAR vote (signal negated). Threshold 5e-5/hr
-            # (~0.04% per 8h funding cycle, modest positioning bias). Continuous tanh on
-            # (-fund - thresh) for bull side (low/negative funding favors longs).
-            _funding_arr = bd.history["funding_rate"].values
-            _funding_mean = np.mean(_funding_arr[-8:])
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -208,7 +198,6 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
-                (-_funding_mean - 5e-6) / 1.5e-5,  # contrarian: low funding -> bull
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -218,10 +207,9 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, funding].
-            # Funding voter weight 0.6 (low because funding is orthogonal-signal but has
-            # narrow-band noise around small absolute values). Weights sum=6.6.
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, 0.6)
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
@@ -521,21 +509,6 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: volume-divergence exit pressure (5th exit pressure source).
-                # Hypothesis: when in profit, declining volume relative to recent baseline
-                # signals momentum exhaustion — price gains made on shrinking participation
-                # are unsustainable. Compute volume_ratio = mean(last 6 vol) / mean(last 24 vol).
-                # Pressure activates only when in profit (pos_pnl > 0): no signal in losing
-                # positions where slope-against and stop-loss already drive exit. Continuous
-                # tanh on (1.0 - volume_ratio) with one-sided positive activation. New
-                # data dependency: exit decision uses volume primitive (orthogonal to
-                # vol_confirm_mult which sizes entries; no exit-side use existed prior).
-                _vols = bd.history["volume"].values
-                _vol_recent = np.mean(_vols[-6:])
-                _vol_baseline = np.mean(_vols[-24:])
-                _vol_div_raw = max(0.0, 1.0 - _vol_recent / max(_vol_baseline, 1e-6))
-                _profit_gate = max(0.0, np.tanh(pos_pnl / 0.015))   # [0,1], activates above ~1.5% profit
-                _vol_div_pressure = _profit_gate * np.tanh(_vol_div_raw / 0.20)
                 # Architectural: position-side voter-conviction as exit-pressure attenuator.
                 # When the voters still strongly support position direction (bull_strong
                 # if long, bear_strong if short), the entry signal hasn't reversed —
@@ -547,7 +520,7 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + 0.30 * _vol_div_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
