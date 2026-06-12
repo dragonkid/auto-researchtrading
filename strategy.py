@@ -591,8 +591,20 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
+                # Architectural: cross-symbol flip-isolation gate. Count how many of the
+                # 3 ACTIVE symbols flipped in the last 4 bars. If 2-3 symbols flipped
+                # recently, market-wide regime change is likely real → standard gate.
+                # If 0-1 symbols flipped recently, this symbol's flip is isolated whipsaw
+                # → tighten flip strong-min by up to +25%. Continuous via smooth ramp on
+                # count_recent_flips. New data dependency: per-symbol flip gate considers
+                # other symbols' flip history.
+                _other_flip_syms = sum(1 for s in ACTIVE_SYMBOLS
+                                       if s != symbol and 0 <= self.bar_count - self._last_flip_bar.get(s, -999) <= 4)
+                # 0 other flips -> isolated (1.0); 1 other flip -> partial corroboration (0.5);
+                # 2 other flips -> market-wide regime change (0.0, no isolation tightening).
+                _isolation_factor = max(0.0, (2.0 - _other_flip_syms) / 2.0)
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _isolation_factor)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _isolation_factor)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
                 # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
                 # (rally chop, where 1.4x is too easily reached on noisy bars) the
