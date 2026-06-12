@@ -126,11 +126,28 @@ class Strategy:
         self._from_flip = {}
         # Architectural: bar index of last flip per symbol (for flip-recency gate).
         self._last_flip_bar = {}
+        # Architectural: portfolio-level equity peak tracker for equity-curve drawdown
+        # size attenuator. Distinct from per-position peak_pnl: this is the strategy's
+        # own equity curve. When the strategy itself is in drawdown, scale down position
+        # size — feedback loop at the portfolio level, not per-position.
+        self._equity_peak = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
+
+        # Architectural: equity-curve drawdown size attenuator. Track strategy's own
+        # equity peak; when in drawdown vs peak, scale size down smoothly. This is a
+        # portfolio-level feedback loop: distinct from per-position pnl feedback which
+        # is procyclical-wrong (need to lever after losses for mean-reversion). Here
+        # we de-risk on the equity curve drawdown, not per-trade — orthogonal mechanism.
+        # Continuous: factor = 1 - 0.35 * tanh(dd_pct / 0.10), so 10% DD halves the
+        # tanh, ~25% DD saturates at -0.35 (size scaled to 0.65x).
+        if equity > self._equity_peak:
+            self._equity_peak = equity
+        _eq_dd = max(0.0, (self._equity_peak - equity) / max(self._equity_peak, 1e-6))
+        _equity_dd_factor = 1.0 - 0.35 * np.tanh(_eq_dd / 0.10)
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -269,7 +286,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _equity_dd_factor
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
