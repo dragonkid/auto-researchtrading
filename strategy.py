@@ -645,26 +645,7 @@ class Strategy:
                     _min_bear_3 = _bear_strong
                 _bull_flip_sustained = (_min_bull_3 >= _sustain_thresh * _bull_flip_min) or (_bull_strong >= _override_factor * _bull_flip_min)
                 _bear_flip_sustained = (_min_bear_3 >= _sustain_thresh * _bear_flip_min) or (_bear_strong >= _override_factor * _bear_flip_min)
-                # Architectural: realized-price flip-confirmation gate. Flip win rate
-                # is 7-10% across regimes — flip costs (~600-1000 PnL drag/regime) are
-                # the largest single contributor to negative composite. All current
-                # flip gates (votes, strong-sum, trend_avg, sustained) derive from the
-                # SAME voter signals (correlated noise). Add an ORTHOGONAL constraint:
-                # require realized price to have moved against the current position
-                # by a vol-scaled buffer. If long and considering a flip to short,
-                # close must be below entry_price by at least 0.5*ATR_pct — proves
-                # the entry was wrong via realized price, not just predicted via voters.
-                # Mirror condition for short->long flip. Buffer scales with ATR so
-                # the gate adapts per-symbol/per-regime. Continuous: gate is binary
-                # but the threshold itself is smooth (ATR_pct).
-                _flip_buf = 0.5 * _atr_pct_e
-                _entry_px = self.entry_prices.get(symbol, mid)
-                _px_change = (mid - _entry_px) / _entry_px
-                # long->short flip: entry was wrong long, price fell below entry by buffer
-                _bear_price_confirm = _px_change < -_flip_buf
-                # short->long flip: entry was wrong short, price rose above entry by buffer
-                _bull_price_confirm = _px_change > _flip_buf
-                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained and _bear_price_confirm) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained and _bull_price_confirm)):
+                if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0 and _bear_flip_sustained) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0 and _bull_flip_sustained)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
                     # Symmetry — flip is a first-bar commitment to a new direction (same role
