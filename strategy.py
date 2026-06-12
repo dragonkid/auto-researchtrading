@@ -502,7 +502,25 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
+                # Architectural: overextension exit pressure (5th exit source).
+                # Mean-reversion mechanism: when price has moved far from its EMA_SLOW
+                # anchor in the position direction (overextended profitable move),
+                # mean-reversion is increasingly likely. Distance from _es normalized
+                # by realized_vol (units of "vol-bars"). One-sided: only fires when
+                # extension is in position direction AND in profit (don't accelerate
+                # losers via mean-reversion gate; SL/slope already handle losers).
+                # Smooth tanh activation; linear ramp [1.5, 3.5] vol-bars of extension
+                # produces pressure 0.0 -> 1.0. Orthogonal to existing 4 sources:
+                # sl is loss-anchored, slope is short-term direction, pp is giveback-
+                # ratio, time is bar count. Overextension is absolute distance from
+                # mid-term anchor — distinct primitive.
+                _ext_dist = (mid - _es) / mid   # signed distance fraction
+                _ext_dir = _ext_dist if current_pos > 0 else -_ext_dist  # in pos direction
+                _ext_norm = max(realized_vol, 1e-6) * 1.5   # 1.5 vol-bars units
+                _ext_in_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT) / 0.5))  # [0,1], saturates at half-stop profit
+                _overext_pressure = max(0.0, min(1.0, (_ext_dir / _ext_norm - 1.5) / 2.0)) * _ext_in_profit_gate
+                _w_overext = 0.6 * max(0.0, _pnl_scale)   # [0, 0.6], only profit side
+                _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_overext * _overext_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
