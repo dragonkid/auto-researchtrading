@@ -126,6 +126,9 @@ class Strategy:
         self._from_flip = {}
         # Architectural: bar index of last flip per symbol (for flip-recency gate).
         self._last_flip_bar = {}
+        # Architectural step-8: per-symbol latest trend_avg sign (for cross-symbol directional consensus).
+        # Replaces cross-symbol flip-recency dependency with directional-consensus dependency.
+        self._last_trend_sign = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -230,6 +233,8 @@ class Strategy:
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
+            # Architectural step-8: track sign of trend_avg for cross-symbol directional consensus.
+            self._last_trend_sign[symbol] = 1.0 if trend_avg > 0 else (-1.0 if trend_avg < 0 else 0.0)
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
@@ -559,25 +564,35 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                # Architectural: market-wide flip-recency factor (trend-gated).
-                # MAX across all OTHER symbols' last-flip recency tightens local flip
-                # threshold during whipsaw periods. Smooth trend-gate via rsi_trend_str:
-                # in trends (rsi_trend_str~1), full cross-symbol tightening; in sideways
-                # (rsi_trend_str~0), attenuated to avoid over-suppressing legitimate
-                # chop flips. New cross-symbol + cross-timescale data dependency.
-                _max_other_recency = 0.0
+                # Architectural step-8: cross-symbol directional-consensus factor.
+                # Replaces cross-symbol flip-recency (saturated through 7 branch steps) with
+                # a structurally different signal: count of OTHER symbols whose latest trend_avg
+                # sign matches the proposed flip direction. When consensus opposes the flip
+                # (e.g., flipping to long while 2/3 other symbols' trend is negative), tighten
+                # flip threshold; when consensus supports, leave threshold unchanged. Smooth
+                # trend-gate via rsi_trend_str (chop-attenuated). New data dependency:
+                # per-symbol _last_trend_sign across symbols.
+                # Counter-consensus magnitude: -1.0 (full opposition, both other symbols opposite),
+                # 0.0 (mixed/neutral), +1.0 (both supporting).
+                _xs_trend_gate = max(0.0, min(1.0, (rsi_trend_str - 0.3) / 0.4))  # [0.0, 1.0]
+                _bull_consensus = 0.0  # +1 when other symbols support bull; -1 when oppose
+                _bear_consensus = 0.0
                 for _osym in ACTIVE_SYMBOLS:
                     if _osym == symbol:
                         continue
-                    _o_bars = self.bar_count - self._last_flip_bar.get(_osym, -999)
-                    _o_rec = max(0.0, 1.0 - _o_bars / 6.0)
-                    if _o_rec > _max_other_recency:
-                        _max_other_recency = _o_rec
-                # Trend-gate: zero in chop (rsi_trend_str<0.3), full in trend (rsi_trend_str>0.7).
-                _xs_trend_gate = max(0.0, min(1.0, (rsi_trend_str - 0.3) / 0.4))  # [0.0, 1.0]
-                _xs_factor = 0.15 * _max_other_recency * _xs_trend_gate
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
+                    _o_sign = self._last_trend_sign.get(_osym, 0.0)
+                    _bull_consensus += _o_sign           # supports bull when positive
+                    _bear_consensus += -_o_sign           # supports bear when other is negative
+                # Normalize to [-1, +1] range (max 2 other symbols).
+                _bull_consensus *= 0.5
+                _bear_consensus *= 0.5
+                # Counter-consensus penalty: only raise threshold when other symbols OPPOSE the flip.
+                _bull_xs_pen = max(0.0, -_bull_consensus)  # 0 if supporting, 1 if fully opposing
+                _bear_xs_pen = max(0.0, -_bear_consensus)
+                _bull_xs_factor = 0.15 * _bull_xs_pen * _xs_trend_gate
+                _bear_xs_factor = 0.15 * _bear_xs_pen * _xs_trend_gate
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _bull_xs_factor)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _bear_xs_factor)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
