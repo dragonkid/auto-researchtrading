@@ -556,15 +556,8 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                # Architectural: position-maturity flip gate. Flipping out of a young
-                # position (just entered) is more likely a noise-driven reversal than
-                # a real regime change. Smooth decay: full +25% strong-min tightening
-                # at bars_held=0, zero at bars_held>=5. New data dependency: flip
-                # strong-min scales with current-position age. Orthogonal to recency
-                # gate (which measures bars-since-last-flip, this measures bars-in-current-pos).
-                _maturity_factor = max(0.0, 1.0 - bars_held / 5.0)  # 1.0 fresh, 0.0 after 5 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _maturity_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _maturity_factor)
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
