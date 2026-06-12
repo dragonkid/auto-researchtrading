@@ -600,13 +600,10 @@ class Strategy:
                 # other symbols' flip history.
                 _other_flip_syms = sum(1 for s in ACTIVE_SYMBOLS
                                        if s != symbol and 0 <= self.bar_count - self._last_flip_bar.get(s, -999) <= 4)
-                # Architectural: trend-amplified corroboration bonus.
-                # Base: 1 other -> -10%, 2 others -> -20% (step 4 config).
-                # Amplified by rsi_trend_str: in strong trends (crash, rally) corroboration
-                # is most signal-rich (correlated regime change), so bonus scales up to
-                # 1.5x. In chop, corroboration may be coincidence — bonus stays at 1.0x.
-                _corroboration_base = min(2, _other_flip_syms) * 0.10  # 0, 0.10, 0.20
-                _corroboration = _corroboration_base * (1.0 + 0.5 * rsi_trend_str)
+                # Architectural: pure corroboration bonus, stronger magnitude.
+                # 1 other -> -15%; 2 others -> -30%. Test if larger bonus extracts more
+                # crash/sideways protective flip benefit.
+                _corroboration = min(2, _other_flip_syms) * 0.15  # 0, 0.15, 0.30
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
