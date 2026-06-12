@@ -145,7 +145,7 @@ After your last experiment (or when the exit rule triggers), exit. The outer loo
 
 ## Results TSV format
 
-**results.tsv is append-only.** Never delete, modify, or rewrite existing rows. Only append new rows at the end.
+**results.tsv is append-only.** Never delete, modify, or rewrite existing rows. Only append new rows at the end. **CRITICAL: never use write/overwrite on results.tsv — use shell `echo >> results.tsv` or equivalent append operation. If you need to fix a row, append a corrected row with a note; do NOT edit or remove the original. Keep rows are permanent historical records.**
 
 New schema (10 columns, tab-separated):
 ```
