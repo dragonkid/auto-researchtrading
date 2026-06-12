@@ -593,13 +593,14 @@ class Strategy:
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                # Architectural: sustained-conviction flip gate with single-bar
-                # high-conviction OVERRIDE. Sustain (3-bar min >= 0.5x flip_min) is
-                # the noise filter; but if the current bar's strong-sum is well above
-                # flip_min (>=1.4x), single-bar conviction is high enough to bypass
-                # the sustain check. Protects legitimate high-conviction reversals.
+                # Architectural: sustained-conviction flip gate with vol-conditioned
+                # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
+                # (rally chop, where 1.4x is too easily reached on noisy bars) the
+                # override demands 2.2x; in high-vol (crash whipsaw) the override
+                # relaxes to 1.3x to admit jagged but real reversals.
+                # Continuous tanh-driven mapping; smooth gate.
                 _sustain_thresh = 0.5
-                _override_factor = 1.4
+                _override_factor = 2.2 - 0.9 * max(0.0, min(1.0, (vol_ratio - 0.8) / 0.6))
                 if len(_hist) >= 3:
                     _min_bull_3 = min(h[0] for h in _hist)
                     _min_bear_3 = min(h[1] for h in _hist)
