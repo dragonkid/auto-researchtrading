@@ -600,16 +600,12 @@ class Strategy:
                 # other symbols' flip history.
                 _other_flip_syms = sum(1 for s in ACTIVE_SYMBOLS
                                        if s != symbol and 0 <= self.bar_count - self._last_flip_bar.get(s, -999) <= 4)
-                # Architectural: combined corroboration bonus + low-vol isolation tightening.
-                # Corroboration: 1+ other symbol flipped -> loosen 10% per other (max -20%).
-                # Isolation: in LOW-VOL (vol_ratio<=0.8, rally chop), 0 others = +15% tighten.
-                # In high-vol (crash/breakdown), no isolation tightening (single-symbol
-                # flip IS the protective signal). Vol-gate via continuous tanh.
-                _corroboration = min(2, _other_flip_syms) * 0.10  # 0, 0.10, 0.20
-                _isolation_vol_gate = max(0.0, min(1.0, (0.95 - vol_ratio) / 0.4))  # 1.0 at vol<=0.55, 0 at vol>=0.95
-                _isolation_tighten = 0.15 * _isolation_vol_gate if _other_flip_syms == 0 else 0.0
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration + _isolation_tighten)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration + _isolation_tighten)
+                # Architectural: pure corroboration bonus, stronger magnitude.
+                # 1 other -> -15%; 2 others -> -30%. Test if larger bonus extracts more
+                # crash/sideways protective flip benefit.
+                _corroboration = min(2, _other_flip_syms) * 0.15  # 0, 0.15, 0.30
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor - _corroboration)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
                 # single-bar OVERRIDE. Override factor scales with vol_ratio: in low-vol
                 # (rally chop, where 1.4x is too easily reached on noisy bars) the
