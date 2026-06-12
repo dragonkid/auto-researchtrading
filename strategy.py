@@ -568,8 +568,18 @@ class Strategy:
                 # and new continuous gate factor in flip strong-min computation.
                 _bars_since_flip = self.bar_count - self._last_flip_bar.get(symbol, -999)
                 _flip_recency_factor = max(0.0, 1.0 - _bars_since_flip / 6.0)  # 1.0 at flip, 0.0 after 6 bars
-                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor)
-                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor)
+                # Architectural: bars-held minimum smooth gate on flip strong-min.
+                # Whipsaw flips (1-2 bars after entry) dominate rally losses (flip_wr ~4-8%).
+                # Smoothly tighten flip strong-min for early-life positions: ramp from +0.40x
+                # at bars_held=0 down to 0 at bars_held=4. Continuous (no boundary), no regime
+                # detection — purely uses position bars_held + vol_ratio for smoother low-vol
+                # tightening (rally chop has lower vol_ratio).
+                _early_life_factor = max(0.0, 1.0 - bars_held / 4.0)
+                # Vol-scaled: lower vol_ratio (rally chop) -> stronger penalty (max 0.40);
+                # higher vol_ratio (crash bursts) -> weaker penalty (preserve protective flips).
+                _early_life_vol_scale = 0.40 * max(0.0, min(1.0, (1.2 - vol_ratio) / 0.7))
+                _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _early_life_vol_scale * _early_life_factor)
+                _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _early_life_vol_scale * _early_life_factor)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
                     _is_flip_this_bar = True
                     # Architectural: flip uses same vol-conditioned initial fraction as entry.
