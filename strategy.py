@@ -184,13 +184,23 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 6 voters with smooth tanh contribution: hard binary except at threshold boundary.
+            # 7 voters with smooth tanh contribution: hard binary except at threshold boundary.
             # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
             # 0/1 except in a narrow band around the threshold where it transitions smoothly. Keeps original
-            # vote-count semantics (sum stays in [0, 6]) while reducing flip-rate near boundaries.
+            # vote-count semantics (sum stays in [0, 7]) while reducing flip-rate near boundaries.
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: funding-rate contrarian voter (7th voter, new signal source).
+            # Funding is fundamentally orthogonal to all price-derived voters: it measures
+            # cross-trader positioning bias (longs pay shorts when crowded long, vice versa).
+            # Hyperliquid funding is per-hour scale. Use mean of last 8 bars as the persistent
+            # funding bias signal (smooths single-bar funding spikes). Positive funding ->
+            # crowded long -> contrarian BEAR vote (signal negated). Threshold 5e-5/hr
+            # (~0.04% per 8h funding cycle, modest positioning bias). Continuous tanh on
+            # (-fund - thresh) for bull side (low/negative funding favors longs).
+            _funding_arr = bd.history["funding_rate"].values
+            _funding_mean = np.mean(_funding_arr[-8:])
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -198,6 +208,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                (-_funding_mean - 5e-6) / 1.5e-5,  # contrarian: low funding -> bull
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -207,9 +218,10 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
-            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, funding].
+            # Funding voter weight 0.6 (low because funding is orthogonal-signal but has
+            # narrow-band noise around small absolute values). Weights sum=6.6.
+            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, 0.6)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
