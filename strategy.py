@@ -492,22 +492,8 @@ class Strategy:
                 # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
                 # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                # Architectural: trade-life-cycle phase modulator on exit weights.
-                # Continuous tanh maps bars_held to a phase coordinate in [-1, +1]
-                # where -1 = early life, 0 ~ mid (bars_held ~ 7), +1 = late life.
-                # Phase=2 around bars 7 (1/0.14 = ~7-bar timescale).
-                # Use phase to apply a small additional skew:
-                #   slope weight: peaks in mid-life (highest sensitivity to reversal there)
-                #   pp weight: ramps up with phase (peak more reliable later)
-                #   time weight: ramps up with phase (time exit dominates late)
-                # All multiplicative tweaks ≤ 0.15 magnitude — preserves baseline behavior
-                # but introduces a structural life-cycle dimension to exit fusion.
-                _life_phase = np.tanh((bars_held - 7.0) / 5.0)  # in [-1, +1] approx
-                _w_slope_life = 1.0 + 0.10 * (1.0 - _life_phase * _life_phase)  # peaked at mid-life
-                _w_pp_life    = 1.0 + 0.10 * max(0.0, _life_phase)              # ramps up late
-                _w_time_life  = 1.0 + 0.10 * max(0.0, _life_phase)              # ramps up late
-                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w * _w_slope_life
-                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w * _w_pp_life
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _scale_in_w   # heavier in profit, lighter during scale-in
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
@@ -515,7 +501,7 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                _w_time  = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _w_time_life         # [-1,1] -> [1.0, 1.2]
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
                 _exit_pressure = _sl_pressure + _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
