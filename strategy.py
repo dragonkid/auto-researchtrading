@@ -122,14 +122,6 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: per-symbol bar of last opposite-gate exit. When the
-        # immediately-prior bar exited via _opp_gate (high conviction reversal),
-        # the entry-persistence gate is bypassed for one bar — allowing fast
-        # re-entry in the new direction without requiring 2-bar history of the
-        # new side. Routes the prior flip case through cold-entry with reduced
-        # noise filter, restoring crash-whipsaw protection lost when flips
-        # were removed.
-        self._opp_exit_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -352,19 +344,8 @@ class Strategy:
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                # Architectural: opp-exit fast re-entry. When the immediately prior
-                # bar exited via _opp_gate, the persistence factor relaxes for one
-                # bar — current bar's strong_sum alone is sufficient if it clears
-                # _strong_min. Restores fast-reversal capability lost when flips
-                # were removed, but only on legit high-conviction signal-driven
-                # exits (opp_gate already requires votes + strong + trend agreement).
-                _opp_recent = (self.bar_count - self._opp_exit_bar.get(symbol, -999)) <= 1
-                if _opp_recent:
-                    _bull_persist_ok = _bull_strong >= _bull_strong_min
-                    _bear_persist_ok = _bear_strong >= _bear_strong_min
-                else:
-                    _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                    _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -629,7 +610,6 @@ class Strategy:
                             (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     target = 0.0
-                    self._opp_exit_bar[symbol] = self.bar_count
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
