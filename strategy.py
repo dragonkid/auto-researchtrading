@@ -577,7 +577,7 @@ class Strategy:
                 # Smooth ramp protects sideways from cross-symbol tightening while preserving
                 # bull/crash gains.
                 _xs_trend_gate = max(0.0, min(1.0, (rsi_trend_str - 0.3) / 0.4))  # [0.0, 1.0]
-                _xs_factor = 0.15 * _max_other_recency * _xs_trend_gate
+                _xs_factor = 0.10 * _max_other_recency * _xs_trend_gate
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + _xs_factor)
                 if not in_cooldown and ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_flip_min and trend_avg < 0) or (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_flip_min and trend_avg > 0)):
