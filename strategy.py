@@ -490,28 +490,15 @@ class Strategy:
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                # Architectural: smooth pp-activation ramp replacing hard binary gate.
-                # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
-                # boundary at peak == _pp_min creates noise discontinuity in stab tests.
-                # Replace with smooth tanh activation (peak_pnl/_pp_min - 1.0) scaled by 0.5,
-                # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
-                # This is a primitive change to pp_pressure activation: was binary gate,
-                # now continuous mixture between unconditional pp_pressure and zero.
-                # Trend-gated smooth activation: smooth ramp only in trending regimes
-                # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
-                # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
-                # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
-                # Narrow boundary smoothing only: linear ramp in [0.95, 1.04]*_pp_min.
-                # Slightly narrower upper bound — restores baseline pp_pressure faster
-                # at peak ratios above 1.04, recovering raw revenue while keeping the
-                # bull-boosting smoothing in the [0.95, 1.04] band.
+                # Architectural simplification: replace 3-piece linear _pp_activation
+                # with continuous logistic. Old: hard breakpoints at _pp_ratio=0.95
+                # and 1.04 with linear ramp between. New: smooth tanh giving 0 at
+                # _pp_ratio=0.90, ~0.5 at 0.995, saturating to 1 at ~1.10. Removes
+                # hard discontinuities in pp activation; behavior matches at extremes
+                # but removes two breakpoints from the activation. Same architectural
+                # role (gate pp_raw by pp ratio), single smooth function.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                if _pp_ratio <= 0.95:
-                    _pp_activation = 0.0
-                elif _pp_ratio >= 1.04:
-                    _pp_activation = 1.0
-                else:
-                    _pp_activation = (_pp_ratio - 0.95) / 0.09
+                _pp_activation = max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((_pp_ratio - 0.995) / 0.05)))
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
