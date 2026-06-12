@@ -170,7 +170,7 @@ class Strategy:
             _tr_e = np.maximum(_atr_high_e - _atr_low_e, np.maximum(np.abs(_atr_high_e - _atr_close_e), np.abs(_atr_low_e - _atr_close_e)))
             _atr_pct_e = np.mean(_tr_e) / mid
             # Anchor: 0.42 * ATR_pct, clamped to [0.0035, 0.008] keeps within original range
-            _base_thresh_dyn = max(0.0035, min(0.008, 0.42 * _atr_pct_e))
+            _base_thresh_dyn = max(0.0035, min(0.008, 0.50 * _atr_pct_e))
             dyn_threshold = _base_thresh_dyn * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
