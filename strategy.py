@@ -603,12 +603,6 @@ class Strategy:
                 # 0 other flips -> isolated (1.0); 1 other flip -> partial corroboration (0.5);
                 # 2 other flips -> market-wide regime change (0.0, no isolation tightening).
                 _isolation_factor = max(0.0, (2.0 - _other_flip_syms) / 2.0)
-                # Vol-gate the isolation tightening: deactivate in high-vol (crash protection
-                # needs free flips when one symbol leads breakdown), full strength in low-vol
-                # (rally chop where isolated flips are noise). Continuous tanh on vol_ratio,
-                # full activation at vol_ratio<=0.8, full deactivation at vol_ratio>=1.4.
-                _isolation_vol_gate = max(0.0, min(1.0, (1.4 - vol_ratio) / 0.6))
-                _isolation_factor = _isolation_factor * _isolation_vol_gate
                 _bull_flip_min = _bull_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _isolation_factor)
                 _bear_flip_min = _bear_strong_min * (1.0 + 0.20 * _flip_recency_factor + 0.25 * _isolation_factor)
                 # Architectural: sustained-conviction flip gate with vol-conditioned
