@@ -822,24 +822,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                # Architectural: dominant-signal fusion replacing additive sum.
-                # Old: linear sum of 6 weighted pressures (allows co-firing weak signals
-                # to accumulate to threshold — a noise-amplification path).
-                # New: dominant pressure (max of weighted softs) PLUS secondary-
-                # confirmation amplifier. The primary signal is the max single source;
-                # secondary is the sum of remaining sources. Combine as:
-                #   primary + 0.5 * min(primary, secondary)
-                # This requires the PRIMARY to be strong (no fusion-only exits) and
-                # rewards secondary CONFIRMATION (additional signal where present).
-                # When secondary >= primary, the term saturates at 1.5*primary; when
-                # secondary < primary, it scales with secondary. Decision-architecture
-                # change: exit fires when ONE signal is dominant and another confirms,
-                # not when many weak signals co-fire. Different control-flow (max-find +
-                # confirmation product vs simple add).
-                _weighted_p = (_w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure, _w_ve * _ve_pressure, _w_ep * _ep_pressure, _w_ar * _ar_pressure)
-                _primary = max(_weighted_p)
-                _secondary = sum(_weighted_p) - _primary
-                _soft_sum = _primary + 0.5 * min(_primary, _secondary)
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
