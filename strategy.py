@@ -612,8 +612,24 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
-                if _exit_pressure >= _exit_thresh and target != 0:
+                # Architectural: graduated partial-exit instead of binary exit.
+                # When _exit_pressure crosses below _exit_thresh but above a soft floor
+                # (0.65 * _exit_thresh), shrink position size proportionally toward 0
+                # rather than waiting for full-pressure exit. This lets positions
+                # de-risk gradually under mounting exit pressure (slope weakening,
+                # giveback rising) rather than binary-flip on threshold cross.
+                # Stop-loss path retains binary exit (full saturation already triggers).
+                # New control flow: exit decision is a continuous mapping from
+                # exit_pressure ratio to target multiplier, not a single threshold.
+                if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
+                elif _exit_pressure >= _exit_thresh and target != 0:
+                    target = 0.0
+                elif target != 0 and _exit_pressure >= 0.65 * _exit_thresh:
+                    # Smooth de-risk ramp: at 0.65*thresh -> full size, at thresh -> 0.
+                    _de_risk = 1.0 - (_exit_pressure - 0.65 * _exit_thresh) / (0.35 * _exit_thresh)
+                    _de_risk = max(0.0, min(1.0, _de_risk))
+                    target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
