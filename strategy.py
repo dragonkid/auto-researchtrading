@@ -23,6 +23,8 @@ LONG_WINDOW = 20
 # EMA parameters
 EMA_FAST = 3
 EMA_SLOW = 21
+EMA_SLOPE_PERIOD = 22
+EMA_SLOPE_LOOKBACK = 3
 
 # MACD parameters
 MACD_FAST = 8
@@ -146,7 +148,7 @@ class Strategy:
             if symbol not in bar_data:
                 continue
             bd = bar_data[symbol]
-            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5) + 1:
+            if len(bd.history) < max(LONG_WINDOW, EMA_SLOW, MACD_SLOW + MACD_SIGNAL + 5, EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5) + 1:
                 continue
 
             closes = bd.history["close"].values
@@ -201,6 +203,7 @@ class Strategy:
             _rd = np.diff(closes[-(int(round(6 + 2 * rsi_trend_str)) + 1):])
             rsi = 100 - 100 / (1 + np.mean(np.maximum(_rd, 0)) / max(np.mean(np.maximum(-_rd, 0)), 1e-10))
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
+            _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
             # 7 voters with smooth tanh contribution: hard binary except at threshold boundary.
             # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
@@ -208,6 +211,7 @@ class Strategy:
             # vote-count semantics while reducing flip-rate near boundaries.
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
+            _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
             # Architectural: 7th voter — volume-weighted price deviation.
             # Volume data is orthogonal to all 6 existing voters (which use price-derived
             # series only). Compute 12-bar VWAP using (high+low+close)/3 typical price
@@ -219,25 +223,14 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Architectural simplification: removed _ea_slope EMA-slope voter (idx 5 of 7).
-            # _ea_slope is computed from EMA(close, 22-period) and tracks 3-bar EMA slope —
-            # structurally redundant with voter idx 1 (_ef - _es): the EMA fast-vs-slow cross
-            # already captures EMA-derived directional signal. Both voters derive from
-            # the same close-price EMA family with overlapping smoothing windows.
-            # _lr_slope (idx 4, 16-bar log HL2 slope) provides a TRULY orthogonal slope
-            # signal (linear regression on log price midpoint, different smoothing).
-            # Removing _ea_slope reduces voter count 7 -> 6, simplifies weight tuple,
-            # reduces persistence_mult cardinality. Multi-variable architectural change:
-            # touches voter list, _base_weights, _trend_strength_w shift application,
-            # and _persistence_mult shape. STRONG_WEIGHT_MIN/MIN_VOTES kept (relative
-            # scale to 6 voters preserved since removed voter had base_weight 1.10).
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
-                _vwap_dev / 0.0015,  # 6th voter (was 7th): VWAP deviation, ~0.15% scale
+                (_ea_slope - 0.0005) / 0.00025,
+                _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -247,8 +240,8 @@ class Strategy:
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
-            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, VWAP_dev] (6 voters).
-            # Weights inverse to estimated noise sensitivity (sum=~6.0, preserves scale).
+            # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
+            # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
             # Architectural: trend-strength weight redistribution. In strong trends
             # (high abs(ret_long)), shift weight from mean-reverting voters
             # (RSI=idx2, MACD=idx3) to trend-confirming voters (EMA_cross=idx1,
@@ -264,11 +257,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # 6-voter weight tuple: ret_short, EMA_cross, RSI, MACD, LR_slope, VWAP_dev.
-            # Trend-confirming voter (EMA_cross idx 1) absorbs former _ea_slope weight contribution
-            # via increased base 1.25 -> 1.40 (compensates for lost EMA-slope signal).
-            # Sum preserved at ~6.0 (was 7.0 for 7 voters): 0.7 + (1.40+ws) + (1.10-ws) + (1.00-ws) + 0.85 + (0.55-1.05) = 5.65-6.15.
-            _base_weights = (0.7, 1.40 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, _vwap_wt)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -290,13 +279,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 6)
+                _arr = np.array(_sig_hist)  # (K, 7)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(6)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
