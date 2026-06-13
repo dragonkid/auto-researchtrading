@@ -370,25 +370,19 @@ class Strategy:
             # (loss=1.6x window, win=0.7x window, breakeven=1.0x). New cross-
             # trade state dependency at the entry-side cooldown decision.
             _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            # Branch step 4: outcome-conditioning moved to direct size-modulation
-            # rather than cooldown-window scaling. Cooldown_factor saturates to
-            # ~1.0 within 1-2 bars (tanh of 1/0.6 ~ 0.76, of 2/0.6 ~ 0.97), so
-            # window scaling only affects the FIRST bar post-exit; effect was
-            # mild. Now: keep base cooldown window, instead apply _outcome_size_mult
-            # directly to first-bar entry size — gives mechanism MEANINGFUL leverage
-            # on the first-bar commit decision after recent losses/wins.
-            _cd_window = _cd_window_base
+            # Branch step 5: combined window-stretch + size-mult with steeper
+            # magnitudes. Mechanism leverage in steps 1/3/4 was too weak — try
+            # bigger amplitudes and combine both knobs. Window: [0.4, 2.5];
+            # Size mult: [0.6, 1.3] at fresh exit. Stack to give post-stopout
+            # the largest combined attenuation.
+            _outcome_tanh = np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # [-1, 1]
+            _outcome_window_scale = 1.0 - 0.6 * _outcome_tanh  # [0.4, 2.5] (well, [0.4, 1.6] bounded by tanh)
+            _cd_window = _cd_window_base * _outcome_window_scale
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            # Outcome-conditioned first-bar size multiplier. Recent loss
-            # → reduce size (stretches risk avoidance after stopout); recent
-            # win → boost size slightly (winner-momentum). Effect decays as
-            # _bars_since_exit grows (after ~5 bars, outcome influence fades
-            # to zero). Range at fresh exit: [0.7, 1.2]; saturates to 1.0 after.
             _outcome_decay = max(0.0, 1.0 - _bars_since_exit / 5.0)
-            _outcome_size_mult = 1.0 - 0.30 * _outcome_decay * np.tanh(-_last_pnl / abs(STOP_LOSS_PCT) * 0.7)
-            # Note: -_last_pnl makes negative pnl give positive arg → mult <1
-            #       positive pnl gives negative arg → mult >1. Asymmetric scaling 0.7
-            #       caps boost at +0.2 (positive pnl) while loss can attenuate to ~0.7.
+            _outcome_size_mult = 1.0 - 0.30 * _outcome_decay * _outcome_tanh * -1.0  # loss → <1, win → >1
+            # tanh(loss) < 0 → -tanh > 0 → mult = 1 - 0.30 * positive < 1 (smaller size after loss)
+            # tanh(win) > 0 → -tanh < 0 → mult = 1 - 0.30 * negative > 1 (larger size after win)
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
