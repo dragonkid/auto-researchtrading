@@ -266,17 +266,35 @@ class Strategy:
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
             _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
-            # Architectural simplification: removed _persistence_mult per-voter
-            # magnitude-weighted persistence weighting. Maintained 8-bar rolling
-            # history of raw voter signals per symbol, computed |sum|/sum(|.|)
-            # persistence, weighted each voter by 0.7-1.3x. Redundant with
-            # aggregate-level _recent_strongs 3-bar persistence (_min_bull_2,
-            # _min_bear_2 entry gate) which catches noisy single-bar entries
-            # at the strong-sum level. Per-voter granularity adds 18 LOC + new
-            # per-symbol per-voter state dependency for noise-filtering that the
-            # 3-bar strong-sum minimum already enforces structurally. Removing
-            # eliminates the per-voter state and reverts to base voter weights.
-            _voter_weights = _base_weights
+            # Architectural: per-voter directional persistence weighting.
+            # Track each voter's signal sign over last 8 bars. Persistence =
+            # |sum(signs)| / count → 1.0 if voter held one direction continuously,
+            # 0.0 if voter flipped maximally. Multiply base weight by
+            # (0.7 + 0.6 * persistence) so consistent voters get up to 1.3x weight,
+            # flip-prone voters get down to 0.7x. Smooth (continuous over time as
+            # history rolls forward). New per-symbol per-voter state dependency:
+            # voter aggregation weight depends on each voter's recent flip-rate.
+            # Architectural: magnitude-weighted persistence replacing binary-sign aggregation.
+            # Old: binary sign per bar → persistence = |sum(signs)|/N counts a near-zero
+            # signal flip identically to a far-from-zero flip. New: store raw signal values
+            # → persistence = |sum(signal)| / sum(|signal|) gives weight to magnitude. A voter
+            # that hovers near zero contributes equally to numerator and denominator (low
+            # persistence influence); a voter with strong directional history dominates.
+            # Reduces noise from near-zero voter flips downweighting active voters.
+            _sig_hist = self._voter_sign_history.get(symbol, [])
+            _sig_hist.append(tuple(_voter_signals_bull))
+            if len(_sig_hist) > 8:
+                _sig_hist = _sig_hist[-8:]
+            self._voter_sign_history[symbol] = _sig_hist
+            if len(_sig_hist) >= 4:
+                _arr = np.array(_sig_hist)  # (K, 7)
+                _num = np.abs(_arr.sum(axis=0))
+                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
+                _persistence = _num / _den  # in [0, 1]
+                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
+            else:
+                _persistence_mult = np.ones(7)
+            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
             # amplifier composed three multiplicative gates (chop neutralization
