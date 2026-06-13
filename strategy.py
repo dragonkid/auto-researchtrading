@@ -835,33 +835,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: high-volume-against exit pressure (8th soft source).
-                # When current bar volume substantially exceeds 24-bar avg AND the
-                # bar move is adverse to position direction (current close < open
-                # for longs / > open for shorts), add exit pressure. High-volume
-                # adverse moves are conviction-laden counter pushes (capitulation
-                # against the position) rather than thin-volume noise. Distinct
-                # from slope-against (multi-bar trajectory) and pp_pressure
-                # (peak giveback ratio): this is single-bar volume × direction.
-                # New cross-bar data dependency at exit (volume × current-bar
-                # close-minus-open). Activates above 1.8x volume ratio, saturates
-                # at 3.0x, max contribution 0.4.
-                _bar_vol_24 = bd.history["volume"].values[-25:-1]
-                _bar_vol_avg = max(_bar_vol_24.mean(), 1e-10)
-                _bar_vol_ratio = bd.history["volume"].values[-1] / _bar_vol_avg
-                _bar_move_pct = (mid - closes[-2]) / closes[-2]
-                _adverse_move = max(0.0, -_bar_move_pct if current_pos > 0 else _bar_move_pct)
-                _vshk_pressure = 0.4 * max(0.0, np.tanh((_bar_vol_ratio - 1.8) / 1.0)) * max(0.0, np.tanh(_adverse_move / 0.005))
-                # Weight: full weight regardless of pnl_scale (volume shocks
-                # against winners are profit-protection signals; against losers
-                # they amplify slope-against — both directions valid).
-                _w_vshk = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_vshk * _vshk_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
