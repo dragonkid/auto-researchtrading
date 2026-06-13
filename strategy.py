@@ -851,20 +851,6 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                # Architectural: regime-shift fast-path exit — orthogonal exit decision channel.
-                # New control flow: when both regime-shift detectors (_ve = vol expansion,
-                # _ar = adverse-recovery) co-fire while position is in profit, force a partial
-                # de-risk independent of the standard _soft_sum + _exit_thresh comparison.
-                # Mechanism: the standard exit-pressure fusion gives _ve and _ar small individual
-                # weights (_w_ve = pos_pnl-scaled, _ar_pressure max 0.40) that get diluted in the
-                # sum even when both signal a regime shift. This adds a parallel decision path that
-                # treats co-firing as a higher-confidence regime-change signal than either alone,
-                # bypassing the standard threshold which is dominated by slope/pp/time. Only fires
-                # in profit (gates with pos_pnl > 0) to avoid double-cutting losers (slope-against
-                # already aggressive on losers). New control flow at exit decision; new
-                # cross-component data dep treating _ve+_ar conjunction as a separate signal.
-                _regime_shift_co = (_ve_pressure + _ar_pressure) if pos_pnl > 0 else 0.0
-                _regime_shift_partial = max(0.0, min(0.5, (_regime_shift_co - 0.5) * 1.0))  # 0..0.5 scale-down
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -914,11 +900,6 @@ class Strategy:
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
-
-                # Regime-shift fast-path: applied BEFORE threshold check so it composes with
-                # subsequent de-risk path. Scale down position by (1 - _regime_shift_partial).
-                if target != 0 and _regime_shift_partial > 0.0 and bars_held >= 2 and _sl_pressure < 0.5:
-                    target = target * (1.0 - _regime_shift_partial)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
