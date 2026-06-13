@@ -136,10 +136,8 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol prior-bar exit-pressure cache.
-        # Used by single-bar exit-pressure noise filter — current exit_pressure
-        # is EMA-blended with prior bar's value. Smooths transient voter_bias /
-        # slope spikes while preserving fast saturation when sl_pressure dominates.
+        # Architectural: per-symbol prior-bar exit-pressure cache for vol-conditioned
+        # exit-pressure smoothing (filters single-bar dead-cat / spike noise in high vol).
         self._prev_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
@@ -300,18 +298,31 @@ class Strategy:
             else:
                 _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
-            # Architectural simplification: removed volume-weighted voter aggregation
-            # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
-            # amplifier composed three multiplicative gates (chop neutralization
-            # _trend_strength_w × directional tanh × volume-deviation tanh), max ±15%.
-            # With three gates each requiring near-saturated input, the amplifier is
-            # dead-code-adjacent: chop zeros the trend gate, weak trend halves it, and
-            # counter-trend side zeros the directional gate. The remaining sliver of
-            # activation overlaps with _persistence_mult (per-voter sustained-conviction
-            # tracking) and _wt_shift trend-confirming voter weight redistribution.
-            # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: volume-weighted voter aggregation amplifier.
+            # High-volume current bar = signal-confirming; voters fire on info-rich bars.
+            # Low-volume current bar = thin-tape, low-conviction; voters may fire on noise.
+            # Compute current-bar volume vs 24-bar average; modulate aggregate strong-sum
+            # via tanh smoothing in [0.85, 1.15]. New cross-bar data dep at voter
+            # aggregation level (different from existing _vol_entry_atten which is
+            # entry-size only — this affects whether the gate even fires). Multi-variable:
+            # single volume signal modulates BOTH _bull_strong and _bear_strong identically,
+            # changing the entry-decision boundary symmetrically. Decoupled from
+            # _vol_entry_atten (which sizes admitted entries) — this gates admission itself.
+            _vol_recent_24 = bd.history["volume"].values[-25:-1]
+            _vol_recent_avg = max(_vol_recent_24.mean(), 1e-10)
+            _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_recent_avg
+            # Branch step 3: trend-aligned ONE-SIDED amplifier. Only amplify the
+            # trend-aligned voter side (bull side in uptrend, bear side in downtrend).
+            # Counter-trend side stays at base weight. In chop, neither side amplified.
+            # Mechanism: high-volume bars confirm only the prevailing trend direction,
+            # not symmetric. Eliminates the rally regression from bear-side amp in
+            # uptrend. Composes _trend_strength_w (chop neutralization) with directional
+            # gate via tanh(ret_long / 0.04) (only positive for trend-aligned side).
+            _vol_amp_raw = 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w
+            _bull_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(ret_long / 0.04))   # only in uptrend
+            _bear_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(-ret_long / 0.04))  # only in downtrend
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _bull_amp
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _bear_amp
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
@@ -515,22 +526,13 @@ class Strategy:
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
-                # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
-                # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
-                # weighted alignment. Old map ignored slope MAGNITUDE — a barely-positive
-                # 8-bar slope counted identically to a strongly-positive one, creating
-                # boundary noise when small slopes near zero flip sign. New: alignment_w =
-                # tanh(slope_w * pos_dir / scale_w) ∈ [-1, +1] per window, then average
-                # the three. Attenuation = 0.40 + 0.60 * (avg_align + 1)/2, continuous in
-                # [0.40, 1.00]. Boundary at slope=0 is smooth (tanh), not stepped. Scales
-                # picked per-window to give similar saturation thresholds.
+                # Slopes at 8/16/32 bars; count sign-agreements with entry direction.
+                # Sharper map: 3/3 → 1.0x, 2/3 → 0.85x, 1/3 → 0.60x, 0/3 → 0.40x.
                 _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
-                _cons_scales = (0.0010, 0.0007, 0.0005)  # window-specific saturation
-                _bull_align = sum(np.tanh(s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
-                _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
-                _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
-                _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
+                _consensus_map = (0.40, 0.60, 0.85, 1.0)
+                _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
+                _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
                 # Architectural: cross-symbol concurrent-position attenuator.
                 # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
@@ -872,19 +874,22 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                # Branch step 3: smooth ONLY the voter_bias term (most volatile single-bar
-                # component from voter strong-sum spikes). All other pressures (slope/pp/time/
-                # ve/ep/ar/sl) are already smooth by construction. _voter_bias swings rapidly
-                # between -0.20*_chop_amp and +0.20*_opp_atten when opposite-side conviction
-                # flips bar-to-bar in noisy regimes. New state: only prior bar's voter_bias.
-                # Saturation override: when _sl_pressure >= 0.95, use raw voter_bias.
-                _prior_vb = self._prev_exit_pressure.get(symbol, _voter_bias)
+                _exit_pressure_raw = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Branch step 4: vol-conditioned exit-pressure smoothing.
+                # High vol (crash): smooth exit_pressure across 2 bars to filter dead-cat
+                # bounce voter / slope spikes that previously fired at adverse local lows.
+                # Low vol (bull/sideways/rally): no smoothing — preserve fast exits on
+                # legitimate pullback signals.
+                # Smooth tanh on (vol_ratio - 1.0)/0.4: ~0 at vol_ratio<=0.7, ~1 at vol_ratio>=1.3.
+                # alpha = 0.40 * vol_gate, ranges from 0 (no smoothing in calm) to 0.40 (full).
+                _prior_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
+                _vol_smooth_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.4)))
+                _smooth_alpha_dyn = 0.40 * _vol_smooth_gate
                 if _sl_pressure >= 0.95:
-                    _vb_smoothed = _voter_bias
+                    _exit_pressure = _exit_pressure_raw
                 else:
-                    _vb_smoothed = 0.65 * _voter_bias + 0.35 * _prior_vb
-                self._prev_exit_pressure[symbol] = _voter_bias
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _vb_smoothed
+                    _exit_pressure = (1.0 - _smooth_alpha_dyn) * _exit_pressure_raw + _smooth_alpha_dyn * _prior_ep
+                self._prev_exit_pressure[symbol] = _exit_pressure_raw
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
