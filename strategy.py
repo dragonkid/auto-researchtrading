@@ -119,6 +119,8 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # Per-symbol bar at which current peak_pnl was last set (for bars-since-peak exit pressure).
+        self._peak_bar = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -518,6 +520,7 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count
                 else:
                     self.peak_pnl[symbol] = _curr_peak
 
@@ -725,12 +728,26 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
+                # Architectural: bars-since-peak stale-peak exit pressure (6th soft source).
+                # Tracks the bar at which peak_pnl was last set. When position is in profit
+                # but price has stalled (no new peak for K bars), pressure ramps smoothly.
+                # Orthogonal to giveback (magnitude — _pp_pressure / _ep_pressure), time
+                # (absolute bars-held — _time_pressure), slope (instantaneous direction).
+                # Captures "winning trade has gone stale" without requiring giveback.
+                # Activates only when peak is meaningful (peak > 0.3 * _pp_min) to avoid
+                # firing on noise-only positions; weighted by _pnl_scale (in-profit only).
+                # Smooth ramp: 0 at bars_since_peak <= 3, saturates at bars_since_peak = 9.
+                _peak_bar_set = self._peak_bar.get(symbol, self.entry_bar.get(symbol, self.bar_count))
+                _bars_since_peak = self.bar_count - _peak_bar_set
+                _bsp_active = self.peak_pnl.get(symbol, 0.0) > 0.30 * _pp_min
+                _bsp_pressure = 0.5 * max(0.0, min(1.0, (_bars_since_peak - 3.0) / 6.0)) if _bsp_active else 0.0
+                _w_bsp = max(0.0, _pnl_scale)  # only fire when in profit
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_bsp * _bsp_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -815,10 +832,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._peak_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._peak_bar[symbol] = self.bar_count
 
         return signals
