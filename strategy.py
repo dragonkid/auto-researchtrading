@@ -449,28 +449,6 @@ class Strategy:
                     _min_bear_2 = _bear_strong
                 _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
                 _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
-                # Architectural: price-vwap-slope divergence entry size attenuator.
-                # New cross-component data dep at entry: compare 16-bar price slope to
-                # 16-bar VWAP slope. When they DISAGREE in sign (price up but VWAP flat/down
-                # = distribution; price down but VWAP flat/up = accumulation), the directional
-                # signal is weakened by hidden volume-flow divergence. Compute both slopes
-                # via _fast_slope on log(close) and log(VWAP_series); attenuator [0.7, 1.0]
-                # via tanh on signed-disagreement product. Continuous (no boundary).
-                # Distinct from existing VWAP voter (point-deviation, not slope-agreement).
-                # Targets entries during volume-divergent price moves (common at rally
-                # exhaustion peaks and crash dead-cat-bounce tops).
-                _div_n = 16
-                _vol_div = bd.history["volume"].values[-_div_n:]
-                _tp_div = (bd.history["high"].values[-_div_n:] + bd.history["low"].values[-_div_n:] + closes[-_div_n:]) / 3.0
-                # rolling per-bar VWAP series: cumulative (price*vol)/sum(vol) anchor too noisy;
-                # use simple typical-price moving avg weighted by volume, single-pass:
-                _vwap_series = (_tp_div * _vol_div).cumsum() / np.maximum(_vol_div.cumsum(), 1e-10)
-                _price_slope_d = _fast_slope(np.log(closes[-_div_n:]))
-                _vwap_slope_d = _fast_slope(np.log(np.maximum(_vwap_series, 1e-10)))
-                # Disagreement: signed product < 0 means slopes oppose. Magnitude scales attenuation.
-                _slope_prod = _price_slope_d * _vwap_slope_d
-                _disagree_mag = max(0.0, np.tanh(-_slope_prod / 1e-7))  # [0,1] when slopes oppose
-                _div_atten = 1.0 - 0.30 * _disagree_mag  # in [0.70, 1.0]
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -543,9 +521,9 @@ class Strategy:
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _div_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _div_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
