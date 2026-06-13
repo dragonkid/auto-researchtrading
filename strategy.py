@@ -918,14 +918,18 @@ class Strategy:
                 elif _over_thresh_now and _was_armed and target != 0:
                     target = 0.0
                 elif _over_thresh_now and not _was_armed and target != 0:
-                    # Branch step 5: deferred-exit penalty applies on bar-1 of persistence.
-                    # When persistence gate just deferred a binary exit (over now, not
-                    # previously armed), apply an immediate 50% size cut. This works
-                    # regardless of bars_held (whereas step 4 was gated to bars_held>=2,
-                    # so most fresh-entry deferred exits got NO size response — the
-                    # persistence gate bought time without paying any cost). The 50%
-                    # cut is the cost paid for getting one bar of confirmation evidence.
-                    target = target * 0.5
+                    # Branch step 6: trend-gated deferred-exit penalty.
+                    # Step 5 cut 50% uniformly on every deferred bar — sideways/rally
+                    # regressed because most of their deferred exits don't confirm next
+                    # bar, so the cut paid full cost without benefit. Crash improved
+                    # because crash deferred exits frequently DO confirm (real fast
+                    # reversals). Gate the penalty on |ret_long|: in strong trends,
+                    # apply full 50% cut; in chop, no cut (let persistence gate work
+                    # un-penalized — sideways/rally noise spikes get the free buy).
+                    # Continuous tanh on |ret_long|/0.04.
+                    _trend_gate_dx = max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0, ~1]
+                    _dx_cut = 1.0 - 0.5 * _trend_gate_dx  # 1.0 in chop, 0.5 in strong trend
+                    target = target * _dx_cut
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
                     # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
