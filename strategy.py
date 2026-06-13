@@ -607,6 +607,18 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: trend-alignment-asymmetric SL band.
+                # Trend-aligned position (long in uptrend, short in downtrend) has natural
+                # recovery vector — pullbacks in trend regimes typically reverse. Widen SL
+                # by up to 15% to give trend-aligned positions room to absorb pullbacks.
+                # Counter-trend position has hostile recovery — tighten SL by up to 15% to
+                # cut counter-trend losses faster. Smooth tanh on (ret_long * pos_dir) /
+                # 0.05; gates above 0.02 abs(ret_long) to avoid firing in chop. New cross-
+                # component data dep: SL band depends on (ret_long, position direction).
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _trend_align_sl = np.tanh(ret_long * _pos_dir_sl / 0.05) * max(0.0, min(1.0, (abs(ret_long) - 0.02) / 0.02))
+                _stop_abs = _stop_abs * (1.0 + 0.15 * _trend_align_sl)
+                _stop_abs = max(0.018, min(0.040, _stop_abs))  # widen ceiling for trend-aligned positions
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
