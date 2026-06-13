@@ -180,13 +180,7 @@ class Strategy:
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            # Architectural: multi-window slope MEAN for entry voter (matches exit-side
-            # computation). Single-window 16-bar slope creates window-specific noise on
-            # entry decisions; averaging slopes at 12/16/22 spreads contribution across
-            # timescales. Decouples voter signal noise from any single-window outlier.
-            # New data dependency: entry slope voter depends on 3 windows, not 1.
-            _hl2_entry = (bd.history["high"].values + bd.history["low"].values) / 2.0
-            _lr_slope = float(np.mean([_fast_slope(np.log(_hl2_entry[-_w:])) for _w in (12, 16, 22)]))
+            _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
