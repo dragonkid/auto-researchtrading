@@ -682,10 +682,20 @@ class Strategy:
                 # binary activation at _pp_ratio >= 1.0. Code-structure removal: 6 lines
                 # → 1 line; eliminates the interpolation table that duplicates smoothing
                 # already provided by peak_pnl's high-water-mark mechanic.
+                # Architectural multi-variable: unified profit-protection pressure.
+                # Old: separate _ep_pressure (peak in [0.15,0.95]*_pp_min, giveback_thresh 0.30, max 0.5)
+                # and _pp_pressure (peak >= _pp_min, giveback_thresh _pp_lower, max 1.0). Discontinuous
+                # transition at peak == 0.95*_pp_min boundary; two separate weight terms in fusion.
+                # New: smooth activation ramp 0->1 across peak in [0.15, 1.0]*_pp_min, single
+                # giveback formula with smooth threshold (linearly interpolated between 0.30 and
+                # _pp_lower as activation grows). Magnitude scales 0.5->1.0 with activation. Single
+                # term replaces both in soft_sum. Removes duplicate pathway, eliminates boundary
+                # discontinuity, simplifies the fusion sum.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                _pp_pressure = _pp_raw * _pp_activation
+                _pp_act = max(0.0, min(1.0, (_pp_ratio - 0.15) / 0.85))
+                _gb_thresh = 0.30 * (1.0 - _pp_act) + _pp_lower * _pp_act
+                _gb_band = 0.40 * (1.0 - _pp_act) + PEAK_PROFIT_GIVEBACK * _pp_band * _pp_act
+                _pp_pressure = (0.5 + 0.5 * _pp_act) * max(0.0, min(1.0, (_giveback_ratio - _gb_thresh) / max(_gb_band, 1e-6))) * _pp_act
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
@@ -785,34 +795,7 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: early-profit-lock exit pressure (5th soft source).
-                # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
-                # Sub-peak profitable positions that give back early gains receive NO
-                # pp protection — slope/time only. New term fires when:
-                #   - position has been profitable (peak_pnl > 0.30 * _pp_min)
-                #   - currently giving back (peak - pos_pnl > 0)
-                #   - peak below _pp_min (so _pp_pressure inactive)
-                # Activation ramps as peak_pnl approaches _pp_min from below; giveback
-                # ratio against the realized peak provides exit pressure. Caps at 0.5
-                # (subordinate to fully-armed _pp_pressure once peak crosses _pp_min).
-                # Weighted by _pnl_scale (only fires when currently still in profit
-                # OR small loss <0.4*stop). New cross-bar data dependency on early-
-                # peak giveback. New control flow: separate exit term for sub-peak
-                # giveback decoupled from _pp_pressure activation gate.
-                _ep_peak_floor = 0.15 * _pp_min  # widened from 0.30 to capture earlier peaks
-                if self.peak_pnl[symbol] > _ep_peak_floor and _pp_ratio < 0.95:
-                    # Activation: 0 at peak_pnl == _ep_peak_floor, 1 at peak_pnl == _pp_min*0.95
-                    _ep_activation = max(0.0, min(1.0, (self.peak_pnl[symbol] - _ep_peak_floor) / max(0.95 * _pp_min - _ep_peak_floor, 1e-6)))
-                    _ep_giveback_ratio = _giveback / max(self.peak_pnl[symbol], 1e-6)
-                    # Branch step 3: lowered giveback fire threshold from 0.40 to 0.30
-                    # to catch earlier small-peak giveback signals across regimes.
-                    _ep_pressure = 0.5 * max(0.0, min(1.0, (_ep_giveback_ratio - 0.30) / 0.40)) * _ep_activation
-                else:
-                    _ep_pressure = 0.0
-                # Weight: only fire on currently-profitable / minor-loss positions
-                # (avoid double-counting with slope-against on big losers)
-                _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: adverse-recovery exit pressure (6th soft source).
+                # Architectural: adverse-recovery exit pressure (5th soft source).
                 # New per-symbol state (MAE low-water mark) drives a new control flow:
                 # when current pos_pnl has substantially recovered from MAE but is still
                 # in modest loss, the position is "barely surviving" — recovery is at
@@ -840,7 +823,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
