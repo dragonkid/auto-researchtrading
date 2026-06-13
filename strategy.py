@@ -493,10 +493,10 @@ class Strategy:
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Slopes at 8/16/32 bars; count sign-agreements with entry direction.
-                # 3/3 → 1.0x, 2/3 → 0.88x, 1/3 → 0.70x, 0/3 → 0.55x.
+                # Sharper map: 3/3 → 1.0x, 2/3 → 0.85x, 1/3 → 0.60x, 0/3 → 0.40x.
                 _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
-                _consensus_map = (0.55, 0.70, 0.88, 1.0)
+                _consensus_map = (0.40, 0.60, 0.85, 1.0)
                 _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
                 _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
                 # Architectural: cross-symbol concurrent-position attenuator.
