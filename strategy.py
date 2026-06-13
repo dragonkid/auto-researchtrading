@@ -640,20 +640,6 @@ class Strategy:
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
-                # Architectural: first-bar fast-fail. New control-flow path: at
-                # bars_held == 1 (first bar after entry), if pos_pnl has already
-                # moved against entry by more than _ff_thresh (ATR-scaled), force
-                # exit. Bypasses scale-in, soft exit pressure, and stop-loss
-                # band — pure pnl-trajectory fast-fail. Targets immediately-wrong
-                # entries (rally shorts that lose on bar 1) which currently bleed
-                # to the ~2.4% stop-loss. Threshold is ATR-derived so SOL (higher
-                # vol) gets wider tolerance, BTC (lower vol) tighter — preserves
-                # noise immunity. Hard threshold but ATR-anchored. New data
-                # dependency: bar-1-only conditional exit on pos_pnl trajectory.
-                _ff_thresh = -max(0.003, min(0.008, 0.85 * _atr_pct))
-                if bars_held == 1 and pos_pnl < _ff_thresh:
-                    target = 0.0
-
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
                 # the dominant cost driver (flip_pnl -560 to -960 per regime).
