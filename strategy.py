@@ -441,14 +441,25 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
+                # Architectural: conviction-trajectory gate (new check at entry).
+                # In addition to floor persistence, require recent conviction NOT
+                # to be decaying. Differentiates rising (1.5->2.5, signal building)
+                # from decaying (2.5->1.5, signal eroding). 5% slack absorbs noise.
+                # Captures the edge case where strong-sum just barely clears the
+                # floor but trajectory is downward — these are the noise-driven
+                # marginal entries that lose most.
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                    _bull_traj_ok = _hist[-1][0] >= 0.95 * _hist[-2][0]
+                    _bear_traj_ok = _hist[-1][1] >= 0.95 * _hist[-2][1]
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                    _bull_traj_ok = True
+                    _bear_traj_ok = True
+                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min and _bull_traj_ok
+                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min and _bear_traj_ok
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
