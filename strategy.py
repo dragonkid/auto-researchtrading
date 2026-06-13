@@ -896,11 +896,17 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Persistence-gated binary exit: full exit requires prior+current both over _exit_thresh.
+                # Trend-conditional persistence-gated binary exit. Strong trends require
+                # 2-bar persistence (filter spike noise during pullbacks). Chop/sideways
+                # falls back to 1-bar (preserves single-bar reversal capture in chop).
+                # Continuous via tanh on |ret_long|/0.04: trend_conf=1 -> require armed,
+                # trend_conf=0 -> exit on single-bar threshold. Probabilistic gate uses
+                # _was_armed OR (1 - trend_conf) >= some-noise-equivalent.
                 _was_armed, self._exit_armed[symbol] = self._exit_armed.get(symbol, False), _exit_pressure >= _exit_thresh
+                _trend_conf = max(0.0, np.tanh(abs(ret_long) / 0.04))
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _exit_pressure >= _exit_thresh and _was_armed and target != 0:
+                elif _exit_pressure >= _exit_thresh and (_was_armed or _trend_conf < 0.3) and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
