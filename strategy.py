@@ -620,15 +620,18 @@ class Strategy:
                 _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
                 _opp_strong_min = _bear_strong_min if current_pos > 0 else _bull_strong_min
                 _opp_votes = bear_votes if current_pos > 0 else bull_votes
-                _opp_trend_dir = (trend_avg < 0) if current_pos > 0 else (trend_avg > 0)
-                _opp_trend_mag = abs(trend_avg) if _opp_trend_dir else 0.0
+                # Require BOTH short-window (trend_avg) AND long-window (ret_long) to
+                # disagree with position. Single short-window trend creates false-positive
+                # opp_pressure on transient bounces (crash bull-bounce kills shorts).
+                # Long-window confirmation distinguishes real reversal from chop bounce.
+                _pos_dir_v = 1.0 if current_pos > 0 else -1.0
+                _short_against = max(0.0, -trend_avg * _pos_dir_v)  # >0 when trend_avg disagrees
+                _long_against = max(0.0, -ret_long * _pos_dir_v)
+                _opp_trend_align = np.tanh(_short_against / 0.005) * np.tanh(_long_against / 0.04)
                 _opp_strong_margin = max(0.0, (_opp_strong - _opp_strong_min) / max(_opp_strong_min, 1e-6))
                 _opp_votes_margin = max(0.0, (_opp_votes - FLIP_MIN_VOTES) / FLIP_MIN_VOTES)
-                _opp_pressure_raw = np.tanh(_opp_strong_margin / 0.20) * np.tanh(_opp_votes_margin / 0.15) * np.tanh(_opp_trend_mag / 0.005)
-                # Scale magnitude to 0.4 (was 1.2): the contribution should nudge the
-                # exit decision near boundary, not dominate. Original binary opp_gate fully
-                # exited; smooth replacement should be a graduated lever.
-                _opp_pressure = 0.4 * max(0.0, _opp_pressure_raw) * _cooldown_factor
+                _opp_pressure_raw = np.tanh(_opp_strong_margin / 0.20) * np.tanh(_opp_votes_margin / 0.15) * _opp_trend_align
+                _opp_pressure = 1.2 * max(0.0, _opp_pressure_raw) * _cooldown_factor
                 _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure) + _opp_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
