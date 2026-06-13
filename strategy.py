@@ -756,6 +756,15 @@ class Strategy:
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
+                # Architectural: chop-dampened opp-bias addition (mirror of _chop_amp).
+                # Comment-thesis says "reversal evidence equally weighted across regimes",
+                # but in pure chop, opp-voter spikes are dominantly NOISE not reversal signal.
+                # Dampening opp-bias ADDITION in chop reduces noise-driven _exit_pressure rises
+                # during sideways. In trends, opp_atten already attenuates trend-aligned-position
+                # opp-bias; here we ADDITIONALLY dampen all opp-bias in chop (regardless of pos
+                # direction) to filter sideways noise. Continuous via tanh on abs(ret_long)/0.025;
+                # 1.0 in trend (full opp-bias addition), 0.6 in deep chop (40% reduction).
+                _chop_amp_opp = 1.0 - 0.40 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
@@ -771,7 +780,7 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _chop_amp_opp * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
