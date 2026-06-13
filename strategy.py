@@ -129,12 +129,6 @@ class Strategy:
         # are downweighted. New time-varying voter weighting based on each
         # voter's own track record.
         self._voter_sign_history = {}
-        # Architectural: per-symbol last-exit state. Tracks (exit_pnl_sign,
-        # exit_pos_dir) for the most recent flat-out exit. Used by cold-entry
-        # path to attenuate re-entries in the same direction shortly after a
-        # losing exit ("revenge trade" filter). New cross-bar state dependency:
-        # first-bar size depends on whether the prior exit was profitable.
-        self._last_exit_loss_dir = {}
         # Architectural: per-symbol entry-bar history (rolling list of bar_count
         # values at which entries opened). Used by trade-frequency self-regulator
         # to raise the strong-sum admission threshold when recent entry rate is
@@ -510,19 +504,10 @@ class Strategy:
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
                 _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
-                # Architectural: revenge-trade attenuator. Re-entries in the same
-                # direction as a recent losing exit (within 8 bars) get reduced
-                # first-bar commitment. Outcomes-aware cooldown: pure bars-since-exit
-                # cooldown_factor doesn't differentiate winning re-entries from
-                # losing ones. Smooth tanh decay over 8 bars; max attenuation 0.30.
-                _rev_dir, _rev_bar = self._last_exit_loss_dir.get(symbol, (0, -999))
-                _rev_decay = max(0.0, 1.0 - (self.bar_count - _rev_bar) / 8.0)
-                _bull_revenge_atten = 1.0 - 0.30 * _rev_decay * (1.0 if _rev_dir > 0 else 0.0)
-                _bear_revenge_atten = 1.0 - 0.30 * _rev_decay * (1.0 if _rev_dir < 0 else 0.0)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_revenge_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_revenge_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -884,14 +869,6 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Record losing-exit direction for revenge-trade filter
-                    _exit_pnl = (mid - self.entry_prices.get(symbol, mid)) / max(self.entry_prices.get(symbol, mid), 1e-10)
-                    if current_pos < 0:
-                        _exit_pnl = -_exit_pnl
-                    if _exit_pnl < 0:
-                        self._last_exit_loss_dir[symbol] = (1 if current_pos > 0 else -1, self.bar_count)
-                    else:
-                        self._last_exit_loss_dir.pop(symbol, None)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
