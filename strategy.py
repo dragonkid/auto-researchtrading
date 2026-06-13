@@ -504,10 +504,23 @@ class Strategy:
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
                 _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
+                # Architectural: replace multiplicative attenuator composition with
+                # min-aggregation (max-attenuation). Previous design composed five
+                # attenuators multiplicatively: cooldown_factor * ct_atten *
+                # concurrent_atten * consensus_atten — geometric compounding allowed
+                # weak/independent concerns to combine to >50% size reduction even
+                # when no single concern was severe. New composition: take the MIN
+                # of the four attenuator factors (most-restrictive wins); each
+                # represents a single concern about entry quality, and the strongest
+                # one should dominate without correlated-noise amplification. Multi-
+                # variable change: same factors, different composition rule for
+                # first-bar size decision.
+                _bull_attn = min(_cooldown_factor, _bull_ct_atten, _concurrent_atten, _bull_consensus_atten)
+                _bear_attn = min(_cooldown_factor, _bear_ct_atten, _concurrent_atten, _bear_consensus_atten)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _bull_attn
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _bear_attn
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
