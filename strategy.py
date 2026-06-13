@@ -383,6 +383,28 @@ class Strategy:
                 # tanh maps deviation from 0.5 to smooth [-0.08, +0.04] adjustment.
                 _range_bull_adj = 0.04 * np.tanh((_range_pos - 0.5) / 0.20)  # in [-0.04, +0.04]
                 _range_bear_adj = 0.04 * np.tanh((0.5 - _range_pos) / 0.20)
+                # Architectural: volume-weighted price divergence gate. New data
+                # dependency: 20-bar VWAP using bar volume × HL2. Bull entries
+                # confirmed when close >= VWAP (price action backed by volume);
+                # attenuated when close < VWAP (rally appearing without volume —
+                # likely false breakout or low-conviction move that volume isn't
+                # backing). Bear entries symmetric. Continuous: tanh of normalized
+                # divergence (close - VWAP) / VWAP scaled by 0.4% (~typical swing).
+                # Range [-0.04, +0.04] first-bar adjust. Orthogonal to range_pos
+                # (which uses high/low extremes only) and to all voters (which
+                # use only price/EMA/MACD/RSI). New volume-price interaction
+                # captures distribution vs accumulation patterns.
+                _vwap_n = 20
+                _vol_hist = bd.history["volume"].values[-_vwap_n:]
+                _hl2_hist = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:]) / 2.0
+                _vwap_sum_v = _vol_hist.sum()
+                if _vwap_sum_v > 1e-10:
+                    _vwap = (_hl2_hist * _vol_hist).sum() / _vwap_sum_v
+                    _vwap_div = (mid - _vwap) / max(_vwap, 1e-6)
+                else:
+                    _vwap_div = 0.0
+                _vwap_bull_adj = 0.04 * np.tanh(_vwap_div / 0.004)   # close > VWAP → bull adj +
+                _vwap_bear_adj = 0.04 * np.tanh(-_vwap_div / 0.004)  # close < VWAP → bear adj +
                 # Architectural: entry-persistence gate. Reuses the rolling _hist
                 # (3-bar strong-sum history maintained for flip sustenance) to
                 # require ENTRY-side conviction to be sustained over 2 bars before
@@ -433,9 +455,9 @@ class Strategy:
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj + _vwap_bull_adj) * _cooldown_factor
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj + _vwap_bear_adj) * _cooldown_factor
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
