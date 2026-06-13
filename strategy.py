@@ -950,7 +950,7 @@ class Strategy:
                     # Smaller peaks exist in all regimes; relaxing for them widens std.
                     # Only proven winners (peak >> pp_min) get the band relaxation.
                     _peak_de_relax = max(0.0, min(1.0, (_peak_ratio_de - 2.0) / 1.0))  # ramp [2.0, 3.0] -> [0, 1]
-                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.04 * _peak_de_relax * _trend_align
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.06 * _peak_de_relax * _trend_align
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
