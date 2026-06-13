@@ -802,11 +802,15 @@ class Strategy:
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    # Tier-1 harvest: progressive single-ramp scaling from 30% at
-                    # peak=1.6*_pp_min up to 40% at peak=3.0*_pp_min. Wider range
-                    # captures both modest and very-large profitable runners.
-                    _tp_scale = (0.30 + 0.10 * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.5) / 0.5)))) * \
-                                max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
+                    # Tier-1 harvest base: up to 30% scale-down at peak >= 1.6*_pp_min
+                    # in any direction. Counter-trend positions get an EXTRA 10% at
+                    # higher peaks (lucky peaks deserve harder lock); trend-aligned
+                    # positions stop at 30% (let winning trend runners run).
+                    _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
+                    _ct_str_tp = max(0.0, np.tanh(-ret_long * _pos_dir_tp / 0.04))  # 0 trend-aligned, ~1 counter-trend
+                    _ramp_main = max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6)))
+                    _ramp_extra = max(0.0, min(1.0, np.tanh((_tp_ratio - 2.5) / 0.5)))
+                    _tp_scale = (0.30 + 0.10 * _ct_str_tp * _ramp_extra) * _ramp_main * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
