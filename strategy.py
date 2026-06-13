@@ -122,28 +122,11 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: portfolio-level equity peak tracker for drawdown-aware
-        # defensive sizing. New cross-symbol state dependency: position size
-        # scales smoothly with portfolio equity drawdown vs running peak.
-        self._equity_peak = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-
-        # Architectural: portfolio drawdown defensive-size attenuator.
-        # Track running peak of equity; when current equity is in drawdown
-        # vs peak, attenuate position sizing smoothly. This breaks the
-        # drawdown-spiral feedback loop (losses compound when sizing stays
-        # large). Continuous via tanh; max attenuation 30% at 12% drawdown.
-        # Orthogonal to all per-symbol price/voter mechanisms (operates on
-        # cross-symbol portfolio equity time-series).
-        if equity > self._equity_peak:
-            self._equity_peak = equity
-        _eq_dd = max(0.0, (self._equity_peak - equity) / max(self._equity_peak, 1.0))
-        # tanh saturates near 12% dd. Max attenuation = 0.30 (size scales by 0.70).
-        _dd_size_atten = 1.0 - 0.30 * np.tanh(_eq_dd / 0.12)
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -314,7 +297,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _dd_size_atten
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
