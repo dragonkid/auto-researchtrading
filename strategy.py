@@ -861,35 +861,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: post-peak breakeven-violation exit pressure (7th soft source).
-                # New control flow + new decision boundary distinct from all existing pressures:
-                #   - _pp_pressure measures giveback against an active peak (peak >= _pp_min)
-                #   - _ep_pressure measures giveback for sub-peak modest-profit positions
-                #   - _ar_pressure measures recovery-from-MAE for currently-losing positions
-                # NONE of these handle the case: position reached SUBSTANTIAL peak (>=1.2x _pp_min,
-                # confirmed winning trade), then PnL crossed back to negative. This pattern —
-                # "winner returns to losing" — is structurally a broken trade: the realized
-                # profit edge has fully dissipated, and the position is now adversely held with
-                # noise eating into capital. Add pressure that activates only when:
-                #   - peak_pnl >= 1.2 * _pp_min (was a meaningful winner)
-                #   - pos_pnl < 0 (now actually losing — not just giving back)
-                # Pressure ramps with depth below breakeven: scaled by min(1, |pos_pnl|/_pp_min).
-                # Cap at 0.5 (subordinate to pp_pressure, but meaningful on its own). Crash regime
-                # benefit: short shorts that captured mid-leg profit and now stalled at a bounce
-                # back through breakeven get cut before adverse continuation. Bull/rally benefit:
-                # winners that gave back fully are exited rather than held through deeper
-                # drawdowns. Sideways: rarely activates (peaks rarely reach 1.2x _pp_min in chop).
-                _bv_pressure = 0.0
-                if self.peak_pnl[symbol] >= 1.2 * _pp_min and pos_pnl < 0:
-                    _bv_depth = min(1.0, -pos_pnl / max(_pp_min, 1e-6))
-                    _bv_pressure = 0.5 * _bv_depth
-                _w_bv = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_bv * _bv_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
