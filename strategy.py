@@ -758,10 +758,17 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Chop-amplified own-side subtraction with divergence taper: in pure sideways
-                # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
-                _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
-                _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
+                # Architectural simplification (per 83ffa0a-session-summary insight):
+                # remove _chop_amp own-side subtraction modulator, keep _opp_atten.
+                # Joint removal of both was catastrophic (crash -0.125, rally -0.187 — _opp_atten
+                # is load-bearing for counter-trend regimes), but isolated removal of _chop_amp
+                # was hinted as net-positive via the joint-removal sideways +0.019 signal.
+                # _chop_amp amplifies own-side subtraction in chop (1.0 -> 1.7 at deep chop),
+                # which over-protects winning chop holds against soft exit pressures. The
+                # divergence-taper inside _chop_amp partially fixed this in pure sideways but
+                # the residual amplification still suppresses legitimate exits. Set to flat 1.0.
+                # Code-structure removal: 2 lines + cross-component dep on bull/bear strong-sum.
+                _chop_amp = 1.0
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
