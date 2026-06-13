@@ -459,14 +459,25 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
+                # Architectural: cumulative-conviction persistence gate replacing
+                # min-of-2-bars. Old: required BOTH last 2 bars to exceed
+                # persist_factor*strong_min — blocks 1st bar of regime onsets
+                # where prior bar's strong-sum was below threshold (1-bar lag at
+                # every regime transition). New: require sum of last 2 bars to
+                # exceed 2*persist_factor*strong_min, allowing a strong current
+                # bar to compensate for a weaker prior bar. Maintains average
+                # conviction requirement while admitting regime-onset transitions
+                # where current-bar strength dominates. New control flow at entry-
+                # persistence boundary: gate fires on integrated 2-bar conviction
+                # rather than weakest-bar conviction.
                 if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                    _sum_bull_2 = _hist[-2][0] + _hist[-1][0]
+                    _sum_bear_2 = _hist[-2][1] + _hist[-1][1]
                 else:
-                    _min_bull_2 = _bull_strong
-                    _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                    _sum_bull_2 = 2.0 * _bull_strong
+                    _sum_bear_2 = 2.0 * _bear_strong
+                _bull_persist_ok = _sum_bull_2 >= 2.0 * _entry_persist_factor * _bull_strong_min
+                _bear_persist_ok = _sum_bear_2 >= 2.0 * _entry_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
