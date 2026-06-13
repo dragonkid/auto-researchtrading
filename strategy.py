@@ -873,51 +873,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: RSI-price divergence exit pressure (7th soft source).
-                # Classical momentum-decay signal orthogonal to slope (linear trajectory) and
-                # peak-profit (giveback magnitude): when price has just made a fresh 12-bar
-                # high but current RSI is below the RSI value at the prior price-high, momentum
-                # is failing to confirm the price extension (bearish divergence for longs).
-                # Symmetric for shorts. Continuous via tanh on (price_extension * rsi_decline).
-                # New cross-bar data dep at exit: RSI series compared at price extremes.
-                # Profit-side weight only (mean-reversion lock for winners, not for losing positions).
-                _div_n = 12
-                _close_div = closes[-_div_n:]
-                _rsi_div_arr = np.empty(_div_n, dtype=float)
-                # Compute rolling RSI for last div_n bars using same length as entry RSI window.
-                for _di in range(_div_n):
-                    _seg = closes[-(_div_n - _di) - 7: -(_div_n - _di) + 1] if (_div_n - _di) > 1 else closes[-7:]
-                    _seg_d = np.diff(_seg)
-                    _rsi_div_arr[_di] = 100 - 100 / (1 + np.mean(np.maximum(_seg_d, 0)) / max(np.mean(np.maximum(-_seg_d, 0)), 1e-10))
-                if current_pos > 0:
-                    _price_hi_idx = int(np.argmax(_close_div))
-                    _price_now = _close_div[-1]
-                    _div_active = (_price_now >= _close_div[_price_hi_idx] * 0.999 and _price_hi_idx < _div_n - 1)
-                    if _div_active:
-                        _rsi_now = _rsi_div_arr[-1]
-                        _rsi_then = _rsi_div_arr[_price_hi_idx]
-                        _div_strength = max(0.0, np.tanh((_rsi_then - _rsi_now) / 5.0))
-                    else:
-                        _div_strength = 0.0
-                else:
-                    _price_lo_idx = int(np.argmin(_close_div))
-                    _price_now = _close_div[-1]
-                    _div_active = (_price_now <= _close_div[_price_lo_idx] * 1.001 and _price_lo_idx < _div_n - 1)
-                    if _div_active:
-                        _rsi_now = _rsi_div_arr[-1]
-                        _rsi_then = _rsi_div_arr[_price_lo_idx]
-                        _div_strength = max(0.0, np.tanh((_rsi_now - _rsi_then) / 5.0))
-                    else:
-                        _div_strength = 0.0
-                _rd_pressure = 0.35 * _div_strength
-                _w_rd = max(0.0, _pnl_scale)  # profit-side only
-
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_rd * _rd_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
