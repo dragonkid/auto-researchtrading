@@ -803,11 +803,13 @@ class Strategy:
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
                     # Tier-1 harvest: 30% scale-down at peak >= 1.6*_pp_min.
-                    # Tier-2 harvest: ADDITIONAL 18% at peak >= 2.5x _pp_min (capped
-                    # lower than tier-1 to limit bull regression while still
-                    # progressively locking very-large rally peaks).
+                    # Tier-2 harvest: ADDITIONAL up to 20% at peak >= 2.5x _pp_min,
+                    # gated on currently still being in profit (pos_pnl > 0.5*_pp_min).
+                    # Avoids firing when position is already giving back (where _pp_pressure
+                    # handles it) and over-harvesting bull positions in quick correction.
                     _tp_scale_1 = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
-                    _tp_scale_2 = 0.18 * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.5) / 0.8))) * _tp_trend_gate
+                    _tp_pnl_gate = max(0.0, min(1.0, np.tanh(pos_pnl / max(0.5 * _pp_min, 1e-6))))
+                    _tp_scale_2 = 0.20 * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.5) / 0.8))) * _tp_trend_gate * _tp_pnl_gate
                     target = target * (1.0 - _tp_scale_1) * (1.0 - _tp_scale_2)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
