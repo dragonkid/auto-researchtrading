@@ -771,18 +771,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: post-scale-in age decay of _exit_thresh in profit.
-                # After scale-in completes (bars_held > ENTRY_FULL_BARS) AND position
-                # is in profit, gradually lower _exit_thresh from 1.0 toward 0.85
-                # over the next 8 bars (linear ramp). This locks gains progressively
-                # as profitable holds age — old winning positions are more vulnerable
-                # to mean-reversion / regime change, so the same _exit_pressure value
-                # triggers exit earlier. New cross-bar dependency: exit threshold
-                # depends on bars_held in profit. Continuous, monotone decreasing.
-                # Loss path unchanged (no decay; let slope-against drive exit).
-                if not _scale_in_winning and pos_pnl > 0 and bars_held > ENTRY_FULL_BARS:
-                    _age_decay = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / 8.0))
-                    _exit_thresh = 1.0 - 0.15 * _age_decay
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
