@@ -198,6 +198,16 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
+            # Architectural: 7th voter — bar-body-position pressure.
+            # Mean of (close - low) / (high - low) over last 8 bars measures
+            # intra-bar buyer/seller balance. > 0.5 = buyers dominating, < 0.5 = sellers.
+            # Orthogonal to all 6 existing voters which derive from close-only series.
+            # Centered around 0.5 = balanced; ±0.15 from balance is meaningful regime.
+            _bp_high = bd.history["high"].values[-8:]
+            _bp_low = bd.history["low"].values[-8:]
+            _bp_close = closes[-8:]
+            _bp_range = np.maximum(_bp_high - _bp_low, 1e-10)
+            _bp_position = np.mean((_bp_close - _bp_low) / _bp_range)  # in [0, 1]
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -205,6 +215,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                (_bp_position - 0.5) / 0.15,
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -224,7 +235,12 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            _voter_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
+            # 7-voter weights: existing 6 + body-position (weight 0.85). Total preserved
+            # at 6.0 by trimming each existing weight slightly. Body-position is
+            # orthogonal to close-only voters so adds new info without redistributing
+            # trend-vs-mean-reversion balance. Bull/bear conf clip [0.1, 0.9] caps
+            # individual voter influence so threshold rescaling is light.
+            _voter_weights = (0.55, 1.10 + _wt_shift, 0.95 - _wt_shift, 0.85 - _wt_shift, 0.75, 0.95 + _wt_shift, 0.85)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
