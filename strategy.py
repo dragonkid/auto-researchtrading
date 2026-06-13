@@ -654,24 +654,6 @@ class Strategy:
                 if not in_cooldown and _opp_gate:
                     target = 0.0
 
-                # Architectural: long-window trend-disconfirmation early exit at bar 2.
-                # On bar 2 (post-entry, before scale-in completes), check long-window
-                # trend (ret_long over LONG_WINDOW=20 bars). If trend is STRONGLY
-                # opposite to position direction (|ret_long| > 0.03 with opposite sign),
-                # force exit. This catches counter-trend entries early — distinct from
-                # entry gate (which uses smoothed_trend, much shorter window). Bar 2
-                # specifically: bar 1 entry has just happened, bar 2 we have one full
-                # bar of post-entry data plus the pre-entry trend signal — long-window
-                # trend can be re-evaluated with fresh context. Continuous tanh
-                # threshold for smooth gate. New control-flow path: bars_held==2 is
-                # an additional exit decision branch.
-                if bars_held == 2 and target != 0:
-                    _trend_disconfirm = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.02))  # in [0, ~1]
-                    _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _trend_against_pos = -ret_long * _pos_dir  # >0 when trend opposes position
-                    if _trend_disconfirm > 0.5 and _trend_against_pos > 0.03:
-                        target = 0.0
-
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
