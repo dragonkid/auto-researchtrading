@@ -887,10 +887,20 @@ class Strategy:
                 # Sideways: small effect since chop produces shorter-lived pressure spikes
                 # that get filtered, possibly slightly raising hold time.
                 _prior_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
+                # Branch step 2: gate smoothing on chop/loss/counter-trend conditions.
+                # Trend-aligned + in-profit: use raw exit_pressure (no smoothing) so bull/rally
+                # winners exit promptly on legitimate pullback signals — restores fast trim.
+                # Chop / losing / counter-trend: full smoothing (filters dead-cat / spike noise).
+                # Continuous blend weight via tanh on (trend_align * profit_gate).
+                _pos_dir_sm = 1.0 if current_pos > 0 else -1.0
+                _trend_align_sm = max(0.0, np.tanh(ret_long * _pos_dir_sm / 0.05))  # [0, ~1]
+                _profit_gate_sm = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
+                _smooth_disable = _trend_align_sm * _profit_gate_sm  # both required for disable
+                _smooth_alpha_dyn = 0.35 * (1.0 - _smooth_disable)  # 0 in winning trend, 0.35 in chop/loss
                 if _sl_pressure >= 0.95:
                     _exit_pressure = _exit_pressure_raw
                 else:
-                    _exit_pressure = 0.65 * _exit_pressure_raw + 0.35 * _prior_ep
+                    _exit_pressure = (1.0 - _smooth_alpha_dyn) * _exit_pressure_raw + _smooth_alpha_dyn * _prior_ep
                 self._prev_exit_pressure[symbol] = _exit_pressure_raw
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
