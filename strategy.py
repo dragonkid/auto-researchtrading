@@ -871,16 +871,7 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                # Architectural: voter_bias scoped to soft-sum branch only.
-                # Old: voter_bias added unconditionally to max(sl,soft_sum), which let
-                # own-side voter strength reduce exit pressure even when stop-loss
-                # was the dominant source. Voter signals at deep loss are noise-
-                # contaminated (price has moved far enough that voter reactions are
-                # often late/false). New: max(sl, soft_sum + voter_bias) — voter
-                # bias modulates only the soft-sum path; SL path remains pure
-                # protective. New control flow at exit fusion: voter influence
-                # confined to non-protective decision branch.
-                _exit_pressure = max(_sl_pressure, _soft_sum + _voter_bias)
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
