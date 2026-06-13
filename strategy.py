@@ -833,11 +833,9 @@ class Strategy:
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                # Weight: trend-aligned suppression — trend-aligned MAE recoveries are
-                # more often healthy dip-recoveries than "barely surviving" patterns;
-                # counter-trend recoveries (rally bears recovering from MAE) keep full
-                # weight to lock the recovery before reversal.
-                _w_ar = 1.0 - 0.5 * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.05))
+                # Weight: only fire on currently-losing positions (definitionally — gated above);
+                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
+                _w_ar = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
