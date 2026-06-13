@@ -617,19 +617,8 @@ class Strategy:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
-                # Multi-variable architectural change: defer MAE updates until scale-in
-                # completes (bars_held > ENTRY_FULL_BARS). Rationale: during scale-in
-                # bars 0-3 the position is at 43%-100% of target — first-bar wiggles
-                # cause MAE to record deep adverse pnl that isn't proportional to
-                # actual realized loss (since position size is partial). This pre-
-                # loaded MAE causes _ar_pressure to over-fire on subsequent bars when
-                # recovery_frac jumps quickly from a noisy early-bar low. Deferring
-                # MAE tracking gives the position full scale-in completion before
-                # establishing the low-water mark used by adverse-recovery exit
-                # pressure. New control flow: MAE state guarded by bars_held.
                 _curr_mae = self._mae.get(symbol, 0.0)
-                if bars_held > ENTRY_FULL_BARS:
-                    self._mae[symbol] = min(_curr_mae, pos_pnl)
+                self._mae[symbol] = min(_curr_mae, pos_pnl)
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
