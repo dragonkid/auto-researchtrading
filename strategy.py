@@ -896,15 +896,11 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Persistence-gated binary exit: full exit requires prior bar AND
-                # current bar both over _exit_thresh. Single-bar spikes route through
-                # graduated de-risk. SL path unchanged. _exit_armed tracks prior-bar flag.
-                _over_thresh_now = _exit_pressure >= _exit_thresh
-                _was_armed = self._exit_armed.get(symbol, False)
-                self._exit_armed[symbol] = _over_thresh_now
+                # Persistence-gated binary exit: full exit requires prior+current both over _exit_thresh.
+                _was_armed, self._exit_armed[symbol] = self._exit_armed.get(symbol, False), _exit_pressure >= _exit_thresh
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _over_thresh_now and _was_armed and target != 0:
+                elif _exit_pressure >= _exit_thresh and _was_armed and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
