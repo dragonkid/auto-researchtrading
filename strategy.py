@@ -873,26 +873,21 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                # Branch step 6: asymmetric voter_bias smoothing — only smooth POSITIVE voter_bias
-                # (opp-side firing on position, the dead-cat bounce signature) when in DRAWDOWN.
-                # Negative voter_bias (own-side validating, hold preserve) is unsmoothed —
-                # quick removal of own-side support → fast exit. Positive AND in-loss: smooth
-                # 2 bars to filter dead-cat bounce voter spikes. Positive AND in-profit: also
-                # unsmoothed (legitimate reversal warning while position still profitable —
-                # don't delay protective exits). Crash narrow target: bear shorts that have
-                # transit through losses during dead-cat bounce while opp bull voters spike.
-                _prior_vb_pos = self._prev_exit_pressure.get(symbol, max(0.0, _voter_bias))
-                _vb_pos = max(0.0, _voter_bias)
-                _vb_neg = min(0.0, _voter_bias)
-                _vb_loss_gate = max(0.0, min(1.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))))
-                _vb_smooth_alpha = 0.40 * _vb_loss_gate
+                # Branch step 7: smooth ONLY the slope-pressure term in DRAWDOWN.
+                # _sl_slope_pressure is the main single-bar exit driver (multi-window slope
+                # mean can shift on 1-bar price spike). When pos_pnl<0 (drawdown), smooth
+                # 2-bar prior slope-pressure to filter spike noise on already-stressed positions.
+                # In profit: unsmoothed (fast trim preserved for bull/rally winners).
+                _prior_slp = self._prev_exit_pressure.get(symbol, _sl_slope_pressure)
+                _slp_loss_gate = max(0.0, min(1.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))))
+                _slp_smooth_alpha = 0.40 * _slp_loss_gate
                 if _sl_pressure >= 0.95:
-                    _vb_pos_used = _vb_pos
+                    _sl_slope_used = _sl_slope_pressure
                 else:
-                    _vb_pos_used = (1.0 - _vb_smooth_alpha) * _vb_pos + _vb_smooth_alpha * _prior_vb_pos
-                self._prev_exit_pressure[symbol] = _vb_pos
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _vb_pos_used + _vb_neg
+                    _sl_slope_used = (1.0 - _slp_smooth_alpha) * _sl_slope_pressure + _slp_smooth_alpha * _prior_slp
+                self._prev_exit_pressure[symbol] = _sl_slope_pressure
+                _soft_sum = _w_slope * _sl_slope_used + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
