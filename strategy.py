@@ -651,30 +651,7 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: range-contraction exit attenuator. New cross-
-                # timescale data dependency on bar high/low range structure.
-                # Compute 4-bar mean range vs 20-bar mean range. Contraction
-                # ratio = range_4 / range_20. Low ratio (<0.7) signals tight
-                # consolidation within longer-window structure — often a
-                # continuation pattern in trends, not a reversal. Attenuate
-                # the FUSED exit pressure (slope+pp+time+ve) when in profit
-                # AND trend-aligned AND contracting. Symmetric to existing
-                # _voter_attn but gated on bar-structure rather than voter
-                # conviction. Continuous tanh, max 25% attenuation. Acts on
-                # the inner pressure sum (not _sl_pressure which retains full
-                # safety force). Orthogonal to vol_expansion (returns-std)
-                # and to volume-based signals — this measures price-range
-                # geometry directly.
-                _hl_range_hist = bd.history["high"].values[-20:] - bd.history["low"].values[-20:]
-                _range_4 = _hl_range_hist[-4:].mean()
-                _range_20 = _hl_range_hist.mean()
-                _contract_ratio = _range_4 / max(_range_20, 1e-10)
-                _pos_dir_rc = 1.0 if current_pos > 0 else -1.0
-                _trend_align_rc = max(0.0, np.tanh(ret_long * _pos_dir_rc / 0.05))
-                _profit_gate_rc = max(0.0, _pnl_scale)  # only profitable positions
-                _contract_strength = max(0.0, np.tanh((0.7 - _contract_ratio) / 0.20))
-                _range_attn = 1.0 - 0.25 * _contract_strength * _trend_align_rc * _profit_gate_rc
-                _exit_pressure = _sl_pressure + _voter_attn * _range_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
