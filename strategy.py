@@ -292,21 +292,14 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural: trade-frequency self-regulator. Maintains per-symbol
-            # rolling history of entry bars over a 50-bar window. When recent entry
-            # density is high (many fresh entries in short period), raise the strong-sum
-            # admission threshold proportionally. Smooth via tanh on (entries-2)/3
-            # mapping to a multiplicative factor in [1.0, 1.20] — high churn periods
-            # require ~20% more conviction to enter. Self-feedback: the strategy's
-            # own recent activity raises its own admission bar. Decoupled from voter
-            # signals (operates on entry timing, orthogonal to conviction).
-            _entry_hist = self._entry_bar_history.get(symbol, [])
-            _ehist_window = 50
-            _entry_hist = [b for b in _entry_hist if self.bar_count - b <= _ehist_window]
-            self._entry_bar_history[symbol] = _entry_hist
-            _recent_entries = len(_entry_hist)
-            _freq_excess = max(0.0, np.tanh((_recent_entries - 2.0) / 3.0))  # 0..1
-            _freq_factor = 1.0 + 0.20 * _freq_excess
+            # Architectural: trade-frequency self-regulator. Per-symbol rolling
+            # entry-bar history over a 30-bar window. When recent entry density
+            # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
+            # Smooth via tanh; max factor 1.20.
+            _eh = self._entry_bar_history.setdefault(symbol, [])
+            while _eh and self.bar_count - _eh[0] > 30:
+                _eh.pop(0)
+            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
             _bull_strong_min = _strong_min * _freq_factor
             _bear_strong_min = _strong_min * _freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
