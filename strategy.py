@@ -911,7 +911,7 @@ class Strategy:
                     # (>2.0x _pp_min) where the peak truly represents a confirmed trend
                     # extension. Rally pullback peaks rarely reach this magnitude;
                     # bull/crash trend peaks do.
-                    _deep_peak_tp = max(0.0, min(1.0, np.tanh((_tp_ratio - 2.4) / 0.5)))
+                    _deep_peak_tp = max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.5 * _mae_clean * _trend_align_tp * _deep_peak_tp)
                     target = target * (1.0 - _tp_scale)
 
