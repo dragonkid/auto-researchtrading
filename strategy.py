@@ -122,6 +122,11 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
+        # Architectural: per-symbol entry-time ret_long snapshot. Captures the
+        # long-window trend at the moment the position opened. Used to identify
+        # counter-trend positions (entry against strong trend) that should not
+        # accumulate further size during scale-in ramp.
+        self._entry_ret_long = {}
         # Architectural: per-symbol per-voter directional history (8-bar rolling).
         # Used to compute per-voter directional persistence (fraction of last
         # K bars where voter signal sign matched). High-persistence voters
@@ -470,9 +475,24 @@ class Strategy:
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    # Architectural: entry-time counter-trend scale-in ceiling.
+                    # Use _entry_ret_long snapshot to identify positions entered
+                    # against the long-window trend. Counter-trend = entry_ret_long
+                    # opposite to position direction. Attenuates the FINAL scale-in
+                    # ceiling (not just the per-bar increment), so counter-trend
+                    # positions never reach full size — they hold a smaller terminal
+                    # commitment regardless of bar count. This persists through
+                    # bars 2-3 of scale-in even if mid-position trend drifts.
+                    # Smooth via tanh on entry trend strength; max attenuation 0.30
+                    # at strong counter-trend entries. Only attenuates when LOSING
+                    # to avoid cutting validated counter-trend pullback shorts.
+                    _entry_rl_si = self._entry_ret_long.get(symbol, 0.0)
+                    _ct_entry = max(0.0, np.tanh(-_entry_rl_si * _pos_dir / 0.05))  # 0..1, entry counter-trend
+                    _losing_w = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # 0..1, only when losing
+                    _ct_si_atten = 1.0 - 0.30 * _ct_entry * _losing_w
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress) * _ct_si_atten
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
@@ -725,10 +745,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_ret_long):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._entry_ret_long[symbol] = ret_long
 
         return signals
