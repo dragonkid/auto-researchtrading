@@ -576,22 +576,7 @@ class Strategy:
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
-                # Architectural: slope-acceleration-against exit boost.
-                # Compute prior-bar slope using same windows shifted by 1 bar.
-                # Slope acceleration AGAINST position direction = leading reversal
-                # indicator. When current slope_against > prior slope_against by
-                # significant margin, mid-trend reversal momentum is building.
-                # Smooth additive boost to slope_against (max +0.0003), bounded so
-                # raw slope value still dominates for established trends.
-                _slopes_prev = []
-                for _w in (12, 16, 22):
-                    _ll_p = _fast_slope(np.log(_hl2[-_w - 1:-1]))
-                    _slopes_prev.append(_ll_p)
-                _exit_slope_prev = float(np.mean(_slopes_prev))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                _slope_against_prev = -_exit_slope_prev if current_pos > 0 else _exit_slope_prev
-                _slope_accel = _slope_against - _slope_against_prev  # positive = accelerating against
-                _slope_against = _slope_against + 0.0003 * max(0.0, np.tanh(_slope_accel / 0.0002))
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
