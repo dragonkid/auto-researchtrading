@@ -136,30 +136,11 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: portfolio-level equity peak (high-water mark) state.
-        # Used by drawdown-aware size attenuator: when current equity is below
-        # recent peak (in drawdown), scale position size down to reduce risk
-        # during adverse periods. Completely new domain (portfolio-level vs
-        # per-symbol signal); orthogonal to all existing voter/exit/entry logic.
-        self._equity_peak = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-        # Architectural: portfolio-level drawdown-aware size attenuator.
-        # Track equity high-water mark; compute current drawdown fraction.
-        # When in drawdown, attenuate base position size smoothly via tanh
-        # so positions opened during drawdown periods are smaller — explicit
-        # capital protection during adverse runs. Smooth (no boundary), continuous,
-        # orthogonal to all existing per-symbol voter/exit logic. Activates above
-        # 0.5% drawdown to ignore noise-level fluctuations; max attenuation 0.30
-        # at 5% drawdown. New cross-bar portfolio-level data dependency.
-        if equity > self._equity_peak:
-            self._equity_peak = equity
-        _dd_frac = max(0.0, 1.0 - equity / max(self._equity_peak, 1e-6))  # in [0, 1]
-        # Activation threshold 0.005 (ignore < 0.5% drawdown noise), saturate near 0.05.
-        _dd_atten = 1.0 - 0.30 * max(0.0, np.tanh((_dd_frac - 0.005) / 0.025))
 
         # Architectural: cross-symbol concurrent-position attenuator state.
         # Count active positions across BTC/ETH/SOL at the start of the bar.
@@ -394,7 +375,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _dd_atten
+            size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
