@@ -128,24 +128,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Architectural: cross-symbol relative strength precomputation.
-        # For each symbol, compute 8-bar log return; basket mean used to derive
-        # leader/laggard z-score per symbol (cross-symbol data dependency).
-        # Used as a continuous size-modulator at entry: leaders (return >> basket
-        # mean) get size boost; laggards (return << basket mean) attenuated.
-        # Smooth (tanh), bounded, no boundary switch. Orthogonal to per-symbol
-        # voters which only see own price history.
-        _xs_rets = {}
-        for _sym in ACTIVE_SYMBOLS:
-            if _sym in bar_data:
-                _bd = bar_data[_sym]
-                if len(_bd.history) >= 9:
-                    _c = _bd.history["close"].values
-                    _xs_rets[_sym] = np.log(_c[-1] / _c[-9])
-        _xs_basket_mean = float(np.mean(list(_xs_rets.values()))) if len(_xs_rets) >= 2 else 0.0
-        _xs_basket_std = float(np.std(list(_xs_rets.values()))) if len(_xs_rets) >= 2 else 1e-6
-        _xs_basket_std = max(_xs_basket_std, 1e-6)
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -303,16 +285,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            # Architectural: cross-symbol leader-lag size modulator.
-            # Compares this symbol's 8-bar return against basket mean (z-score).
-            # Leader (z > 0) gets size boost up to +12%, laggard (z < 0) attenuated
-            # down to -12%. Continuous tanh on z-score scaled by 1.5 (typical leadership
-            # band). Activates only in trending regimes (cooldown_trend_strength > 0)
-            # to avoid amplifying noise-driven leadership in chop. New cross-symbol
-            # data dependency at sizing layer.
-            _xs_z = (_xs_rets.get(symbol, 0.0) - _xs_basket_mean) / _xs_basket_std
-            _xs_lead_factor = 1.0 + 0.12 * np.tanh(_xs_z / 1.5) * cooldown_trend_strength
-            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost * _xs_lead_factor
+            size = equity * BASE_POSITION_SIZE * combined_mult * _xa_boost
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
