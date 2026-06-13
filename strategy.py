@@ -896,16 +896,15 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # 3-bar EMA exit-pressure gate. Smooth exponential filter (alpha=0.5) on
-                # exit_pressure; binary exit fires when smoothed value clears _exit_thresh.
-                # Stronger noise filter than 2-bar avg/persistence; weighted average favors
-                # recent bars. _exit_armed stores the smoothed value.
-                _ep_smoothed = self._exit_armed.get(symbol, _exit_pressure)
-                _ep_smoothed = 0.5 * _ep_smoothed + 0.5 * _exit_pressure
-                self._exit_armed[symbol] = _ep_smoothed
+                # Persistence-gated binary exit: full exit requires prior+current both over _exit_thresh.
+                _was_armed, self._exit_armed[symbol] = self._exit_armed.get(symbol, False), _exit_pressure >= _exit_thresh
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _ep_smoothed >= _exit_thresh and target != 0:
+                elif _exit_pressure >= _exit_thresh and _was_armed and target != 0:
+                    target = 0.0
+                elif _voter_bias >= 0.15 and _exit_pressure >= _exit_thresh and target != 0:
+                    # Voter-bias-dominant exits bypass persistence: opp_margin spikes are
+                    # discrete reversal signals (not noise), fire on single bar.
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
