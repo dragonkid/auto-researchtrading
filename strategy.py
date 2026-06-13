@@ -111,6 +111,12 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        # Architectural: per-symbol entry-bar target size (full_target anchored at
+        # entry time). Used by scale-in to grow toward the size committed AT
+        # entry, decoupling intra-position scale-in from current-bar combined_mult
+        # fluctuations. Without this, _entry_full_bars_dyn-bar scale-in chases a
+        # moving target as vol_ratio shifts, creating noise-driven over/undershooting.
+        self._entry_size = {}
         # Maximum adverse excursion (MAE): per-symbol low-water mark of pos_pnl since entry.
         # Used by adverse-recovery exit pressure (architectural): when current pos_pnl
         # has recovered from MAE but still in modest loss, position is "barely surviving"
@@ -596,7 +602,10 @@ class Strategy:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
-                    full_target = size if current_pos > 0 else -size
+                    # Architectural: anchor scale-in target to entry-bar size.
+                    # Falls back to current `size` if entry-size state missing.
+                    _entry_size_anchored = self._entry_size.get(symbol, size)
+                    full_target = _entry_size_anchored if current_pos > 0 else -_entry_size_anchored
                     target = full_target * scale_frac
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
@@ -986,12 +995,16 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_size):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Anchor entry-bar size for scale-in: store the FULL combined_mult-derived
+                    # size (not the first-bar fraction). Subsequent scale-in bars grow toward
+                    # this anchor, not toward the current-bar recomputed `size`.
+                    self._entry_size[symbol] = size
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
