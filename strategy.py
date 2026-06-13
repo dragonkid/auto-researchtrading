@@ -625,7 +625,12 @@ class Strategy:
                 _opp_strong_margin = max(0.0, (_opp_strong - _opp_strong_min) / max(_opp_strong_min, 1e-6))
                 _opp_votes_margin = max(0.0, (_opp_votes - FLIP_MIN_VOTES) / FLIP_MIN_VOTES)
                 _opp_pressure_raw = np.tanh(_opp_strong_margin / 0.20) * np.tanh(_opp_votes_margin / 0.15) * np.tanh(_opp_trend_mag / 0.005)
-                _opp_pressure = 1.2 * max(0.0, _opp_pressure_raw) * _cooldown_factor
+                # Trend-strength gate: opposite-side conviction is meaningful in trending
+                # regimes (real reversal signal) but noise in chop. Gate by rsi_trend_str:
+                # full contribution only above rsi_trend_str=0.6 (strong trend); negligible
+                # in chop. Smooth via tanh on (rsi_trend_str - 0.4)/0.25.
+                _opp_trend_gate = max(0.0, np.tanh((rsi_trend_str - 0.4) / 0.25))
+                _opp_pressure = 1.2 * max(0.0, _opp_pressure_raw) * _cooldown_factor * _opp_trend_gate
                 _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure) + _opp_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
