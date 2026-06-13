@@ -621,8 +621,22 @@ class Strategy:
                 # direction on a subsequent bar IF conviction sustains. This decouples
                 # reversal from a single-bar decision and routes it through the same
                 # noise-filtering gate that protects fresh entries.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Architectural: trend-asymmetric opp-gate threshold. When the
+                # current position is counter-trend (ret_long opposes pos_dir),
+                # the opposite-side conviction threshold is relaxed to admit the
+                # exit signal earlier. When trend-aligned, threshold is unchanged
+                # — protects valid trend-continuation positions from premature
+                # opp-gate exits driven by short-term reversals. Continuous: relax
+                # factor uses tanh(|ret_long|/0.04) to scale 1.0..0.80 of strong_min.
+                # New cross-timescale data dependency: opp-gate threshold depends
+                # on long-window return relative to position direction.
+                _pos_dir = 1.0 if current_pos > 0 else -1.0
+                _counter_trend = max(0.0, -np.tanh(ret_long * _pos_dir / 0.04))  # in [0, ~1], >0 only when counter-trend
+                _opp_relax = 1.0 - 0.20 * _counter_trend  # 1.0 trend-aligned, ~0.80 counter-trend
+                _opp_bear_min = _bear_strong_min * _opp_relax
+                _opp_bull_min = _bull_strong_min * _opp_relax
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _opp_bear_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _opp_bull_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     target = 0.0
 
