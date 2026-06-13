@@ -531,10 +531,30 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: bar-rejection entry size attenuator (new orthogonal data dep
+                # on intra-bar OHLC structure at the entry decision boundary). The current bar's
+                # close-location-within-bar-range is orthogonal to all 7 voters (which use
+                # close-derived series only), to vol_ratio (magnitude), to range_pos (20-bar
+                # position), and to slope/MACD/RSI (cross-bar trajectory). Mechanism: when
+                # the entry bar prints strong upper-wick rejection (close near low of bar
+                # despite voters firing bull), the bar itself is signaling failed bull thrust
+                # and the entry is noise-vulnerable. Symmetric for bear. clv_curr in [0,1]:
+                # 0 = close at low (bear bar), 1 = close at high (bull bar). Attenuates
+                # first-bar size — entry still admitted, but commitment is reduced when the
+                # immediate bar-internal evidence contradicts the voter signal. Smooth tanh,
+                # max attenuation 0.25. Distinct from existing range_pos (20-bar percentile)
+                # and from voter signals — uses only the current bar's H/L/C.
+                _hi_curr = bd.history["high"].values[-1]
+                _lo_curr = bd.history["low"].values[-1]
+                _clv_curr = (mid - _lo_curr) / max(_hi_curr - _lo_curr, 1e-6)  # in [0,1]
+                # Bull entry: weak when clv_curr < 0.5 (close in lower half of bar) → attenuate.
+                # Bear entry: weak when clv_curr > 0.5 (close in upper half) → attenuate.
+                _bull_reject_atten = 1.0 - 0.25 * max(0.0, np.tanh((0.5 - _clv_curr) / 0.25))
+                _bear_reject_atten = 1.0 - 0.25 * max(0.0, np.tanh((_clv_curr - 0.5) / 0.25))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_reject_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_reject_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
