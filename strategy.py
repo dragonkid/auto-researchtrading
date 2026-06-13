@@ -795,36 +795,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                # Architectural: slope-DECELERATION exit pressure (6th soft source).
-                # Genuine 2nd-derivative signal: compute slope over recent 8 bars vs
-                # prior 8 bars (same _hl2 series used by exit-slope). When position is
-                # WINNING (in profit) AND the with-position slope is DECELERATING
-                # (recent slope smaller-magnitude than prior slope, same direction),
-                # trend is exhausting BEFORE giveback materializes. This anticipates
-                # pp_pressure by firing earlier on slope-of-slope. New data dep on
-                # 2nd derivative — orthogonal to slope (1st), pp (giveback), time
-                # (bars_held), ve (vol expansion), ep (sub-peak giveback). Activates
-                # only on winning positions (pos_pnl > 0) since deceleration on losing
-                # positions is already captured by slope-against pressure. Smooth via
-                # tanh on deceleration ratio, capped at 0.4. Profit-weighted via
-                # max(0, _pnl_scale) so it scales with current profit confidence.
-                _decel_recent = _fast_slope(np.log(_hl2[-8:]))
-                _decel_prior = _fast_slope(np.log(_hl2[-16:-8]))
-                # With-position direction: positive = position-favoring slope
-                _decel_recent_p = _decel_recent if current_pos > 0 else -_decel_recent
-                _decel_prior_p = _decel_prior if current_pos > 0 else -_decel_prior
-                # Fire when prior was favorable (>0) AND recent has decelerated
-                # (recent < prior). Deceleration ratio = (prior - recent) / prior, in (0, 1]
-                # when decelerating, ≤ 0 when accelerating or reversed.
-                if _decel_prior_p > 1e-6 and _decel_recent_p < _decel_prior_p:
-                    _decel_ratio = (_decel_prior_p - max(0.0, _decel_recent_p)) / _decel_prior_p
-                else:
-                    _decel_ratio = 0.0
-                _decel_pressure = 0.4 * max(0.0, min(1.0, np.tanh((_decel_ratio - 0.3) / 0.3)))
-                # Weight: profit-side only (avoid double-counting with slope-against
-                # on losing positions). Scaled by _pnl_scale, capped at 1.0.
-                _w_decel = max(0.0, _pnl_scale)
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_decel * _decel_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
