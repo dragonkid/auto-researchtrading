@@ -156,9 +156,6 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            # Time-of-day cyclical activity: cos cycle peak UTC 16, trough UTC 04, in [0, 1].
-            _hour_utc = (bd.timestamp // 3600000) % 24
-            _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_hour_utc - 16.0) / 24.0))
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
             # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
@@ -262,10 +259,7 @@ class Strategy:
             # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
-            # Combination: trend-strength × time-of-day activity scaling. VWAP carries less
-            # signal during low-volume UTC hours (thin bars distort typical-price weighting);
-            # scale _vwap_wt by activity multiplicatively. Range: [0.55*0.7, ~1.05*1.0].
-            _vwap_wt = (0.55 + 0.50 * _trend_strength_w) * (0.70 + 0.30 * _activity)
+            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
             _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
@@ -557,8 +551,17 @@ class Strategy:
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
-                # Time-of-day session-quality entry size modulator.
-                # Maps _activity (computed at top of loop) to size multiplier [0.85, 1.15].
+                # Architectural: time-of-day session-quality entry size modulator.
+                # Continuous cyclical feature: cos-cycle peaking at UTC 16 (US session
+                # peak overlap), trough at UTC 04 (low Asia hour). _activity in [0, 1].
+                # Maps to size multiplier in [0.85, 1.15] — entries during high-volume
+                # hours get up to 15% larger commitment, low-volume hours up to 15% smaller.
+                # NEW DATA SOURCE: bd.timestamp (UTC hour-of-day), orthogonal to all
+                # within-bar/within-window primitives currently saturated. Smooth via
+                # cos (no boundary). Applied only to first-bar entry size (does not
+                # touch voters, exits, or scale-in).
+                _hour_utc = (bd.timestamp // 3600000) % 24
+                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_hour_utc - 16.0) / 24.0))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
