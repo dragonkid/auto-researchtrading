@@ -630,19 +630,6 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: counter-trend time-pressure amplification.
-                # When position is counter-trend in strong long-window trend
-                # (rally bear shorts at -0.32 score bleed slowly via time decay;
-                # they need to exit faster). Amplify _w_time up to 1.5x for
-                # counter-trend positions in strong trends. Smooth via tanh on
-                # signed ret_long * pos_dir (negative = counter-trend) and
-                # tanh on |ret_long| (gate above 0.04). Trend-aligned positions
-                # unaffected. New cross-timescale data dependency: time-pressure
-                # weight depends on position's trend alignment.
-                _pos_dir_tw = 1.0 if current_pos > 0 else -1.0
-                _ct_tw_gate = max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.04))
-                _ct_tw_align = max(0.0, np.tanh(-ret_long * _pos_dir_tw / 0.05))
-                _w_time = _w_time * (1.0 + 0.50 * _ct_tw_gate * _ct_tw_align)
                 # Architectural: NET-margin voter-conviction exit attenuator.
                 # Previous: one-sided _side_margin only. Limitation: during a
                 # legitimate trend reversal, opposite-side conviction rises while
