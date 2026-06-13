@@ -625,11 +625,18 @@ class Strategy:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                elif target != 0 and _exit_pressure >= 0.65 * _exit_thresh:
-                    # Smooth de-risk ramp: at 0.65*thresh -> full size, at thresh -> 0.
-                    _de_risk = 1.0 - (_exit_pressure - 0.65 * _exit_thresh) / (0.35 * _exit_thresh)
-                    _de_risk = max(0.0, min(1.0, _de_risk))
-                    target = target * _de_risk
+                elif target != 0:
+                    # Architectural: vol-conditioned partial-exit floor.
+                    # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
+                    # smoother small position scaling — exploits chop-friendly partial exits).
+                    # High vol (crash): floor=0.80 (narrower ramp, closer to binary —
+                    # avoids holding partial positions during fast adverse moves).
+                    # Continuous via tanh on (vol_ratio - 1.0)/0.4.
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    if _exit_pressure >= _de_floor * _exit_thresh:
+                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _de_risk = max(0.0, min(1.0, _de_risk))
+                        target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
