@@ -122,12 +122,6 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: per-symbol per-position pos_pnl history (up to 6 most-recent bars).
-        # Used by adverse-pnl-streak exit pressure: counts consecutive bars where pos_pnl
-        # decreased (path-wise adverse). Distinct from slope-against (price slope external)
-        # and from peak-profit (drawdown from high-water). This measures TRAJECTORY of the
-        # position's own pnl path — orthogonal to price-derived signals.
-        self._pos_pnl_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -406,13 +400,6 @@ class Strategy:
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                # Architectural: maintain per-position rolling pos_pnl history (up to 6 bars).
-                # Cleared when position closes/flips (see end-of-bar block).
-                _pnl_hist = self._pos_pnl_hist.get(symbol, [])
-                _pnl_hist.append(pos_pnl)
-                if len(_pnl_hist) > 6:
-                    _pnl_hist = _pnl_hist[-6:]
-                self._pos_pnl_hist[symbol] = _pnl_hist
 
                 # Position accumulation: pos_pnl-gated scale-up.
                 # Architectural: scale-in ramp pace adapts to position pnl. Winning
@@ -611,27 +598,7 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: adverse-pnl-streak exit pressure (6th source).
-                # Count consecutive bars where pos_pnl decreased vs prior bar — path-wise
-                # adverse trajectory. Fires when position has been bleeding bar-after-bar,
-                # independent of price slope (slope-against) or drawdown-from-peak (pp).
-                # Use ratio adverse_streak / max(2, bars_held-1) to make pressure relative
-                # to position age — short positions need higher streak ratio to trigger.
-                # Smooth via tanh on (ratio - 0.6)/0.25, gated to fire only when pos_pnl < 0
-                # (we don't want to exit profitable positions for sequential giveback —
-                # that's the pp_pressure's job). Magnitude up to 0.5.
-                _adv_streak = 0
-                if len(_pnl_hist) >= 2:
-                    for _i in range(len(_pnl_hist) - 1, 0, -1):
-                        if _pnl_hist[_i] < _pnl_hist[_i - 1]:
-                            _adv_streak += 1
-                        else:
-                            break
-                _adv_ratio = _adv_streak / max(2.0, float(bars_held - 1))
-                _adv_loss_gate = max(0.0, np.tanh(-pos_pnl / 0.005))  # fires when pos_pnl < 0, saturates at -0.5%
-                _adv_pressure = 0.5 * max(0.0, np.tanh((_adv_ratio - 0.6) / 0.25)) * _adv_loss_gate
-                _w_adv = max(0.0, -_pnl_scale)  # weight rises with loss magnitude, 0 in profit
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_adv * _adv_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -693,11 +660,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._pos_pnl_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._pos_pnl_hist.pop(symbol, None)
 
         return signals
