@@ -607,23 +607,12 @@ class Strategy:
                     # component data dep: scale-in pace depends on pos_pnl progress.
                     # Distinct from MAE-freeze (which BLOCKED scale-in on MAE depth);
                     # this MODULATES the ramp rate continuously by current pnl.
-                    # Branch step 5: slope-conditioned scale-in pace (replaces pos_pnl).
-                    # Earlier steps used pos_pnl as the modulator — but counter-trend
-                    # rally positions show transient pnl dips that don't reflect entry
-                    # quality. Replace with multi-window exit_slope alignment with
-                    # position direction: a slope strongly aligned with position is
-                    # immediate confirmation that the entry is on the right side of
-                    # the move, regardless of current pnl. Compute alignment via tanh
-                    # of (slope * pos_dir / scale). This decouples scale-in pace from
-                    # pos_pnl noise and ties it to immediate price-trajectory evidence.
-                    # Use the existing _hl2 multi-window slopes (computed below in exit
-                    # path) — but we need them here. Recompute lightweight 12-bar slope
-                    # for this purpose to avoid forward-reference complexity.
-                    _hl2_si = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                    _slope_si = _fast_slope(np.log(_hl2_si[-12:]))
-                    _pos_dir_p = 1.0 if current_pos > 0 else -1.0
-                    _slope_align_si = np.tanh(_slope_si * _pos_dir_p / 0.0008)  # in [-1, 1]
-                    _pnl_pace_mult = 1.0 + 0.4 * max(0.0, _slope_align_si)
+                    # Branch step 4: amplify one-sided pnl_pace_mult magnitude.
+                    # Step 3 (0.3x positive-only boost) yielded near-flat composite.
+                    # Try 0.5x amplitude to test if magnitude is the constraint —
+                    # if larger boost captures more winner upside before bar_progress
+                    # cap. Still positive-only (no shrinking on losers).
+                    _pnl_pace_mult = 1.0 + 0.5 * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
                     _eff_progress = max(0.0, min(1.0, _eff_progress * _pnl_pace_mult))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
