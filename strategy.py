@@ -135,13 +135,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol exit-arming state. When exit_pressure first
-        # crosses the full-exit threshold, we record the bar_count at which it
-        # armed AND require the NEXT bar to also show pressure >= 0.85 * thresh
-        # before executing the full exit. Single-bar noise spikes don't trigger;
-        # genuine reversals sustain over 2 bars. Stop-loss path bypasses
-        # (entry-anchored, already protected). De-risk/partial path also unchanged.
-        self._exit_armed_bar = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -779,30 +772,9 @@ class Strategy:
                 # exit_pressure ratio to target multiplier, not a single threshold.
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                    self._exit_armed_bar.pop(symbol, None)
                 elif _exit_pressure >= _exit_thresh and target != 0:
-                    # Architectural: 1-bar exit confirmation. First crossing arms the
-                    # exit; only the NEXT bar's still-elevated pressure executes full exit.
-                    # Single-bar noise spikes disarm when pressure recedes. Real reversals
-                    # sustain ≥2 bars and exit normally with one bar of delay. Partial
-                    # de-risk path still fires immediately on every bar (continuous
-                    # protection retained). Stop-loss saturation above already exits hard.
-                    _armed_bar = self._exit_armed_bar.get(symbol, -1)
-                    if _armed_bar >= 0 and _exit_pressure >= 0.85 * _exit_thresh:
-                        target = 0.0
-                        self._exit_armed_bar.pop(symbol, None)
-                    else:
-                        # Arm exit; don't fire this bar. Apply de-risk partial scaling
-                        # in the same bar to ramp down risk while waiting for confirmation.
-                        self._exit_armed_bar[symbol] = self.bar_count
-                        _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
-                        if _exit_pressure >= _de_floor * _exit_thresh:
-                            _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
-                            _de_risk = max(0.0, min(1.0, _de_risk))
-                            target = target * _de_risk
+                    target = 0.0
                 elif target != 0:
-                    # Pressure receded below full-exit threshold: disarm if previously armed.
-                    self._exit_armed_bar.pop(symbol, None)
                     # Architectural: vol-conditioned partial-exit floor.
                     # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
                     # smoother small position scaling — exploits chop-friendly partial exits).
@@ -854,7 +826,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._exit_armed_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
