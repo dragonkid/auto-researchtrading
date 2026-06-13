@@ -620,6 +620,21 @@ class Strategy:
                 _curr_mae = self._mae.get(symbol, 0.0)
                 self._mae[symbol] = min(_curr_mae, pos_pnl)
 
+                # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
+                # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
+                # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
+                # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
+                # Multi-window slope MEAN (not median): mean averages out window-specific noise
+                # better than median in low-vol where all 3 slopes are small and noise-dominated.
+                # Median can flip on a single window; mean spreads the contribution.
+                _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slopes = []
+                for _w in (12, 16, 22):
+                    _ll = _fast_slope(np.log(_hl2[-_w:]))
+                    _slopes.append(_ll)
+                _exit_slope = float(np.mean(_slopes))
+                _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
+
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
                 # ATR(14) on smoothed_closes captures each symbol's structural volatility
@@ -636,22 +651,23 @@ class Strategy:
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
-
-                # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
-                # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
-                # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
-                # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
-                # Multi-window slope MEAN (not median): mean averages out window-specific noise
-                # better than median in low-vol where all 3 slopes are small and noise-dominated.
-                # Median can flip on a single window; mean spreads the contribution.
-                _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _slopes = []
-                for _w in (12, 16, 22):
-                    _ll = _fast_slope(np.log(_hl2[-_w:]))
-                    _slopes.append(_ll)
-                _exit_slope = float(np.mean(_slopes))
-                _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
+                _sl_pressure_pnl = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                # Architectural: dual-trigger stop-loss with slope-acceleration arm.
+                # New control flow at stop-loss: in addition to the pure-pnl trigger,
+                # a second arm fires when (a) loss has reached >=50% of full stop AND
+                # (b) multi-window slope is strongly opposing position (i.e., loss is
+                # accelerating, not stable). Mechanism: a position halfway to stop with
+                # accelerating slope-against is statistically more likely to breach stop
+                # than recover; cutting at 50%-and-accelerating reduces max realized
+                # losses. Continuous via tanh on slope magnitude; max contribution 0.7
+                # so it cannot single-handedly trigger stop (still requires pnl loss
+                # contribution to combine via max). New cross-component data dep at
+                # sl gate: stop-loss decision depends on (loss%, multi-window slope).
+                _sl_loss_frac = _loss / max(_stop_abs, 1e-6)  # 0..1+ (above 1 = past stop)
+                _sl_loss_gate = max(0.0, min(1.0, (_sl_loss_frac - 0.5) / 0.3))  # 0 at 50%, 1 at 80%
+                _sl_slope_accel = max(0.0, np.tanh(_slope_against / 0.0005))  # 0..~1
+                _sl_pressure_accel = 0.7 * _sl_loss_gate * _sl_slope_accel
+                _sl_pressure = max(_sl_pressure_pnl, _sl_pressure_accel)
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
