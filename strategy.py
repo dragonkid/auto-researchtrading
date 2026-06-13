@@ -518,18 +518,6 @@ class Strategy:
                 _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
                 _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
                 _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
-                # Architectural: slope-acceleration entry size modulator (new statistic — slope-of-slope).
-                # Compute 16-bar slope at current bar and 16-bar slope ending 4 bars ago, take their
-                # difference. Positive accel = slope steepening upward (trend kicking in); negative =
-                # slope flattening (trend stabilizing or reversing). Side-aware: bull entries amplify
-                # on positive accel, bear on negative. Continuous tanh modulation, range [0.85, 1.15].
-                # Structurally orthogonal to slope-consensus (which uses absolute slope alignment) —
-                # this measures CHANGE in slope, distinct second-order signal. Source: log(_hl2_e).
-                _slope_now = _fast_slope(np.log(_hl2_e[-16:]))
-                _slope_prev = _fast_slope(np.log(_hl2_e[-20:-4]))
-                _slope_accel = _slope_now - _slope_prev
-                _bull_accel_amp = 1.0 + 0.15 * np.tanh(_slope_accel / 0.0006)
-                _bear_accel_amp = 1.0 + 0.15 * np.tanh(-_slope_accel / 0.0006)
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
@@ -582,9 +570,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_accel_amp
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_accel_amp
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
