@@ -927,13 +927,20 @@ class Strategy:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                elif target != 0:
+                elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
                     # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
                     # smoother small position scaling — exploits chop-friendly partial exits).
                     # High vol (crash): floor=0.80 (narrower ramp, closer to binary —
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
+                    # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
+                    # of an entry get binary-exit-only behavior (exit on full pressure
+                    # or no exit). Partial exits during scale-in conflict with the
+                    # scale-in pace itself — de-risk shrinks position while scale-in
+                    # tries to grow it. Defer de-risk consideration until bars_held>=2
+                    # so the position has cleared the initial commit-noise window.
+                    # New control flow: bars_held condition gates the de-risk branch.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
