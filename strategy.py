@@ -848,8 +848,22 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Architectural: 2-bar persistence requirement on opp_gate exit.
+                # Reuses _hist (rolling strong-sum history) to require opposite-side
+                # strong-sum to clear admission threshold for at least 2 of last 2 bars.
+                # Symmetric with entry persistence gate; filters single-bar reversal
+                # spikes that fire opp_gate prematurely on noise (e.g. rally pullback
+                # bear spikes that don't sustain). New cross-bar dependency on
+                # opposite-side strong-sum history for full-exit decision boundary.
+                if len(_hist) >= 2:
+                    if current_pos > 0:
+                        _opp_persist_ok = min(_hist[-2][1], _hist[-1][1]) >= 0.85 * _bear_strong_min
+                    else:
+                        _opp_persist_ok = min(_hist[-2][0], _hist[-1][0]) >= 0.85 * _bull_strong_min
+                else:
+                    _opp_persist_ok = True  # not enough history, default permissive
+                _opp_gate = ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)) and _opp_persist_ok
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
