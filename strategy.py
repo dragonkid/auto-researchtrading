@@ -543,13 +543,30 @@ class Strategy:
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Architectural simplification: removed _ramp_attn pnl-attenuator on scale-in.
-                    # Mechanism overlapped with: _w_slope scale_in_w (slope-pressure ramps with bars_held),
-                    # _bull_ct_atten (counter-trend first-bar cut), and _bull_consensus_atten. Adverse-pnl
-                    # during scale-in is already attenuated by these orthogonal channels; the pnl-tanh
-                    # adjuster duplicates without orthogonal info.
-                    _eff_progress = bars_held / ENTRY_FULL_BARS
-                    _eff_progress = max(0.0, min(1.0, _eff_progress))
+                    # Architectural: conviction-recheck scale-in pause gate.
+                    # During scale-in (bars_held <= ENTRY_FULL_BARS), recheck the
+                    # entry-side strong-sum against admission threshold. If the
+                    # current bar's strong-sum has faded below 0.85 * _strong_min,
+                    # PAUSE scale-in: hold current position size (no add, no cut)
+                    # rather than mechanically ramping per linear progress. This
+                    # protects against scale-in compounding noise-driven entries
+                    # whose conviction collapsed within 1-2 bars. Continuous via
+                    # tanh blend factor: conviction-fade-factor in [0, 1] scales
+                    # the EFFECTIVE progress increment, so a partial fade (still
+                    # above 0.85x) only partially pauses; full pause below 0.70x.
+                    # New control flow: scale-in size is path-dependent on
+                    # post-entry conviction trajectory, not just bars_held.
+                    _entry_side_strong = _bull_strong if current_pos > 0 else _bear_strong
+                    _entry_side_min = _bull_strong_min if current_pos > 0 else _bear_strong_min
+                    _conv_ratio = _entry_side_strong / max(_entry_side_min, 1e-6)
+                    # Pause factor: 1.0 at conv_ratio>=0.85, 0.0 at conv_ratio<=0.70, smooth between.
+                    _pause_factor = max(0.0, min(1.0, (_conv_ratio - 0.70) / 0.15))
+                    # Per-bar progress increment is 1/ENTRY_FULL_BARS; scale that increment by pause_factor.
+                    # Effective progress = previous_progress + pause_factor * (1/ENTRY_FULL_BARS).
+                    # Approximate previous_progress as (bars_held - 1) / ENTRY_FULL_BARS.
+                    _prev_progress = max(0.0, (bars_held - 1) / ENTRY_FULL_BARS)
+                    _curr_increment = (1.0 / ENTRY_FULL_BARS) * _pause_factor
+                    _eff_progress = max(0.0, min(1.0, _prev_progress + _curr_increment))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
