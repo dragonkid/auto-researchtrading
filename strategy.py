@@ -856,16 +856,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                # Architectural: grouped max-fusion of correlated giveback pressures.
-                # _w_pp*_pp_pressure, _w_ep*_ep_pressure, _w_ar*_ar_pressure all measure
-                # a winning/recovered position giving back gains — they fire on the
-                # same underlying signal at different phases (early peak, post-peak,
-                # MAE recovery). Linear sum double-counts during overlap windows.
-                # Replace with max() — the strongest giveback signal sets exit pressure
-                # once. Slope, time, ve remain additive (measure orthogonal phenomena:
-                # direction, age, regime-shift). Decision-architecture change to fusion.
-                _giveback_max = max(_w_pp * _pp_pressure, _w_ep * _ep_pressure, _w_ar * _ar_pressure)
-                _soft_sum = _w_slope * _sl_slope_pressure + _giveback_max + _w_time * _time_pressure + _w_ve * _ve_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
