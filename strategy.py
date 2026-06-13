@@ -165,13 +165,13 @@ class Strategy:
             _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
             vol_ratio = realized_vol / _target_vol_dyn
 
-            # Architectural simplification: removed vol-adaptive smoothed_closes pipeline.
-            # The 7-line EMA-style smoothing was used only for ret_short (1st voter, weight 0.7)
-            # and Kaufman ER calculation. With persistence_mult (per-voter 8-bar history) and
-            # _recent_strongs (3-bar strong-sum) providing noise filtering at aggregation level,
-            # an additional per-bar smoothing of closes is redundant. Use raw closes directly —
-            # responsiveness gain on ret_short voter and ER calculation. Code-structure removal.
-            smoothed_closes = closes
+            # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
+            # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
+            _smooth_alpha = 0.5 + 0.17 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.5))
+            smoothed_closes = np.empty_like(closes, dtype=float)
+            smoothed_closes[0] = closes[0]
+            for _si in range(1, len(closes)):
+                smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
             # Architectural: ATR-anchored base threshold. Replaces global BASE_THRESHOLD
             # (constant 0.005) with per-symbol ATR-derived threshold. SOL (higher ATR)
             # needs larger move to trigger entry, BTC (lower ATR) smaller — structural
