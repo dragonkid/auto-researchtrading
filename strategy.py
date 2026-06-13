@@ -390,15 +390,7 @@ class Strategy:
                 # by stop magnitude — pos_pnl=0 -> full ramp, pos_pnl=-STOP -> no further
                 # scale-up (frozen at current level). New data dependency: scale-in
                 # trajectory depends on realized pnl during accumulation, not just bar count.
-                # Architectural: conviction-adaptive scale-in length. ENTRY_FULL_BARS_DYN
-                # ranges [2, 5] based on side conviction margin at the time of evaluation.
-                # High-conviction positions reach full size faster (less lag in valid trends).
-                # Low-conviction positions ramp slower (more time for signal to confirm).
-                # New data dependency: ramp duration depends on continuously-evaluated voter margin.
-                # Uses position-side margin (bull_margin if long, bear_margin if short).
-                _side_margin_si = _bull_margin if current_pos > 0 else _bear_margin
-                _entry_full_bars_dyn = 5.0 - 3.0 * max(0.0, np.tanh(max(0.0, _side_margin_si) / 0.30))
-                if bars_held <= _entry_full_bars_dyn:
+                if bars_held <= ENTRY_FULL_BARS:
                     # Trend-agreement override: when trend_avg strongly aligns with position
                     # direction (signal still validates scale-in), bypass pnl-attenuation.
                     # Continuous tanh on (trend_avg * pos_dir) scaled by typical trending magnitude.
@@ -407,7 +399,7 @@ class Strategy:
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
-                    _eff_progress = (bars_held - 1) / _entry_full_bars_dyn + (1.0 / _entry_full_bars_dyn) * _ramp_attn
+                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
