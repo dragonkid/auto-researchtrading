@@ -530,7 +530,15 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Architectural: vol-adaptive base max_hold. In high vol_ratio
+                # regimes (crash, vol_ratio>1.2), prices trend continuously and
+                # holding 10 bars accumulates losses on wrong-side positions.
+                # In low/normal vol (sideways, rally chop), 10 bars allows
+                # mean-reversion plays to develop. Continuous tanh shortens base
+                # max_hold by up to 2.5 bars when vol_ratio rises above 1.0.
+                # Smooth, no boundary, one-sided (only shortens, never extends).
+                _vol_hold_shorten = 2.5 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - _vol_hold_shorten
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
