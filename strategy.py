@@ -318,24 +318,19 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural: trade-frequency self-regulator. Per-symbol rolling
-            # entry-bar history over a 30-bar window. When recent entry density
-            # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
-            # Smooth via tanh; max factor 1.20.
-            _eh = self._entry_bar_history.setdefault(symbol, [])
-            while _eh and self.bar_count - _eh[0] > 30:
-                _eh.pop(0)
-            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
-            # entry frequency regulator). Per-symbol _freq_factor already captures
-            # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
-            # composes multiplicatively, double-counting since correlated regimes (crash)
-            # naturally produce multi-symbol entries in tandem. Removing eliminates the
-            # +15% admission cost during legitimate correlated entry pile-ups (e.g. multi-
-            # symbol crash legs). Per-symbol regulator alone provides sufficient churn
-            # protection. Code-structure removal: 7 lines + state tracking eliminated.
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural simplification: removed _freq_factor per-symbol trade-frequency
+            # self-regulator. Parallel-mechanism reasoning to de5ca08 keep (removed
+            # _portfolio_freq_factor cross-symbol): trending regimes (rally bull entries,
+            # crash bear shorts) naturally cluster entries — the +20% admission cost on
+            # entry-density >=2 in 30 bars suppressed legitimate trend-clustered entries.
+            # The existing strong-sum/persistence/admit/quality/consensus/vol_entry gates
+            # already filter weak entries per-bar; adding a temporal frequency penalty
+            # double-counts since clustered entries in trends are STRUCTURAL signal not
+            # noise. Code-structure removal: 4 lines + per-symbol bar-history state.
+            # Note: _entry_bar_history state itself is retained (referenced at entry
+            # commit), but no longer drives admission threshold.
+            _bull_strong_min = _strong_min
+            _bear_strong_min = _strong_min
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
