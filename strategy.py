@@ -670,12 +670,24 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Architectural: volume-spike-against-position exit pressure (6th source).
+                # When current bar volume substantially exceeds recent 24-bar median AND
+                # position is in loss, the spike is likely panic flow against us — add
+                # smooth exit pressure proportional to spike ratio. Volume is structurally
+                # orthogonal to all price-derived signals (slope/pp/time/ve/voter_bias).
+                # Loss-gated only (positive pos_pnl spikes are with-position momentum, not
+                # threat). Smooth via tanh, max contribution 0.5.
+                _vol_recent = bd.history["volume"].values[-24:]
+                _vol_med = np.median(_vol_recent)
+                _vol_spike = bd.history["volume"].values[-1] / max(_vol_med, 1e-6)
+                _vs_pressure = 0.5 * max(0.0, np.tanh((_vol_spike - 1.5) / 0.8))
+                _w_vs = max(0.0, -_pnl_scale)  # in [0, 1], only negative pos_pnl (loss gate)
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_vs * _vs_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
