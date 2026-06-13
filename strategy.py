@@ -336,16 +336,7 @@ class Strategy:
             self._recent_strongs[symbol] = _hist
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            # Architectural: vol-coupled strong_min raise. In HIGH vol regimes (crash,
-            # rally vol-spikes) admission gate tightens additively up to +0.30 above
-            # base. In low/normal vol, no change. Mechanism: vol_ratio>1 indicates
-            # noise-rich bars where voter conviction is more easily inflated by random
-            # spikes — require higher conviction sum to admit. Continuous tanh on
-            # (vol_ratio - 1.0)/0.4: ratio<=1.0 -> 0 add; ratio=1.4 -> ~+0.23; ratio>=1.7 -> ~+0.29.
-            # New cross-component data dep: admission-gate threshold depends on
-            # short-window vol_ratio (independent from trend-magnitude relaxation).
-            _vol_strong_add = 0.30 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + _vol_strong_add
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
