@@ -128,6 +128,18 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-symbol regime confirmation. Compute mean of ret_long
+        # over the 3 ACTIVE_SYMBOLS to detect synchronized market regime (rally/crash
+        # have all 3 trending same direction). Used at entry to attenuate
+        # counter-regime entries (e.g., bear entry while market-wide rally).
+        # New data dependency: per-symbol entry decision uses cross-symbol context.
+        _cross_ret_longs = []
+        for _sym in ACTIVE_SYMBOLS:
+            if _sym in bar_data and len(bar_data[_sym].history) > LONG_WINDOW:
+                _c = bar_data[_sym].history["close"].values
+                _cross_ret_longs.append((_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW])
+        _market_ret_long = float(np.mean(_cross_ret_longs)) if _cross_ret_longs else 0.0
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -403,10 +415,19 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
+                # Architectural: cross-symbol regime attenuator on first-bar entry size.
+                # When the 3-symbol mean ret_long strongly favors one direction, entries
+                # against that synchronized regime get a smooth size reduction. Bear
+                # entries during synchronized rally (market_ret_long > 0) are attenuated;
+                # bull entries during synchronized crash (market_ret_long < 0) attenuated.
+                # tanh on (market_ret_long / 0.04) maps strong synchronized regimes to
+                # max ~0.30 attenuation. Smooth (no boundary at zero crossing).
+                _xreg_bull_atten = 1.0 - 0.30 * max(0.0, np.tanh(-_market_ret_long / 0.04))
+                _xreg_bear_atten = 1.0 - 0.30 * max(0.0, np.tanh(_market_ret_long / 0.04))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _xreg_bull_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _xreg_bear_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
