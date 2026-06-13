@@ -138,23 +138,14 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: portfolio-equity peak tracking for drawdown circuit-breaker.
-        # When portfolio equity drops X% from session-peak, attenuate fresh-entry size.
-        # Limits losses during regime-shift cascades where multiple symbols losing
-        # simultaneously (correlated noise) — single-symbol size attenuators cannot
-        # detect portfolio-level deterioration.
-        self._peak_equity = 0.0
+        self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-        # Update peak equity; compute portfolio DD-based size attenuator.
-        # Smooth tanh: 0% DD -> 1.0; 2% DD -> ~0.88; 4% DD -> 0.70 (max attenuation).
-        if equity > self._peak_equity:
-            self._peak_equity = equity
-        _port_dd = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-        _port_dd_atten = 1.0 - 0.30 * max(0.0, np.tanh(_port_dd / 0.025))
+        self._peak_equity = max(self._peak_equity, equity)
+        _port_dd_atten = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.025))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
