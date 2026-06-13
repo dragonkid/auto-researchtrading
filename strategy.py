@@ -934,19 +934,8 @@ class Strategy:
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        # Architectural: convex de-risk curve replacing linear interpolation.
-                        # Old: linear ramp 1.0->0.0 across [_de_floor*thresh, thresh]. Mid-band
-                        # pressure (e.g. 0.5*band) yields 0.5x position. New: quadratic — early
-                        # band pressure gives gentle trim (1 - 0.25^2 = 0.94 at 0.25 of band),
-                        # late band approaches full exit aggressively (1 - 0.75^2 = 0.44 at 0.75).
-                        # Mechanism: slope-against / pp / time pressure rises gradually under
-                        # ambiguous conditions; convex de-risk lets position absorb minor
-                        # pressure spikes without trimming heavily, then commits to exit when
-                        # multiple pressures saturate. Decision-architecture change to the
-                        # partial-exit decision curve shape (was linear, now convex).
-                        _de_ratio = (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
-                        _de_ratio = max(0.0, min(1.0, _de_ratio))
-                        _de_risk = 1.0 - _de_ratio * _de_ratio
+                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
