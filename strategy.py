@@ -671,19 +671,7 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                # Architectural: profit-velocity-conditioned _pp_min scaling.
-                # Old: pure vol-ratio scaling on PEAK_PROFIT_MIN_BASE.
-                # New: blend vol-scaling with profit-velocity term. Velocity =
-                # peak_pnl / bars_held (per-bar profit accumulation rate). High velocity
-                # (fast momentum capture) raises _pp_min so winning trend positions get
-                # MORE peak room before pp_pressure activates; low velocity (slow chop
-                # trade) lowers _pp_min so chop wins lock faster. Continuous via tanh on
-                # velocity / 0.005 (per-bar 0.5% gain is "fast"). Reuses existing
-                # peak_pnl/bars_held state — no new state. New cross-bar data dependency:
-                # _pp_min activation threshold depends on profit accumulation rate.
-                _vel = self.peak_pnl.get(symbol, 0.0) / max(bars_held, 1)
-                _vel_scale = 1.0 + 0.30 * max(0.0, np.tanh(_vel / 0.005))  # in [1.0, ~1.3]
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * _vel_scale
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
