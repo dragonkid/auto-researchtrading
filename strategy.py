@@ -679,6 +679,18 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: counter-trend exit threshold lowering.
+                # When position is counter-trend (held bear in uptrend, held bull in
+                # downtrend), exit at lower pressure — these positions are structurally
+                # disadvantaged and the strategy already bleeds on them. Lowers
+                # _exit_thresh from 1.0 to as low as 0.80 in strong opposing trends.
+                # Continuous via tanh on (-ret_long * pos_dir / 0.05). Gated above
+                # |ret_long|>0.03 to avoid firing in chop. New cross-timescale data
+                # dependency: exit decision boundary depends on counter-trend magnitude.
+                _pos_dir_ex = 1.0 if current_pos > 0 else -1.0
+                _ct_exit_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))
+                _ct_exit_align = max(0.0, np.tanh(-ret_long * _pos_dir_ex / 0.05))
+                _exit_thresh = _exit_thresh - 0.20 * _ct_exit_gate * _ct_exit_align
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
