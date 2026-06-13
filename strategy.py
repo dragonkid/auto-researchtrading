@@ -843,11 +843,7 @@ class Strategy:
                 _vol_now_e = bd.history["volume"].values[-1]
                 _vol_med20_e = max(np.median(bd.history["volume"].values[-21:-1]), 1e-6)
                 _vol_spike = _vol_now_e / _vol_med20_e
-                # Branch step 5: gate volume-spike pressure on slope-against confirmation.
-                # Volume spike alone is noisy in sideways; require slope-against to also
-                # be elevated for confirmation. Multiply by _sl_slope_pressure (already
-                # in [0,1] from upstream).
-                _vs_pressure = 0.40 * max(0.0, np.tanh((_vol_spike - 1.5) / 0.7)) * _sl_slope_pressure
+                _vs_pressure = 0.40 * max(0.0, np.tanh((_vol_spike - 1.5) / 0.7))
                 _w_vs = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0,1] only losing positions
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_vs * _vs_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
