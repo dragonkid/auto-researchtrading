@@ -328,14 +328,19 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Architectural simplification: removed _cooldown_factor smooth cooldown attenuator.
-            # The smooth tanh attenuator on bars_since_exit primarily affected entries within
-            # 1-2 bars of a prior exit. The entry-persistence gate (2-bar conviction) already
-            # filters single-bar noise spikes, and exit_bar history starts at -999 (no penalty
-            # for first-ever entry). Removing eliminates a redundant near-1.0 multiplier in
-            # most cases; saves cross-bar exit-bar dependency at entry.
-            in_cooldown = False
-            _cooldown_factor = 1.0
+            # Architectural: smooth cooldown decay replacing binary gate.
+            # Original: binary in_cooldown = bars_since_exit < COOLDOWN_BARS * cooldown_trend_strength.
+            # New: bars_since_exit drives a continuous cooldown_factor in [0, 1] via tanh decay
+            # over a 3-bar window scaled by trend strength. cold-entry path always opens, but
+            # first-bar size is multiplied by cooldown_factor (0 immediately post-exit, 1 after
+            # ~3 bars in chop, ~1.5 bars in strong trend). Removes binary boundary noise at
+            # the bar-count threshold; allows fast re-entry with attenuated size if conviction
+            # surges right after exit. New control flow: post-exit re-entry is gradient-attenuated
+            # rather than gated.
+            _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
+            _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
+            in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
