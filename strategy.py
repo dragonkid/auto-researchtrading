@@ -755,7 +755,20 @@ class Strategy:
                 # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
-                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
+                # Architectural: divergence-conditioned _chop_amp (multi-variable, new
+                # cross-component data dep at voter_bias). Chop_amp amplifies own-side
+                # subtraction in chop where bilateral voter noise is high. But within chop
+                # there's a sub-class — DIVERGENT chop where strong-sums are very unequal
+                # (one side >> other), indicating directional signal embedded in low-trend
+                # backdrop. In that case full _chop_amp 1.7x over-protects what is really
+                # a directional signal. Compute divergence = |bull-bear|/max(bull+bear,eps),
+                # in [0,1]; high divergence reduces _chop_amp toward base 1.0. Continuous
+                # tanh on divergence/0.30 — narrow scaling ensures effect only in clearly-
+                # divergent chop. New data dep: chop_amp depends on strong-sum divergence.
+                _ss_div = abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6)
+                _chop_amp_chop = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 trend, 1.7 chop
+                _div_taper = max(0.0, min(1.0, np.tanh(_ss_div / 0.30)))  # 0 if balanced, 1 if divergent
+                _chop_amp = _chop_amp_chop * (1.0 - _div_taper) + 1.0 * _div_taper  # blend toward 1.0 with divergence
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
