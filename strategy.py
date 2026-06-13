@@ -286,17 +286,32 @@ class Strategy:
             if len(_sig_hist) > 8:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
+            # Architectural: DIRECTIONAL asymmetric persistence weighting.
+            # Old: persistence_mult applied symmetrically to bull and bear strong-sums.
+            # A voter that has been consistently bullish-signed over 8 bars receives
+            # HIGH persistence weight on BOTH its bull AND bear contribution — wrong.
+            # New: split persistence into directional bias. _dir_bias = sum(sign(s))/N
+            # in [-1, +1]. Bull-side weight scales up when voter has bullish history,
+            # down when bearish history; bear-side weight is mirrored. Magnitude-aware
+            # via |sum(signal)|/sum(|signal|) (preserves prior magnitude denominator).
+            # New cross-voter data dep at aggregation: own-side history weights own-side
+            # vote stronger than opp-side. Continuous, smooth (no boundary).
             if len(_sig_hist) >= 4:
                 _arr = np.array(_sig_hist)  # (K, 7)
-                _num = np.abs(_arr.sum(axis=0))
-                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
-                _persistence = _num / _den  # in [0, 1]
-                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
+                _signed_sum = _arr.sum(axis=0)
+                _abs_sum = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
+                _dir_bias = _signed_sum / _abs_sum  # in [-1, +1], magnitude-weighted directional history
+                # Bull weight: 1.0 + 0.30 * dir_bias  (in [0.7, 1.3])
+                # Bear weight: 1.0 - 0.30 * dir_bias  (in [0.7, 1.3], mirrored)
+                _bull_persist_mult = 1.0 + 0.30 * _dir_bias
+                _bear_persist_mult = 1.0 - 0.30 * _dir_bias
             else:
-                _persistence_mult = np.ones(7)
-            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+                _bull_persist_mult = np.ones(7)
+                _bear_persist_mult = np.ones(7)
+            _bull_voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _bull_persist_mult))
+            _bear_voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _bear_persist_mult))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _bull_voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _bear_voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
