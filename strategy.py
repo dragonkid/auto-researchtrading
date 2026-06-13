@@ -896,17 +896,16 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Two-bar AVG exit-pressure gate replaces persistence flag. Binary exit
-                # fires when the smoothed (current + prior)/2 _exit_pressure clears _exit_thresh.
-                # Equivalent in spirit to persistence but smoother: a strong current-bar spike
-                # paired with moderate prior can still cross, while two weak spikes cannot.
-                # _exit_armed now stores prior-bar _exit_pressure (not boolean).
-                _prev_ep = self._exit_armed.get(symbol, _exit_pressure)
-                self._exit_armed[symbol] = _exit_pressure
-                _ep_avg = 0.5 * (_exit_pressure + _prev_ep)
+                # 3-bar EMA exit-pressure gate. Smooth exponential filter (alpha=0.5) on
+                # exit_pressure; binary exit fires when smoothed value clears _exit_thresh.
+                # Stronger noise filter than 2-bar avg/persistence; weighted average favors
+                # recent bars. _exit_armed stores the smoothed value.
+                _ep_smoothed = self._exit_armed.get(symbol, _exit_pressure)
+                _ep_smoothed = 0.5 * _ep_smoothed + 0.5 * _exit_pressure
+                self._exit_armed[symbol] = _ep_smoothed
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _ep_avg >= _exit_thresh and target != 0:
+                elif _ep_smoothed >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
