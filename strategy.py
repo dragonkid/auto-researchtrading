@@ -896,13 +896,14 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Persistence on soft-aggregate only. Soft pressures (slope/peak/time/ve/ep/ar)
-                # are noise-prone: require 2-bar persistence (prior soft >= 0.85). Voter bias
-                # is discrete signal and bypasses persistence (>=0.10 contrib fires now).
-                _was_armed_s, self._exit_armed[symbol] = self._exit_armed.get(symbol, False), (_exit_pressure - _voter_bias) >= 0.85
+                # Persistence-gated binary exit: prior bar must have been NEAR threshold
+                # (>= 0.7*thresh) and current bar over threshold. Looser than strict
+                # both-over to capture more genuine ramping reversals while still filtering
+                # isolated 1-bar spikes.
+                _was_near, self._exit_armed[symbol] = self._exit_armed.get(symbol, False), _exit_pressure >= 0.7 * _exit_thresh
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _exit_pressure >= _exit_thresh and (_was_armed_s or _voter_bias >= 0.10) and target != 0:
+                elif _exit_pressure >= _exit_thresh and _was_near and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
