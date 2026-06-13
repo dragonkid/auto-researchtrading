@@ -817,6 +817,17 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    # Architectural: opp-margin LATERAL modulation of de-risk floor.
+                    # Distinct from _voter_bias (which adds to exit_pressure additively).
+                    # When opposite-side conviction is strong, widen the partial-exit
+                    # ramp by lowering _de_floor up to 0.10 — engages graduated de-risk
+                    # earlier in genuine reversal signals. When opp-margin is weak/zero,
+                    # floor stays at the vol-conditioned base (preserves full size below
+                    # base floor). New cross-subsystem data dependency: de-risk floor
+                    # depends on opp-side voter consensus, not just vol_ratio. Smooth
+                    # via tanh on _opp_margin.
+                    _de_floor = _de_floor - 0.10 * max(0.0, np.tanh(_opp_margin / 0.30))
+                    _de_floor = max(0.40, _de_floor)  # keep floor above 0.40 to preserve buffer
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
