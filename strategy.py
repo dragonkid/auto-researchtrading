@@ -257,14 +257,14 @@ class Strategy:
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            # Architectural simplification: removed _trend_strength_w weight redistribution.
-            # The +/- 0.20 * _trend_strength_w shift between mean-reverting voters
-            # (RSI/MACD/slope_16) and trend-confirming voters (EMA_cross/EMA_slope) is
-            # redundant with the per-voter persistence_mult that already reweights by
-            # voter consistency. Both mechanisms downweight noisy/flipping voters via
-            # cross-bar history. Removing the redistribution keeps base weights
-            # constant while persistence_mult continues per-voter reweighting.
-            _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # retained — used by other components below
+            # Architectural: trend-strength weight redistribution. In strong trends
+            # (high abs(ret_long)), shift weight from mean-reverting voters
+            # (RSI=idx2, MACD=idx3) to trend-confirming voters (EMA_cross=idx1,
+            # EMA_slope=idx5). In chop, weights stay near base. Continuous via
+            # tanh on abs(ret_long)/0.04. New cross-timescale data dependency:
+            # voter aggregation function depends on long-window return.
+            _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
+            _wt_shift = 0.20 * _trend_strength_w
             # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
             # is dominated by recent action which oscillates with chop noise; in
             # trends, VWAP captures genuine directional pressure. Scale VWAP voter
@@ -272,7 +272,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10, _vwap_wt)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
