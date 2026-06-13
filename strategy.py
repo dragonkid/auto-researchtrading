@@ -690,6 +690,20 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural: counter-trend losing-position time-pressure relief.
+                # Counter-trend losing positions (bear in uptrend losing, bull in
+                # downtrend losing) are exactly the rally-bear pattern that needs
+                # recovery time, not time-killing. Reduce _w_time on the joint
+                # condition (counter-trend AND losing) via tanh on (-ret_long*pos_dir)
+                # for trend-disagreement and max(0,-pnl_scale) for loss state.
+                # Continuous: full effect only when both gates strong; zero in chop
+                # or for trend-aligned positions. Max relief 0.30x (down to ~0.7
+                # weight from 1.0). New state-conditioned dependency: time-pressure
+                # weight depends on joint trend-alignment and pnl state.
+                _pos_dir_t = 1.0 if current_pos > 0 else -1.0
+                _ct_disagree = max(0.0, np.tanh(-ret_long * _pos_dir_t / 0.05))  # [0, ~1] for counter-trend
+                _loss_gate_t = max(0.0, -_pnl_scale)  # [0, 1] for losers
+                _w_time = _w_time * (1.0 - 0.30 * _ct_disagree * _loss_gate_t)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
