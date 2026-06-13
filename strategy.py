@@ -136,6 +136,11 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol prior-bar exit-pressure cache.
+        # Used by single-bar exit-pressure noise filter — current exit_pressure
+        # is EMA-blended with prior bar's value. Smooths transient voter_bias /
+        # slope spikes while preserving fast saturation when sl_pressure dominates.
+        self._prev_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -867,7 +872,26 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                _exit_pressure_raw = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural: EMA-smoothed exit pressure to filter single-bar noise spikes.
+                # New per-symbol state (_prev_exit_pressure) drives a 2-bar weighted blend:
+                #   smoothed = 0.65 * current + 0.35 * prior
+                # Saturation override: when _sl_pressure >= 0.95 (hard stop dominant), bypass
+                # smoothing entirely so structural exits are not delayed. New control flow
+                # at exit decision: voter_bias / slope-pressure single-bar spikes are filtered
+                # without delaying real exits. Bull/rally benefit: opposite-side voter spikes
+                # during pullbacks (bull voters firing on bear positions during rally pullbacks)
+                # need 2 bars to drive exit pressure above threshold. Crash benefit: bear voter
+                # spikes during dead-cat bounces on short positions — single-bar noise filtered,
+                # but sustained bull-voter strength still trips exit (ramps up over 2 bars).
+                # Sideways: small effect since chop produces shorter-lived pressure spikes
+                # that get filtered, possibly slightly raising hold time.
+                _prior_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
+                if _sl_pressure >= 0.95:
+                    _exit_pressure = _exit_pressure_raw
+                else:
+                    _exit_pressure = 0.65 * _exit_pressure_raw + 0.35 * _prior_ep
+                self._prev_exit_pressure[symbol] = _exit_pressure_raw
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -973,7 +997,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._prev_exit_pressure):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
