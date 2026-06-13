@@ -139,6 +139,13 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Architectural: per-symbol entry-time own-side conviction margin snapshot.
+        # Captured at the bar that opens (or flips into) a position. Used by
+        # scale-in conviction-erosion gate: if current own-side margin has
+        # materially eroded since entry, freeze scale-in growth (skip further
+        # add-on rather than blindly growing toward full size). New per-symbol
+        # state + new control flow at scale-in decision.
+        self._entry_margin = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -590,9 +597,26 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
+                    # Architectural: post-entry conviction-erosion gate on scale-in growth.
+                    # When own-side conviction margin has materially eroded since entry
+                    # (current margin << entry-time margin), freeze scale-in growth at
+                    # current position level rather than continuing to add. Continuous
+                    # via tanh on (entry_margin - current_margin) / 0.30. Erosion factor
+                    # in [0, 1]: 0 means current margin >= entry margin (no erosion, full
+                    # scale-in proceeds); 1 means margin has dropped by >=0.30 below
+                    # entry-time level (complete freeze — current_pos retained, no growth).
+                    # Continuous, no boundary. Distinct from existing exit gates which
+                    # work on absolute levels — this measures CHANGE since entry.
+                    _curr_margin_si = _bull_margin if current_pos > 0 else _bear_margin
+                    _entry_m_snap = self._entry_margin.get(symbol, _curr_margin_si)
+                    _erosion = max(0.0, min(1.0, np.tanh(max(0.0, _entry_m_snap - _curr_margin_si) / 0.30)))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
-                    target = full_target * scale_frac
+                    _grown_target = full_target * scale_frac
+                    # Freeze: when erosion saturated, target = current_pos (no growth).
+                    # When erosion zero, target = grown_target (full normal scale-in).
+                    # Smooth blend.
+                    target = _grown_target * (1.0 - _erosion) + current_pos * _erosion
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
@@ -993,12 +1017,14 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_margin):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Snapshot entry-time own-side conviction margin (for erosion gate).
+                    self._entry_margin[symbol] = _bull_margin if target > 0 else _bear_margin
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
