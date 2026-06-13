@@ -691,22 +691,6 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
-                    # Architectural: trend-alignment partial-exit floor LOWERING.
-                    # When position aligns with strong long-window trend (winning trend
-                    # continuation), DEFER partial-exit by lowering the floor — the
-                    # de-risk ramp activates only at higher exit_pressure, letting
-                    # trend-following positions hold through pullbacks. Counter-trend
-                    # positions keep the original floor (no protection — they should
-                    # de-risk early). Continuous via tanh on (ret_long * pos_dir / 0.05).
-                    # Gated above |ret_long|>0.03 to avoid firing in chop. Max lowering
-                    # 0.20 (floor can drop to 0.35 in strongly trending rally/crash).
-                    # New cross-timescale data dependency: partial-exit decision boundary
-                    # depends on long-window trend alignment with position.
-                    _pos_dir_de = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_de = max(0.0, np.tanh(ret_long * _pos_dir_de / 0.05))
-                    _trend_gate_de = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1, fires above 0.03
-                    _de_floor = _de_floor - 0.20 * _trend_align_de * _trend_gate_de
-                    _de_floor = max(0.30, _de_floor)
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
