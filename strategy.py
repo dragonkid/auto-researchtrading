@@ -874,47 +874,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: cross-symbol portfolio-stress exit pressure (7th source).
-                # Multi-variable: new cross-symbol data dep at exit subsystem + new
-                # control flow at fusion. When OWN position is in adverse zone AND at
-                # least one OTHER symbol is also in adverse zone (own MAE meaningful
-                # OR currently in loss), portfolio is in coordinated drawdown — exit
-                # this position faster. Mechanism: counts other-symbol positions whose
-                # current pnl is in loss territory (their entry_price > 0 and adverse
-                # vs current); ramps pressure smoothly via tanh on the count.
-                # Maximum +0.30 pressure when 2 other symbols are adverse. Activates
-                # only when this position is itself losing (pos_pnl < 0) — avoids
-                # exiting winning trend positions just because others struggle.
-                # Distinct from existing _concurrent_atten (entry-side, counts
-                # active positions regardless of P&L). New: exit-side, conditioned
-                # on cross-symbol ADVERSE state. Smooth, continuous.
-                _ps_pressure = 0.0
-                if pos_pnl < 0:
-                    _other_adverse = 0
-                    for _other_sym in ACTIVE_SYMBOLS:
-                        if _other_sym == symbol:
-                            continue
-                        _other_pos = portfolio.positions.get(_other_sym, 0.0)
-                        if abs(_other_pos) < 1.0:
-                            continue
-                        _other_entry = self.entry_prices.get(_other_sym, 0.0)
-                        if _other_entry <= 0 or _other_sym not in bar_data:
-                            continue
-                        _other_mid = bar_data[_other_sym].close
-                        _other_pnl = (_other_mid - _other_entry) / _other_entry
-                        if _other_pos < 0:
-                            _other_pnl = -_other_pnl
-                        if _other_pnl < -0.005:  # other symbol in modest loss
-                            _other_adverse += 1
-                    _ps_pressure = 0.30 * max(0.0, min(1.0, np.tanh(_other_adverse / 1.0)))
-                # Weight: only fire on losing positions (gated above); full weight.
-                _w_ps = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_ps * _ps_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
