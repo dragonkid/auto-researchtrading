@@ -749,12 +749,16 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
-                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
-                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
-                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
-                # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                # Architectural fusion change: max-take of weighted soft pressures + small additive tail.
+                # Old: pure additive sum allows 3 moderate (~0.4) pressures to falsely exit at 1.2.
+                # New: dominant-source exit. max of weighted softs is the primary signal; the residual
+                # (sum - max) contributes only 0.25x as confirming weight. Each pressure must
+                # independently reach threshold, with small additive support from co-firing sources.
+                # Sl pressure stays max-blended (structural always-honored).
+                _soft_terms = (_w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure, _w_ve * _ve_pressure, _w_ep * _ep_pressure)
+                _soft_max = max(_soft_terms)
+                _soft_residual = sum(_soft_terms) - _soft_max
+                _soft_sum = _soft_max + 0.25 * _soft_residual
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
