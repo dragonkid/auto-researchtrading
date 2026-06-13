@@ -563,23 +563,10 @@ class Strategy:
                 _hour_utc = (bd.timestamp // 3600000) % 24
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_hour_utc - 16.0) / 24.0))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Architectural: day-of-week session-quality entry size modulator.
-                # NEW DATA SOURCE (orthogonal periodicity to TOD): bd.timestamp UTC
-                # day-of-week. Continuous cos cycle peaks mid-week (Wed/Thu = institutional
-                # liquidity peak) trough on weekends (Sat/Sun = thin retail-only volume,
-                # higher noise + spikier behavior). _dow_act in [0,1]. Maps to size
-                # multiplier [0.88, 1.12] — weekday entries get up to 12% larger
-                # commitment, weekend entries up to 12% smaller. Smooth (cos, no
-                # boundary). Applied only to first-bar entry size; does not touch
-                # voters/exits/scale-in. Range tightened vs TOD (0.24 vs 0.30) because
-                # DOW periodicity is 7x slower (less independent samples per regime).
-                _dow_utc = (bd.timestamp // 86400000 + 4) % 7  # 0=Mon..6=Sun (Unix epoch was Thu, +4 shifts)
-                _dow_act = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_dow_utc - 3.0) / 7.0))
-                _dow_atten = 0.88 + 0.24 * _dow_act
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _dow_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _dow_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
