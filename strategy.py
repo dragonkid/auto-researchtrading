@@ -322,6 +322,26 @@ class Strategy:
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
+                # Architectural: Donchian range-position entry gate. Orthogonal
+                # data dependency: computes current price's position within the
+                # last 20-bar high/low range, range_pos in [0, 1] where 0 = at
+                # range low, 1 = at range high. Long entries require range_pos
+                # >= 0.5 (upper half — confirming range expansion bullish),
+                # shorts require range_pos <= 0.5 (lower half). Continuous via
+                # tanh attenuation of _entry_frac_dyn instead of hard rejection:
+                # entries against range still allowed but at reduced first-bar
+                # commitment. This is structurally independent from voter signals
+                # (EMA/MACD/RSI/slope), trend_avg (momentum), and vol_ratio
+                # (magnitude). New cross-bar data dependency: 20-bar high/low.
+                _range_n = 20
+                _range_hi = bd.history["high"].values[-_range_n:].max()
+                _range_lo = bd.history["low"].values[-_range_n:].min()
+                _range_pos = (mid - _range_lo) / max(_range_hi - _range_lo, 1e-6)
+                # Bull entry: range_pos > 0.5 favors, < 0.5 attenuates.
+                # Bear entry: range_pos < 0.5 favors, > 0.5 attenuates.
+                # tanh maps deviation from 0.5 to smooth [-0.08, +0.04] adjustment.
+                _range_bull_adj = 0.04 * np.tanh((_range_pos - 0.5) / 0.20)  # in [-0.04, +0.04]
+                _range_bear_adj = 0.04 * np.tanh((0.5 - _range_pos) / 0.20)
                 # Architectural: entry-persistence gate. Reuses the rolling _hist
                 # (3-bar strong-sum history maintained for flip sustenance) to
                 # require ENTRY-side conviction to be sustained over 2 bars before
@@ -373,10 +393,10 @@ class Strategy:
                 # conviction margin for cold entries (was independent before).
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _range_bull_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj)
+                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _range_bear_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
