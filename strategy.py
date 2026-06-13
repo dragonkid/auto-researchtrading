@@ -539,8 +539,13 @@ class Strategy:
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 # Entry quality: combines own-side margin and (1 - quality_atten) into [0, 1].
                 # Used by post-entry scale-in pace modulator.
-                _entry_q_bull = max(0.0, min(1.0, 0.5 * max(0.0, min(1.0, _bull_margin / 0.5)) + 0.5 * _bull_quality_atten))
-                _entry_q_bear = max(0.0, min(1.0, 0.5 * max(0.0, min(1.0, _bear_margin / 0.5)) + 0.5 * _bear_quality_atten))
+                # Trend-alignment boost: bull entry in uptrend (positive ret_long) gets
+                # quality boost — confirmed-trend entries always fast-commit.
+                # Bear entry in downtrend gets symmetric boost.
+                _trend_align_q_bull = max(0.0, min(1.0, ret_long / 0.06))
+                _trend_align_q_bear = max(0.0, min(1.0, -ret_long / 0.06))
+                _entry_q_bull = max(0.0, min(1.0, 0.4 * max(0.0, min(1.0, _bull_margin / 0.5)) + 0.3 * _bull_quality_atten + 0.3 * _trend_align_q_bull))
+                _entry_q_bear = max(0.0, min(1.0, 0.4 * max(0.0, min(1.0, _bear_margin / 0.5)) + 0.3 * _bear_quality_atten + 0.3 * _trend_align_q_bear))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                     self._entry_quality[symbol] = _entry_q_bull
