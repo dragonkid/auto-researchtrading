@@ -703,17 +703,6 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
-                    # Architectural: profit-magnitude-conditioned partial-exit floor LOWERING.
-                    # Deep winners (pos_pnl >> pp_min) earn protection from premature partial
-                    # de-risk: lower the floor so de-risk ramp activates only at higher
-                    # exit_pressure, letting big winners run. Marginal/losing positions keep
-                    # original floor (no protection). Continuous via tanh on
-                    # (pos_pnl/pp_min - 1.0). Max lowering 0.15 (floor can drop ~0.40 in deep
-                    # profit). New data dependency: partial-exit decision depends on profit
-                    # magnitude, orthogonal to vol_ratio scaling already present.
-                    _profit_ratio = max(0.0, pos_pnl / max(_pp_min, 1e-6))
-                    _winner_atten = 0.15 * max(0.0, np.tanh((_profit_ratio - 1.0) / 0.6))
-                    _de_floor = max(0.30, _de_floor - _winner_atten)
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
