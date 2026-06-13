@@ -498,8 +498,11 @@ class Strategy:
                 # the three. Attenuation = 0.40 + 0.60 * (avg_align + 1)/2, continuous in
                 # [0.40, 1.00]. Boundary at slope=0 is smooth (tanh), not stepped. Scales
                 # picked per-window to give similar saturation thresholds.
+                # Reuse _lr_slope for the 16-bar component (identical computation to LINREG_PERIOD=16
+                # over HL2). Architectural simplification: removes one redundant np.log+_fast_slope
+                # call per bar at entry. Only compute the 8-bar and 32-bar slopes here.
                 _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
+                _slps = (_fast_slope(np.log(_hl2_e[-8:])), _lr_slope, _fast_slope(np.log(_hl2_e[-32:])))
                 _cons_scales = (0.0010, 0.0007, 0.0005)  # window-specific saturation
                 _bull_align = sum(np.tanh(s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
                 _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
