@@ -607,7 +607,19 @@ class Strategy:
                     # component data dep: scale-in pace depends on pos_pnl progress.
                     # Distinct from MAE-freeze (which BLOCKED scale-in on MAE depth);
                     # this MODULATES the ramp rate continuously by current pnl.
-                    _pnl_pace_mult = 1.0 + 0.3 * np.tanh(pos_pnl / abs(STOP_LOSS_PCT))
+                    # Branch step 2: trend-alignment gate on pnl_pace_mult.
+                    # Counter-trend positions (rally bear shorts in uptrend) have transient
+                    # pos_pnl dips on pullback bars; modulating scale-in pace by current
+                    # pnl during those dips left smaller commitment when the trade
+                    # resumed favorable trajectory. Gate the mult to only modulate
+                    # when position is TREND-ALIGNED (bull in uptrend, bear in downtrend).
+                    # Counter-trend: _pnl_pace_mult forced to 1.0 (no modulation;
+                    # standard bar-progress ramp). Continuous via tanh on aligned dot
+                    # product. New cross-component data dep: scale-in pnl modulation
+                    # depends on trend alignment.
+                    _pos_dir_si = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_si = max(0.0, np.tanh(ret_long * _pos_dir_si / 0.04))  # [0, ~1]
+                    _pnl_pace_mult = 1.0 + 0.3 * np.tanh(pos_pnl / abs(STOP_LOSS_PCT)) * _trend_align_si
                     _eff_progress = max(0.0, min(1.0, _eff_progress * _pnl_pace_mult))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
