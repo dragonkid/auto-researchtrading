@@ -344,8 +344,18 @@ class Strategy:
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural: high-vol high-conviction persistence bypass.
+                # In high-vol (crash) regimes, the previous opp-exit + 1-bar cooldown +
+                # 2-bar persistence gate creates a 3+ bar reversal latency that misses
+                # whipsaw protection. When vol_ratio is high AND current strong-sum
+                # margin is very high (deep conviction), allow single-bar entry.
+                # Continuous via tanh on (vol_ratio - 1.0)/0.3 and margin/0.50.
+                # In calm regimes (low vol) or marginal entries, gate stays strict.
+                _vol_bypass_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.3))  # in [0, ~1]
+                _bull_bypass = _vol_bypass_gate * max(0.0, np.tanh(_bull_margin / 0.50))
+                _bear_bypass = _vol_bypass_gate * max(0.0, np.tanh(_bear_margin / 0.50))
+                _bull_persist_ok = (_min_bull_2 >= _entry_persist_factor * _bull_strong_min) or (_bull_bypass >= 0.5)
+                _bear_persist_ok = (_min_bear_2 >= _entry_persist_factor * _bear_strong_min) or (_bear_bypass >= 0.5)
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
