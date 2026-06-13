@@ -791,19 +791,10 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Architectural: bidirectional _w_ve activation gated on slope-against confirmation.
-                # Old: _w_ve = max(0, _pnl_scale) — fires only on winners (locks gains on regime shift).
-                # New: keep profit-side activation unchanged; ALSO add loss-side activation that requires
-                # _sl_slope_pressure > 0.3 to confirm cascade (vol expansion + adverse slope = cascade,
-                # not just transient noise). Loss-side weight scaled by min(1, _sl_slope_pressure / 0.5)
-                # so it ramps up smoothly with cascade strength. Caps at 0.7 (less than full profit-side
-                # weight of 1.0, since slope-against already does loss-cutting; this is incremental
-                # cascade amplification, not duplicating slope work).
-                # New control flow: vol_expansion now contributes to exit pressure on LOSING positions
-                # when slope confirms cascade direction (was silent on losers before). Targets crash
-                # MaxDD reduction by faster exit on cascade-deepening losers.
-                _w_ve_loss = 0.7 * max(0.0, min(1.0, (_sl_slope_pressure - 0.3) / 0.4)) * max(0.0, -_pnl_scale)
-                _w_ve = max(0.0, _pnl_scale) + _w_ve_loss  # profit-side + cascade-confirmed loss-side
+                # Profit-side weight: only fire when in profit (lock gains on
+                # regime shift); don't punish losing positions for vol expansion
+                # since slope-against already handles adverse moves.
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Architectural: early-profit-lock exit pressure (5th soft source).
                 # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
                 # Sub-peak profitable positions that give back early gains receive NO
