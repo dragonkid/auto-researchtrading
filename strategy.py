@@ -329,8 +329,16 @@ class Strategy:
             # +15% admission cost during legitimate correlated entry pile-ups (e.g. multi-
             # symbol crash legs). Per-symbol regulator alone provides sufficient churn
             # protection. Code-structure removal: 7 lines + state tracking eliminated.
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: portfolio-DD-tightened admission threshold (new cross-component
+            # data dependency at entry decision boundary). When portfolio is in drawdown,
+            # raise _strong_min by up to 20% — entries during DD need higher conviction.
+            # Composes with _port_dd_atten (which cuts SIZE) by also filtering ADMISSION:
+            # in DD we both reduce size and raise the bar for new entries. Smooth tanh on
+            # _port_dd_atten reading (it's [0,1] where 1.0 is no DD and ~0 is deep DD).
+            # Max +20% threshold at deep DD; no effect at full equity (1.0).
+            _dd_min_amp = 1.0 + 0.20 * (1.0 - _port_dd_atten)  # in [1.0, 1.20]
+            _bull_strong_min = _strong_min * _freq_factor * _dd_min_amp
+            _bear_strong_min = _strong_min * _freq_factor * _dd_min_amp
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
