@@ -745,16 +745,22 @@ class Strategy:
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
-                # Architectural simplification: removed trend-aligned opp-bias attenuator.
-                # The 12-line _opp_atten attenuated the opposite-side voter_bias ADDITION
-                # by up to 50% when position was strongly trend-aligned. _opp_gate already
-                # gates explicit reversal pathways (binary 3-AND with trend_avg sign-check),
-                # _sl_slope_pressure has its own trend-alignment attenuation, and
-                # _pm_trend_atten loosens pp trailing in strong trends. Removing the
-                # voter_bias trend-attenuation eliminates a 4th overlapping trend-aware
-                # protection layer; the remaining 3 paths (opp_gate, slope-trend-align,
-                # pm-trend-atten) provide the load-bearing trend-aligned protections.
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
+                # In strong long-window trends WHERE position is trend-aligned, attenuate
+                # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
+                # positions (bull in uptrend, bear in downtrend) face opposite-side voter
+                # spikes (rally pullback bull voters firing on bear positions; crash dead-
+                # cat bounce bull voters firing on bear shorts), the additive opp bias
+                # currently fires the same as in chop. In confirmed trends, opp-voter
+                # signals during pullbacks are more often noise than reversal. Attenuate
+                # opp_bias by tanh(ret_long * pos_dir / 0.05) so trend-aligned positions
+                # see softer opp-bias contribution to _exit_pressure. Counter-trend
+                # positions and chop: unchanged. New cross-timescale data dep: opp-side
+                # voter_bias depends on (ret_long, position direction).
+                _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
+                _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
+                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
