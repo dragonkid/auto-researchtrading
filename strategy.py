@@ -867,12 +867,36 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: adverse-volume exit pressure (7th soft source).
+                # When position is in adverse pos_pnl trajectory AND current bar volume
+                # is elevated relative to recent mean (>1.3x), the move is more likely
+                # informed reversal than low-volume noise. New cross-bar data dependency:
+                # exit pressure depends on bar-level volume ratio; new control flow:
+                # 7th additive term in soft_sum. Distinct from _vol_entry_atten (which
+                # gates entry size on bar volume) and from _ve_pressure (which uses
+                # vol-of-vol ratio). This term targets bar-level volume*direction
+                # confluence at the EXIT decision boundary.
+                # Adverse direction: position direction opposite to current bar return.
+                _bar_ret = (closes[-1] - closes[-2]) / closes[-2] if len(closes) >= 2 else 0.0
+                _adverse_dir = -_bar_ret * (1.0 if current_pos > 0 else -1.0)  # positive = bar moved against position
+                _vol_bar_24_ex = bd.history["volume"].values[-25:-1]
+                _vol_bar_avg_ex = max(_vol_bar_24_ex.mean(), 1e-10)
+                _vol_bar_ratio_ex = bd.history["volume"].values[-1] / _vol_bar_avg_ex
+                # Activation: vol_ratio > 1.3 AND adverse-direction. Smooth ramp via tanh.
+                _av_vol_gate = max(0.0, np.tanh((_vol_bar_ratio_ex - 1.3) / 0.4))  # in [0, ~1]
+                _av_dir_gate = max(0.0, np.tanh(_adverse_dir / 0.005))  # adverse magnitude saturates at 0.5%
+                _av_pressure = 0.50 * _av_vol_gate * _av_dir_gate  # max contribution 0.5
+                # Weight: fire only when meaningful adverse move exists; full weight in
+                # both profit and modest loss (the term is direction-aware so it
+                # doesn't double-count with sl_slope_pressure on big losers).
+                _w_av = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # heavier in profit, near-zero at full stop
+
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_av * _av_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
