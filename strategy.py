@@ -704,13 +704,7 @@ class Strategy:
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
-                # Architectural simplification: removed +0.20 opp_margin additive bias.
-                # opp_gate already handles strong reversal with graduated/full exit; the
-                # additive opp-bias path duplicated the same opposite-side conviction signal
-                # into the soft-pressure stack. Keeping the own-side chop-amplified subtraction
-                # only — preserves "let winners run when voters validate" without double-counting
-                # opposite-side evidence at the soft-pressure level.
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
