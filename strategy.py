@@ -774,14 +774,15 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Architectural refinement: chop-amplified own-side subtraction.
-                # In low-trend (chop / sideways), the with-position voters more reliably
-                # validate continued hold; amplify subtraction to preserve hold semantics
-                # (recovers sideways regression from base bilateral voter_bias). In trends,
-                # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
-                # (reversal evidence equally weighted across regimes). New cross-timescale
-                # data dependency: voter_bias asymmetry depends on long-window trend.
-                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
+                # Architectural simplification: removed _chop_amp own-side subtraction
+                # chop amplifier. _chop_amp scaled own-side subtraction 1.0->1.7 in chop
+                # to "preserve hold semantics" — but the opposite-side ADDITION via
+                # _opp_atten already attenuates to 0 in trend regimes (leaving full
+                # bias in chop). The combined effect double-counts the chop signal:
+                # both sides get chop-amplified asymmetric biasing via different
+                # mechanisms. Removing _chop_amp leaves constant 0.20 own-side
+                # subtraction (parallel to constant 0.20 opp-side base). Decouples
+                # voter_bias asymmetry from a regime classifier (abs(ret_long)<0.03).
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
@@ -797,7 +798,7 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
