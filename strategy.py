@@ -873,6 +873,18 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: trend-alignment-asymmetric exit threshold.
+                # Trend-aligned positions (bull in uptrend, bear in downtrend): pullbacks
+                # are noise-on-trend; require higher exit pressure to overcome (raise
+                # threshold up to +12%). Counter-trend positions: adverse moves are
+                # trend-confirming; exits fire on lower pressure (lower threshold up to
+                # -10%). Smooth tanh on (ret_long * pos_dir / 0.05) — gated above modest
+                # trend strength only. New cross-timescale data dependency at exit
+                # decision boundary; new control flow asymmetry between trend-aligned
+                # and counter-trend exit semantics.
+                _pos_dir_xt = 1.0 if current_pos > 0 else -1.0
+                _trend_align_xt = np.tanh(ret_long * _pos_dir_xt / 0.05)  # in [-1, 1]
+                _exit_thresh = _exit_thresh * (1.0 + 0.12 * max(0.0, _trend_align_xt) - 0.10 * max(0.0, -_trend_align_xt))
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
