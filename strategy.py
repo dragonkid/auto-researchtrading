@@ -329,17 +329,15 @@ class Strategy:
             # +15% admission cost during legitimate correlated entry pile-ups (e.g. multi-
             # symbol crash legs). Per-symbol regulator alone provides sufficient churn
             # protection. Code-structure removal: 7 lines + state tracking eliminated.
-            # Architectural: trend-aligned admission relaxation with deep-trend
-            # taper. Bull/bear admission relaxes when trend-aligned, but the
-            # relaxation tapers off when |ret_long| is already large (>0.06)
-            # since deep-trend regimes have higher reversal risk and admitting
-            # marginal entries near trend exhaustion is dangerous (crash
-            # dead-cat bounces). Smooth tanh on ret_long/0.04 for direction,
-            # multiplied by exhaustion taper (1 - tanh((|ret_long|-0.06)/0.04)).
-            _trend_cross_admit = 0.10 * np.tanh(ret_long / 0.04)
-            _exhaust_taper = 1.0 - max(0.0, np.tanh((abs(ret_long) - 0.06) / 0.04))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - max(0.0, _trend_cross_admit) * _exhaust_taper)
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 - max(0.0, -_trend_cross_admit) * _exhaust_taper)
+            # Architectural: trend-aligned admission relaxation with asymmetric
+            # magnitude. Bull side gets larger relaxation (-0.10 max) since rally
+            # gain is bull-driven; bear side gets smaller relaxation (-0.04 max)
+            # since crash bear admission is sensitive to low-quality dead-cat
+            # bounce bears. 20-bar ret_long for direction, smooth tanh.
+            _bull_relax_admit = 0.10 * max(0.0, np.tanh(ret_long / 0.04))
+            _bear_relax_admit = 0.04 * max(0.0, np.tanh(-ret_long / 0.04))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - _bull_relax_admit)
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 - _bear_relax_admit)
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
