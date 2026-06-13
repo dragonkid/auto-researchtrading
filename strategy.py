@@ -316,8 +316,22 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: trend-aligned admission asymmetry. ASYMMETRIC bull vs bear
+            # admission threshold based on long-window trend direction. When ret_long
+            # is strongly positive, bull entries face LOWER admission (trend confirms);
+            # bear entries face HIGHER admission (counter-trend, filter harder).
+            # Symmetric in opposite direction. Distinct from _bull_admit/_bear_admit
+            # gates (which use trend_avg sign): this modulates the STRONG-SUM threshold
+            # itself, not the binary admission flag. New cross-timescale data dep on
+            # ret_long modulating per-side admission magnitudes. Continuous via tanh;
+            # max ±15% asymmetric adjustment. Bounded gate above |ret_long|>0.025 to
+            # avoid firing in chop where direction is ambiguous.
+            _trend_admit_gate = max(0.0, min(1.0, (abs(ret_long) - 0.025) / 0.035))  # 0..1
+            _trend_admit_dir = np.tanh(ret_long / 0.05)  # [-1, 1]
+            _bull_admit_adj = 1.0 - 0.15 * _trend_admit_gate * _trend_admit_dir  # bull threshold cut in uptrend, raised in downtrend
+            _bear_admit_adj = 1.0 + 0.15 * _trend_admit_gate * _trend_admit_dir  # opposite
+            _bull_strong_min = _strong_min * _freq_factor * _bull_admit_adj
+            _bear_strong_min = _strong_min * _freq_factor * _bear_admit_adj
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
