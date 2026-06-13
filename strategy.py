@@ -131,11 +131,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol soft-exit pressure history (3-bar rolling).
-        # Used by exit-persistence gate to require sustained elevation before
-        # full exit triggers — filters single-bar noise spikes from the additive
-        # fusion sum. Stop-loss path is exempt (always immediate).
-        self._soft_sum_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -801,29 +796,7 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
-                # Architectural: exit-pressure persistence gate (temporal hysteresis).
-                # Track _soft_sum over last 2 bars; require min(curr, prev) to exceed
-                # an elevated threshold (0.55) before allowing soft_sum to count as
-                # full saturation. Single-bar spikes are softened: if current is high
-                # but previous was below floor, attenuate soft_sum proportionally.
-                # Stop-loss path is unaffected (full _sl_pressure always honored via
-                # the max() blend). Filters additive-fusion noise where one transient
-                # pressure (slope/time) briefly fires alongside another. New per-symbol
-                # state dep on prior bar's soft_sum.
-                _ssh = self._soft_sum_history.get(symbol, [])
-                _ssh.append(_soft_sum)
-                if len(_ssh) > 3:
-                    _ssh = _ssh[-3:]
-                self._soft_sum_history[symbol] = _ssh
-                if len(_ssh) >= 2:
-                    _prev_soft = _ssh[-2]
-                    # Persistence factor: 1.0 when prev_soft >= 0.55 (sustained), ramps
-                    # down toward 0.65 when prev_soft was near 0 (single-bar spike).
-                    _persist_factor = 0.65 + 0.35 * max(0.0, min(1.0, _prev_soft / 0.55))
-                else:
-                    _persist_factor = 1.0
-                _soft_sum_gated = _soft_sum * _persist_factor
-                _exit_pressure = max(_sl_pressure, _soft_sum_gated) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -929,7 +902,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._soft_sum_history):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
