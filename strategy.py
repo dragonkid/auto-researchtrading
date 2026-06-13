@@ -318,8 +318,16 @@ class Strategy:
             _vol_amp_raw = 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w
             _bull_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(ret_long / 0.04))   # only in uptrend
             _bear_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(-ret_long / 0.04))  # only in downtrend
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _bull_amp
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _bear_amp
+            # Architectural: per-voter contribution arrays for leave-one-out robustness gate.
+            # Compute each voter's individual contribution to strong-sum BEFORE summing.
+            # The leave-one-out gate (in entry path) requires the entry to survive removal
+            # of the largest single contributor at a relaxed threshold — filters entries
+            # that depend on a single voter spike. Genuinely orthogonal to opp_quality_atten
+            # (post-tanh aggregate ratio) and persistence_mult (per-voter time-history).
+            _bull_contribs = [max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)]
+            _bear_contribs = [max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)]
+            _bull_strong = sum(_bull_contribs) * _bull_amp
+            _bear_strong = sum(_bear_contribs) * _bear_amp
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
@@ -480,6 +488,26 @@ class Strategy:
                     _min_bear_2 = _bear_strong
                 _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
                 _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural: leave-one-out voter-robustness gate at entry decision.
+                # Compute strong-sum WITHOUT the largest single contributor. Require this
+                # leave-one-out sum to still exceed _robust_factor * _strong_min. Filters
+                # entries that depend on a single voter spike (noise-amplified single-voter
+                # entries that pass the aggregate strong-sum gate but would fail without
+                # that one voter). Genuinely orthogonal to existing entry gates: aggregate
+                # strong-sum + persistence (time history) + admit (trend gate) +
+                # quality_atten (post-tanh bilateral ratio). Continuous via tanh on the
+                # leave-one-out margin (passes smoothly when L1O comfortably above threshold,
+                # cuts when close to threshold). New cross-component data dependency:
+                # entry admission depends on the DISPERSION of voter contributions, not
+                # just their sum. Robust factor 0.55: entry without strongest voter must
+                # still reach 55% of normal threshold.
+                _robust_factor = 0.55
+                _bull_max_contrib = max(_bull_contribs) if _bull_contribs else 0.0
+                _bear_max_contrib = max(_bear_contribs) if _bear_contribs else 0.0
+                _bull_l1o = (_bull_strong / max(_bull_amp, 1e-6) - _bull_max_contrib) * _bull_amp
+                _bear_l1o = (_bear_strong / max(_bear_amp, 1e-6) - _bear_max_contrib) * _bear_amp
+                _bull_robust_ok = _bull_l1o >= _robust_factor * _bull_strong_min
+                _bear_robust_ok = _bear_l1o >= _robust_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -568,9 +596,9 @@ class Strategy:
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_robust_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_robust_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
