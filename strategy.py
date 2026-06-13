@@ -284,26 +284,12 @@ class Strategy:
             if len(_sig_hist) >= 4:
                 _arr = np.array(_sig_hist)  # (K, 7)
                 _num = np.abs(_arr.sum(axis=0))
-                _abs_arr = np.abs(_arr)
-                _den = np.maximum(_abs_arr.sum(axis=0), 1e-10)
+                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
-                # Architectural: per-voter recent-bar-magnitude weighting (NEW dim
-                # orthogonal to persistence). Persistence measures directional
-                # consistency over 8 bars; recent-magnitude measures whether voter
-                # is currently ACTIVE vs dormant. recent_mag = mean(|sig[-2:]|),
-                # hist_mag = mean(|sig|) over full window. Ratio indicates voter
-                # activation level. Bounded [0.85, 1.15] via tanh on (ratio-1)/0.5.
-                # Voters firing strongly in last 2 bars get boosted; quiet voters
-                # downweighted. Cross-bar dependency is data-only (no new state).
-                _recent_mag = _abs_arr[-2:].mean(axis=0) if len(_sig_hist) >= 2 else _abs_arr.mean(axis=0)
-                _hist_mag = _abs_arr.mean(axis=0)
-                _mag_ratio = _recent_mag / np.maximum(_hist_mag, 1e-10)
-                _recency_mult = 0.85 + 0.30 * 0.5 * (1.0 + np.tanh((_mag_ratio - 1.0) / 0.5))  # [0.85, 1.15]
             else:
                 _persistence_mult = np.ones(7)
-                _recency_mult = np.ones(7)
-            _voter_weights = tuple(bw * pm * rm for bw, pm, rm in zip(_base_weights, _persistence_mult, _recency_mult))
+            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
             # amplifier composed three multiplicative gates (chop neutralization
