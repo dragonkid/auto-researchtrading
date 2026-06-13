@@ -157,33 +157,6 @@ class Strategy:
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
 
-        # Architectural: portfolio-level adverse-move stress detector.
-        # Count active positions currently in moderate loss (pos_pnl in [-stop, -0.005]).
-        # When >=2 symbols are simultaneously stressed, the regime is in correlated
-        # adverse pressure (coordinated multi-asset drawdown — e.g., crash legs,
-        # rally pullback waves). Tighten exit threshold across all symbols
-        # proportionally so soft exit pressures fire earlier during portfolio-
-        # wide stress. Symmetric to entry-side portfolio frequency regulator
-        # (which addresses entry churn during regime transitions). New cross-
-        # symbol state at exit decision time; smooth tanh activation.
-        _stress_count = 0
-        for _s_chk in ACTIVE_SYMBOLS:
-            _p_chk = portfolio.positions.get(_s_chk, 0.0)
-            if abs(_p_chk) <= 1.0 or _s_chk not in self.entry_prices:
-                continue
-            if _s_chk not in bar_data:
-                continue
-            _ep_chk = self.entry_prices[_s_chk]
-            _mid_chk = bar_data[_s_chk].close
-            _pnl_chk = (_mid_chk - _ep_chk) / _ep_chk
-            if _p_chk < 0:
-                _pnl_chk = -_pnl_chk
-            # In moderate loss territory: between -2.5% and -0.5%
-            if -0.025 < _pnl_chk < -0.005:
-                _stress_count += 1
-        # Smooth tanh: 0 stressed -> 1.0 (no tighten), 2+ stressed -> ~0.88 tighten
-        _stress_factor = 1.0 - 0.12 * max(0.0, np.tanh((_stress_count - 1.5) / 1.0))
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -900,10 +873,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Apply portfolio-level adverse-stress tightening (computed at top of bar).
-                # Tightens exit threshold (lower threshold = earlier exits) when multiple
-                # symbols are simultaneously in moderate loss — correlated stress regime.
-                _exit_thresh = _exit_thresh * _stress_factor
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
