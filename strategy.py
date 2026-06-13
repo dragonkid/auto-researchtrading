@@ -116,6 +116,17 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Architectural: avg-cost basis tracking across scale-in.
+        # Old: pos_pnl = (mid - entry_price[0]) / entry_price[0] uses FIRST bar's price
+        # for full scale-in duration; this OVERSTATES pos_pnl during winning trend scale-ins
+        # (avg cost is higher than entry[0]) and UNDERSTATES loss during losing scale-ins
+        # (avg cost is closer to current price). Peak_pnl, MAE, _pp_min activation, all
+        # soft pressures use this biased pos_pnl during bars 0-3. New: maintain running
+        # avg cost weighted by signed-position-delta at each scale-in step; pos_pnl becomes
+        # (mid - avg_cost) / avg_cost. Decouples pos_pnl semantics from first-bar price.
+        # Cross-bar state: avg cost evolves as scale-in fills. Continuous, no discontinuity.
+        self._avg_cost = {}
+        self._prev_pos = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -573,7 +584,11 @@ class Strategy:
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
             elif current_pos != 0:
-                pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                # Architectural: pos_pnl computed against AVG COST (not first-bar entry price).
+                # _avg_cost is updated at scale-in fills via signed-delta weighting; falls back
+                # to entry_prices on legacy state.
+                _ac = self._avg_cost.get(symbol, self.entry_prices[symbol])
+                pos_pnl = (mid - _ac) / _ac
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
@@ -977,13 +992,26 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._avg_cost):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._avg_cost[symbol] = mid
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
+                else:
+                    # Scale-in fill (same direction). Update avg cost weighted by
+                    # signed delta. If |target| < |current_pos| (de-risk), avg cost
+                    # is unchanged (closing fills at current price doesn't change basis).
+                    _delta = target - current_pos
+                    if (target > 0 and _delta > 0) or (target < 0 and _delta < 0):
+                        _ac_prev = self._avg_cost.get(symbol, self.entry_prices.get(symbol, mid))
+                        _new_size = abs(target)
+                        _old_size = abs(current_pos)
+                        _add_size = abs(_delta)
+                        # Weighted avg of prior basis and new fill price.
+                        self._avg_cost[symbol] = (_ac_prev * _old_size + mid * _add_size) / max(_new_size, 1e-10)
 
         return signals
