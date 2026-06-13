@@ -584,14 +584,21 @@ class Strategy:
                 # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
-                # Architectural: trend-conditioned scale-in pace.
-                # Replace constant ENTRY_FULL_BARS=3 with continuous trend-magnitude
-                # function: 2 bars in strong trend (fast commitment to capture momentum),
-                # up to 4 bars in deep chop (slower commitment to reduce noise exposure).
-                # rsi_trend_str is in [0,1] from existing entry path; reuse here for
-                # consistency. New cross-component data dep: scale-in pace depends on
-                # long-window trend magnitude.
-                _entry_full_bars_dyn = 2.0 + 2.0 * (1.0 - rsi_trend_str)  # in [2, 4]
+                # Architectural: trend-conditioned scale-in pace, with directional
+                # asymmetry by position-trend alignment.
+                # Base pace: 2 bars in strong trend, up to 4 bars in deep chop.
+                # Asymmetric extension (new cross-component data dep): counter-trend
+                # positions (e.g., bear position in uptrend during rally pullback) get
+                # SLOWER scale-in (+1.5 bars) to test pullback persistence before full
+                # commitment. Trend-aligned positions get the base pace. Mechanism:
+                # rally bear entries hitting noise typically reverse within 1-2 bars;
+                # delaying full commit by extending scale-in lets these noise-driven
+                # counter-trend entries exit at smaller size before becoming losses.
+                # Continuous tanh on ret_long * pos_dir: max +1.5 bars in strongly
+                # counter-trend, 0 add in trend-aligned or chop.
+                _pos_dir_si = 1.0 if current_pos > 0 else -1.0
+                _ct_align_si = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.05))  # [0, ~1] counter-trend
+                _entry_full_bars_dyn = 2.0 + 2.0 * (1.0 - rsi_trend_str) + 1.5 * _ct_align_si  # in [2, 5.5]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
