@@ -539,10 +539,6 @@ class Strategy:
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                # Architectural: pnl-velocity (per-bar pnl drop rate). Captures
-                # acceleration-of-loss orthogonal to slope-against (price slope)
-                # and giveback-ratio (cumulative). pnl_drop = max(0, prev_pnl-pos_pnl).
-                _pnl_drop = max(0.0, _prev_pnl - pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
@@ -756,26 +752,12 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: pnl-velocity exit pressure (6th soft source).
-                # _pnl_drop = max(0, prev_pnl - pos_pnl), per-bar pnl drop magnitude.
-                # Scaled by ATR-anchored stop: drop equal to 0.20*_stop_abs gives full
-                # pressure. Smooth tanh with deadband. Orthogonal to:
-                #   - slope_against (price slope, cross-bar trajectory)
-                #   - giveback_ratio (cumulative drop from peak)
-                #   - vol_expansion (vol-of-vol, regime shift)
-                # Captures fast adverse moves WITHIN a single bar that haven't yet
-                # accumulated into giveback or registered on slope. New cross-bar
-                # data dependency: per-bar pnl change as exit signal.
-                _pv_pressure = max(0.0, np.tanh((_pnl_drop - 0.05 * _stop_abs) / (0.15 * _stop_abs)))
-                # Weight: only active in profit-or-near-profit (avoid double-counting
-                # with slope-against on big losers; in deep loss, _w_slope dominates).
-                _w_pv = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale)) * 0.5
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_pv * _pv_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
