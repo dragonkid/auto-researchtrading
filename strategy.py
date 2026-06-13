@@ -931,13 +931,15 @@ class Strategy:
                         _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
                     else:
                         _pnl_traj_slope = 0.0
-                    # Branch step 12: BIDIRECTIONAL trajectory adj at lower base floor 0.50.
-                    # Lower base means stronger de-risk by default; recovery boost (+0.15)
-                    # restores floor for genuine recoveries; deterioration (no boost) stays
-                    # at lower floor for faster de-risk. Adds discrimination between
-                    # recovering vs deteriorating positions even on currently-flat-bar moments.
-                    _traj_adj = 0.15 * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
-                    _de_floor = 0.50 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
+                    # Branch step 11: layered — small unconditional baseline + trend-aligned bonus.
+                    # The unconditional 0.05 covers all recovery contexts (small benefit everywhere);
+                    # the trend-aligned +0.10 deepens the crash/bull-aligned bear-short benefit
+                    # while staying low for sideways/counter-trend (avoids sideways/rally drag).
+                    _pos_dir_traj = 1.0 if current_pos > 0 else -1.0
+                    _ta_align = max(0.0, np.tanh(ret_long * _pos_dir_traj / 0.04))
+                    _traj_mag = 0.05 + 0.10 * _ta_align
+                    _traj_adj = _traj_mag * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
+                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
