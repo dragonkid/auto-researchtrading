@@ -954,16 +954,7 @@ class Strategy:
                     # active in mid-pressure, profit-side mid-life situations where
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
-                    # Architectural: trend-magnitude gate on loser-tightening.
-                    # In strong trends (high abs(ret_long)), pullback dips on
-                    # trend-aligned positions are signal-rich (legitimate retest).
-                    # Mute the loser tightening by trend magnitude — _de_floor stays
-                    # near 0.55 (graduated de-risk) for trend-aligned losers, allowing
-                    # them more headroom. In chop, full loser tightening to 0.85
-                    # preserves fast-exit on noise-driven small losses.
-                    # Continuous tanh on abs(ret_long)/0.05.
-                    _de_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
-                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) * _de_trend_mute
+                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
