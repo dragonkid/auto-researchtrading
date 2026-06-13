@@ -893,12 +893,23 @@ class Strategy:
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
                 if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    # Trend-gated activation: in chop (low |ret_long|), peaks are
-                    # rare AND likely mean-reverting — disable harvest to let small
-                    # sideways wins run. In trending regimes (high |ret_long|), peaks
-                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
+                    # Architectural multi-variable: giveback-confirmed harvest gate.
+                    # Original gate fired _tp_scale on (peak_magnitude × trend) alone — in
+                    # sideways chop, peaks form and then mean-revert through, so harvest
+                    # fires prematurely at peak without actual reversal evidence (the
+                    # discard summary identified _tp_scale as a drag in sideways: +0.046
+                    # in that regime when removed). New: gate requires BOTH trend
+                    # confirmation AND actual giveback in progress. In chop, peaks
+                    # rarely give back meaningfully before mean-reverting through (the
+                    # peak itself was the chop noise excursion). In trends, peaks are
+                    # followed by sustained giveback — the giveback confirmation fires
+                    # naturally. Adds a NEW data dependency: _tp_scale gate now reads
+                    # _giveback_ratio (the in-progress giveback) as a multiplier.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
+                    # Giveback-confirmation gate: 0 if peak still rising or no giveback,
+                    # ramps to 1 as giveback ratio crosses ~0.15 of peak.
+                    _tp_giveback_gate = max(0.0, np.tanh(_giveback_ratio / 0.15))
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * _tp_giveback_gate
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
