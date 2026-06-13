@@ -862,27 +862,16 @@ class Strategy:
                 # Stop-loss path retains binary exit (full saturation already triggers).
                 # New control flow: exit decision is a continuous mapping from
                 # exit_pressure ratio to target multiplier, not a single threshold.
-                # Architectural: profit-target partial harvest (decision-architecture
-                # change to exit subsystem). When peak_pnl crosses into profit-target
-                # territory (peak >= 1.6*_pp_min), apply a smooth size scale-down of
-                # up to 30% — independent from giveback-based _pp_pressure trailing.
-                # This harvests realized peak gains proactively when profit target is
-                # hit, even if pos_pnl is currently still near peak (no giveback yet).
-                # Ramps smoothly over [1.6*_pp_min, 2.2*_pp_min] via tanh. Subtractive
-                # from current target, applied BEFORE exit-threshold logic so it
-                # composes correctly with both binary and de-risk exit paths. Skipped
-                # if _sl_pressure dominant (full exit will follow). New control flow:
-                # exit subsystem now has THREE size-decision paths: full exit, de-risk
-                # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
-                    _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    # Trend-gated activation: in chop (low |ret_long|), peaks are
-                    # rare AND likely mean-reverting — disable harvest to let small
-                    # sideways wins run. In trending regimes (high |ret_long|), peaks
-                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
-                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
-                    target = target * (1.0 - _tp_scale)
+                # Architectural simplification: removed _tp_scale profit-target partial
+                # harvest. Mechanism cut size up to 30% when peak >= 1.6*_pp_min.
+                # Hypothesis: redundant with _pp_pressure giveback trailing — once a
+                # position reaches peak >= 1.6*_pp_min, _pp_pressure (which fires above
+                # _pp_ratio >= 1.0) is already armed and will trail aggressively on any
+                # meaningful giveback. Take-profit harvest scales down a position that
+                # is at peak (no giveback yet) — but the position's "best moment" is
+                # exactly that peak, and harvesting reduces exposure to the profitable
+                # continuation path. Trailing-via-giveback is more information-efficient
+                # than scheduled scale-down. Code-structure removal.
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
