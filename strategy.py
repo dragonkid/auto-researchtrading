@@ -602,7 +602,15 @@ class Strategy:
                 # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
                 _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
                 _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
+                # Architectural: PnL-conditioned scale-in pace modulator (new cross-component data dep).
+                # When position is in profit during scale-in (price moving with us), accelerate commit
+                # to capture the drift before it reverses. When in loss (price moving against us),
+                # decelerate (extend the scale-in window) so we don't pile into a wrong-side position
+                # before evidence resolves. Asymmetric tanh on pos_pnl scaled by stop magnitude:
+                # profit: subtract up to 0.5 bar, loss: add up to 0.5 bar. New decision-architecture:
+                # scale-in pace is now also a function of live position outcome.
+                _pnl_pace_adj = 0.5 * np.tanh(pos_pnl / abs(STOP_LOSS_PCT))  # in [-0.5, 0.5]
+                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel - _pnl_pace_adj)  # [1.0, 4.5]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
