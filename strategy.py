@@ -295,31 +295,18 @@ class Strategy:
             else:
                 _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
-            # Architectural: volume-weighted voter aggregation amplifier.
-            # High-volume current bar = signal-confirming; voters fire on info-rich bars.
-            # Low-volume current bar = thin-tape, low-conviction; voters may fire on noise.
-            # Compute current-bar volume vs 24-bar average; modulate aggregate strong-sum
-            # via tanh smoothing in [0.85, 1.15]. New cross-bar data dep at voter
-            # aggregation level (different from existing _vol_entry_atten which is
-            # entry-size only — this affects whether the gate even fires). Multi-variable:
-            # single volume signal modulates BOTH _bull_strong and _bear_strong identically,
-            # changing the entry-decision boundary symmetrically. Decoupled from
-            # _vol_entry_atten (which sizes admitted entries) — this gates admission itself.
-            _vol_recent_24 = bd.history["volume"].values[-25:-1]
-            _vol_recent_avg = max(_vol_recent_24.mean(), 1e-10)
-            _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_recent_avg
-            # Branch step 3: trend-aligned ONE-SIDED amplifier. Only amplify the
-            # trend-aligned voter side (bull side in uptrend, bear side in downtrend).
-            # Counter-trend side stays at base weight. In chop, neither side amplified.
-            # Mechanism: high-volume bars confirm only the prevailing trend direction,
-            # not symmetric. Eliminates the rally regression from bear-side amp in
-            # uptrend. Composes _trend_strength_w (chop neutralization) with directional
-            # gate via tanh(ret_long / 0.04) (only positive for trend-aligned side).
-            _vol_amp_raw = 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w
-            _bull_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(ret_long / 0.04))   # only in uptrend
-            _bear_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(-ret_long / 0.04))  # only in downtrend
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _bull_amp
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _bear_amp
+            # Architectural simplification: removed volume-weighted voter aggregation
+            # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
+            # amplifier composed three multiplicative gates (chop neutralization
+            # _trend_strength_w × directional tanh × volume-deviation tanh), max ±15%.
+            # With three gates each requiring near-saturated input, the amplifier is
+            # dead-code-adjacent: chop zeros the trend gate, weak trend halves it, and
+            # counter-trend side zeros the directional gate. The remaining sliver of
+            # activation overlaps with _persistence_mult (per-voter sustained-conviction
+            # tracking) and _wt_shift trend-confirming voter weight redistribution.
+            # Code-structure removal: 14 lines + 3 cross-bar volume reads.
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
