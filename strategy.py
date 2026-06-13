@@ -797,7 +797,29 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: voter-strong RATIO term added to additive margin bias.
+                # Existing margin form measures (strong - threshold)/threshold for each side
+                # — captures admission-threshold proximity. New ratio term measures
+                # opp_strong / own_strong directly (>1 == opp dominant) — captures
+                # CROSS-SIDE BALANCE SHIFT regardless of absolute threshold. Different
+                # signal: margin can be high/low for both sides simultaneously (both
+                # confused vs both confident); ratio captures which side is winning the
+                # voter battle. Additive ratio bias on top of margin bias creates
+                # a multi-component voter_bias that combines admission-threshold awareness
+                # with relative-balance awareness. New cross-component data dep: ratio
+                # term depends on raw _bull_strong/_bear_strong rather than margin-
+                # normalized forms. Structural change: voter_bias is now a sum of two
+                # different voter-state representations (margin-form + ratio-form).
+                _own_strong_vb = _bull_strong if current_pos > 0 else _bear_strong
+                _opp_strong_vb = _bear_strong if current_pos > 0 else _bull_strong
+                _opp_own_ratio = _opp_strong_vb / max(_own_strong_vb, 1e-6)
+                # Ratio-form bias: contributes 0 when opp/own <= 0.7 (own dominant);
+                # ramps up to 0.15 as ratio crosses 1.0 (opp == own); saturates near
+                # 0.20 above ratio 1.3 (opp clearly dominant). Always additive (positive
+                # exit pressure on opp dominance); attenuated by trend-align same as
+                # opp_atten so winning trend positions see softer ratio bias too.
+                _ratio_bias = 0.20 * _opp_atten * max(0.0, min(1.0, np.tanh((_opp_own_ratio - 0.7) / 0.4)))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30)) + _ratio_bias
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
