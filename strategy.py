@@ -776,14 +776,24 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Architectural refinement: chop-amplified own-side subtraction.
-                # In low-trend (chop / sideways), the with-position voters more reliably
-                # validate continued hold; amplify subtraction to preserve hold semantics
-                # (recovers sideways regression from base bilateral voter_bias). In trends,
-                # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
-                # (reversal evidence equally weighted across regimes). New cross-timescale
-                # data dependency: voter_bias asymmetry depends on long-window trend.
-                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
+                # Architectural refinement: chop-amplified own-side subtraction,
+                # ASYMMETRIC BY TREND-ALIGNMENT. Prior session insight: _chop_amp is
+                # bilateral — helps trend-regime chop interludes (load-bearing for
+                # crash/rally), hurts pure sideways and counter-trend positions in chop.
+                # New formulation: amplification fires only when the position is
+                # TREND-ALIGNED with the long-window trend. Counter-trend positions
+                # (rally bears, crash bulls) get base 1.0x subtraction with no
+                # amplification — they should NOT have their hold semantics
+                # preserved by chop-amplified validation, since they are
+                # already counter to the dominant trend. Continuous via tanh on
+                # ret_long * pos_dir. The chop factor itself stays as before
+                # (1.0 in trend, ramps to peak in chop). New cross-component
+                # data dependency: chop amplifier scaling depends on position
+                # direction alignment with long-window trend.
+                _chop_factor = max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in chop, 0.0 in trend
+                _pos_dir_cha = 1.0 if current_pos > 0 else -1.0
+                _trend_align_cha = max(0.0, np.tanh(ret_long * _pos_dir_cha / 0.05))  # [0, ~1]
+                _chop_amp = 1.0 + 0.7 * _chop_factor * _trend_align_cha  # 1.0 if counter-trend OR strong trend, 1.7 only when trend-aligned + chop
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
