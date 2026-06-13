@@ -314,23 +314,6 @@ class Strategy:
             if len(_hist) > 3:
                 _hist = _hist[-3:]
             self._recent_strongs[symbol] = _hist
-            # Architectural: time-decayed (EMA-weighted) strong-sum for entry admission.
-            # Weights [0.50, 0.30, 0.20] for [current, prev, prev2] when 3 bars available.
-            # Replaces the binary persistence gate (min over last 2 bars >= 0.65*floor)
-            # with a continuous time-weighted sum: a single-bar spike (current=2.0,
-            # prev=0.4) yields 0.5*2.0+0.3*0.4+0.2*0.4 = 1.20 (filtered), while sustained
-            # (current=1.5, prev=1.4, prev2=1.3) yields 1.43 (admitted). New cross-bar
-            # data dep at entry: the admission signal aggregates across 3 bars with
-            # decaying weights rather than single-bar level + parallel persistence floor.
-            if len(_hist) >= 3:
-                _bull_ema = 0.50 * _hist[-1][0] + 0.30 * _hist[-2][0] + 0.20 * _hist[-3][0]
-                _bear_ema = 0.50 * _hist[-1][1] + 0.30 * _hist[-2][1] + 0.20 * _hist[-3][1]
-            elif len(_hist) == 2:
-                _bull_ema = 0.625 * _hist[-1][0] + 0.375 * _hist[-2][0]
-                _bear_ema = 0.625 * _hist[-1][1] + 0.375 * _hist[-2][1]
-            else:
-                _bull_ema = _bull_strong
-                _bear_ema = _bear_strong
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
@@ -474,9 +457,16 @@ class Strategy:
                 # protective in fast crashes). Continuous tanh on abs(ret_long).
                 # New cross-timescale data dependency: entry gate strictness on
                 # long-window trend strength.
-                # Persistence gate replaced by time-decayed EMA strong-sum admission below.
-                _bull_persist_ok = True
-                _bear_persist_ok = True
+                _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
+                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
+                if len(_hist) >= 2:
+                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
+                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                else:
+                    _min_bull_2 = _bull_strong
+                    _min_bear_2 = _bear_strong
+                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -578,9 +568,9 @@ class Strategy:
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
-                if _bull_ema >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
-                elif _bear_ema >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
