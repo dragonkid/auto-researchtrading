@@ -796,27 +796,7 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
-                # Architectural: counter-trend trend-acceleration exit boost (6th soft source).
-                # New signal: derivative of long-window trend magnitude. Compute ret_long
-                # at current bar and at -8 bars; trend_accel = |ret_long_now| - |ret_long_lag|.
-                # When position is COUNTER-TREND (against ret_long sign) AND trend is
-                # STRENGTHENING (trend_accel > 0), this is structurally a worsening adverse
-                # macro environment — winning trend is accelerating against this position.
-                # Add bounded pressure proportional to tanh(trend_accel/0.02), gated only
-                # on counter-trend positions, weighted only when in adverse pos_pnl (only
-                # accelerate exit on losing counter-trend; winning counter-trend gets no
-                # extra pressure since they may be valid mean-reversion). Smooth (continuous
-                # via tanh, no boundary). New cross-bar derivative-of-trend data dependency.
-                # Targets crash (counter-trend longs as bear strengthens) and rally
-                # (counter-trend shorts as bull strengthens). Orthogonal to slope-against
-                # (slope = short-window) and trend_align_vb (level, not derivative).
-                _ret_long_lag = (closes[-9] - closes[-LONG_WINDOW - 8]) / closes[-LONG_WINDOW - 8]
-                _trend_accel = abs(ret_long) - abs(_ret_long_lag)
-                _ct_sign = (-1.0 if current_pos > 0 else 1.0) * np.sign(ret_long) if abs(ret_long) > 0.005 else 0.0
-                _ct_position = max(0.0, _ct_sign)  # 1 if counter-trend, 0 otherwise
-                _ta_pressure = 0.5 * _ct_position * max(0.0, np.tanh(_trend_accel / 0.02))
-                _w_ta = max(0.0, -_pnl_scale)  # only when in loss
-                _exit_pressure = max(_sl_pressure, _soft_sum + _w_ta * _ta_pressure) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
