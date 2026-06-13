@@ -692,16 +692,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: pnl-asymmetric exit_thresh modulator. Losing positions get
-                # LOWER exit threshold (cut faster: less pressure required to trigger exit).
-                # Profitable positions get HIGHER exit threshold (let winners run: more pressure
-                # required). Continuous via tanh on pos_pnl scaled by stop magnitude. Asymmetric:
-                # losses gated harder (-0.15 max), profits softer (+0.10 max) — bias toward
-                # cutting losers. Different from existing _w_* weighting which scales individual
-                # pressures; this scales the DECISION BOUNDARY itself. Stop-loss exempt (full
-                # _sl_pressure forces standard threshold).
-                _pnl_thresh_adj = -0.15 * max(0.0, -_pnl_scale) + 0.10 * max(0.0, _pnl_scale)
-                _exit_thresh = _exit_thresh + _pnl_thresh_adj
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
