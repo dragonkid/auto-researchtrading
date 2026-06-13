@@ -898,16 +898,16 @@ class Strategy:
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    # Architectural: MAE-cleanliness gate on _tp_scale (new cross-
-                    # component data dep). Peak reached after shallow MAE = clean
-                    # trend extension (let it run); peak after deep MAE = recovery
-                    # rally (more likely mean-reverting, harvest harder). MAE_clean
-                    # ramps 1.0->0.0 as MAE deepens from 0 to STOP_LOSS_PCT. Multiplies
-                    # against (1.0 - _mae_clean * 0.6): clean peaks get 60% suppression
-                    # of harvest, dirty peaks get full harvest. Continuous tanh.
+                    # Architectural: trend-aligned MAE-cleanliness gate on _tp_scale.
+                    # Clean MAE suppresses harvest only when position is trend-aligned
+                    # (bull longs / crash shorts, peak = trend extension). Counter-trend
+                    # positions (rally bears) get full harvest regardless of MAE because
+                    # their peaks are structurally mean-reverting.
                     _mae_depth = -self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT)
                     _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(_mae_depth / 0.4)))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.6 * _mae_clean)
+                    _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_tp = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.6 * _mae_clean * _trend_align_tp)
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
