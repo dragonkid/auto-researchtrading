@@ -463,8 +463,18 @@ class Strategy:
                 # softens proportionally: very strong conviction can override small-magnitude
                 # wrong-sign trend. Smooth replacement for the binary deadzone clause —
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
-                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                # Architectural multi-variable: invert conviction-margin softening direction.
+                # Old logic was dead-code: min(1.0, margin/0.3) capped softening to no-op for margin>=0.3,
+                # AND a redundant safety floor clause matched the unsoftened deadzone — net effect
+                # zero conviction-margin influence. New: high-conviction entries (margin>0.3) relax
+                # the trend deadzone proportional to margin excess (up to 1.5x deadzone wider for
+                # margin=0.6). Low/marginal conviction (margin<0.3) keeps strict floor. Multi-variable:
+                # changes admission gate logic, removes redundant safety clause, makes conviction-
+                # softening actually functional.
+                _bull_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bull_margin - 0.3) / 0.3))
+                _bear_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bear_margin - 0.3) / 0.3))
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _bull_relax
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * _bear_relax
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
                 # count gate since both derive from the same _bull_confs values. Removing the count
