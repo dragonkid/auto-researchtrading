@@ -767,7 +767,13 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: pnl-conditioned magnitude asymmetry on voter_bias.
+                # Own-subtract heavier in profit (own-voter validates winning thesis, supports hold).
+                # Opp-add heavier in loss (opp-voter signals reversal exit when own thesis failing).
+                # Continuous tanh on pos_pnl/|stop|. _voter_bias coefficients now data-dep on pos_pnl.
+                _vb_p = max(0.0, _pnl_scale)  # in [0, 1] when in profit
+                _vb_l = max(0.0, -_pnl_scale)  # in [0, 1] when in loss
+                _voter_bias = -(0.20 - 0.06 * _vb_l) * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + (0.20 - 0.06 * _vb_p) * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
