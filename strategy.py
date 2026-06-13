@@ -551,27 +551,21 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: low-volume entry size attenuator.
-                # When current bar's volume is low relative to recent 24-bar average,
-                # the entry signal is less noise-confirmed (low-volume bars carry less
-                # information; price moves on thin volume are more easily reversed).
-                # Attenuate first-bar entry size up to 30% on low-volume bars.
-                # Smooth tanh on (vol_bar_ratio - 0.7) / 0.3:
-                #   vol_bar_ratio <= 0.4: ~30% attenuation (very thin bar)
-                #   vol_bar_ratio == 0.7: ~15% attenuation (mild thin bar)
-                #   vol_bar_ratio >= 1.0: 0% attenuation
-                # New cross-bar data dependency at entry (volume relative magnitude),
-                # symmetric across bull/bear. Different from removed vol_confirm_mult
-                # which was bounded [0.98, 1.10] (near-constant); this one has real
-                # range and only fires meaningfully on low-volume bars.
-                _vol_bar_24 = bd.history["volume"].values[-25:-1]
-                _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
-                _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
-                _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
+                # Architectural simplification: removed _vol_entry_atten low-volume entry
+                # attenuator. Six multiplicative entry-size attenuators are stacked
+                # (cooldown, ct_atten, concurrent, consensus, quality, vol_entry) — each
+                # legitimately-low gate compounds. _vol_entry_atten gates on bar-volume
+                # relative to recent 24-bar average; this overlaps with _consensus_atten
+                # (multi-window slope alignment captures whether the move has structural
+                # support) and _quality_atten (bilateral conviction ratio captures voter
+                # decisiveness). Low volume frequently coincides with low price movement,
+                # which already attenuates via slope-consensus. Removing eliminates one
+                # cross-bar volume read + one multiplicative gate that double-counts a
+                # signal-quality dimension other gates already enforce.
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
