@@ -737,16 +737,11 @@ class Strategy:
                 # Architectural refinement: chop-amplified own-side subtraction.
                 # In low-trend (chop / sideways), the with-position voters more reliably
                 # validate continued hold; amplify subtraction to preserve hold semantics
-                # Architectural simplification: removed _chop_amp (1.0..1.7x own-side voter_bias
-                # subtraction amplifier conditioned on chop). Net effect was up-to-70% larger
-                # voter_bias subtraction in deep chop, designed to "preserve hold semantics" in
-                # sideways. The mechanism creates correlated double-conditioning: the trend gate
-                # already controls entry strictness via dyn_threshold, _scale_in_w already attenuates
-                # exit signals in scale-in. Multiplying voter_bias by a chop indicator creates
-                # cross-coupling between trend-state and exit-fusion at a third location, magnifying
-                # chop-state noise into exit decisions. Removing reverts to symmetric 0.20 base
-                # subtraction across regimes; relies on the existing trend-state mechanisms.
-                # Code-structure removal: 1 derived variable + 1 cross-multiplication.
+                # (recovers sideways regression from base bilateral voter_bias). In trends,
+                # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
+                # (reversal evidence equally weighted across regimes). New cross-timescale
+                # data dependency: voter_bias asymmetry depends on long-window trend.
+                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
@@ -762,7 +757,7 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
