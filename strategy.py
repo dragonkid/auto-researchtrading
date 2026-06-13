@@ -730,10 +730,21 @@ class Strategy:
                 # direction on a subsequent bar IF conviction sustains. This decouples
                 # reversal from a single-bar decision and routes it through the same
                 # noise-filtering gate that protects fresh entries.
+                # Architectural: graduated opp-gate replacing binary exit-on-reversal.
+                # Old: when opp gate fires (bear votes pass + strong sum + trend),
+                # set target=0 (full exit). New: scale exit by opp-side conviction
+                # margin. Weak reversal evidence partially de-risks; strong reversal
+                # fully exits. Smooth tanh on opposite-side margin maps to
+                # exit-fraction in [0.4, 1.0]. Mechanism: avoids whipsaw full-exits
+                # in crash where bull-side voter spikes are common during dead-cat
+                # bounces but trend genuinely down. New decision-boundary mechanism:
+                # opp-side reversal triggers partial position scaling, not binary.
                 _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
                             (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
-                    target = 0.0
+                    # opp_margin already computed at top of bar (relative excess).
+                    _opp_exit_frac = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    target = current_pos * (1.0 - _opp_exit_frac)
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
