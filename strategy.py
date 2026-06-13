@@ -576,20 +576,6 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                # Architectural: range-position exit attenuator (symmetric to entry gate).
-                # When position direction still aligns with current Donchian range_pos
-                # (long with price still in upper half, short in lower half), the
-                # range structure still supports the position — attenuate non-stop
-                # exit pressures. Uses same 20-bar range_pos data dependency as entry
-                # gate (range_pos in [0,1]). Position-aligned range gives smooth
-                # attenuation up to -0.15. Stop-loss is exempt (protective floor).
-                _ex_range_n = 20
-                _ex_range_hi = bd.history["high"].values[-_ex_range_n:].max()
-                _ex_range_lo = bd.history["low"].values[-_ex_range_n:].min()
-                _ex_range_pos = (mid - _ex_range_lo) / max(_ex_range_hi - _ex_range_lo, 1e-6)
-                _range_align = (_ex_range_pos - 0.5) if current_pos > 0 else (0.5 - _ex_range_pos)
-                _range_attn = 1.0 - 0.15 * max(0.0, np.tanh(max(0.0, _range_align) / 0.20))
-                _voter_attn = _voter_attn * _range_attn
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
