@@ -169,18 +169,10 @@ class Strategy:
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
                 smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
-            # Architectural: ATR-anchored base threshold. Replaces global BASE_THRESHOLD
-            # (constant 0.005) with per-symbol ATR-derived threshold. SOL (higher ATR)
-            # needs larger move to trigger entry, BTC (lower ATR) smaller — structural
-            # noise-floor scaling. ATR(14) computed on history high/low/prev-close.
-            _atr_high_e = bd.history["high"].values[-14:]
-            _atr_low_e = bd.history["low"].values[-14:]
-            _atr_close_e = closes[-15:-1]
-            _tr_e = np.maximum(_atr_high_e - _atr_low_e, np.maximum(np.abs(_atr_high_e - _atr_close_e), np.abs(_atr_low_e - _atr_close_e)))
-            _atr_pct_e = np.mean(_tr_e) / mid
-            # Anchor: 0.42 * ATR_pct, clamped to [0.0035, 0.008] keeps within original range
-            _base_thresh_dyn = max(0.0040, min(0.0080, 0.45 * _atr_pct_e))
-            dyn_threshold = _base_thresh_dyn * (0.10 + vol_ratio * 0.90) ** 0.85
+            # Simplified: revert ATR-anchored base threshold to constant BASE_THRESHOLD.
+            # ATR-anchoring added cross-symbol scaling but vol_ratio already captures
+            # per-symbol vol relative to TARGET_VOL.
+            dyn_threshold = BASE_THRESHOLD * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
