@@ -370,15 +370,25 @@ class Strategy:
             # (loss=1.6x window, win=0.7x window, breakeven=1.0x). New cross-
             # trade state dependency at the entry-side cooldown decision.
             _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            # Branch step 3: amplify outcome scaling magnitude. Step 1 [0.7, 1.6]
-            # showed real signal (crash +0.006, rally +0.002). Step 2 trend-gating
-            # had no effect. Widening to [0.5, 2.0] tests whether amplitude is the
-            # right knob — stronger loss-stretching may further filter revenge
-            # entries in crash; stronger win-shortening may further accelerate
-            # winner momentum in rally.
-            _outcome_scale = 1.0 - 0.50 * np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # in [0.5, 2.0]
-            _cd_window = _cd_window_base * _outcome_scale
+            # Branch step 4: outcome-conditioning moved to direct size-modulation
+            # rather than cooldown-window scaling. Cooldown_factor saturates to
+            # ~1.0 within 1-2 bars (tanh of 1/0.6 ~ 0.76, of 2/0.6 ~ 0.97), so
+            # window scaling only affects the FIRST bar post-exit; effect was
+            # mild. Now: keep base cooldown window, instead apply _outcome_size_mult
+            # directly to first-bar entry size — gives mechanism MEANINGFUL leverage
+            # on the first-bar commit decision after recent losses/wins.
+            _cd_window = _cd_window_base
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
+            # Outcome-conditioned first-bar size multiplier. Recent loss
+            # → reduce size (stretches risk avoidance after stopout); recent
+            # win → boost size slightly (winner-momentum). Effect decays as
+            # _bars_since_exit grows (after ~5 bars, outcome influence fades
+            # to zero). Range at fresh exit: [0.7, 1.2]; saturates to 1.0 after.
+            _outcome_decay = max(0.0, 1.0 - _bars_since_exit / 5.0)
+            _outcome_size_mult = 1.0 - 0.30 * _outcome_decay * np.tanh(-_last_pnl / abs(STOP_LOSS_PCT) * 0.7)
+            # Note: -_last_pnl makes negative pnl give positive arg → mult <1
+            #       positive pnl gives negative arg → mult >1. Asymmetric scaling 0.7
+            #       caps boost at +0.2 (positive pnl) while loss can attenuate to ~0.7.
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -590,9 +600,9 @@ class Strategy:
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
