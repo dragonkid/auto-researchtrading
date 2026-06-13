@@ -882,7 +882,13 @@ class Strategy:
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
-                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                    # Architectural multi-variable: hold-duration amplification of recovery cap.
+                    # Positions barely surviving for many bars are less likely to thrive — amplify
+                    # exit cap by tanh((bars_held - 6) / 4) in [1.0, 1.5]. Adds bars_held cross-
+                    # bar dependency at _ar_pressure fusion. Combined with existing recovery_frac
+                    # gradient: bar 8 + recovery_frac 0.8 → cap 1.27 * 0.40 * 0.75 = 0.38 (was 0.30).
+                    _ar_dur_amp = 1.0 + 0.5 * max(0.0, np.tanh((bars_held - 6.0) / 4.0))
+                    _ar_pressure = 0.40 * _ar_dur_amp * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
