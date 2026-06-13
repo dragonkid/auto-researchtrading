@@ -762,7 +762,29 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                # Architectural: candle-direction streak exit pressure (6th soft source).
+                # Multi-variable structural change introducing a new orthogonal signal.
+                # For long positions, count bars in last 8 where close<open (bearish
+                # candle); for shorts, count close>open. Streak ratio = count/8.
+                # Activate above 0.625 (5/8 bars adverse direction); saturate at 1.0
+                # (all 8 bars adverse). Smooth tanh on (ratio-0.625)/0.20. This is
+                # orthogonal to slope (which sums log returns over a window) — captures
+                # consecutive bar-by-bar adverse intra-bar trajectory irrespective of
+                # net move. Weighted by loss-state (only fires when pos_pnl negative or
+                # near zero — winning positions have intra-bar reversals all the time
+                # without trend reversal). New cross-bar data dependency on close vs
+                # open relationship.
+                _cdir_n = 8
+                _opens = bd.history["open"].values[-_cdir_n:]
+                _cl = closes[-_cdir_n:]
+                if current_pos > 0:
+                    _adverse_count = int(np.sum(_cl < _opens))
+                else:
+                    _adverse_count = int(np.sum(_cl > _opens))
+                _streak_ratio = _adverse_count / _cdir_n
+                _cdir_pressure = max(0.0, np.tanh((_streak_ratio - 0.625) / 0.20))  # [0, ~1]
+                _w_cdir = max(0.0, 0.5 - 0.5 * _pnl_scale)  # 1.0 at full loss, 0.5 at zero, 0 at full profit
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_cdir * _cdir_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
