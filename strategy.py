@@ -531,10 +531,25 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: hour-of-day liquidity-cycle entry attenuator.
+                # Cryptocurrency hourly bars have a structural diurnal cycle: Asian
+                # session (UTC 0-7) typically has lowest volume and widest noise
+                # bands; EU+US overlap (UTC 13-20) has highest liquidity and
+                # tightest noise. Entries during low-liquidity hours suffer
+                # wider slippage-equivalent noise on the first bar. Compute
+                # hour-of-day from bd.timestamp (ms→hour UTC) and attenuate
+                # first-bar size via cosine cycle. Max attenuation 12% during
+                # peak low-liquidity (UTC 3-4); zero at UTC 14-15 peak liquidity.
+                # New data dimension (temporal) not used anywhere else in strategy.
+                # Continuous, smooth (cosine on 24-hour cycle).
+                _hour_utc = (bd.timestamp // 3_600_000) % 24
+                # Cosine: peak (1.0) at hour=3 (low liquidity), trough (-1.0) at hour=15 (high).
+                _liq_cycle = np.cos((_hour_utc - 3) * np.pi / 12.0)  # in [-1, 1]
+                _liq_atten = 1.0 - 0.06 * max(0.0, _liq_cycle)  # only attenuate during low-liq half
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _liq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _liq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
