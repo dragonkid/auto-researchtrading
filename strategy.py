@@ -568,24 +568,10 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Architectural: recent return-distribution skew as side-aware size modulator.
-                # NEW STATISTIC (4th moment, orthogonal to mean/variance/momentum used elsewhere).
-                # Skew of last 30-bar log-returns: negative skew = recent left-tail (crashes,
-                # rare large drops), positive skew = right-tail (rallies, rare large rises).
-                # Side-aware: positive skew amplifies BULL entry (joining a rally pattern),
-                # attenuates BEAR entry (counter-skew); negative skew opposite. Continuous
-                # tanh on skew/0.5, range ±0.10. Distinct from ret_long (mean-momentum) —
-                # skew can be near zero in steady trends but extreme in regime-shift bars.
-                _skew_rets = np.diff(np.log(closes[-31:]))
-                _skew_std = max(_skew_rets.std(), 1e-10)
-                _skew_val = ((_skew_rets - _skew_rets.mean()) ** 3).mean() / (_skew_std ** 3)
-                _skew_factor = np.tanh(_skew_val / 0.5)
-                _bull_skew_atten = 1.0 + 0.10 * _skew_factor
-                _bear_skew_atten = 1.0 - 0.10 * _skew_factor
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_skew_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_skew_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
