@@ -131,10 +131,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol prior-bar exit_pressure for 2-bar EMA smoothing.
-        # Reduces single-bar exit_pressure spike whipsaws — sustained pressure
-        # passes through unchanged; transient spikes are dampened.
-        self._prev_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -762,17 +758,7 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
-                _exit_pressure_raw = max(_sl_pressure, _soft_sum) + _voter_bias
-                # Architectural: 2-bar EMA smoothing on exit_pressure to reduce
-                # single-bar pressure spike whipsaws. Smoothing weight 0.6 on current,
-                # 0.4 on prior — sustained pressure passes through, transient spikes
-                # are dampened ~40%. _sl_pressure saturation path bypasses smoothing
-                # below (binary stop-loss exit always honored). Initialized to current
-                # on first bar of position (no prior reference). New cross-bar data
-                # dependency on prior-bar exit_pressure within position lifetime.
-                _prev_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
-                _exit_pressure = 0.6 * _exit_pressure_raw + 0.4 * _prev_ep
-                self._prev_exit_pressure[symbol] = _exit_pressure_raw
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -878,7 +864,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev_exit_pressure):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
