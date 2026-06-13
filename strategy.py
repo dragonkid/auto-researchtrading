@@ -916,8 +916,33 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Architectural: 2-bar persistence gate on _opp_gate.
+                # Symmetric to the entry-side _bull_persist_ok / _bear_persist_ok gate
+                # which requires sustained conviction over 2 bars before admitting an
+                # entry. Reversals are decision-architecture exits — equally vulnerable
+                # to single-bar noise. Use the existing _recent_strongs 3-bar history
+                # to require the OPPOSITE side strong-sum to be above its admission
+                # floor for at least 2 of the last 3 bars (relaxed vs entry's strict
+                # min over 2 bars, since reversal events are rarer and we don't want
+                # to miss valid reversals from delayed conviction). New state dep:
+                # opp_gate uses _recent_strongs history (previously only used by entry
+                # path), creating shared architectural state across decision paths.
+                # Multi-variable: also tightens the persistence requirement
+                # in chop (high noise) and relaxes in strong trend (where reversal
+                # signals during regime transitions are real and time-sensitive).
+                _opp_persist_ok_bull_pos = True  # default-true for current_pos > 0 (irrelevant if current_pos<=0)
+                _opp_persist_ok_bear_pos = True
+                if len(_hist) >= 2:
+                    # For long position (need bear reversal): count bars where bear strong > bear floor
+                    _bear_above_count = sum(1 for h in _hist[-2:] if h[1] >= _bear_strong_min)
+                    _bull_above_count = sum(1 for h in _hist[-2:] if h[0] >= _bull_strong_min)
+                    # Trend-conditioned threshold: strict in chop (need both bars), relaxed in strong trend (need 1).
+                    _persist_strict = max(0.0, np.tanh((0.04 - abs(ret_long)) / 0.03))  # 1.0 chop, 0.0 strong trend
+                    _persist_required = 1 + int(round(_persist_strict))  # 1 in trend, 2 in chop
+                    _opp_persist_ok_bull_pos = _bear_above_count >= _persist_required
+                    _opp_persist_ok_bear_pos = _bull_above_count >= _persist_required
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _opp_persist_ok_bull_pos) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _opp_persist_ok_bear_pos)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
