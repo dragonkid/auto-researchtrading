@@ -799,7 +799,21 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: slope-confirmation gate on opp_bias additive term.
+                # Cross-component data dep: voter_bias opp-side contribution now requires
+                # short-window slope direction to ALSO confirm against position. When
+                # opposite voters fire but slope still favors position (pullback noise),
+                # opp_bias attenuates; when both opp voters AND slope go against, opp_bias
+                # amplifies. Smooth tanh on _slope_against using the same scale as
+                # _slope_thresh (0.0003 baseline). Range [0.5, 1.5]: at slope-with-pos
+                # (_slope_against < 0), gate=0.5 (halve opp_bias contribution); at
+                # slope-against >= 2*_slope_thresh, gate=1.5 (50% amplify). Filters
+                # voter-only false reversals during pullback bars where slope hasn't yet
+                # confirmed the move. New code dependency: voter_bias opp term reads
+                # _slope_against and _slope_thresh from exit subsystem.
+                _slope_confirm_gate = 1.0 + 0.5 * np.tanh(_slope_against / max(_slope_thresh, 1e-6))
+                _slope_confirm_gate = max(0.5, min(1.5, _slope_confirm_gate))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _slope_confirm_gate * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
