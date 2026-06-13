@@ -880,13 +880,26 @@ class Strategy:
                 # normally (no protection — losing positions are noise-vulnerable too).
                 # Stop-loss is exempt (full _sl_pressure forces exit regardless).
                 _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
-                # Architectural simplification: removed _vt_factor 2D vol-time exit_thresh
-                # modulator. The factor activated only in narrow 2D band (low-vol AND mid-life),
-                # contributing at most +10%. With the underlying soft-pressure stack already
-                # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
-                # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
-                # unchanged (load-bearing for early winning protection).
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: BILATERAL early-bar exit hysteresis (new control flow at
+                # exit decision boundary). Old: only winning scale-in got the +0.20 ramp;
+                # losing scale-in exited at standard threshold 1.0. New: losing scale-in
+                # also gets a smaller +0.08 ramp during bars_held<=ENTRY_FULL_BARS, so
+                # fresh entries (which just passed the strict admission+persistence+consensus
+                # stack) need stronger soft-pressure to exit on bar 1-2 regardless of pnl.
+                # Hard SL still saturates via the _sl_pressure >= 0.95 exemption below.
+                # Mechanism: bars 1-2 of a fresh losing position routinely see transient
+                # opposite slope/voter spikes; a +0.08 threshold raise filters those without
+                # protecting persistent reversals (since the bonus ramps to 0 by bar 3).
+                # Distinct from the +0.20 winning ramp: profit-side keeps the larger bonus
+                # (winners running on noise) while loss-side gets a smaller filter (avoids
+                # locking in bad early entries beyond the noise floor).
+                _early_ramp = max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS)
+                if _scale_in_winning:
+                    _exit_thresh = 1.0 + 0.20 * _early_ramp
+                elif bars_held <= ENTRY_FULL_BARS:
+                    _exit_thresh = 1.0 + 0.08 * _early_ramp
+                else:
+                    _exit_thresh = 1.0
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
