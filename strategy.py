@@ -116,6 +116,14 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Architectural: per-symbol bar count of last peak update.
+        # Used by peak-staleness exit pressure (7th soft source): when bars_since_peak
+        # grows on a winning position, the trade has stalled near its top — exit
+        # pressure rises proportional to staleness duration. Distinct from giveback-
+        # based _pp_pressure (which requires magnitude of pullback) and from _time_pressure
+        # (which counts since entry, not since peak). Targets the "peak then sit"
+        # stagnation pattern preceding mean-reversion in chop and trend exhaustion.
+        self._peak_bar = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -576,6 +584,7 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -828,12 +837,28 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: peak-staleness exit pressure (7th soft source).
+                # New per-symbol state (_peak_bar) drives a new control flow: when bars
+                # since last peak update grows on a winning position, the trade has
+                # stalled near its top. Time-based pressure orthogonal to giveback-
+                # magnitude (_pp_pressure) and entry-time (_time_pressure).
+                # Activates only when:
+                #   - peak_pnl meaningful (> _ep_peak_floor)
+                #   - bars_since_peak >= 4 (allows normal multi-bar consolidation)
+                # Smooth ramp from 0 at 4 bars to 0.40 cap at 10+ bars.
+                # Weighted by _pnl_scale (only fires when currently in profit / minor
+                # loss); avoids double-counting with slope-against on big losers.
+                _ps_pressure = 0.0
+                if self.peak_pnl[symbol] > _ep_peak_floor:
+                    _bars_since_peak = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
+                    _ps_pressure = 0.40 * max(0.0, min(1.0, (_bars_since_peak - 4.0) / 6.0))
+                _w_ps = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_ps * _ps_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -940,12 +965,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._peak_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._peak_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
