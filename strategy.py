@@ -757,13 +757,29 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
-                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
-                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
-                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
-                # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural fusion change: noisy-OR over all pressure terms.
+                # Each pressure interpreted as independent probability of exit. Joint
+                # probability = 1 - prod(1 - p_i). Saturates at 1 (no additive overshoot).
+                # Diminishing returns when many weak pressures coexist (chop conditions);
+                # rapid saturation when one strong pressure aligns with another moderate one.
+                # Replaces additive sum (linear, unbounded) with calibrated probability fusion.
+                # Threshold rescaled to 0.85 to match noisy-OR upper range.
+                _p_terms = [
+                    _sl_pressure,
+                    _w_slope * _sl_slope_pressure,
+                    _w_pp * _pp_pressure,
+                    _w_time * _time_pressure,
+                    _w_ve * _ve_pressure,
+                    _w_ep * _ep_pressure,
+                ]
+                _p_terms = [max(0.0, min(0.99, _p)) for _p in _p_terms]
+                _prod = 1.0
+                for _p in _p_terms:
+                    _prod *= (1.0 - _p)
+                _noisy_or = 1.0 - _prod
+                _exit_pressure = _noisy_or + _voter_bias
+                # Track _soft_sum equivalent for backward compat in branches below
+                _soft_sum = _noisy_or
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -778,10 +794,11 @@ class Strategy:
                 # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Threshold rescaled to 0.85 for noisy-OR fusion (was 1.0 for additive sum).
+                _exit_thresh = 0.85 + 0.17 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 0.85
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
-                    _exit_thresh = 1.0
+                    _exit_thresh = 0.85
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
@@ -813,7 +830,7 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
+                if _sl_pressure >= 0.95 and _exit_pressure >= 0.85 and target != 0:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
