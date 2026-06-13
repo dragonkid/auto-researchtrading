@@ -719,7 +719,25 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                _w_time_base = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural: trend-aligned-profit time-pressure attenuator.
+                # New cross-timescale data dependency: _w_time depends on
+                # (ret_long, position direction, pos_pnl) tri-product.
+                # When a winning position is aligned with a strong long-window trend,
+                # time pressure currently fires harder via _pnl_scale > 0 amplification
+                # — but a winning trend-aligned position is EXACTLY the kind we want
+                # to hold longer (real trend riding). Counter-trend or chop positions
+                # keep heavier time pressure (these should be exited on schedule).
+                # Continuous via tanh on (ret_long * pos_dir / 0.05) AND pnl_scale,
+                # both required positive (multiplicative gate). Max 30% attenuation
+                # only in deep trend + meaningful profit. New cross-component dep:
+                # time-pressure weight depends on long-window trend alignment AND
+                # current pnl direction.
+                _pos_dir_wt = 1.0 if current_pos > 0 else -1.0
+                _trend_align_wt = max(0.0, np.tanh(ret_long * _pos_dir_wt / 0.05))  # [0, ~1]
+                _profit_gate_wt = max(0.0, _pnl_scale)  # [0, 1]
+                _w_time_atten = 1.0 - 0.30 * _trend_align_wt * _profit_gate_wt
+                _w_time = _w_time_base * _w_time_atten
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
