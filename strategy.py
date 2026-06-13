@@ -596,28 +596,8 @@ class Strategy:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
-                    # Architectural: adverse-pnl scale-in halt (new control-flow
-                    # at scale-in path). When pos_pnl is meaningfully negative
-                    # during scale-in, attenuate the additional commitment via
-                    # smooth tanh on adverse pos_pnl scaled by stop magnitude.
-                    # Mechanism: a position that's already losing during the
-                    # ramp-up phase is on a contradicted thesis — adding more
-                    # size compounds the loss before exit-pressure subsystems
-                    # (slope/sl/de-risk) can react. Compute halt_factor from
-                    # max(0, -pos_pnl)/abs(STOP_LOSS_PCT*0.5): 0 attenuation at
-                    # pos_pnl >= 0, ~0.5 at pos_pnl == -0.012 (half-stop loss),
-                    # saturating to ~0.85 at pos_pnl == -stop. The current
-                    # commitment doesn't shrink (current_pos preserved); the
-                    # delta from current_pos toward full_target is what gets
-                    # scaled down. This is bar 1+: at bar 0 (entry), there's
-                    # no pos_pnl to read. New cross-component data dependency
-                    # at scale-in: increment depends on adverse pnl trajectory.
-                    # Continuous (tanh), no boundary noise.
-                    _halt_factor = max(0.0, min(1.0, np.tanh(max(0.0, -pos_pnl) / (abs(STOP_LOSS_PCT) * 0.5))))
                     full_target = size if current_pos > 0 else -size
-                    _full_scale_target = full_target * scale_frac
-                    # Attenuate the increment (delta from current_pos to full_scale_target).
-                    target = current_pos + (_full_scale_target - current_pos) * (1.0 - _halt_factor)
+                    target = full_target * scale_frac
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
