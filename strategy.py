@@ -825,12 +825,36 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: own-side conviction-decay exit pressure (7th soft source).
+                # New cross-bar data dependency on _recent_strongs (previously entry-only state).
+                # Mechanism: track own-side strong-sum's recent 3-bar maximum; when current
+                # own-side strong-sum has decayed significantly from that max, voters are losing
+                # conviction in the position direction — leading reversal evidence orthogonal to
+                # price-derived slope/pp/sl. Distinct from voter_bias (which uses absolute margin
+                # vs admission threshold) — this measures relative DECAY from recent peak conviction,
+                # capturing transitions even when absolute conviction stays above admission threshold.
+                # Activates only when peak_strong was meaningful (> _strong_min) and decay >= 25%.
+                # Continuous ramp: 0 at 25% decay, saturates at 0.40 by 50% decay.
+                _own_strong_now = _bull_strong if current_pos > 0 else _bear_strong
+                if len(_hist) >= 2:
+                    _own_strong_max = max(h[0] if current_pos > 0 else h[1] for h in _hist)
+                else:
+                    _own_strong_max = _own_strong_now
+                if _own_strong_max > _strong_min:
+                    _decay_frac = max(0.0, 1.0 - _own_strong_now / max(_own_strong_max, 1e-6))
+                    _cd_pressure = 0.40 * max(0.0, min(1.0, (_decay_frac - 0.25) / 0.25))
+                else:
+                    _cd_pressure = 0.0
+                # Weight asymmetric by pnl: only fire on profitable / minor-loss positions
+                # (decay on a deep loser is already handled by slope/sl/voter_bias; firing
+                # conviction-decay there would over-exit losers that may still recover).
+                _w_cd = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_cd * _cd_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
