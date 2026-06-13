@@ -625,10 +625,12 @@ class Strategy:
                 _opp_strong_margin = max(0.0, (_opp_strong - _opp_strong_min) / max(_opp_strong_min, 1e-6))
                 _opp_votes_margin = max(0.0, (_opp_votes - FLIP_MIN_VOTES) / FLIP_MIN_VOTES)
                 _opp_pressure_raw = np.tanh(_opp_strong_margin / 0.20) * np.tanh(_opp_votes_margin / 0.15) * np.tanh(_opp_trend_mag / 0.005)
-                # Scale magnitude to 0.4 (was 1.2): the contribution should nudge the
-                # exit decision near boundary, not dominate. Original binary opp_gate fully
-                # exited; smooth replacement should be a graduated lever.
-                _opp_pressure = 0.4 * max(0.0, _opp_pressure_raw) * _cooldown_factor
+                # Loss-only gate: opp_pressure should validate losing positions for exit,
+                # not cut winners on noise. tanh on -pos_pnl scaled by stop magnitude fires
+                # only when pos_pnl < 0, ramps with loss depth. Keeps mechanism asymmetric
+                # — winners run on opposite-side noise, losers cut on opposite-side conviction.
+                _opp_loss_gate = max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT)))
+                _opp_pressure = 0.8 * max(0.0, _opp_pressure_raw) * _cooldown_factor * _opp_loss_gate
                 _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure) + _opp_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
