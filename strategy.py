@@ -833,8 +833,18 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
+                # Architectural fusion-topology change: voter_bias gates the soft-sum branch
+                # only, NOT the stop-loss branch. Old: max(sl, soft_sum) + voter_bias —
+                # voter validation can attenuate or amplify both branches symmetrically,
+                # including the structural stop-loss. New: max(sl, soft_sum + voter_bias) —
+                # voter influence is restricted to soft pressures, sl is purely structural.
+                # Mechanism: a strong own-side voter consensus reducing voter_bias should
+                # not be able to reduce a saturating stop-loss; voters are noise-prone at
+                # the threshold boundary; sl is the structural floor that voters cant override.
+                # Conversely, opposite-side voter spike adding to voter_bias can NOW be
+                # masked when sl_pressure is the dominant exit driver — same intent.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_sum + _voter_bias)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
