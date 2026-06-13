@@ -586,17 +586,9 @@ class Strategy:
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
-                # Confirmed-MAE update — symmetric to confirmed-peak rule (line 584).
-                # MAE shifts only when pos_pnl < prev_mae AND pos_pnl <= prev_pos_pnl
-                # (falling bar). Single-bar adverse spikes don't anchor MAE deeper
-                # than warranted, reducing false _ar_pressure activation on
-                # subsequent recovery (currently MAE captures noise, peak does not —
-                # asymmetric noise treatment across high/low water marks).
+                # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
-                if pos_pnl < _curr_mae and pos_pnl <= _prev_pnl:
-                    self._mae[symbol] = pos_pnl
-                else:
-                    self._mae[symbol] = _curr_mae
+                self._mae[symbol] = min(_curr_mae, pos_pnl)
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
