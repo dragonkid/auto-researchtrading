@@ -389,11 +389,20 @@ class Strategy:
                 # admission. Filters single-bar noise spikes that currently drive
                 # high turnover (~9k+ trades). Continuous: persistence factor uses
                 # min over last 2 bars; gate fires when min >= sustain_factor *
-                # _strong_min. Activation is gradual via vol_ratio — strict in
-                # low-vol (rally chop, where noise dominates), relaxed in high-vol
-                # (crash, where reactive entries matter). New control-flow path:
-                # entry depends on 2-bar history, not single bar.
-                _entry_persist_factor = 0.65 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
+                # _strong_min.
+                # Architectural: TREND-aware persistence gate (new dependency).
+                # In strong trends (high abs(ret_long)), a sudden conviction spike
+                # is itself signal — relax persistence to admit fast entries.
+                # In chop (low abs(ret_long)), keep strict persistence to filter
+                # single-bar noise. Replaces vol-conditioning (which couples to
+                # market vol regardless of direction) with trend-magnitude. The
+                # vol gate kept as additive (high-vol crash gets some relaxation
+                # via trend magnitude already, but vol-relaxation preserved as
+                # protective in fast crashes). Continuous tanh on abs(ret_long).
+                # New cross-timescale data dependency: entry gate strictness on
+                # long-window trend strength.
+                _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
+                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
