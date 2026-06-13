@@ -606,7 +606,21 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Architectural: counter-trend max_hold reduction.
+                # Counter-trend positions (pos_dir against ret_long sign) get
+                # additional time pressure via shortened max_hold. Time pressure
+                # ramps up sooner for shorts in uptrend / longs in downtrend,
+                # forcing earlier time exits on stuck counter-trend positions.
+                # Trend-aligned positions: unchanged. Continuous via tanh on
+                # the trend disagreement magnitude. Gated above |ret_long|>0.025
+                # to avoid firing in pure chop where alignment is ambiguous.
+                # New cross-timescale data dependency: time-pressure decay rate
+                # depends on trend alignment with current position direction.
+                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
+                _ct_hold_gate = max(0.0, np.tanh((abs(ret_long) - 0.025) / 0.03))  # 0..1
+                _ct_hold_strength = _ct_hold_gate * max(0.0, np.tanh(-ret_long * _pos_dir_mh / 0.04))  # [0,1] only counter-trend
+                _ct_hold_reduction = 3.0 * _ct_hold_strength  # max 3 bars cut from max_hold
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - _ct_hold_reduction
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
