@@ -304,19 +304,8 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Architectural: volume-ratio admission TIGHTENING on low-volume bars.
-            # Compute current bar volume vs 20-bar median; on low-volume bars
-            # (volume_ratio < 0.7), tighten admission (raise _strong_min) since
-            # low-vol bars carry less information; on high-volume bars, leave
-            # admission unchanged (don't loosen — high vol can be panic-driven
-            # noise). One-sided: only tightens, never loosens. New cross-bar
-            # data dependency on volume orthogonal to existing voter signals.
-            _vol_arr_full = bd.history["volume"].values[-20:]
-            _vol_med = max(np.median(_vol_arr_full), 1e-10)
-            _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_med
-            _vol_admit_factor = 1.0 + 0.15 * max(0.0, np.tanh((0.7 - _vol_curr_ratio) / 0.3))  # [1.0, 1.15]
-            _bull_strong_min = _strong_min * _freq_factor * _vol_admit_factor
-            _bear_strong_min = _strong_min * _freq_factor * _vol_admit_factor
+            _bull_strong_min = _strong_min * _freq_factor
+            _bear_strong_min = _strong_min * _freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
