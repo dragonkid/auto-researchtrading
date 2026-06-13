@@ -441,14 +441,21 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
+                # Architectural: conviction-trajectory entry gate.
+                # Replace min-of-last-2 (level-floor) with rising-trajectory check:
+                # current bar must exceed _strong_min AND last 2 bars' slope of bull_strong
+                # must be non-decreasing (curr >= prev). Admits entries where conviction is
+                # building, even if prior absolute level was below floor. Different decision
+                # boundary: trajectory vs level-floor. Single-bar dip in older history doesn't
+                # block; persistent conviction-fade does.
                 if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                    _bull_trajectory_ok = _hist[-1][0] >= _hist[-2][0] * _entry_persist_factor
+                    _bear_trajectory_ok = _hist[-1][1] >= _hist[-2][1] * _entry_persist_factor
                 else:
-                    _min_bull_2 = _bull_strong
-                    _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                    _bull_trajectory_ok = True
+                    _bear_trajectory_ok = True
+                _bull_persist_ok = _bull_trajectory_ok
+                _bear_persist_ok = _bear_trajectory_ok
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
