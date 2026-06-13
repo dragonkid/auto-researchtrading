@@ -480,21 +480,7 @@ class Strategy:
                 # New cross-timescale data dependency: entry gate strictness on
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
-                # Architectural: vol-conditioned persistence relaxation modulator.
-                # Original: persistence factor relaxes uniformly in strong trends (0.95->0.65).
-                # New: the relaxation magnitude itself is gated by vol_ratio. In LOW vol
-                # strong trend (e.g., bull trending calmly), full relaxation 0.30 (factor 0.65)
-                # — fast conviction spikes are legitimate momentum confirmation. In HIGH vol
-                # strong trend (e.g., crash dead-cat bounce; rally vol spike), relaxation
-                # attenuates toward 0 — keep tight persistence to filter noise-driven entries
-                # during regime-shift volatility. Continuous tanh on (vol_ratio - 0.8)/0.4:
-                #   vol_ratio <= 0.8: full relaxation (0.30, factor=0.65 in strong trend)
-                #   vol_ratio >= 1.2: half relaxation (0.15, factor=0.80 in strong trend)
-                #   vol_ratio = 1.0: ~0.22 relaxation (factor=0.73 in strong trend)
-                # New cross-component data dep: persistence gate strictness depends on
-                # BOTH long-window trend magnitude AND short-window realized vol jointly.
-                _vol_persist_atten = 1.0 - 0.5 * max(0.0, min(1.0, np.tanh((vol_ratio - 0.8) / 0.4)))  # [0.5, 1.0]
-                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist * _vol_persist_atten  # base 0.95, relaxation gated by vol
+                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
