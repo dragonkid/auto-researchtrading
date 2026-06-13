@@ -998,7 +998,15 @@ class Strategy:
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    # Architectural: trend-magnitude lowers the graduated-exit floor.
+                    # In strong long-window trends (winning trend-aligned position),
+                    # the 40% min partial-exit is too aggressive — let trend keep
+                    # more skin in the game. Drop floor from 0.40 to 0.20 in strong
+                    # trends (abs(ret_long)>0.05). Continuous tanh; preserves chop
+                    # behavior (floor stays near 0.40).
+                    _trend_mag_og = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0, ~1]
+                    _grad_floor = 0.4 - 0.2 * _trend_mag_og  # [0.2, 0.4]
+                    _opp_exit_frac_grad = _grad_floor + (1.0 - _grad_floor) * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
