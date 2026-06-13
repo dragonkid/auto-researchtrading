@@ -596,23 +596,6 @@ class Strategy:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
-                    # Architectural: voter-conviction gate on scale-in continuation.
-                    # When position is winning (pos_pnl >= 0), continue scale-in unconditionally
-                    # (existing behavior — fresh winning positions deserve full commitment).
-                    # When position is LOSING during scale-in (pos_pnl < 0), gate scale-in
-                    # progress by CURRENT-bar same-side voter conviction. If conviction has
-                    # weakened (margin <= 0), pause scale-in (hold current size); if conviction
-                    # remains positive, proceed normally. Smooth via tanh on side-margin so
-                    # conviction-margin near zero gives partial scale-in. New cross-component
-                    # data dep: scale-in path reads current voter state (was blind before).
-                    # Mechanism: losing scale-in into faded conviction is a known cost driver —
-                    # mechanical scale-in adds size to bad entries. This gate stops scaling
-                    # but does NOT exit; exit logic still applies.
-                    _side_m_si = _bull_margin if current_pos > 0 else _bear_margin
-                    _conv_gate_si = 0.5 + 0.5 * max(-1.0, min(1.0, np.tanh(_side_m_si / 0.30)))  # [0, 1]
-                    # Only apply gate to losing positions; winning scale-in unaffected
-                    if pos_pnl < 0:
-                        scale_frac = ENTRY_INITIAL_FRAC + (scale_frac - ENTRY_INITIAL_FRAC) * _conv_gate_si
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
