@@ -783,17 +783,10 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Architectural: bilateral _w_ve activation (decision-architecture change).
-                # Was: profit-side only (max(0, _pnl_scale)) — vol expansion pressure
-                # only fired on profit-side regime-shift detection.
-                # Now: bilateral with asymmetric weights — full weight in profit,
-                # half-weight in loss. Vol expansion detects regime shifts that ALSO
-                # threaten losing positions: a losing position becoming bigger loser
-                # via vol explosion deserves earlier exit, not relying on slope-against
-                # alone which lags slow-volatility-expanding adverse moves. Asymmetric
-                # half-weight in loss avoids over-firing on noise-only vol spikes that
-                # don't have directional bias.
-                _w_ve = max(0.0, _pnl_scale) + 0.5 * max(0.0, -_pnl_scale)  # 1.0 in profit, 0.5 in loss
+                # Profit-side weight: only fire when in profit (lock gains on
+                # regime shift); don't punish losing positions for vol expansion
+                # since slope-against already handles adverse moves.
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Architectural: early-profit-lock exit pressure (5th soft source).
                 # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
                 # Sub-peak profitable positions that give back early gains receive NO
