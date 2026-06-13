@@ -156,6 +156,16 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
+            # Architectural: compound timestamp activity hoisted to symbol-loop top so
+            # both entry sizing AND exit subsystem can reference it. NEW APPLICATION
+            # of the existing TOD*DOW*MOM*QUARTER cycles: exit-side time-pressure
+            # weight should also reflect "session quality" — positions held INTO
+            # low-activity windows (Asia 04 / weekend / month-end / quarter-end)
+            # face thinner volume and higher noise drift, so time pressure is
+            # amplified there; high-activity windows soften time pressure to give
+            # winning positions room to run during institutional-flow hours.
+            _ts_h = bd.timestamp // 3600000
+            _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0)))
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
             # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
@@ -560,14 +570,8 @@ class Strategy:
                 # within-bar/within-window primitives currently saturated. Smooth via
                 # cos (no boundary). Applied only to first-bar entry size (does not
                 # touch voters, exits, or scale-in).
-                # NEW DATA SOURCE: timestamp-derived TOD+DOW+MOM compound activity.
-                # TOD: cos cycle 24h peaking UTC 16. DOW: cos cycle 7d peaking Wed/Thu.
-                # MOM: cos cycle ~30d peaking mid-month (day 15), trough around month-end/start.
-                # Mid-month captures monthly options expiry + futures rollover concentration;
-                # month-end carries window-dressing rebalance noise. All three compound
-                # multiplicatively into _activity. Single _tod_atten var absorbs all three.
-                _ts_h = bd.timestamp // 3600000
-                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0)))
+                # NEW DATA SOURCE: timestamp-derived TOD+DOW+MOM+QUARTER compound activity.
+                # Computed earlier (top of symbol loop) so it can also feed exit subsystem.
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
@@ -761,7 +765,14 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural NEW APPLICATION of existing _activity data source: low
+                # activity windows (Asia 04 / weekend / month-end / quarter-end) get
+                # higher time-pressure weight (push exit faster — positions held into
+                # thin-volume periods drift more); high activity windows get standard
+                # weight. _activity ∈ [0, 1]; multiplier in [1.00, 1.15]. Composes
+                # multiplicatively with the existing pnl_scale asymmetric extension.
+                _time_session_w = 1.15 - 0.15 * _activity  # 1.15 at low activity, 1.00 at high
+                _w_time  = (1.0 + 0.20 * max(0.0, _pnl_scale)) * _time_session_w   # extended via session weight
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
