@@ -136,12 +136,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol ret_long history at entry + recent (4-bar lag).
-        # Used by long-window trend-reversal exit pressure (7th soft source):
-        # when ret_long has dropped substantially from its entry value (position-
-        # aligned negative delta), the structural regime that justified the entry
-        # has shifted — distinct timescale signal from short-window slope/MAE/pp.
-        self._entry_ret_long = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -834,37 +828,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: long-window trend-reversal exit pressure (7th soft source).
-                # New cross-timescale data dep on ret_long captured at entry vs current.
-                # Mechanism: position-aligned drop in ret_long since entry indicates the
-                # structural long-window trend that justified the entry has shifted. This
-                # is orthogonal to all other soft sources:
-                #   - slope_against: 12-22 bar slopes (short-window)
-                #   - pp_pressure: peak/giveback (pnl-domain)
-                #   - time_pressure: hold duration (no price)
-                #   - ve_pressure: 6-vs-18 bar realized vol (short-window vol)
-                #   - ep_pressure: sub-peak giveback (pnl-domain)
-                #   - ar_pressure: MAE recovery (pnl-domain on losers)
-                # NEW: tr_pressure operates on the LONG-window trend itself (LONG_WINDOW=20),
-                # capturing regime-shift signals that price-trajectory and pnl-trajectory
-                # cannot. Activates only when delta is substantial (>0.015 absolute, >0.5x
-                # initial trend), saturating at 0.4 contribution. Position-direction-aligned:
-                # for longs, fires on ret_long DROPPING; for shorts, fires on ret_long RISING.
-                _entry_rl = self._entry_ret_long.get(symbol, ret_long)
-                _pos_dir_tr = 1.0 if current_pos > 0 else -1.0
-                _rl_delta = (ret_long - _entry_rl) * _pos_dir_tr  # negative = adverse trend shift
-                # Activate when adverse delta exceeds 0.015 (~1.5% trend reversal); saturate at 0.040.
-                _tr_pressure = 0.40 * max(0.0, min(1.0, (-_rl_delta - 0.015) / 0.025))
-                # Weight: full weight (orthogonal mechanism, no double-counting concern).
-                # Trend-magnitude gate: only meaningful when entry trend was non-trivial
-                # (|entry_rl| > 0.02). In chop-entry positions, ret_long delta is low-info noise.
-                _w_tr = max(0.0, min(1.0, (abs(_entry_rl) - 0.02) / 0.04))
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_tr * _tr_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -971,13 +940,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_ret_long):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._entry_ret_long[symbol] = ret_long
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
