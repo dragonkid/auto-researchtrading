@@ -131,12 +131,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol last-stop-loss state (bar_count, position_dir).
-        # When position exits via SL saturation, record event. Subsequent cold
-        # entries in SAME direction within ~5 bars are attenuated — micro-regime
-        # just rejected that direction. Decays smoothly via tanh on bar gap.
-        # New state, new control flow, new data dependency on exit-type history.
-        self._last_sl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -532,27 +526,10 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: post-stop-loss same-direction entry attenuation.
-                # When the most recent SL exit was in same direction as proposed
-                # entry, attenuate first-bar size by smooth decay over ~5 bars.
-                # New cross-bar state dep: entry size depends on exit-type history.
-                _sl_bull_atten = 1.0
-                _sl_bear_atten = 1.0
-                _last_sl_evt = self._last_sl.get(symbol)
-                if _last_sl_evt is not None:
-                    _sl_bar, _sl_dir = _last_sl_evt
-                    _sl_age = self.bar_count - _sl_bar
-                    # Attenuation peaks at age=0 (just exited), decays to 0 at ~6 bars.
-                    _sl_decay = max(0.0, 1.0 - np.tanh(_sl_age / 4.0))  # in [0, 1]
-                    _sl_atten_amt = 0.30 * _sl_decay  # max 30% size cut just after SL
-                    if _sl_dir > 0:
-                        _sl_bull_atten = 1.0 - _sl_atten_amt
-                    else:
-                        _sl_bear_atten = 1.0 - _sl_atten_amt
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _sl_bull_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _sl_bear_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -870,8 +847,6 @@ class Strategy:
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
-                    # Record SL-driven exit: direction = sign of position being closed.
-                    self._last_sl[symbol] = (self.bar_count, 1 if current_pos > 0 else -1)
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
