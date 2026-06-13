@@ -577,10 +577,20 @@ class Strategy:
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
+                # Architectural: trend-aligned volume-confirmed first-bar size amp.
+                # Mirrors the voter-aggregation _bull_amp/_bear_amp pattern but applied
+                # to entry SIZE instead of strong-sum. When entering a trend-aligned
+                # position on a high-volume bar in a confirmed trend, amplify first-bar
+                # fraction up to +12%. Composes directional gate (only trend-aligned
+                # side amplified) with chop neutralization (_trend_strength_w). Distinct
+                # data flow from _bull_amp (which gates admission); this scales size of
+                # admitted entries. One-sided positive: counter-trend entries unchanged.
+                _bull_size_amp = 1.0 + 0.12 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w * max(0.0, np.tanh(ret_long / 0.04))
+                _bear_size_amp = 1.0 + 0.12 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w * max(0.0, np.tanh(-ret_long / 0.04))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _bull_size_amp
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _bear_size_amp
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
