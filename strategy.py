@@ -616,7 +616,20 @@ class Strategy:
                 _atr_pct = np.mean(_tr) / mid
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
-                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: trend-aligned asymmetric stop. New cross-component data
+                # dep at stop computation: stop width depends on position trend-alignment.
+                # Mechanism: trend-aligned positions (bull in uptrend, bear in downtrend)
+                # face structural counter-rallies / pullbacks as noise — give them up to
+                # +20% wider stops to survive bounces. Counter-trend positions (bull in
+                # crash, bear in rally) are structurally vulnerable — tighten stops up to
+                # -20%. Continuous via tanh on (pos_dir * ret_long)/0.05. New data
+                # dependency: stop band depends on (position direction, long-window trend).
+                # Targets crash MaxDD (counter-trend bull bounce entries cut faster) AND
+                # crash sharpe (trend-aligned bear shorts ride bounces without stopping out).
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _trend_align_sl = np.tanh(_pos_dir_sl * ret_long / 0.05)  # [-1, +1]
+                _stop_scale_align = 1.0 + 0.20 * _trend_align_sl  # [0.80, 1.20]
+                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct)) * _stop_scale_align
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
