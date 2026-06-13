@@ -932,7 +932,22 @@ class Strategy:
                     # High vol (crash): floor=0.80 (narrower ramp, closer to binary —
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
-                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    # Architectural: peak-conviction conditioned partial-exit floor.
+                    # Original _de_floor depends only on vol_ratio (vol-adaptive band width).
+                    # New: also condition on accumulated peak_pnl ratio. High peak (winning
+                    # trend position with realized profit history) → LOWER _de_floor (wider
+                    # graduated band, slower binary collapse, lets winners de-risk smoothly
+                    # rather than dump fast on transient pressure). Low/no peak (no realized
+                    # profit) → original vol-conditioned floor (closer to binary, less benefit
+                    # of doubt for unproven positions). New cross-bar data dependency: the
+                    # exit decision-boundary band-width depends on the position's realized
+                    # profit history, not just current bar volatility. Distinct from
+                    # _w_pp/_pp_pressure (which condition exit pressure magnitude on profit
+                    # state) — this conditions the EXIT BAND ITSELF, a different decision
+                    # primitive at the threshold subsystem.
+                    _peak_ratio_de = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                    _peak_de_relax = max(0.0, min(1.0, np.tanh(_peak_ratio_de / 1.5)))  # in [0, ~1] as peak rises
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.10 * _peak_de_relax
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
