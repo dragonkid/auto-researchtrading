@@ -744,7 +744,21 @@ class Strategy:
                 # voter_bias depends on (ret_long, position direction).
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
-                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
+                # Architectural: vol-expansion gate on opp-bias attenuator (new cross-
+                # component data dep). Trend-aligned opp_atten relaxes opp-voter exit
+                # pressure during pullbacks — but in CRASH dead-cat BOUNCES, vol expands
+                # AND opp-voters fire AND trend is still aligned. The attenuator currently
+                # fires identically in calm trend continuation and in volatile bounces.
+                # Compute vol_6/vol_18 ratio inline; when vol_expansion > 1.3 (regime
+                # shift signal), DISABLE the trend-alignment relief — opp-bias stays at
+                # full strength. Continuous via tanh in [1.3, 2.0]. Mechanism: protects
+                # crash shorts from absorbing dead-cat bounces (where opp-voter spikes are
+                # genuine evidence of reversal momentum, not pullback noise).
+                _vol6_vb = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+                _vol18_vb = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+                _vol_exp_vb = _vol6_vb / _vol18_vb
+                _vol_exp_disable = max(0.0, np.tanh((_vol_exp_vb - 1.3) / 0.4))  # [0, ~1]
+                _opp_atten = 1.0 - 0.50 * _trend_align_vb * (1.0 - _vol_exp_disable)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
