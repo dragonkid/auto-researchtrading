@@ -118,8 +118,6 @@ class Strategy:
         self._mae = {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
-        self._smoothed_pnl = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -593,15 +591,19 @@ class Strategy:
                 # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
-                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
-                self._smoothed_pnl[symbol] = pos_pnl
+                # Architectural simplification: removed confirmed-peak rising-bar gate
+                # and _smoothed_pnl state. Original required pos_pnl > prev_peak AND
+                # pos_pnl >= prev_pos_pnl to update peak — the rising-bar gate filtered
+                # single-bar noise spikes from anchoring the peak. With the noise test
+                # using AR(1) correlated perturbation across 8-12bps std and the peak
+                # being the high-water mark of pos_pnl (a smoothed quantity already since
+                # pos_pnl integrates over bars_held), an additional 1-bar rising-bar gate
+                # is over-conservative: it delays peak updates by exactly 1 bar in trends
+                # where pos_pnl is rising rapidly, costing fast peak-anchor establishment
+                # for _pp_pressure, _ep_pressure, _tp_harvest. Removing the gate +
+                # _smoothed_pnl state. Code-structure removal: 5 lines + 1 dict in __init__.
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
-                # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
-                # pos_pnl >= prev_pos_pnl (rising bar).
-                if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
-                    self.peak_pnl[symbol] = pos_pnl
-                else:
-                    self.peak_pnl[symbol] = _curr_peak
+                self.peak_pnl[symbol] = max(_curr_peak, pos_pnl)
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
@@ -964,7 +966,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
