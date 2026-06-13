@@ -136,6 +136,13 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: PORTFOLIO-level entry-bar history (rolling list of
+        # bar_count values for entries across ALL symbols). Used to detect
+        # multi-symbol churn regimes — when several symbols are entering in
+        # rapid succession, the regime is in transition / coordinated-noise
+        # phase. Tighten admission across all symbols proportionally.
+        # New cross-symbol data dependency at the entry-gate level.
+        self._portfolio_entry_history = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -316,8 +323,18 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Portfolio-level frequency regulator (architectural): count entries
+            # across ALL symbols in last 30 bars. Activates when multi-symbol
+            # churn is high. Activation threshold scaled higher (3 symbols can
+            # legitimately produce ~3x more entries) — fire at >=5 entries in
+            # 30 bars. Smooth tanh, max +15% admission cost. Composes
+            # multiplicatively with per-symbol factor: both must be calm for
+            # full admission ease.
+            while self._portfolio_entry_history and self.bar_count - self._portfolio_entry_history[0] > 30:
+                self._portfolio_entry_history.pop(0)
+            _portfolio_freq_factor = 1.0 + 0.15 * max(0.0, np.tanh((len(self._portfolio_entry_history) - 4.5) / 3.0))
+            _bull_strong_min = _strong_min * _freq_factor * _portfolio_freq_factor
+            _bear_strong_min = _strong_min * _freq_factor * _portfolio_freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -954,5 +971,6 @@ class Strategy:
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
+                    self._portfolio_entry_history.append(self.bar_count)
 
         return signals
