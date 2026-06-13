@@ -630,22 +630,21 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: NET-margin voter-conviction exit attenuator.
-                # Previous: one-sided _side_margin only. Limitation: during a
-                # legitimate trend reversal, opposite-side conviction rises while
-                # position-side still appears strong (slow voters lag) — attenuation
-                # fires inappropriately, suppressing valid exits.
-                # New: net = side_margin - opp_margin. When BOTH sides are strong
-                # (regime indecision/reversal signal), net is small and attenuation
-                # is correspondingly weak — exit pressures pass through. When only
-                # the position side is strong (true trend continuation), net is large
-                # and full attenuation applies (preserves sideways gain from voter_attn).
-                # Cross-subsystem coupling unchanged in form; coupling strength now
-                # responds to bilateral voter conviction state, not just one side.
+                # Architectural multi-variable restructure: replaced voter-attn
+                # multiplicative cross-coupling with bilateral additive voter_bias.
+                # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
+                # heterogeneous pressure terms (slope/pp/time/ve), creating cross-
+                # subsystem correlated coupling — a single voter-state value scaled
+                # all four terms simultaneously. Replace with:
+                #   1) voter_bias subtracts from exit when own-side conviction strong
+                #      (lets winners run when voters still validate position).
+                #   2) voter_bias ADDS to exit when opposite-side conviction strong
+                #      (bilateral — explicit reversal evidence raises exit).
+                # Bilateral-additive fusion decouples voter influence from individual
+                # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                _net_margin = _side_margin - _opp_margin
-                _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _net_margin) / 0.30))
+                _voter_bias = -0.20 * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
@@ -663,7 +662,13 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
+                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
+                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
+                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
+                # always-honored; soft pressures combine; voter contribution is a separate additive term.
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
