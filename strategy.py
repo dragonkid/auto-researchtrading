@@ -817,36 +817,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: downside-skew exit pressure (7th soft source).
-                # Decompose recent 24-bar log-returns into positive and negative subsets,
-                # compute their separate stds. Skew_ratio = downside_std / upside_std.
-                # When markedly asymmetric (>1.4), the regime exhibits fat downside tails:
-                #   - LONG positions face elevated tail-risk → fire exit pressure
-                #   - SHORT positions actually benefit from the asymmetry → no pressure
-                # Symmetric inversion: when ratio<0.7 (fat upside tails), shorts get pressure
-                # while longs do not. Smooth tanh activation; pressure capped at 0.5.
-                # New data dependency: directional-asymmetric vol (separating signed returns),
-                # orthogonal to slope (direction), pp (magnitude), ve (vol-of-vol).
-                # Targets crash regime where crash legs disproportionately threaten longs.
-                _ds_lret = np.diff(np.log(closes[-25:-1]))
-                _ds_neg = _ds_lret[_ds_lret < 0]
-                _ds_pos = _ds_lret[_ds_lret > 0]
-                _ds_neg_std = max(np.std(_ds_neg), 1e-6) if len(_ds_neg) >= 3 else 1e-6
-                _ds_pos_std = max(np.std(_ds_pos), 1e-6) if len(_ds_pos) >= 3 else 1e-6
-                _ds_ratio = _ds_neg_std / _ds_pos_std
-                if current_pos > 0:
-                    # LONG: elevated downside skew → exit pressure
-                    _ds_pressure = 0.5 * max(0.0, np.tanh((_ds_ratio - 1.4) / 0.5))
-                else:
-                    # SHORT: elevated upside skew (ratio < 1) → exit pressure
-                    _ds_pressure = 0.5 * max(0.0, np.tanh((1.0 / max(_ds_ratio, 1e-6) - 1.4) / 0.5))
-                _w_ds = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_ds * _ds_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
