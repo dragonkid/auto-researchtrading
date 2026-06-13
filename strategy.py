@@ -135,6 +135,12 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol entry-bar own-side strong-sum. Used by conviction-
+        # trajectory scale-in pace — scale-in increment grows when current strong-sum
+        # exceeds entry-time strong-sum (signal strengthening) and shrinks when below.
+        # New state dependency: scale-in trajectory now depends on conviction trajectory,
+        # not only bars_held + pnl. Cleared on exit.
+        self._entry_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -528,8 +534,18 @@ class Strategy:
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
                     _trend_agree = max(0.0, np.tanh(trend_avg * _pos_dir / 0.012))  # in [0,1]
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
-                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    # Architectural: conviction-trajectory ramp attenuator.
+                    # Compare current own-side strong-sum to entry-time strong-sum.
+                    # Strengthening (current > entry) → full ramp; weakening (current < entry)
+                    # → attenuated ramp. Smooth tanh on relative delta. New cross-bar
+                    # data dependency: scale-in increment depends on conviction trajectory.
+                    _own_strong_now = _bull_strong if current_pos > 0 else _bear_strong
+                    _entry_strong_val = self._entry_strong.get(symbol, _own_strong_now)
+                    _conv_delta = (_own_strong_now - _entry_strong_val) / max(_entry_strong_val, 1e-3)
+                    _conv_traj = 0.5 * (1.0 + np.tanh(_conv_delta / 0.30))  # in [0, 1], 0.5 at flat
+                    # Blend: trend agreement OR strengthening conviction allows full ramp.
+                    # The fallback (when both are weak) is pnl-attenuated.
+                    _ramp_attn = max(_trend_agree, _conv_traj) + (1.0 - max(_trend_agree, _conv_traj)) * _ramp_attn_pnl
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
@@ -869,11 +885,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_strong):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._entry_strong[symbol] = _bull_strong if target > 0 else _bear_strong
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
