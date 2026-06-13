@@ -116,10 +116,6 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Bar count when peak_pnl was last updated (architectural plateau-detector state).
-        # Used by plateau-aware pp_pressure boost: positions whose peak hasn't moved in
-        # many bars have stalled — gradually boost pp pressure to lock remaining gains.
-        self._peak_bar = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -577,7 +573,6 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
-                    self._peak_bar[symbol] = self.bar_count
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -675,18 +670,7 @@ class Strategy:
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                # Architectural: plateau-aware pp_pressure boost (new state dep on _peak_bar).
-                # When peak_pnl hasn't shifted in many bars (peak has plateaued), the
-                # position has stalled; existing _pp_raw only fires on giveback magnitude
-                # but doesn't account for stagnation. Multiplier scales _pp_pressure by
-                # 1.0 (no plateau, peak fresh) up to 1.30 (peak stale 6+ bars). Continuous
-                # via tanh on bars_since_peak. Only active when _pp_activation > 0
-                # (peak past _pp_min, naturally gated). Mechanism: locks remaining gains
-                # on stalled winners before slope-against eventually triggers.
-                _peak_bar_e = self._peak_bar.get(symbol, self.bar_count)
-                _bars_since_peak = self.bar_count - _peak_bar_e
-                _plateau_boost = 1.0 + 0.30 * max(0.0, np.tanh((_bars_since_peak - 3.0) / 3.0))
-                _pp_pressure = _pp_raw * _pp_activation * _plateau_boost
+                _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
@@ -950,13 +934,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._peak_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._peak_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
