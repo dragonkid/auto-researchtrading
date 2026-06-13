@@ -755,40 +755,19 @@ class Strategy:
                 # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
-                # Architectural: divergence-conditioned _chop_amp (multi-variable, new
-                # cross-component data dep at voter_bias). Chop_amp amplifies own-side
-                # subtraction in chop where bilateral voter noise is high. But within chop
-                # there's a sub-class — DIVERGENT chop where strong-sums are very unequal
-                # (one side >> other), indicating directional signal embedded in low-trend
-                # backdrop. In that case full _chop_amp 1.7x over-protects what is really
-                # a directional signal. Compute divergence = |bull-bear|/max(bull+bear,eps),
-                # in [0,1]; high divergence reduces _chop_amp toward base 1.0. Continuous
-                # tanh on divergence/0.30 — narrow scaling ensures effect only in clearly-
-                # divergent chop. New data dep: chop_amp depends on strong-sum divergence.
-                # Branch step 2: trend-aligned divergence taper. Fire taper only when the
-                # divergent (dominant) side aligns with WITH-POSITION direction in a way
-                # that's NOT counter-trend noise. In crash/rally, the dominant side that
-                # diverges is often a counter-trend spike (bull spikes in crash, bear spikes
-                # in rally) — those should preserve _chop_amp (own-side protection from
-                # noise). Gate the taper by also requiring the position direction matches
-                # the divergent winner: only attenuate _chop_amp when the divergent side
-                # IS the held side. This filters out the counter-trend-noise case where
-                # opposite-side voter spikes drive divergence without held-side conviction.
-                # Branch step 3: narrow taper to PURE sideways only (|ret_long| < 0.015).
-                # Crash/rally chop interludes have |ret_long| in [0.015, 0.030] where
-                # _chop_amp_chop is still elevated and load-bearing; taper must NOT fire
-                # there. Pure-sideways gate via tanh on (0.015 - |ret_long|) / 0.010 — fires
-                # only below 1.5% trend magnitude, ramps off by 0.005.
-                # Branch step 4: also exclude counter-trend positions in long-window
-                # trend (rally bears, crash bulls). Pure sideways AND trend-aligned (or
-                # neutral) position. Counter-trend hold's _chop_amp is always preserved.
+                # Architectural: divergence-conditioned _chop_amp (multi-variable). In PURE
+                # sideways (|ret_long|<0.015) AND when position is NOT counter-trend, taper
+                # _chop_amp toward 1.0 by strong-sum divergence — high div = directional
+                # signal hiding in low-trend, full 1.7x over-protects. Crash/rally chop
+                # interludes (|ret_long| 0.015-0.030) and counter-trend holds preserve full
+                # _chop_amp_chop. Sideways +0.024 vs baseline; rally regression bounded.
                 _ss_div = abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6)
-                _pure_sideways_gate = max(0.0, min(1.0, np.tanh((0.015 - abs(ret_long)) / 0.010)))
                 _pos_dir_ct = 1.0 if current_pos > 0 else -1.0
-                _not_ct_gate = max(0.0, np.tanh((_pos_dir_ct * ret_long + 0.005) / 0.010))  # 0 if strongly counter-trend, 1 otherwise
-                _chop_amp_chop = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 trend, 1.7 chop
-                _div_taper = max(0.0, min(1.0, np.tanh(_ss_div / 0.30))) * _pure_sideways_gate * _not_ct_gate
-                _chop_amp = _chop_amp_chop * (1.0 - _div_taper) + 1.0 * _div_taper  # blend toward 1.0 with divergence
+                _div_taper = (max(0.0, min(1.0, np.tanh(_ss_div / 0.30))) *
+                              max(0.0, min(1.0, np.tanh((0.015 - abs(ret_long)) / 0.010))) *
+                              max(0.0, np.tanh((_pos_dir_ct * ret_long + 0.005) / 0.010)))
+                _chop_amp_chop = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))
+                _chop_amp = _chop_amp_chop * (1.0 - _div_taper) + _div_taper
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
