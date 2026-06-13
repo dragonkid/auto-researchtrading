@@ -295,6 +295,17 @@ class Strategy:
             else:
                 _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
+            # Architectural: raw (un-persistence-weighted) strong-sums for voter_bias
+            # decoupling. _bull_strong/_bear_strong (used for entry gate) keep
+            # persistence weighting (filters historically-flipping voters out of
+            # admission). _bull_strong_raw/_bear_strong_raw use only base weights —
+            # represent CURRENT-BAR voter conviction without persistence smoothing.
+            # voter_bias at exit uses raw margins so the exit-decision responsiveness
+            # tracks current voter alignment rather than time-smoothed conviction.
+            # New cross-component data dependency: exit voter_bias decoupled from
+            # persistence-weighted entry aggregation.
+            _bull_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _base_weights))
+            _bear_strong_raw = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _base_weights))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
             # amplifier composed three multiplicative gates (chop neutralization
@@ -774,8 +785,12 @@ class Strategy:
                 #      (bilateral — explicit reversal evidence raises exit).
                 # Bilateral-additive fusion decouples voter influence from individual
                 # pressure terms while preserving net effect on exit decision.
-                _side_margin = _bull_margin if current_pos > 0 else _bear_margin
-                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
+                # Architectural: use RAW (un-persistence-weighted) margins for voter_bias.
+                # Decouples exit-decision responsiveness from persistence-smoothed conviction.
+                _bull_margin_raw = (_bull_strong_raw - _bull_strong_min) / max(_bull_strong_min, 1e-6)
+                _bear_margin_raw = (_bear_strong_raw - _bear_strong_min) / max(_bear_strong_min, 1e-6)
+                _side_margin = _bull_margin_raw if current_pos > 0 else _bear_margin_raw
+                _opp_margin = _bear_margin_raw if current_pos > 0 else _bull_margin_raw
                 # Architectural refinement: chop-amplified own-side subtraction.
                 # In low-trend (chop / sideways), the with-position voters more reliably
                 # validate continued hold; amplify subtraction to preserve hold semantics
