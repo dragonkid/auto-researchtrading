@@ -748,16 +748,10 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Architectural refinement: chop-amplified own-side subtraction.
-                # In low-trend (chop / sideways), the with-position voters more reliably
-                # validate continued hold; amplify subtraction to preserve hold semantics
-                # (recovers sideways regression from base bilateral voter_bias). In trends,
-                # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
-                # (reversal evidence equally weighted across regimes). New cross-timescale
-                # data dependency: voter_bias asymmetry depends on long-window trend.
-                # Divergence-conditioned _chop_amp: in pure sideways non-counter-trend
-                # holds, taper toward 1.0 by strong-sum divergence (directional signal
-                # hiding in low-trend). Trend interludes + counter-trend holds preserve.
+                # Chop-amplified own-side subtraction with divergence taper: in pure sideways
+                # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence
+                # (directional signal hiding in low-trend); trend interludes + counter-trend
+                # holds preserve full 1.7x amplification.
                 _div_taper = (max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) *
                               max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) *
                               max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010)))
