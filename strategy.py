@@ -675,7 +675,23 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Architectural: trend-strengthening hold extension. New cross-bar
+                # derivative dep on long-window trend magnitude. When position is
+                # trend-aligned AND |ret_long| is GROWING bar-over-bar (compared to
+                # 8-bar lag), the macro trend is confirming the position direction —
+                # extend max_hold by up to +1.5 bars. When trend-aligned but trend is
+                # FADING (|ret_long| smaller than 8-bar lag), shrink hold by up to
+                # -0.5 bars (signal cooling). Counter-trend positions: unchanged.
+                # Continuous via tanh on (|ret_long| - |_ret_long_lag|)/0.012. Smooth
+                # additive bias to _max_hold, no boundary. Targets bull/crash/rally
+                # trend-aligned winners (extends them through pullbacks) without
+                # touching counter-trend positions.
+                _ret_long_lag_h = (closes[-9] - closes[-LONG_WINDOW - 8]) / closes[-LONG_WINDOW - 8]
+                _trend_mag_delta = abs(ret_long) - abs(_ret_long_lag_h)
+                _pos_dir_h = 1.0 if current_pos > 0 else -1.0
+                _trend_aligned_h = max(0.0, np.tanh(ret_long * _pos_dir_h / 0.04))  # [0, ~1]
+                _trend_str_extension = _trend_aligned_h * (1.5 * max(0.0, np.tanh(_trend_mag_delta / 0.012)) - 0.5 * max(0.0, np.tanh(-_trend_mag_delta / 0.012)))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj + _trend_str_extension
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
