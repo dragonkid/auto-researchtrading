@@ -825,41 +825,36 @@ class Strategy:
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
-                # Architectural simplification: removed in-place flip mechanism.
-                # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
-                # the dominant cost driver (flip_pnl -560 to -960 per regime).
-                # Replace single-bar reversal with exit-then-cooldown: when opposite-side
-                # conviction passes the flip gate, set target=0. The standard cold-entry
-                # path (with its 2-bar persistence gate) will re-enter in the opposite
-                # direction on a subsequent bar IF conviction sustains. This decouples
-                # reversal from a single-bar decision and routes it through the same
-                # noise-filtering gate that protects fresh entries.
-                # Architectural: graduated opp-gate replacing binary exit-on-reversal.
-                # Old: when opp gate fires (bear votes pass + strong sum + trend),
-                # set target=0 (full exit). New: scale exit by opp-side conviction
-                # margin. Weak reversal evidence partially de-risks; strong reversal
-                # fully exits. Smooth tanh on opposite-side margin maps to
-                # exit-fraction in [0.4, 1.0]. Mechanism: avoids whipsaw full-exits
-                # in crash where bull-side voter spikes are common during dead-cat
-                # bounces but trend genuinely down. New decision-boundary mechanism:
-                # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
-                if not in_cooldown and _opp_gate:
-                    # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
-                    # Counter-trend (rally bear) OR losing positions: binary full
-                    # exit (cut risk fast). Trend-aligned + in-profit (crash short
-                    # winning): graduated partial exit (preserves winning trend
-                    # position through noise spikes). Both gates must hold for
-                    # graduated behavior to engage. Continuous via tanh blend.
+                # Architectural: SOFTENED opp-gate — replace count-gate hard boolean
+                # with continuous reversal-evidence multiplier on the existing
+                # graduated exit. Old: votes>=FLIP_MIN_VOTES AND strong>=min AND
+                # trend-sign — three hard booleans. New: smooth product of three
+                # tanh-mapped continuous evidences (votes margin, strong margin,
+                # trend agreement), giving an [0,1] reversal_evidence. Combined
+                # with the existing trend-aligned profit gate to gate the
+                # graduated partial exit. Hard count threshold dissolved into
+                # continuous gradient.
+                if current_pos > 0:
+                    _votes_margin = (bear_votes - FLIP_MIN_VOTES) / max(FLIP_MIN_VOTES, 1e-6)
+                    _strong_margin_og = _opp_margin
+                    _trend_evid = max(0.0, np.tanh(-trend_avg / 0.005))  # bull pos: bear trend
+                else:
+                    _votes_margin = (bull_votes - FLIP_MIN_VOTES) / max(FLIP_MIN_VOTES, 1e-6)
+                    _strong_margin_og = _opp_margin
+                    _trend_evid = max(0.0, np.tanh(trend_avg / 0.005))
+                _votes_evid = max(0.0, np.tanh(_votes_margin / 0.10))
+                _strong_evid = max(0.0, np.tanh(_strong_margin_og / 0.10))
+                _reversal_evidence = _votes_evid * _strong_evid * _trend_evid  # [0, 1]
+                if not in_cooldown and _reversal_evidence > 0.0 and current_pos != 0:
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
-                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
+                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))
+                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                    _grad_gate = _trend_align_og * _profit_gate_og
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    target = current_pos * (1.0 - _opp_exit_frac)
+                    # Scale by continuous reversal_evidence (replaces the binary
+                    # gate entry). Weak evidence -> tiny exit; strong evidence -> full.
+                    target = current_pos * (1.0 - _opp_exit_frac * _reversal_evidence)
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
