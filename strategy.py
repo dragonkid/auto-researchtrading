@@ -932,12 +932,12 @@ class Strategy:
                     else:
                         _pnl_traj_slope = 0.0
                     # Saturate at +/- 0.005 pos_pnl/bar; max +/- 0.10 floor adjustment.
-                    # Branch step 3: ONE-SIDED gating — only apply trajectory adj on losing
-                    # positions (pos_pnl < 0). In profit, pp_pressure already handles trajectory
-                    # via giveback. Loss-side: full adjustment magnitude (covers MAE-recovery
-                    # zone broadly, not just narrow band).
-                    _loss_band = max(0.0, -np.tanh(pos_pnl / 0.012))  # 0 in profit, ramps to 1 at modest loss
-                    _traj_adj = 0.10 * np.tanh(_pnl_traj_slope / 0.005) * _loss_band
+                    # Branch step 4: cover both small-profit and modest-loss zone (where dead-cat
+                    # bounce winning shorts and MAE-recovery losers both live). Fade only at
+                    # significant profit (where pp_pressure handles giveback). Use sigmoidal
+                    # ramp: 1.0 below pos_pnl=0.005 (small profit edge), fading to 0 at pos_pnl=0.025.
+                    _band = 1.0 - max(0.0, min(1.0, (pos_pnl - 0.005) / 0.020))
+                    _traj_adj = 0.10 * np.tanh(_pnl_traj_slope / 0.005) * _band
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
