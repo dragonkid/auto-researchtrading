@@ -635,17 +635,6 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
-                    # Architectural: counter-trend partial-exit floor reduction.
-                    # When position opposes long-window trend (rally bear, crash bull),
-                    # widen the de-risk ramp by lowering the floor up to 0.15. This
-                    # triggers partial exits EARLIER for counter-trend positions —
-                    # they shrink gradually as exit_pressure climbs into the
-                    # [0.40, 1.0] band rather than [0.55, 1.0]. Aligned positions
-                    # unaffected (_ct_strength=0 → no floor change). New data
-                    # dependency: partial-exit floor depends on ret_long * pos_dir.
-                    _pos_dir_de = 1.0 if current_pos > 0 else -1.0
-                    _ct_strength = max(0.0, np.tanh((-_pos_dir_de * ret_long) / 0.05))
-                    _de_floor = max(0.40, _de_floor - 0.15 * _ct_strength)
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
