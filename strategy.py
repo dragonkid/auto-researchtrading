@@ -565,12 +565,19 @@ class Strategy:
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
                 if bars_held <= ENTRY_FULL_BARS + 1:
-                    # Architectural: conviction-quality conditioned scale-in pace
-                    # (narrow range — minor adjustment around base 3-bar).
-                    # High-quality entries (q=1.0) reach full size in 2.5 bars;
-                    # low-quality entries (q=0.0) take 3.5 bars. Continuous.
+                    # Architectural: counter-trend-only quality scale-in.
+                    # Trend-aligned entries (bull in uptrend, bear in downtrend) use
+                    # base 3-bar scale-in (preserves bull regime). Counter-trend entries
+                    # use quality-modulated pace: higher quality → faster commit.
+                    # New cross-component data dep: scale-in pace depends on
+                    # (entry_quality, position direction, ret_long).
+                    _pos_dir_si = 1.0 if current_pos > 0 else -1.0
+                    _ct_si = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.05))  # [0,~1] counter-trend strength
                     _eq_val = self._entry_quality.get(symbol, 0.5)
-                    _eff_full_bars = 3.5 - 1.0 * _eq_val  # range 2.5..3.5
+                    # In trend-aligned (_ct_si=0): base 3.0 bars. In counter-trend (_ct_si=1):
+                    # 4.0 - 1.5*q (range 2.5..4.0). Smooth blend.
+                    _ct_eff = 4.0 - 1.5 * _eq_val  # 2.5..4.0
+                    _eff_full_bars = ENTRY_FULL_BARS * (1.0 - _ct_si) + _ct_eff * _ct_si
                     _eff_progress = bars_held / _eff_full_bars
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
