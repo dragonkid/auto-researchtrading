@@ -139,6 +139,14 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Architectural: per-symbol slope-against streak counter. Per-position state
+        # tracking consecutive bars where exit_slope opposes position direction beyond
+        # _slope_thresh. Reset on position open/close or when slope no longer opposes.
+        # Used to amplify _sl_slope_pressure when slope persists against position over
+        # multiple bars (signal-strong reversal) vs single-bar noise spike. Independent
+        # from existing _persistence_mult which operates at voter aggregation, not at
+        # exit-slope subsystem.
+        self._slope_against_streak = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -628,6 +636,21 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Architectural: slope-against streak amplifier (new per-symbol state).
+                # Track consecutive bars where slope opposes position beyond threshold.
+                # Streak >= 2 indicates persistent reversal (not single-bar noise);
+                # amplify _sl_slope_pressure smoothly via tanh on streak count.
+                # Single-bar slope-against -> no amplification (factor=1.0). Two consecutive
+                # bars -> ~1.15x. Three+ bars -> saturates at ~1.30x. This selectively
+                # accelerates exit when slope-against is sustained, distinguishing real
+                # reversal from noise spikes. Reset on entry/exit (handled at signal emit).
+                if _slope_against > _slope_thresh:
+                    self._slope_against_streak[symbol] = self._slope_against_streak.get(symbol, 0) + 1
+                else:
+                    self._slope_against_streak[symbol] = 0
+                _streak = self._slope_against_streak[symbol]
+                _streak_amp = 1.0 + 0.30 * max(0.0, np.tanh((_streak - 1.0) / 1.5))
+                _sl_slope_pressure = min(1.0, _sl_slope_pressure * _streak_amp)
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
@@ -969,10 +992,12 @@ class Strategy:
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
+                    self._slope_against_streak[symbol] = 0
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._slope_against_streak[symbol] = 0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
