@@ -145,6 +145,20 @@ class Strategy:
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
 
+        # Architectural: cross-symbol relative-strength ranking for entry filtering.
+        # Compute 20-bar return for each active symbol; rank them. Used in entry path
+        # to detect contrarian entries (long the weakest, short the strongest) and
+        # attenuate first-bar size. NEW cross-symbol data dependency: per-symbol
+        # entry size depends on the universe's relative momentum ranking, not just
+        # own-symbol signals.
+        _rs_rets = {}
+        for _rsym in ACTIVE_SYMBOLS:
+            if _rsym in bar_data:
+                _rs_bd = bar_data[_rsym]
+                if len(_rs_bd.history) >= LONG_WINDOW + 1:
+                    _rs_closes = _rs_bd.history["close"].values
+                    _rs_rets[_rsym] = (_rs_closes[-1] - _rs_closes[-LONG_WINDOW]) / _rs_closes[-LONG_WINDOW]
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -526,10 +540,31 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: cross-symbol relative-strength contrarian-entry attenuator.
+                # If we have data on all 3 symbols, compute symbol's rank in 20-bar return.
+                # Bull entry on the WEAKEST symbol (rank 0/2 = lowest return) is contrarian
+                # vs cross-symbol momentum — likely catching falling-knife relative laggard.
+                # Bear entry on the STRONGEST symbol (rank 2/2 = highest return) is contrarian.
+                # Continuous via tanh on rank-difference scaled by spread magnitude.
+                # New cross-symbol data dep at entry: own-side size depends on universe ranking.
+                _rs_bull_atten = 1.0
+                _rs_bear_atten = 1.0
+                if len(_rs_rets) == 3 and symbol in _rs_rets:
+                    _own_ret = _rs_rets[symbol]
+                    _other_rets = [_rs_rets[_s] for _s in ACTIVE_SYMBOLS if _s != symbol and _s in _rs_rets]
+                    _max_other = max(_other_rets)
+                    _min_other = min(_other_rets)
+                    _spread = max(_max_other - _min_other, 0.005)  # min spread floor
+                    # Bull entry contrarian if own_ret is below others (laggard)
+                    _bull_lag = max(0.0, np.tanh((_min_other - _own_ret) / _spread))  # >0 if own is weakest
+                    # Bear entry contrarian if own_ret is above others (leader)
+                    _bear_lead = max(0.0, np.tanh((_own_ret - _max_other) / _spread))  # >0 if own is strongest
+                    _rs_bull_atten = 1.0 - 0.20 * _bull_lag
+                    _rs_bear_atten = 1.0 - 0.20 * _bear_lead
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _rs_bull_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _rs_bear_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
