@@ -584,23 +584,14 @@ class Strategy:
                 # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
-                # Architectural: MAE-responsive scale-in pace. Replaces pre-entry trend
-                # regime conditioning (rsi_trend_str-based pace) with OBSERVED post-entry
-                # quality. Base pace = 3 bars; if early MAE is deep (bad entry — price
-                # moved adversely from entry), slow scale-in proportionally (up to 4 bars,
-                # limit add-on into losing position). If early MAE is shallow (clean entry
-                # holding above entry price), slightly accelerate (down to 2 bars, commit
-                # faster while signal holds). MAE is the prior-bar low-water mark (set at
-                # entry to 0.0, updated each bar via line ~621). New control flow:
-                # scale-in pace responds to observed entry quality instead of pre-entry
-                # trend magnitude. Different data dependency: cross-bar MAE state vs
-                # long-window return.
-                _prior_mae = self._mae.get(symbol, 0.0)
-                # Pace adjustment: -1 bar (fast) at MAE >= 0, +1 bar (slow) at MAE <= -1.5*STOP.
-                # Smooth via tanh on MAE / (1.0 * STOP_LOSS_PCT magnitude).
-                _mae_factor = max(-1.0, min(1.0, np.tanh(_prior_mae / (abs(STOP_LOSS_PCT) * 1.2))))
-                # _mae_factor: 0 at MAE=0, -1 at deep MAE. Pace = 3 - _mae_factor → 2..4.
-                _entry_full_bars_dyn = max(2.0, min(4.0, 3.0 - _mae_factor))
+                # Architectural: trend-conditioned scale-in pace.
+                # Replace constant ENTRY_FULL_BARS=3 with continuous trend-magnitude
+                # function: 2 bars in strong trend (fast commitment to capture momentum),
+                # up to 4 bars in deep chop (slower commitment to reduce noise exposure).
+                # rsi_trend_str is in [0,1] from existing entry path; reuse here for
+                # consistency. New cross-component data dep: scale-in pace depends on
+                # long-window trend magnitude.
+                _entry_full_bars_dyn = 2.0 + 2.0 * (1.0 - rsi_trend_str)  # in [2, 4]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
