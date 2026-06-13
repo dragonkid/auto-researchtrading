@@ -550,7 +550,7 @@ class Strategy:
                 _vol_bar_24 = bd.history["volume"].values[-25:-1]
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
-                _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
+                _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3))) + 0.15 * max(0.0, min(1.0, np.tanh((_vol_bar_ratio - 1.5) / 0.5)))
                 # Architectural: time-of-day session-quality entry size modulator.
                 # Continuous cyclical feature: cos-cycle peaking at UTC 16 (US session
                 # peak overlap), trough at UTC 04 (low Asia hour). _activity in [0, 1].
