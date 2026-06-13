@@ -116,13 +116,6 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Architectural: bar_count when peak_pnl was last updated (per symbol).
-        # Used by peak-stall exit pressure (7th source): when position has been
-        # profitable but peak_pnl has stalled for multiple bars, the winner is
-        # losing momentum even if pos_pnl hasn't fallen far enough to trigger
-        # giveback-based pp_pressure. Distinct from time_pressure (since entry)
-        # and ep_pressure (sub-peak giveback).
-        self._peak_bar = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -620,7 +613,6 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
-                    self._peak_bar[symbol] = self.bar_count
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -875,32 +867,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: peak-stall exit pressure (7th soft source).
-                # New per-symbol state (_peak_bar) tracks bars elapsed since peak_pnl
-                # was last updated. When a position has been profitable (above
-                # 0.30 * _pp_min) but peak_pnl has stalled for >=3 bars, the
-                # winner is losing momentum even though pos_pnl hasn't fallen
-                # enough to trigger giveback-based _pp_pressure. Distinct from
-                # _time_pressure (since-entry, regime-agnostic) and _ep_pressure
-                # (sub-peak giveback ratio). Targets the "winner went up, then
-                # stopped going up while drifting near peak" pattern that
-                # giveback ratio misses when pos_pnl is flat near peak.
-                # Smooth ramp 3..7 bars stale → [0, 0.40], gated by profit floor.
-                _ps_pressure = 0.0
-                _peak_bar_ref = self._peak_bar.get(symbol, self.bar_count)
-                _bars_since_peak = self.bar_count - _peak_bar_ref
-                if self.peak_pnl[symbol] > 0.30 * _pp_min and _bars_since_peak >= 3:
-                    _ps_pressure = 0.40 * max(0.0, min(1.0, (_bars_since_peak - 3.0) / 4.0))
-                # Weight: only fire when currently in profit (avoid double-counting
-                # with slope-against on losers and with _ar_pressure on recoverers);
-                # _pnl_scale clipped to positive — winners only.
-                _w_ps = max(0.0, _pnl_scale)
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_ps * _ps_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1014,13 +986,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._peak_bar):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._peak_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
