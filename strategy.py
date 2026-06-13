@@ -266,35 +266,15 @@ class Strategy:
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
             _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
-            # Architectural: per-voter directional persistence weighting.
-            # Track each voter's signal sign over last 8 bars. Persistence =
-            # |sum(signs)| / count → 1.0 if voter held one direction continuously,
-            # 0.0 if voter flipped maximally. Multiply base weight by
-            # (0.7 + 0.6 * persistence) so consistent voters get up to 1.3x weight,
-            # flip-prone voters get down to 0.7x. Smooth (continuous over time as
-            # history rolls forward). New per-symbol per-voter state dependency:
-            # voter aggregation weight depends on each voter's recent flip-rate.
-            # Architectural: magnitude-weighted persistence replacing binary-sign aggregation.
-            # Old: binary sign per bar → persistence = |sum(signs)|/N counts a near-zero
-            # signal flip identically to a far-from-zero flip. New: store raw signal values
-            # → persistence = |sum(signal)| / sum(|signal|) gives weight to magnitude. A voter
-            # that hovers near zero contributes equally to numerator and denominator (low
-            # persistence influence); a voter with strong directional history dominates.
-            # Reduces noise from near-zero voter flips downweighting active voters.
-            _sig_hist = self._voter_sign_history.get(symbol, [])
-            _sig_hist.append(tuple(_voter_signals_bull))
-            if len(_sig_hist) > 8:
-                _sig_hist = _sig_hist[-8:]
-            self._voter_sign_history[symbol] = _sig_hist
-            if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 7)
-                _num = np.abs(_arr.sum(axis=0))
-                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
-                _persistence = _num / _den  # in [0, 1]
-                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
-            else:
-                _persistence_mult = np.ones(7)
-            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
+            # Architectural simplification: removed _persistence_mult per-voter time-varying
+            # weighting (8-bar magnitude-weighted persistence → 0.7..1.3 multiplier).
+            # Existing _bull_confs/_bear_confs are already clipped to [0.1, 0.9] which
+            # bounds single-voter noise contribution to strong_sum at ~0.8 (was ~2.0
+            # before clipping); persistence weighting is a second-order noise filter
+            # operating on the same voter signals. With clipping in place, the additional
+            # 0.7..1.3 modulation operates on a narrow signal range and provides little
+            # orthogonal noise reduction. Code-structure removal: 11 lines + state dict.
+            _voter_weights = _base_weights
             # Architectural: volume-weighted voter aggregation amplifier.
             # High-volume current bar = signal-confirming; voters fire on info-rich bars.
             # Low-volume current bar = thin-tape, low-conviction; voters may fire on noise.
