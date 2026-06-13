@@ -850,7 +850,20 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                # Architectural: portfolio-DD exit accelerator (7th soft source, cross-symbol).
+                # _port_dd_atten currently only scales ENTRY size. When portfolio DD is severe
+                # (correlated losses across symbols cascade), per-symbol exit pressures may not
+                # yet have triggered individually. Inject exit pressure proportional to portfolio
+                # DD on losing positions only (gated by _pnl_scale<0). Mechanism: portfolio-level
+                # DD signal → per-symbol exit subsystem. Genuinely novel cross-component data
+                # flow: previously exits were 100% symbol-local. Magnitude capped at 0.35 to
+                # subordinate to direct slope/sl signals; activates only on losing positions
+                # to avoid cutting winners during portfolio noise. Asymmetric design: protects
+                # against cascade-DD without disturbing in-profit hold semantics.
+                _port_dd_severity = 1.0 - _port_dd_atten  # in [0, 1], 0 = no DD, 1 = full DD
+                _pdd_pressure = 0.35 * _port_dd_severity * max(0.0, -_pnl_scale)
+                _w_pdd = 1.0
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_pdd * _pdd_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
