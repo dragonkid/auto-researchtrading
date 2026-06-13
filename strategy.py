@@ -736,12 +736,37 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
+
+                # Architectural: candle-shock exit pressure (6th soft source).
+                # Single-bar momentum shock detector — catches turn points faster than
+                # multi-bar slope smoothing. When current bar shows wide range AND close
+                # is far in the AGAINST-position direction (long with close near low, or
+                # short with close near high), fire smooth exit pressure proportional to
+                # range expansion. Orthogonal to slope (multi-bar trend), pp (cumulative
+                # giveback), time, ve (vol-of-vol regime shift). Per-bar microstructure
+                # signal — no smoothing window. Activates only mid-loss / not-yet-stopped:
+                # _pnl_scale in [-0.5, 1.0] → don't double-fire with stop on big losers.
+                _cs_high = bd.history["high"].values[-1]
+                _cs_low = bd.history["low"].values[-1]
+                _cs_close_pos = (closes[-1] - _cs_low) / max(_cs_high - _cs_low, 1e-10)
+                _cs_med_range = max(np.median(bd.history["high"].values[-13:-1] - bd.history["low"].values[-13:-1]), 1e-10)
+                _cs_range_ratio = (_cs_high - _cs_low) / _cs_med_range
+                _cs_pos_dir = 1.0 if current_pos > 0 else -1.0
+                # bar_against = how much current close is in the against-position direction
+                # weighted by range expansion. For long: high close_pos = neutral, low = adverse.
+                # For short: low close_pos = neutral, high = adverse.
+                _cs_against = max(0.0, 0.5 - _cs_close_pos) if current_pos > 0 else max(0.0, _cs_close_pos - 0.5)
+                _cs_against_amp = _cs_against * min(2.5, _cs_range_ratio)  # scale [0, ~1.25]
+                _cs_pressure = 0.6 * max(0.0, np.tanh(_cs_against_amp / 0.30))  # in [0, 0.6]
+                # Weight: 1.0 in profit / small loss, 0.0 at full stop (don't compound with stop).
+                # Smooth ramp using _pnl_scale: 1.0 at pnl_scale=1 (profit), 0.5 at 0, 0 at -0.5.
+                _w_cs = max(0.0, min(1.0, 0.5 + _pnl_scale))  # 1.0 in profit, 0 at stop-near
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_cs * _cs_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
