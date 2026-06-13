@@ -136,15 +136,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol entry-time own-side margin storage.
-        # Captures the conviction margin (strong-sum excess over admission
-        # threshold) at the moment the position was opened. Used in exit
-        # voter_bias: positions opened with HIGH entry-time conviction
-        # deserve additional hold patience even if current voter conviction
-        # has temporarily decayed (transient mid-trend voter dip). New
-        # cross-bar state dependency: exit-side voter_bias depends on
-        # entry-time voter conviction as well as current-bar voter conviction.
-        self._entry_margin = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -806,20 +797,7 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                # Architectural: entry-margin hold-support term added to voter_bias.
-                # Adds a small SUBTRACTION (extra hold) proportional to how strong the
-                # entry-time own-side margin was. Positions entered with high
-                # conviction (large _entry_margin) deserve more patience through
-                # transient mid-trend voter dips; positions entered marginally
-                # (small _entry_margin) get no extra patience. Continuous via tanh,
-                # capped at -0.10 (subordinate to current-margin _voter_bias which
-                # is the primary hold-support signal). Trend-attenuated: only fires
-                # for trend-aligned positions where the entry-time conviction is
-                # most informative (counter-trend high-conviction entries are often
-                # contrarian shorts in uptrend that need fast cuts, not extra hold).
-                _entry_margin_val = self._entry_margin.get(symbol, 0.0)
-                _em_hold_support = -0.10 * _trend_align_vb * max(0.0, np.tanh(_entry_margin_val / 0.40))
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30)) + _em_hold_support
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
@@ -999,14 +977,12 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_margin):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    # Architectural: capture entry-time own-side margin for hold support.
-                    self._entry_margin[symbol] = _bull_margin if target > 0 else _bear_margin
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
