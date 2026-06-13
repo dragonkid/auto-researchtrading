@@ -144,14 +144,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Architectural: cross-symbol concurrent-position attenuator state.
-        # Count active positions across BTC/ETH/SOL at the start of the bar.
-        # Used in entry path to attenuate first-bar size when correlated symbols
-        # already loaded — reduces simultaneous-stressed exposure during regime
-        # transitions where all 3 symbols move together. New cross-symbol data
-        # dependency on portfolio state; symmetric across symbols.
-        _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -399,14 +391,6 @@ class Strategy:
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
-            # Architectural simplification: removed _confluence_adj first-bar amplifier
-            # (LR_slope * trend_avg confluence + triple-source EMA-sign agreement).
-            # Triple-amplifier removal showed null effect; underlying _confluence_adj
-            # likely also marginal since the entry-side _entry_conv_adj (conviction
-            # margin amplifier) provides similar conviction-aware first-bar sizing
-            # using directly-related voter strong-sum data. Removing entire stack
-            # eliminates redundant cross-correlated first-bar boost.
-            _confluence_adj = 0.0
             # Architectural: Kaufman efficiency ratio gate on initial commitment.
             # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
             # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
@@ -424,7 +408,7 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
@@ -523,15 +507,6 @@ class Strategy:
                 _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
                 _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
                 _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
-                # Architectural simplification: removed _concurrent_atten cross-symbol
-                # concurrent-position size attenuator. Parallel-mechanism reasoning to
-                # de5ca08 keep (removed _portfolio_freq_factor): correlated multi-symbol
-                # entries in trending regimes (crash, rally) are STRUCTURAL signal, not
-                # noise — multiplicative size attenuation on _n_active double-penalizes
-                # legitimate correlated trend entries. Per-symbol entry gates (strong-sum,
-                # persistence, admit, quality, consensus, vol_entry) already filter noise
-                # at each symbol independently. Cross-symbol attenuator is redundant.
-                _concurrent_atten = 1.0
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
@@ -566,9 +541,9 @@ class Strategy:
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
