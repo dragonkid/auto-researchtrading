@@ -136,6 +136,12 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol rolling 5-bar pos_pnl history. Used by
+        # stagnation exit pressure — when held position has neither gained nor
+        # lost meaningfully over recent bars, it is consuming capital with no
+        # signal. Distinct from time_pressure (bars_held only), pp (peak giveback),
+        # ar (mae recovery): activates only when pos_pnl is range-bound near zero.
+        self._pnl_window = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -828,12 +834,46 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: stagnation exit pressure (7th soft source).
+                # New per-symbol rolling 5-bar pos_pnl window drives a new control flow:
+                # when held position has neither gained nor lost meaningfully over recent
+                # bars (pnl range tight AND mean |pnl| small), the position is stagnating
+                # — capital is locked with no signal. Distinct from:
+                #  - time_pressure: fires on bars_held alone regardless of pnl trajectory
+                #  - pp_pressure: requires a peak first
+                #  - ar_pressure: requires deep MAE first
+                #  - ep_pressure: requires sub-peak giveback first
+                # Stagnation is the no-peak, no-mae, no-progress case — orthogonal.
+                # Activates only after bars_held >= 5 and only when both range and
+                # magnitude conditions met. Smooth tanh ramp on bars_held above floor.
+                _pw = self._pnl_window.setdefault(symbol, [])
+                _pw.append(pos_pnl)
+                if len(_pw) > 5:
+                    _pw = _pw[-5:]
+                self._pnl_window[symbol] = _pw
+                _st_pressure = 0.0
+                if bars_held >= 5 and len(_pw) >= 5:
+                    _pnl_range = max(_pw) - min(_pw)
+                    _pnl_mean_abs = sum(abs(p) for p in _pw) / 5.0
+                    # Stagnation criteria: range < 0.4% AND mean magnitude < 0.3%.
+                    # Soft activation via tanh blends both: full activation only when both
+                    # conditions clearly met.
+                    _range_act = max(0.0, np.tanh((0.004 - _pnl_range) / 0.002))  # 1 at zero range, 0 at 0.004
+                    _mag_act = max(0.0, np.tanh((0.003 - _pnl_mean_abs) / 0.0015))  # 1 at zero mag, 0 at 0.003
+                    _stag_act = _range_act * _mag_act
+                    # Time ramp: 0 at bar 5, smooth growth to cap.
+                    _stag_time = max(0.0, np.tanh((bars_held - 5) / 5.0))
+                    _st_pressure = 0.4 * _stag_act * _stag_time
+                # Weight: only fire on near-zero pnl (stagnation domain). Suppress when
+                # winning or losing meaningfully (other pressures handle those regimes).
+                # 1.0 at pnl=0, drops to 0 at |pnl| = 0.5 * |stop|.
+                _w_st = max(0.0, 1.0 - abs(_pnl_scale) * 2.0)
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_st * _st_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -940,12 +980,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._pnl_window):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._pnl_window[symbol] = []
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
