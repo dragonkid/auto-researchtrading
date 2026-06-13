@@ -526,28 +526,10 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: bar-range-burst entry size attenuator (new cross-bar data
-                # dep on intra-bar range vs N-bar average range). Compute current bar's
-                # high-low range as fraction of mid; compare to mean of last 12 bars'
-                # ranges. When current range is >1.5x average (volatile-burst bar), the
-                # mid-price entry faces heightened intra-bar slippage / late-trend-tail
-                # risk — cut first-bar size. Smooth via tanh on burst ratio. Symmetric
-                # (bull/bear), max attenuation 25% at burst ratio 2.5x. Orthogonal to
-                # vol_ratio (uses high-low not log-return std), to range-position
-                # (uses range MAGNITUDE not POSITION), and to consensus_atten
-                # (uses bar shape not slope sign).
-                _bar_n = 12
-                _bar_h = bd.history["high"].values[-_bar_n:]
-                _bar_l = bd.history["low"].values[-_bar_n:]
-                _bar_ranges = (_bar_h - _bar_l) / mid
-                _curr_range = _bar_ranges[-1]
-                _avg_range = max(_bar_ranges[:-1].mean(), 1e-6)
-                _burst_ratio = _curr_range / _avg_range
-                _burst_atten = 1.0 - 0.25 * max(0.0, np.tanh((_burst_ratio - 1.5) / 0.6))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _burst_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _burst_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
