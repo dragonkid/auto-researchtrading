@@ -620,7 +620,26 @@ class Strategy:
                 for _w in (12, 16, 22):
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
-                _exit_slope = float(np.mean(_slopes))
+                # Architectural: sign-consensus-weighted slope aggregation.
+                # Decision-architecture change to _exit_slope construction (was simple mean).
+                # Each slope receives weight = fraction of OTHER slopes that share its sign.
+                # 3-of-3 consensus: weights (1,1,1) -> identical to mean.
+                # 2-of-3 consensus: dissenting slope gets weight 0; agreeing pair gets weight 1.
+                # 1-1-1 split (impossible with 3 slopes): degenerate, weights all 0 -> exit_slope=0.
+                # Mechanism: filters single-window slope outliers that currently propagate into
+                # _exit_slope via mean. When all 3 windows AGREE on direction, signal is high-
+                # consensus reversal. When 1 window dissents, that window's contribution is
+                # suppressed (treated as window-specific noise). Continuous: weights are real-
+                # valued (count-based, not boundary-based on slope magnitudes themselves).
+                # New cross-window data dep at exit: each slope's contribution depends on the
+                # SIGN of the other slopes.
+                _signs = [1 if s > 0 else (-1 if s < 0 else 0) for s in _slopes]
+                _wts = [sum(1 for j in range(3) if j != i and _signs[j] == _signs[i] and _signs[i] != 0) / 2.0 for i in range(3)]
+                _wt_sum = sum(_wts)
+                if _wt_sum > 1e-10:
+                    _exit_slope = sum(s * w for s, w in zip(_slopes, _wts)) / _wt_sum
+                else:
+                    _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
