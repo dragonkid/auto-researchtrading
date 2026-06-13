@@ -749,12 +749,36 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
+                # Architectural: intra-bar close-position confirmation pressure (6th soft source).
+                # Compares close to bar's high/low range. For bull positions, weak intra-bar close
+                # (close in lower portion of [low, high]) signals seller pressure beyond what slope/
+                # pp/time/voter capture. For bear positions, strong close (upper portion) signals
+                # buyer pressure. Uses last 3 bars averaged to filter single-bar noise.
+                # Continuous, orthogonal to all existing exit terms (which use bar-to-bar returns/
+                # slopes — this uses intra-bar OHLC relationship). Capped at 0.4 to remain
+                # subordinate to slope and pp (which are stronger reversal signals when fired).
+                # New data dependency: exit subsystem reads (close - low) / (high - low) per bar.
+                _ib_n = 3
+                _ib_high = bd.history["high"].values[-_ib_n:]
+                _ib_low = bd.history["low"].values[-_ib_n:]
+                _ib_close = closes[-_ib_n:]
+                _ib_range = np.maximum(_ib_high - _ib_low, 1e-10)
+                _ib_pos = (_ib_close - _ib_low) / _ib_range  # in [0,1], 0=closed at low, 1=closed at high
+                _ib_avg = float(np.mean(_ib_pos))
+                # Bull pos: weak close (low _ib_avg) → exit pressure. Bear pos: strong close → exit pressure.
+                # Map: _ib_avg=0.5 → 0 pressure; _ib_avg=0.2 (bull) or 0.8 (bear) → max pressure.
+                if current_pos > 0:
+                    _ib_against = max(0.0, 0.5 - _ib_avg) / 0.30  # 0..1 as _ib_avg goes 0.5→0.2
+                else:
+                    _ib_against = max(0.0, _ib_avg - 0.5) / 0.30
+                _ib_pressure = 0.4 * max(0.0, min(1.0, _ib_against))
+                _w_ib = 1.0  # baseline weight; subordinate via 0.4 cap on _ib_pressure
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ib * _ib_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
