@@ -874,12 +874,43 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: slope-acceleration exit pressure (7th soft source).
+                # New cross-bar SECOND-DERIVATIVE data dependency: slope at current
+                # bar vs slope one bar ago. All existing exit pressures use first-
+                # derivative info (slope LEVEL, pnl LEVEL, giveback LEVEL). Slope
+                # acceleration captures deceleration BEFORE slope crosses zero,
+                # giving an early-reversal signal one bar before _sl_slope_pressure.
+                #   _slope_now: mean of slopes at 12/16/22 ending at -1 (=_exit_slope above)
+                #   _slope_prev: mean of slopes at 12/16/22 ending at -2
+                #   _slope_decel = -(_slope_now - _slope_prev) * pos_dir
+                # When position is long and slope decelerating (_slope_decel > 0)
+                # OR position is short and slope accelerating (_slope_decel > 0),
+                # add exit pressure proportional to deceleration magnitude.
+                # Threshold and band scale with vol_ratio (smooth, continuous).
+                # Cap 0.30. Gated by trend-alignment attenuator like _sl_slope_pressure.
+                _slopes_prev = []
+                for _w in (12, 16, 22):
+                    _slopes_prev.append(_fast_slope(np.log(_hl2[-_w - 1:-1])))
+                _slope_prev = float(np.mean(_slopes_prev))
+                _pos_dir_sa = 1.0 if current_pos > 0 else -1.0
+                _slope_decel = -(_exit_slope - _slope_prev) * _pos_dir_sa  # >0 when slope moving against pos
+                _sa_thresh = 0.00015 + 0.00015 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                _sa_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                _sa_raw = max(0.0, min(1.0, (_slope_decel - (1.0 - _sa_band/2) * _sa_thresh) / (_sa_band * _sa_thresh)))
+                # Trend-alignment attenuator (reuse pattern): trend-aligned positions
+                # see softer slope-decel pressure (transient deceleration in winning
+                # trend positions during pullbacks is normal).
+                _sa_pressure = 0.30 * _sa_raw * (1.0 - 0.35 * _trend_align)
+                # Weight: only fire when not already exiting via slope-against (avoid
+                # double-counting). Cap at 0.6 of (1 - _sl_slope_pressure) so the
+                # acceleration pressure becomes redundant when slope-against fires.
+                _w_sa = max(0.0, 1.0 - _sl_slope_pressure)
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_sa * _sa_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
