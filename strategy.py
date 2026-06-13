@@ -526,29 +526,10 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: skewness-aware entry size attenuator (new orthogonal
-                # data dependency on 3rd moment). Recent 30-bar log-return skewness
-                # is orthogonal to vol_ratio (2nd moment) and ret_long (1st moment).
-                # Positive skew → right-tail dominant → long-favorable; negative skew
-                # → short-favorable. Symmetric attenuator: bull entry against negative
-                # skew gets cut, bear entry against positive skew gets cut. Gated
-                # above |skew| > 0.3 (typical noise threshold) via tanh, max 20% cut.
-                # Continuous (smooth), bounded [0.80, 1.0]. Does NOT touch admission;
-                # only first-bar SIZE — mirrors the bilateral-quality and concurrent
-                # patterns. Skew computed on smoothed_closes log-returns (already
-                # noise-attenuated) for stability.
-                _skew_n = 30
-                _logr_skew = np.diff(np.log(smoothed_closes[-_skew_n - 1:]))
-                _lr_mean = _logr_skew.mean()
-                _lr_std = max(_logr_skew.std(), 1e-10)
-                _skew = ((_logr_skew - _lr_mean) ** 3).mean() / (_lr_std ** 3)
-                # Bull entry: negative skew attenuates; positive skew unchanged.
-                _bull_skew_atten = 1.0 - 0.20 * max(0.0, np.tanh((-_skew - 0.3) / 0.4))
-                _bear_skew_atten = 1.0 - 0.20 * max(0.0, np.tanh((_skew - 0.3) / 0.4))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_skew_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_skew_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
