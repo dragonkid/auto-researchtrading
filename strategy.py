@@ -526,11 +526,15 @@ class Strategy:
                 _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
                 _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
                 _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
-                # Architectural: cross-symbol concurrent-position attenuator.
-                # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
-                # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
-                # Reduces correlated risk during multi-symbol entry pile-ups.
-                _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
+                # Architectural simplification: removed _concurrent_atten cross-symbol
+                # concurrent-position size attenuator. Parallel-mechanism reasoning to
+                # de5ca08 keep (removed _portfolio_freq_factor): correlated multi-symbol
+                # entries in trending regimes (crash, rally) are STRUCTURAL signal, not
+                # noise — multiplicative size attenuation on _n_active double-penalizes
+                # legitimate correlated trend entries. Per-symbol entry gates (strong-sum,
+                # persistence, admit, quality, consensus, vol_entry) already filter noise
+                # at each symbol independently. Cross-symbol attenuator is redundant.
+                _concurrent_atten = 1.0
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
