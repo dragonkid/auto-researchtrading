@@ -243,17 +243,18 @@ class Strategy:
             _sign_hist = self._voter_sign_history.get(symbol, [])
             _current_signs = tuple(1 if s > 0 else -1 for s in _voter_signals_bull)
             _sign_hist.append(_current_signs)
-            if len(_sign_hist) > 5:
-                _sign_hist = _sign_hist[-5:]
+            if len(_sign_hist) > 8:
+                _sign_hist = _sign_hist[-8:]
             self._voter_sign_history[symbol] = _sign_hist
             # Compute per-voter directional persistence.
-            # Branch step 5: shorten window from 8 to 5 bars. Faster persistence
-            # tracking lets crash protective flips be re-rewarded after fresh agreement;
-            # rally/sideways persistence still tracks longer-than-1-bar consistency.
-            if len(_sign_hist) >= 3:
+            # Branch step 4: only-amplify (no penalty). Originally penalty on flip-prone
+            # voters (mult down to 0.7) hurt crash. Restrict persistence_mult to [1.0, 1.3]
+            # (one-sided positive amplification for consistent voters; flip-prone voters
+            # keep base weight rather than getting penalized).
+            if len(_sign_hist) >= 4:
                 _hist_arr = np.array(_sign_hist)  # (K, 6)
                 _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
-                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
+                _persistence_mult = 1.0 + 0.3 * _persistence  # in [1.0, 1.3]
             else:
                 _persistence_mult = np.ones(6)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
