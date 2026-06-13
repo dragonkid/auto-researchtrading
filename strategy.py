@@ -507,22 +507,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Architectural: counter-trend stop-loss tightening. When position
-                # is counter-trend (ret_long * pos_dir < 0) AND long-window trend
-                # is strong (|ret_long| > 0.04), tighten the stop up to 25%. In
-                # strong trends, counter-trend positions are statistically lower-
-                # quality (rally pullbacks reverse, downtrend bounces fade);
-                # cutting them faster on adverse moves preserves capital. Smooth
-                # via tanh on signed ret_long * pos_dir (negative values activate
-                # tightening). Trend-aligned positions unaffected (multiplier=1.0).
-                # New cross-timescale data dependency: stop magnitude depends on
-                # trend alignment of the position. Targets rally bear-entry losses
-                # which fire at legitimate overbought signals but lose to trend
-                # resumption.
-                _pos_dir_sl_ct = 1.0 if current_pos > 0 else -1.0
-                _ct_sl_gate = max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.04))
-                _ct_sl_align = max(0.0, np.tanh(-ret_long * _pos_dir_sl_ct / 0.05))
-                _stop_abs = _stop_abs * (1.0 - 0.25 * _ct_sl_gate * _ct_sl_align)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
