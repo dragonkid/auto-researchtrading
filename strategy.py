@@ -119,12 +119,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: per-symbol entry-time long-window return.
-        # Captured at position open; used by trend-strengthening exit pressure
-        # to detect when a counter-trend position is in a market that has
-        # ACCELERATED against it (vs just held against it). Cross-timescale
-        # state: position-lifetime memory of entry-time trend strength.
-        self._entry_ret_long = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -676,33 +670,12 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: trend-acceleration exit pressure (6th source).
-                # State-tracked: at entry, capture ret_long_entry. Now compare current
-                # ret_long against entry value, but ONLY when the position is
-                # counter-trend (entry_ret_long * pos_dir < 0) AND the trend has
-                # STRENGTHENED in the adverse direction (current ret_long is more
-                # negative-aligned than entry). This is fundamentally different from
-                # current-bar slope-against (which can fire on noise) — it requires
-                # cumulative trend acceleration since the position was opened.
-                # New cross-bar state dependency: position-lifetime memory of entry
-                # trend value. Continuous via tanh on the acceleration delta.
-                _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
-                _entry_rl = self._entry_ret_long.get(symbol, ret_long)
-                # Counter-trend at entry: entry_ret_long * pos_dir < 0
-                # (e.g., short opened with positive entry_ret_long → counter-trend short).
-                _ct_entry_strength = max(0.0, np.tanh(-_entry_rl * _pos_dir_ta / 0.04))  # [0,1]
-                # Trend strengthened against position: (ret_long - entry_rl) * pos_dir < 0
-                # i.e., the adverse trend got more adverse since entry.
-                _trend_accel = max(0.0, np.tanh(-(ret_long - _entry_rl) * _pos_dir_ta / 0.025))  # [0,1]
-                # Pressure scales with BOTH gates; only fires when counter-trend AND accelerating.
-                _ta_pressure = 0.7 * _ct_entry_strength * _trend_accel
-                _w_ta = 1.0  # always-on (counter-trend acceleration is risk-state regardless of pnl)
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ta * _ta_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -787,11 +760,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_ret_long):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._entry_ret_long[symbol] = ret_long
 
         return signals
