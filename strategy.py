@@ -122,16 +122,6 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: direction-conditional realized-pnl memory.
-        # Maintains rolling list of recent closed-trade realized pnl per side per
-        # symbol. When recent trades on a given side have been losing systematically
-        # (e.g., shorts in rally), attenuate new entry size on that side only.
-        # Direction-specific (not procyclical-wrong like generic pnl feedback).
-        # Keys: (symbol, side) where side in {'long','short'}. Each stores up to
-        # 5 most recent realized pnl values.
-        self._recent_trade_pnl = {}
-        # Entry side tracker per symbol (for attribution on close).
-        self._entry_side = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -401,25 +391,10 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: direction-conditional pnl-feedback size attenuator.
-                # Reads recent 5-trade realized pnl on the entry side; if mean is
-                # negative, attenuate first-bar size via tanh on (mean_pnl / STOP_ABS).
-                # Direction-specific: attenuates ONLY the losing-side entries.
-                # Range: factor in [0.6, 1.0] — cap attenuation at -0.4 magnitude.
-                # Continuous, no boundary discontinuity. Long entries unaffected when
-                # short side has been losing, and vice versa. New cross-trade data
-                # dependency at entry: size depends on history of same-direction
-                # closed trades.
-                _long_hist = self._recent_trade_pnl.get((symbol, 'long'), [])
-                _short_hist = self._recent_trade_pnl.get((symbol, 'short'), [])
-                _long_mean = float(np.mean(_long_hist)) if _long_hist else 0.0
-                _short_mean = float(np.mean(_short_hist)) if _short_hist else 0.0
-                _long_atten = 1.0 - 0.4 * max(0.0, np.tanh(-_long_mean / 0.024))
-                _short_atten = 1.0 - 0.4 * max(0.0, np.tanh(-_short_mean / 0.024))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _long_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _short_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -682,22 +657,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Record realized pnl on close for direction-conditional attenuator.
-                    if symbol in self.entry_prices and symbol in self._entry_side:
-                        _realized = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if self._entry_side[symbol] == 'short':
-                            _realized = -_realized
-                        _key = (symbol, self._entry_side[symbol])
-                        _hist_pnl = self._recent_trade_pnl.get(_key, [])
-                        _hist_pnl.append(_realized)
-                        if len(_hist_pnl) > 5:
-                            _hist_pnl = _hist_pnl[-5:]
-                        self._recent_trade_pnl[_key] = _hist_pnl
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_side):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._entry_side[symbol] = 'long' if target > 0 else 'short'
 
         return signals
