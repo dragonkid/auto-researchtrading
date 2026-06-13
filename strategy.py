@@ -491,7 +491,7 @@ class Strategy:
                 # timescale data dependency: pp amplification depends on
                 # long-window trend magnitude. Continuous via tanh.
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                _pm_trend_atten = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.08))  # in [0, 1]
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
