@@ -540,20 +540,10 @@ class Strategy:
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
-                # Architectural fusion-shape change: replace multiplicative compounding
-                # of 5 entry-size attenuators (ct, consensus, quality, vol_entry, outcome)
-                # with min-of-attenuators (binding-constraint composition). Multiplicative
-                # composition compounds: 5 attenuators each at 0.70 produce 0.17x — far
-                # smaller than any individual signal indicates. Min preserves the worst-
-                # firing attenuator only, preventing compound attenuation when multiple
-                # weak signals stack. _cooldown_factor stays multiplicative (it's a
-                # time-since-exit ramp, structurally different from quality attenuators).
-                _bull_att_min = min(_bull_ct_atten, _bull_consensus_atten, _bull_quality_atten, _vol_entry_atten, _outcome_size_mult)
-                _bear_att_min = min(_bear_ct_atten, _bear_consensus_atten, _bear_quality_atten, _vol_entry_atten, _outcome_size_mult)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_att_min
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_att_min
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
