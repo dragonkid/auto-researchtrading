@@ -116,6 +116,10 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Architectural: per-symbol bar at which current MAE was set (when low-water last updated).
+        # Used by adverse-recovery speed gate: fast recoveries (low bars since MAE) are likely
+        # dead-cat bounces in trend regimes; slow recoveries are real momentum building.
+        self._mae_bar = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -577,8 +581,13 @@ class Strategy:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
+                # Also track the bar at which MAE was last updated (for recovery-speed gating).
                 _curr_mae = self._mae.get(symbol, 0.0)
-                self._mae[symbol] = min(_curr_mae, pos_pnl)
+                if pos_pnl < _curr_mae:
+                    self._mae[symbol] = pos_pnl
+                    self._mae_bar[symbol] = self.bar_count
+                else:
+                    self._mae[symbol] = _curr_mae
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -819,9 +828,18 @@ class Strategy:
                 if _curr_mae_e < _mae_floor and pos_pnl < 0:
                     # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
+                    # Architectural: recovery-speed amplifier on _ar_pressure.
+                    # Fast recoveries (1-2 bars since MAE set) are more likely dead-cat
+                    # bounces — amplify exit pressure to lock the bounce before reversal.
+                    # Slow recoveries (4+ bars) indicate real momentum building — attenuate
+                    # exit pressure to let the recovery continue. Continuous tanh on
+                    # bars_since_mae. Range: 1.4x (fast) -> 1.0x (3 bars) -> 0.7x (slow).
+                    # New cross-bar state dependency: _ar_pressure depends on bar of MAE set.
+                    _bars_since_mae = self.bar_count - self._mae_bar.get(symbol, self.bar_count)
+                    _speed_mult = 1.4 - 0.7 * max(0.0, min(1.0, np.tanh((_bars_since_mae - 1.0) / 2.5)))
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
-                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4)) * _speed_mult
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
@@ -937,12 +955,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._mae_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._mae_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
