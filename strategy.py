@@ -131,12 +131,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol rolling 3-bar exit_pressure history. Used by
-        # de_floor derivative gate — when exit_pressure is rising fast, lower the
-        # de-risk floor (more aggressive partial exit on accelerating adversity);
-        # when falling, raise the floor (let recovering positions hold). Adds a
-        # NEW state dependency on exit-pressure derivative.
-        self._exit_pressure_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -864,28 +858,10 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
-                    # Architectural: exit-pressure derivative modulation of de_floor.
-                    # New state dependency on rolling 2-bar history of _exit_pressure.
-                    # When current exit_pressure has risen sharply vs prior bar
-                    # (delta > 0.15), exit conditions are accelerating — lower
-                    # de_floor (widen partial-exit zone, more aggressive de-risk).
-                    # When delta is negative (pressure falling), raise de_floor
-                    # (narrower partial-exit zone, allow position to recover).
-                    # Continuous via tanh on delta. Bounded ±0.10 modulation to
-                    # de_floor, keeping it within [0.45, 0.90] effective range.
-                    _ep_hist = self._exit_pressure_hist.get(symbol, [])
-                    _ep_delta = _exit_pressure - (_ep_hist[-1] if _ep_hist else _exit_pressure)
-                    _de_floor_mod = -0.10 * np.tanh(_ep_delta / 0.15)  # rising: -mod (lower floor); falling: +mod
-                    _de_floor = max(0.40, min(0.90, _de_floor + _de_floor_mod))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
-                # Append current exit_pressure to rolling history AFTER de_floor used prior bar's value.
-                _eph = self._exit_pressure_hist.setdefault(symbol, [])
-                _eph.append(_exit_pressure)
-                if len(_eph) > 3:
-                    _eph[:] = _eph[-3:]
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
