@@ -136,13 +136,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol EMA(3) of bull/bear strong-sums.
-        # Used as smoothed entry gate: admission requires BOTH current bar's
-        # strong-sum AND a 3-bar-EMA strong-sum to exceed the floor. Distinct
-        # from per-voter persistence (which signs each voter's direction over
-        # 8 bars) — this smooths AGGREGATE conviction. Reduces single-bar
-        # noise at entry without affecting voter-level weighting.
-        self._strong_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -311,15 +304,6 @@ class Strategy:
             if len(_hist) > 3:
                 _hist = _hist[-3:]
             self._recent_strongs[symbol] = _hist
-            # Architectural: EMA(3) of strong-sums per symbol. Smooths aggregate
-            # conviction independent of per-voter persistence weighting. Updated
-            # every bar; used in entry gate to require both current AND smoothed
-            # strong-sum to exceed admission threshold.
-            _ema_alpha = 2.0 / (3 + 1)  # span=3
-            _prev_ema = self._strong_ema.get(symbol, (_bull_strong, _bear_strong))
-            _bull_strong_ema = _ema_alpha * _bull_strong + (1 - _ema_alpha) * _prev_ema[0]
-            _bear_strong_ema = _ema_alpha * _bear_strong + (1 - _ema_alpha) * _prev_ema[1]
-            self._strong_ema[symbol] = (_bull_strong_ema, _bear_strong_ema)
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
@@ -547,18 +531,9 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: EMA strong-sum gate — chop-targeted only.
-                # In chop (low rsi_trend_str), require 3-bar-EMA strong-sum ≥ 0.85*floor
-                # AS WELL AS current bar's strong-sum. In trend (high rsi_trend_str),
-                # gate relaxes toward zero (allows fast entries on conviction spikes).
-                # Reduces chop entry churn from single-bar noise spikes that the
-                # current bar passes but smoothed average doesn't.
-                _ema_gate_factor = 0.85 * (1.0 - rsi_trend_str)  # 0.85 in deep chop, 0 in strong trend
-                _bull_ema_ok = _bull_strong_ema >= _ema_gate_factor * _bull_strong_min
-                _bear_ema_ok = _bear_strong_ema >= _ema_gate_factor * _bear_strong_min
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_ema_ok:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_ema_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
