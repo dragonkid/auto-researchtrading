@@ -900,12 +900,23 @@ class Strategy:
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
-                    # Architectural: vol-conditioned partial-exit floor.
-                    # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
-                    # smoother small position scaling — exploits chop-friendly partial exits).
-                    # High vol (crash): floor=0.80 (narrower ramp, closer to binary —
-                    # avoids holding partial positions during fast adverse moves).
-                    # Continuous via tanh on (vol_ratio - 1.0)/0.4.
+                    # Architectural: PnL-conditioned partial-exit floor (replaces
+                    # vol-conditioning). New cross-subsystem data dep at exit
+                    # graduation: floor depends on whether position is currently
+                    # winning vs losing. Profit (pos_pnl > 0): wider ramp (floor=0.55,
+                    # gradual de-risk to lock partial gains while letting upside run
+                    # if pressure dissipates). Loss (pos_pnl < 0): narrower ramp
+                    # (floor=0.85, near-binary fast exit — losers should not linger
+                    # at half-size while soft pressures continue to mount). Smooth
+                    # transition via tanh of pos_pnl / abs(STOP_LOSS_PCT) (same
+                    # _pnl_scale used in pressure weights). Continuous, no boundary.
+                    # Mechanism rationale: existing fast-exit semantics in losers
+                    # are achieved by full _exit_pressure crossing _exit_thresh
+                    # (binary path); the de-risk path gradient is currently MOST
+                    # active in mid-pressure, profit-side mid-life situations where
+                    # graduation makes most sense. Tightening loser graduation
+                    # routes more loser exits through the _exit_thresh binary path.
+                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -913,7 +924,6 @@ class Strategy:
                     # tries to grow it. Defer de-risk consideration until bars_held>=2
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
-                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
