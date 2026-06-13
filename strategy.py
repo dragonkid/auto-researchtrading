@@ -515,19 +515,36 @@ class Strategy:
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
-                # Architectural simplification: removed PnL-conditioned exit-pressure weighting.
-                # Previously _w_slope, _w_pp, _w_time were asymmetrically tilted by pos_pnl
-                # (heavier slope in loss, heavier pp/time in profit). This created procyclical
-                # exit acceleration on losing positions and over-protected winning positions.
-                # Replaced with unit weights modulated only by _scale_in_w (legitimate
-                # commitment ramp). The pp_pressure, slope_pressure, and time_pressure
-                # mechanisms already encode their own activation logic; pnl-coupling created
-                # double-counting since giveback ratio already depends on pos_pnl directly.
-                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1], used by _w_ve below
+                # PnL-conditioned exit-pressure weighting (architectural change to fusion):
+                # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
+                # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
+                # Stop-loss and time pressure stay at unit weight (protective + structural).
+                # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
+                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
+                # Architectural: scale-in-aware slope-pressure attenuator. During the first
+                # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
+                # to micro-noise on a position not yet at full size. Attenuate _w_slope
+                # smoothly with bars_held so slope-against pressure ramps up with position
+                # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
+                # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                _w_slope = _scale_in_w
-                _w_pp    = _scale_in_w
-                _w_time  = 1.0
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                # Architectural: vol-conditioned profit-side _w_pp.
+                # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
+                #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
+                # High vol (crash): restore profit-side amplification — crash recovery profits
+                #   are short-lived and need fast giveback locking.
+                # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
+                _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
+                # Architectural extension: time-pressure asymmetric weight by pnl_scale.
+                # In profit: heavier time pressure (lock in gains via time exit).
+                # In loss: lighter time pressure (give losing positions room to recover
+                # before time-killing — alignment with slope-against doing the loss-cutting).
+                # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
+                # (let slope-against do loss-cutting; avoid sideways small-loss jitter
+                # destabilizing time pressure).
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
                 # Architectural: position-side voter-conviction as exit-pressure attenuator.
                 # When the voters still strongly support position direction (bull_strong
                 # if long, bear_strong if short), the entry signal hasn't reversed —
