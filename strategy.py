@@ -797,7 +797,25 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: own-side conviction-trajectory exit pressure component.
+                # Reuses _recent_strongs 3-bar history (already maintained for entry persistence
+                # gate). Detects FADING own-side conviction: if own-side strong-sum has declined
+                # for 2 consecutive bars (strong[-3] > strong[-2] > strong[-1]), the position's
+                # voter support is weakening even if instantaneous _side_margin still positive.
+                # Adds a small exit-bias term proportional to the decline magnitude (normalized
+                # by current strong-sum). Distinct from _voter_bias which uses INSTANTANEOUS
+                # margin — trajectory captures CHANGE in margin. New cross-bar data dep at
+                # voter_bias subsystem; gated on requiring 3+ bars of history.
+                _conviction_decay = 0.0
+                if len(_hist) >= 3:
+                    _own_idx = 0 if current_pos > 0 else 1
+                    _s3, _s2, _s1 = _hist[-3][_own_idx], _hist[-2][_own_idx], _hist[-1][_own_idx]
+                    if _s3 > _s2 > _s1 and _s3 > 1e-6:
+                        # decline magnitude normalized by 3-bar-prior strong-sum
+                        _decay_frac = max(0.0, min(1.0, (_s3 - _s1) / _s3))
+                        # Smooth ramp via tanh; max contribution 0.10 (subordinate to main voter_bias 0.20)
+                        _conviction_decay = 0.10 * np.tanh(_decay_frac / 0.30)
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30)) + _conviction_decay
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
