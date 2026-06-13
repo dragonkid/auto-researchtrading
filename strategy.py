@@ -346,19 +346,17 @@ class Strategy:
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
-            # Architectural: smooth cooldown decay replacing binary gate.
-            # Original: binary in_cooldown = bars_since_exit < COOLDOWN_BARS * cooldown_trend_strength.
-            # New: bars_since_exit drives a continuous cooldown_factor in [0, 1] via tanh decay
-            # over a 3-bar window scaled by trend strength. cold-entry path always opens, but
-            # first-bar size is multiplied by cooldown_factor (0 immediately post-exit, 1 after
-            # ~3 bars in chop, ~1.5 bars in strong trend). Removes binary boundary noise at
-            # the bar-count threshold; allows fast re-entry with attenuated size if conviction
-            # surges right after exit. New control flow: post-exit re-entry is gradient-attenuated
-            # rather than gated.
-            _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
-            _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
+            # Architectural simplification: removed _cooldown_factor smooth-decay
+            # post-exit size attenuator. The mechanism multiplied first-bar size
+            # by a tanh decay over bars_since_exit. With the entry-side noise
+            # filters already in place (2-bar persistence gate, _freq_factor
+            # entry-density regulator, _vol_entry_atten low-volume attenuator,
+            # _consensus_atten multi-window slope, _quality_atten bilateral
+            # conviction, _ct_atten counter-trend), the additional post-exit
+            # attenuation is structurally redundant. Code-structure removal: 6
+            # lines + 1 cross-bar state dep (bars_since_exit) removed from entry
+            # path. exit_bar tracking retained (used by other state cleanup).
+            in_cooldown = False  # binary gate dissolved; no post-exit size attenuation
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -569,9 +567,9 @@ class Strategy:
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
