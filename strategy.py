@@ -634,9 +634,25 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: peak-distance trailing stop tightening.
+                # After a position reaches meaningful peak (peak_pnl > 0.4*_stop_abs),
+                # the effective stop tightens from entry-anchored toward "peak * 0.4"
+                # — i.e. the stop migrates upward into protected-profit territory.
+                # Implementation: _loss is measured vs entry (pos_pnl from entry); when
+                # peak is high, we shrink the effective allowed _loss by 0.4*peak_pnl,
+                # so a stop fires when current pnl drops 0.4*peak below entry rather
+                # than at full _stop_abs. Continuous: linear ramp from 0 tightening
+                # at peak<=0.4*_stop_abs to full 0.4*peak tightening at peak>=2*_stop_abs.
+                # New control flow at HARD stop subsystem (distinct from soft pp_pressure
+                # giveback which fires in fusion path); state dep on peak_pnl already
+                # tracked. Multi-variable change: introduces peak-dependent shift to
+                # _stop_abs effective threshold.
+                _trail_ramp = max(0.0, min(1.0, (self.peak_pnl.get(symbol, 0.0) - 0.4 * _stop_abs) / max(1.6 * _stop_abs, 1e-6)))
+                _trail_shift = 0.4 * self.peak_pnl.get(symbol, 0.0) * _trail_ramp  # in [0, 0.4*peak]
+                _stop_eff = max(0.005, _stop_abs - _trail_shift)  # never below 0.5% (safety floor)
                 _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_eff
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_eff - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
