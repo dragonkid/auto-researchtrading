@@ -136,6 +136,15 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol last-exit-loss tracker. Stores pos_pnl at the
+        # bar where the position was closed (signed: negative = loss). Used by
+        # recent-stop-loss conviction penalty: when last exit was a meaningful
+        # loss (worse than 0.5*stop_abs), raise next-entry strong-min for the
+        # same symbol over a short window. Mechanism: a recent loss-driven exit
+        # is direct evidence that recent voter consensus was wrong — require
+        # stronger conviction to re-enter the same symbol until evidence
+        # accumulates that conditions have changed.
+        self._last_exit_pnl = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -316,8 +325,30 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: recent-stop-loss conviction penalty. When the last
+            # exit on this symbol was a meaningful loss (pnl <= -0.5 * |STOP_LOSS_PCT|),
+            # raise the next-entry strong-min for a fading window (peaks at the
+            # bar of exit, decays over ~8 bars). Distinct from _cooldown_factor
+            # (size attenuator on bars-since-exit, agnostic to exit reason): this
+            # raises the ENTRY GATE based on exit OUTCOME. Mechanism: a recent
+            # loss-driven exit is direct evidence the recent voter consensus
+            # for this symbol was wrong; require stronger conviction to re-enter
+            # until enough bars pass for fresh evidence. Smooth via tanh decay;
+            # max +20% threshold uplift when fresh stop-loss exit, decays to 0
+            # by ~8 bars. New per-symbol state dependency: entry threshold on
+            # last-exit pnl + bars-since-last-exit.
+            _loss_factor = 1.0
+            if symbol in self._last_exit_pnl:
+                _le_bar, _le_pnl = self._last_exit_pnl[symbol]
+                _bars_since_le = self.bar_count - _le_bar
+                if _le_pnl <= -0.012 and _bars_since_le <= 12:
+                    # Magnitude: how badly the last exit lost (0..1 over [0.012, stop])
+                    _loss_mag = max(0.0, min(1.0, (-_le_pnl - 0.012) / 0.012))
+                    # Decay: full uplift at exit bar, decays to 0 over ~8 bars via tanh
+                    _loss_decay = max(0.0, 1.0 - np.tanh(_bars_since_le / 6.0))
+                    _loss_factor = 1.0 + 0.20 * _loss_mag * _loss_decay
+            _bull_strong_min = _strong_min * _freq_factor * _loss_factor
+            _bear_strong_min = _strong_min * _freq_factor * _loss_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -940,6 +971,13 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    # Record exit pnl for the closing position (used by recent-loss
+                    # conviction penalty on next entry).
+                    if symbol in self.entry_prices:
+                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                        if current_pos < 0:
+                            _exit_pnl = -_exit_pnl
+                        self._last_exit_pnl[symbol] = (self.bar_count, _exit_pnl)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
