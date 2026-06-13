@@ -917,13 +917,9 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural simplification: removed dead-code sl-saturation full-exit
-                # branch. Lines 887-888 force _exit_thresh = 1.0 whenever _sl_pressure
-                # >= 0.95, so the subsequent "if sl>=0.95 AND exit>=1.0 -> target=0"
-                # is functionally identical to the "elif exit >= _exit_thresh -> target=0"
-                # branch — the sl-saturation override already routes that case through
-                # the standard threshold path. Dead code-structure removal: 2 lines.
-                if _exit_pressure >= _exit_thresh and target != 0:
+                if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
+                    target = 0.0
+                elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0:
                     # Architectural: vol-conditioned partial-exit floor.
