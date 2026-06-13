@@ -625,18 +625,17 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Architectural: trend-aligned slope-pressure attenuation.
-                # When position aligns with strong long-window trend, transient short-window
-                # slope-against signals are more likely noise than real reversal — winning
-                # trend positions should not exit on momentary slope dips. Attenuate
-                # _sl_slope_pressure proportional to tanh(ret_long * pos_dir / 0.05).
-                # Trend-aligned & strong-trend: max 35% attenuation. Counter-trend or chop:
-                # no attenuation. Smooth (no boundary), continuous via tanh. New cross-
-                # timescale data dependency: short-window slope-pressure depends on long-
-                # window trend alignment.
-                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
-                _trend_align = max(0.0, np.tanh(ret_long * _pos_dir_sl / 0.05))  # in [0, ~1]
-                _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.35 * _trend_align)
+                # Architectural simplification: removed trend-aligned slope-pressure attenuation.
+                # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
+                # signal not noise. Trend-aligned positions facing slope-against during
+                # pullbacks could be in the first bars of a trend reversal, not just noise.
+                # The 35%-cap attenuation structurally delayed exit on the FIRST slope-against
+                # signal in trend-aligned holds. Removing the attenuation lets trend-aligned
+                # positions exit faster on the earliest slope-reversal indication; subsequent
+                # _pp_pressure giveback ratio still protects post-peak losses, and _w_slope
+                # is heavier in loss anyway, so winning trend positions retain their soft
+                # protection via the heavier-in-loss weight inversion not the trend-align
+                # multiplier. Code-structure removal: 11 lines + cross-timescale data dep.
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
