@@ -812,23 +812,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: voter-consensus-tilted exit threshold (new cross-bar data
-                # dep on persistence-aggregated voter sign over 8-bar window).
-                # When historic voter average leans TOWARD position direction (cross-voter
-                # consensus aligns with hold), raise exit threshold by up to +8%
-                # (allow position to run longer through transient pressure spikes).
-                # When voter average leans OPPOSITE position direction, lower exit
-                # threshold by up to -8% (cut faster against persistent voter disagreement).
-                # Uses already-maintained _sig_hist (8-bar voter signals). Continuous via
-                # tanh on mean signal aggregated across voters. Stop-loss exempt.
-                # New decision-architecture: exit threshold depends on voter trajectory,
-                # not just current-bar fusion of pressures.
-                if len(_sig_hist) >= 4:
-                    _hist_arr = np.array(_sig_hist)  # (K, 7)
-                    _voter_mean_sig = float(np.mean(_hist_arr))  # average across voters & bars
-                    _pos_dir_thresh = 1.0 if current_pos > 0 else -1.0
-                    _voter_tilt = max(-1.0, min(1.0, np.tanh(_voter_mean_sig * _pos_dir_thresh * 5.0)))  # [-1, +1]
-                    _exit_thresh = _exit_thresh * (1.0 + 0.08 * _voter_tilt)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
