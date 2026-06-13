@@ -947,7 +947,13 @@ class Strategy:
                     # primitive at the threshold subsystem.
                     _peak_ratio_de = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     _peak_de_relax = max(0.0, min(1.0, np.tanh(_peak_ratio_de / 1.5)))  # in [0, ~1] as peak rises
-                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.10 * _peak_de_relax
+                    # Branch step 2: trend-alignment gate on peak-relax (fix crash/rally regression).
+                    # In crash/rally pullbacks, counter-trend positions' peaks are often dead-cat
+                    # bounces or transient bear-pullback gains that should NOT receive wider
+                    # de-risk band. Only relax floor when (peak realized) AND (position is
+                    # aligned with long-window trend). Uses _trend_align (already computed for
+                    # _sl_slope_pressure attenuation) for consistent semantics.
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.10 * _peak_de_relax * _trend_align
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
