@@ -82,9 +82,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 2.00  # required sum of margin-above-0.5 voter contributions (scaled for 8 voters)
-MIN_VOTES = 3.34  # scaled for 8 voters
-FLIP_MIN_VOTES = 3.20  # scaled for 8 voters
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
+MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -226,24 +226,6 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Architectural: 8th voter — intra-bar wick asymmetry (rejection signal).
-            # All 7 existing voters use closes / EMAs / volume-weighted closes — NONE
-            # uses intra-bar shape. Wick asymmetry measures persistent order-flow
-            # rejection: lower_wick = close - low (long lower wick = buyers stepped in
-            # at lows); upper_wick = high - close (long upper wick = sellers rejected
-            # rallies). Sum 6-bar lower_wick minus 6-bar upper_wick, normalized by
-            # sum of bar ranges. Positive = repeated dip-buying (bull). Negative =
-            # repeated rally-rejection (bear). Captures intra-bar order-flow signal
-            # orthogonal to all closes-based primitives. New data dependency on
-            # (high, low, close) intra-bar relationship, not just closes.
-            _wick_n = 6
-            _h_w = bd.history["high"].values[-_wick_n:]
-            _l_w = bd.history["low"].values[-_wick_n:]
-            _c_w = closes[-_wick_n:]
-            _lw_sum = (_c_w - _l_w).sum()  # lower wicks (bull rejection at lows)
-            _uw_sum = (_h_w - _c_w).sum()  # upper wicks (bear rejection at highs)
-            _range_sum = max((_h_w - _l_w).sum(), 1e-10)
-            _wick_asym = (_lw_sum - _uw_sum) / _range_sum  # in [-1, 1]
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -252,7 +234,6 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
-                _wick_asym / 0.20,   # 8th voter: wick asymmetry, ~0.20 scale (typical magnitude)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -279,12 +260,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # 8th voter (wick asymmetry) weight: starts at 0.85 (mid-range, comparable to slope_16).
-            # Mean-reverting-leaning indicator (rejection patterns are often pullback/exhaustion
-            # signals), so co-vary with mean-reverting voter weighting in trends (slight downshift
-            # in strong trends similar to RSI/MACD treatment).
-            _wick_wt = 0.85 - 0.10 * _trend_strength_w  # in [0.75, 0.85]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, _wick_wt)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -306,13 +282,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 8)
+                _arr = np.array(_sig_hist)  # (K, 7)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
