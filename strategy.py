@@ -802,8 +802,12 @@ class Strategy:
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
-                    target = target * (1.0 - _tp_scale)
+                    # Tier-1 harvest: up to 30% scale-down at peak >= 1.6*_pp_min
+                    _tp_scale_1 = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
+                    # Tier-2 harvest: ADDITIONAL up to 30% scale-down at peak >= 2.5*_pp_min
+                    # (compounds with tier-1 for net up to ~50% at very high peaks)
+                    _tp_scale_2 = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.5) / 0.8))) * _tp_trend_gate
+                    target = target * (1.0 - _tp_scale_1) * (1.0 - _tp_scale_2)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
