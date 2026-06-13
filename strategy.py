@@ -331,17 +331,6 @@ class Strategy:
             # rather than gated.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
-            # Architectural: trade-frequency-adaptive cooldown window. Cross-subsystem
-            # data dependency between entry-bar history and cooldown_factor. When
-            # recent 30-bar entry density is high (>=2), the cooldown window grows
-            # smoothly via tanh, increasing the bars required for cooldown_factor to
-            # saturate at 1.0. Penalizes rapid re-entries via SIZE attenuation rather
-            # than admission gating — preserves entry decision boundary while reducing
-            # turnover cost. Smooth (continuous), no hard switch.
-            _eh_pre = self._entry_bar_history.get(symbol, [])
-            _recent_entries = sum(1 for _b in _eh_pre if self.bar_count - _b <= 30)
-            _cd_freq_mult = 1.0 + 0.50 * max(0.0, np.tanh((_recent_entries - 1.5) / 1.5))  # in [1.0, 1.5]
-            _cd_window = _cd_window * _cd_freq_mult
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
