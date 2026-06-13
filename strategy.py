@@ -254,22 +254,8 @@ class Strategy:
             else:
                 _persistence_mult = np.ones(6)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
-            # Architectural: vol-conditioned voter-ramp exponent. The quintic ramp
-            # (c-0.5)**5 * 97.66 acts as a sharp filter — voter contributes only
-            # when conf > ~0.6. This is great in low-vol regimes (clean signals,
-            # sharp decisions) but in high-vol regimes (crash) signals oscillate
-            # near 0.5 due to noise, so the quintic gate suppresses too much
-            # legitimate conviction. Soften ramp to cubic (k=3) in high vol where
-            # moderate-conviction matters; keep quintic (k=5) in low vol where
-            # noise filtering matters. Smooth tanh blend on vol_ratio. Normalize
-            # so c=0.9 (single-voter max) maps to similar peak contribution at
-            # both ends: peak = (0.4)**k * N(k), with N(k)=1/0.4**k.
-            # New cross-bar data dependency: voter aggregation function shape
-            # depends on regime vol_ratio.
-            _ramp_k = 5.0 - 2.0 * max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.5)))  # in [3, 5]
-            _ramp_n = 1.0 / (0.4 ** _ramp_k)  # normalize so c=0.9 -> w
-            _bull_strong = sum(max(0.0, (c - 0.5) ** _ramp_k * _ramp_n) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** _ramp_k * _ramp_n) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
