@@ -610,23 +610,7 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: smooth opposite-side conviction exit-pressure replacing
-                # binary opp_gate. Original: hard 4-condition AND set target=0 at threshold
-                # cross. Now: opposite-side conviction becomes a continuous contributor to
-                # _exit_pressure scaled by strong_margin × votes_margin × trend_disagree.
-                # Fused into the graduated partial-exit ramp so opposite-side signal drives
-                # smooth de-risk rather than binary cut. Removes 3 boundary noise points
-                # (votes>=FLIP_MIN_VOTES, strong>=strong_min, trend_avg sign).
-                _opp_strong = _bear_strong if current_pos > 0 else _bull_strong
-                _opp_strong_min = _bear_strong_min if current_pos > 0 else _bull_strong_min
-                _opp_votes = bear_votes if current_pos > 0 else bull_votes
-                _opp_trend_dir = (trend_avg < 0) if current_pos > 0 else (trend_avg > 0)
-                _opp_trend_mag = abs(trend_avg) if _opp_trend_dir else 0.0
-                _opp_strong_margin = max(0.0, (_opp_strong - _opp_strong_min) / max(_opp_strong_min, 1e-6))
-                _opp_votes_margin = max(0.0, (_opp_votes - FLIP_MIN_VOTES) / FLIP_MIN_VOTES)
-                _opp_pressure_raw = np.tanh(_opp_strong_margin / 0.20) * np.tanh(_opp_votes_margin / 0.15) * np.tanh(_opp_trend_mag / 0.005)
-                _opp_pressure = 1.2 * max(0.0, _opp_pressure_raw) * _cooldown_factor
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure) + _opp_pressure
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -671,6 +655,19 @@ class Strategy:
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
+                # Architectural simplification: removed in-place flip mechanism.
+                # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
+                # the dominant cost driver (flip_pnl -560 to -960 per regime).
+                # Replace single-bar reversal with exit-then-cooldown: when opposite-side
+                # conviction passes the flip gate, set target=0. The standard cold-entry
+                # path (with its 2-bar persistence gate) will re-enter in the opposite
+                # direction on a subsequent bar IF conviction sustains. This decouples
+                # reversal from a single-bar decision and routes it through the same
+                # noise-filtering gate that protects fresh entries.
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                if not in_cooldown and _opp_gate:
+                    target = 0.0
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
