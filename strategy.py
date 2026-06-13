@@ -403,28 +403,14 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                # Architectural: counter-trend asymmetric persistence stricture.
-                # Counter-trend entries (bear in uptrend, bull in downtrend) get +0.20
-                # added back to persistence factor (stricter), gated on trend magnitude
-                # via tanh — rally bear entries on pullbacks in strong rally need
-                # stronger sustained conviction than trend-aligned entries. Smooth via
-                # tanh on abs(ret_long)/0.05 (same scale as base trend_str). Symmetric
-                # for bull/bear via sign of ret_long. New cross-timescale data
-                # dependency: entry persistence strictness depends on alignment
-                # between candidate entry direction and long-window trend.
-                _ct_strict_gate = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0, ~1]
-                _bull_ct_strict = _ct_strict_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull in downtrend
-                _bear_ct_strict = _ct_strict_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear in uptrend
-                _bull_persist_factor = _entry_persist_factor + 0.20 * _bull_ct_strict
-                _bear_persist_factor = _entry_persist_factor + 0.20 * _bear_ct_strict
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _bull_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _bear_persist_factor * _bear_strong_min
+                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
