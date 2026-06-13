@@ -514,22 +514,14 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
-                # Position accumulation: pos_pnl-gated scale-up.
-                # Architectural: scale-in ramp pace adapts to position pnl. Winning
-                # scale-ins commit fully (signal was right on bar 0). Losing scale-ins
-                # attenuate the per-bar increment via continuous tanh on pos_pnl scaled
-                # by stop magnitude — pos_pnl=0 -> full ramp, pos_pnl=-STOP -> no further
-                # scale-up (frozen at current level). New data dependency: scale-in
-                # trajectory depends on realized pnl during accumulation, not just bar count.
+                # Architectural simplification: removed _trend_agree scale-in override.
+                # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
+                # gates (TREND_GATE_DEADZONE). Re-checking trend during scale-in duplicates
+                # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
+                # captures it (price follows trend in losses). Removing trend_agree blend
+                # eliminates correlated double-counting of trend signal across entry+scale-in.
                 if bars_held <= ENTRY_FULL_BARS:
-                    # Trend-agreement override: when trend_avg strongly aligns with position
-                    # direction (signal still validates scale-in), bypass pnl-attenuation.
-                    # Continuous tanh on (trend_avg * pos_dir) scaled by typical trending magnitude.
-                    _pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _trend_agree = max(0.0, np.tanh(trend_avg * _pos_dir / 0.012))  # in [0,1]
-                    _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
-                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    _ramp_attn = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
