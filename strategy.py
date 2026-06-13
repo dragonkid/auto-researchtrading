@@ -116,11 +116,7 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Architectural: per-symbol last-exit PnL outcome.
-        # Used by outcome-conditioned cooldown: large losses lengthen cooldown
-        # (avoid revenge entries after stopouts), large wins shorten cooldown
-        # (winner-momentum continues). New per-symbol state + new data dependency
-        # at cooldown-window computation.
+        # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
         self.smoothed_trend = {}
@@ -361,34 +357,14 @@ class Strategy:
             # the bar-count threshold; allows fast re-entry with attenuated size if conviction
             # surges right after exit. New control flow: post-exit re-entry is gradient-attenuated
             # rather than gated.
+            # Architectural: loss-only outcome-conditioned cooldown. Recent stopout
+            # extends cooldown window AND attenuates first-bar size; winners leave
+            # cooldown unchanged. Effect decays over 5 bars.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _cd_window_base = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
-            # Architectural: outcome-conditioned cooldown duration. Last-exit
-            # PnL stretches cooldown after losses (revenge-entry filter) and
-            # shortens after wins (winner-momentum continuation). Smooth tanh
-            # on _last_exit_pnl scaled by stop-loss magnitude. Range: 0.7x..1.6x
-            # (loss=1.6x window, win=0.7x window, breakeven=1.0x). New cross-
-            # trade state dependency at the entry-side cooldown decision.
-            _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            # Branch step 5: combined window-stretch + size-mult with steeper
-            # magnitudes. Mechanism leverage in steps 1/3/4 was too weak — try
-            # bigger amplitudes and combine both knobs. Window: [0.4, 2.5];
-            # Size mult: [0.6, 1.3] at fresh exit. Stack to give post-stopout
-            # the largest combined attenuation.
-            # Branch step 6: one-sided LOSS-only conditioning. Step 5 confirmed
-            # bull/crash benefit but rally regression — the post-WINNER size boost
-            # was hurting rally counter-trend bear sequences (next entry after a
-            # winner is often lower-quality and doesn't deserve a size boost).
-            # Keep loss-side stretch (cooldown window expansion + size attenuation
-            # after losses), drop the symmetric win-side acceleration entirely.
-            # max(0, _outcome_tanh) zeros out the win side.
-            _outcome_tanh = np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # [-1, 1]
-            _loss_only = -min(0.0, _outcome_tanh)  # [0, 1] only on loss (positive when loss)
-            _outcome_window_scale = 1.0 + 0.6 * _loss_only  # [1.0, 1.6] only stretches on loss
-            _cd_window = _cd_window_base * _outcome_window_scale
+            _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            _outcome_decay = max(0.0, 1.0 - _bars_since_exit / 5.0)
-            _outcome_size_mult = 1.0 - 0.30 * _outcome_decay * _loss_only  # [0.7, 1.0] only attenuates after loss
+            _outcome_size_mult = 1.0 - 0.30 * max(0.0, 1.0 - _bars_since_exit / 5.0) * _loss_only
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -1017,14 +993,9 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Capture exit pnl for outcome-conditioned cooldown.
-                    # pos_pnl is defined only in the current_pos != 0 branch above;
-                    # when target==0 here we must be exiting (current_pos was nonzero).
                     if current_pos != 0:
-                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        if current_pos < 0:
-                            _exit_pnl = -_exit_pnl
-                        self._last_exit_pnl[symbol] = _exit_pnl
+                        _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
