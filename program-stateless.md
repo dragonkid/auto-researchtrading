@@ -165,21 +165,22 @@ Legacy rows (6 columns) may remain in the file for historical reference but are 
 Each regime is scored via `compute_score()`, then combined:
 
 ```
-score = sharpe_score × dd_gate × turnover_gate  (only when sharpe > 0; otherwise score = sharpe_score)
-sharpe_score = sharpe / (1 + |sharpe|)
+score = signal_quality × sample_factor × dd_gate × turnover_gate
 
-dd_gate = 1 / (1 + MaxDD% / 100)
+signal_quality = log(1 + max(sharpe, 0))
+sample_factor = sqrt(min(num_trades / 50, 1))
+dd_gate = 1/(1 + DD%) × exp(-max(0, DD%-5)/10)
 turnover_gate = 1 / (1 + trades_per_day / 10)
 
-Hard cutoffs: <10 trades → -999, >95% drawdown → -999
+Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
 
 Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
 Simplicity bonus = max(0, (575 - effective_LOC)) * 0.001   # reward shorter strategy.py
 ```
 
-The `sharpe / (1 + |sharpe|)` maps Sharpe ratio to (-1, +1) with smooth gradient everywhere and no saturation at extremes — negative Sharpe produces negative scores with preserved differentiation.
-When Sharpe is negative, score = tanh(sharpe) directly (gates skipped to avoid reverse incentive).
-When Sharpe is positive, gates apply: `dd_gate` penalizes drawdown, `turnover_gate` penalizes trading frequency.
+Multiplicative structure: any dimension being terrible collapses the entire score.
+The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.74x, 10%→0.55x.
+The turnover gate penalizes trading frequency: 5 tpd→0.67, 10→0.50, 40→0.20.
 The composite rewards strategies that perform **consistently across all market conditions**.
 
 Search regimes (4 non-overlapping periods):
