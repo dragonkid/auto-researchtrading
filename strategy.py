@@ -226,6 +226,27 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            # Architectural: intra-bar wick-asymmetry contribution as ADDITIVE strong-sum
+            # nudge (outside voter pool to preserve admission thresholds). Wick asymmetry
+            # measures persistent intra-bar order-flow rejection across the last 6 bars:
+            #   lower_wick_sum (close - low) = buyer interest at lows (bull bias)
+            #   upper_wick_sum (high - close) = seller rejection at highs (bear bias)
+            # Normalized by total bar range, range [-1, +1].
+            # New data dep: (high, low, close) intra-bar shape. All 7 voters use closes /
+            # EMAs / VWAP — none uses intra-bar shape information. Genuinely orthogonal.
+            # Applied as additive bonus to strong-sums (bounded ±0.6 magnitude), preserves
+            # STRONG_WEIGHT_MIN admission semantics. Trend-attenuated: in strong trends
+            # the wick signal is dominated by trend-rest patterns (upper wicks accumulate
+            # on tops, lower wicks rare) which is structurally counter-trend-biased —
+            # attenuate contribution by (1 - 0.7 * trend_strength) so the signal fires
+            # primarily in chop/transition regimes where it carries information.
+            _wick_n = 6
+            _h_w = bd.history["high"].values[-_wick_n:]
+            _l_w = bd.history["low"].values[-_wick_n:]
+            _c_w = closes[-_wick_n:]
+            _lw_sum = (_c_w - _l_w).sum()
+            _uw_sum = (_h_w - _c_w).sum()
+            _wick_asym = (_lw_sum - _uw_sum) / max((_h_w - _l_w).sum(), 1e-10)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -302,6 +323,11 @@ class Strategy:
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Wick-asym additive nudge: trend-attenuated, bounded ±0.6.
+            _wick_atten = 1.0 - 0.7 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0.3, 1.0]
+            _wick_nudge = 0.6 * np.tanh(_wick_asym / 0.20) * _wick_atten  # in [-0.6, +0.6]
+            _bull_strong += max(0.0, _wick_nudge)
+            _bear_strong += max(0.0, -_wick_nudge)
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
