@@ -282,9 +282,18 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
+                # Architectural: half-life EMA-weighted persistence (was uniform 8-bar window).
+                # Recent bars get exponentially more weight (half-life 4 bars). A voter that
+                # flipped 1 bar ago contributes ~0.84 to the flip count; a voter that flipped 8
+                # bars ago contributes only ~0.25. Differentiates "recently-flipping" (still noisy)
+                # from "stale-flip-now-stable" (already recovered). Prior uniform window weighted
+                # all 8 lookback bars equally, so a voter that's been clean for 7 bars but flipped
+                # 8 bars ago looked just as flippy as one currently flipping.
                 _arr = np.array(_sig_hist)  # (K, 7)
-                _num = np.abs(_arr.sum(axis=0))
-                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
+                _K = _arr.shape[0]
+                _hl_w = np.power(0.5 ** (1.0 / 4.0), np.arange(_K - 1, -1, -1))[:, None]  # newest = 1.0
+                _num = np.abs((_arr * _hl_w).sum(axis=0))
+                _den = np.maximum((np.abs(_arr) * _hl_w).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
