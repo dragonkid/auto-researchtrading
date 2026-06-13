@@ -805,7 +805,23 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
+                # Architectural: peak-anchored hard stop (decoupled from entry-anchored).
+                # When peak_pnl exceeds 0.5*_pp_min, install a parallel hard stop at
+                # pos_pnl < peak_pnl - 2.2*ATR_pct. This locks realized gains via a HARD
+                # exit, independent of the soft _pp_pressure giveback trailing. The
+                # entry-anchored _sl_pressure remains active for never-profitable
+                # positions. New decision-architecture path: exit subsystem now has
+                # TWO independent hard stops — entry-anchored (loss limit) and peak-
+                # anchored (profit lock). Symmetric, ATR-vol-adaptive, fires once peak
+                # qualifies. New cross-bar data dependency: hard exit decision depends
+                # on peak_pnl AND ATR jointly, decoupled from entry price.
+                _peak_stop_active = self.peak_pnl[symbol] > 0.5 * _pp_min
+                _peak_stop_floor = self.peak_pnl[symbol] - 2.2 * _atr_pct
+                _peak_stop_hit = _peak_stop_active and pos_pnl < _peak_stop_floor
+
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
+                    target = 0.0
+                elif _peak_stop_hit and target != 0:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
