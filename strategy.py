@@ -701,14 +701,19 @@ class Strategy:
                 # Uses same robust median exit-slope for consistency within exit subsystem.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                # Architectural: vol-conditioned symmetric momentum hold bonus.
-                # Slope-against shortens max_hold but only at full strength when
-                # slope is signal-dominated (high vol). In low-vol (rally chop) the
-                # shortening is attenuated by min(1, vol_ratio) — slope noise in
-                # rally would otherwise create noise-driven early time exits.
-                # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
-                _short_atten = min(1.0, vol_ratio)
-                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                # Architectural simplification: remove slope-DISAGREES shortening of
+                # _max_hold. The shortening side was double-counting the same slope
+                # signal that already fires _sl_slope_pressure inside _soft_sum:
+                # both terms react to slope-against on the same bar, with
+                # _sl_slope_pressure being the primary exit pressure for slope
+                # reversals and _time_pressure shortening adding redundant pressure.
+                # Keep ONLY the slope-AGREES extension (bull/crash positive
+                # contribution to hold duration), eliminating the cross-pressure
+                # double-count and the _short_atten cross-bar vol dependency that
+                # supported it. Architectural code-structure change: _hold_adj
+                # collapses to one-sided positive term; the negative branch and the
+                # _short_atten vol attenuation that supported it are both removed.
+                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else 0.0)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
