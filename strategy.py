@@ -656,7 +656,24 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                # Architectural: trend-alignment-asymmetric giveback lower threshold.
+                # Decision-architecture change: pp_pressure activation threshold depends on
+                # whether the position is trend-aligned (with long-window) or counter-trend.
+                # Counter-trend positions face short-lived pullback peaks (mean-reverting in
+                # a regime that opposes them) — tighten lower threshold to fire pp_pressure
+                # earlier, locking the small peak before reversal. Trend-aligned positions
+                # face structural continuation peaks (more durable) — loosen lower threshold
+                # to give wins room to run further. Continuous via tanh on (ret_long * pos_dir).
+                # New cross-component data dep: _pp_lower depends on (long-window return,
+                # current position direction). _pp_band (vol-conditioned) unchanged.
+                # Magnitude: ±0.20 of base PEAK_PROFIT_GIVEBACK (0.22 -> [0.176, 0.264]).
+                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
+                _trend_align_pp = np.tanh(ret_long * _pos_dir_pp / 0.05)  # [-1, +1]
+                # Higher _pp_lower = pressure starts at LARGER giveback (looser, let runners run).
+                # Lower _pp_lower = pressure starts at SMALLER giveback (tighter, lock peaks early).
+                # Trend-aligned (positive) -> looser. Counter-trend (negative) -> tighter.
+                _pp_lower_adj = 1.0 + 0.20 * _trend_align_pp  # trend-aligned (~1.20), counter-trend (~0.80)
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band) * _pp_lower_adj
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
                 # boundary at peak == _pp_min creates noise discontinuity in stab tests.
