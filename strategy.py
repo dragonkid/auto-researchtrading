@@ -150,23 +150,6 @@ class Strategy:
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
 
-        # Architectural: cross-symbol directional consensus on entry size.
-        # Compute LONG_WINDOW return for each symbol; consensus = mean of signs
-        # weighted by magnitude. Used in entry path to attenuate when entry
-        # direction OPPOSES cross-symbol consensus, amplify when aligns.
-        # Continuous via tanh; symmetric across symbols. New cross-symbol data
-        # dependency on price returns (orthogonal to per-symbol voters which use
-        # short-window MA/RSI/MACD primarily).
-        _xs_signs = []
-        for _xs in ACTIVE_SYMBOLS:
-            if _xs in bar_data:
-                _xbd = bar_data[_xs]
-                if len(_xbd.history) >= LONG_WINDOW + 1:
-                    _xc = _xbd.history["close"].values
-                    _xrl = (_xc[-1] - _xc[-LONG_WINDOW]) / _xc[-LONG_WINDOW]
-                    _xs_signs.append(np.tanh(_xrl / 0.05))  # in [-1, 1] per symbol
-        _xs_consensus = np.mean(_xs_signs) if _xs_signs else 0.0  # in [-1, 1] aggregated
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -548,21 +531,10 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: cross-symbol directional consensus attenuator.
-                # When entry direction aligns with cross-symbol consensus (_xs_consensus
-                # same sign as entry), amplify size up to 1.10x. When direction OPPOSES
-                # consensus (entering against the multi-symbol regime trend), attenuate
-                # to 0.85x. Smooth tanh on signed product. Bounded ~[0.85, 1.10].
-                # Distinct from per-symbol attenuators: this is regime-level cross-
-                # symbol corroboration vs per-symbol slope/range/quality signals.
-                _bull_xs_atten = 1.0 + 0.10 * np.tanh(_xs_consensus / 0.4) if _xs_consensus > 0 else 1.0 + 0.15 * np.tanh(_xs_consensus / 0.4)
-                _bear_xs_atten = 1.0 + 0.10 * np.tanh(-_xs_consensus / 0.4) if _xs_consensus < 0 else 1.0 + 0.15 * np.tanh(-_xs_consensus / 0.4)
-                _bull_xs_atten = max(0.85, min(1.10, _bull_xs_atten))
-                _bear_xs_atten = max(0.85, min(1.10, _bear_xs_atten))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_xs_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_xs_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
