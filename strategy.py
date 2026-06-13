@@ -805,7 +805,15 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
+                # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
+                # directional backing) — mute opp_bias contribution. In trends, opp-voter
+                # spikes carry reversal signal — full activation. Continuous tanh on
+                # abs(ret_long)/0.04. Symmetric counterpart to _chop_amp on own-side
+                # subtraction (chop amplifies own-side hold; chop also mutes opp-side
+                # exit-spike). Multi-variable: adds new factor to opp-side fusion.
+                _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
