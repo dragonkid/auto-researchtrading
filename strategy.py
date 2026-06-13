@@ -141,6 +141,14 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-symbol concurrent-position attenuator state.
+        # Count active positions across BTC/ETH/SOL at the start of the bar.
+        # Used in entry path to attenuate first-bar size when correlated symbols
+        # already loaded — reduces simultaneous-stressed exposure during regime
+        # transitions where all 3 symbols move together. New cross-symbol data
+        # dependency on portfolio state; symmetric across symbols.
+        _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -491,15 +499,15 @@ class Strategy:
                 _consensus_map = (0.40, 0.60, 0.85, 1.0)
                 _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
                 _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
-                # Architectural simplification: removed cross-symbol _concurrent_atten.
-                # The +0.001 composite gain was borderline; the new cross-symbol data
-                # dependency adds correlation that may already be captured by per-symbol
-                # vol_ratio (when all 3 symbols move together, each sees high vol_ratio
-                # individually, attenuating size via the existing combined_mult vol gate).
+                # Architectural: cross-symbol concurrent-position attenuator.
+                # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
+                # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
+                # Reduces correlated risk during multi-symbol entry pile-ups.
+                _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
