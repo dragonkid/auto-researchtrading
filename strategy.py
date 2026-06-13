@@ -215,13 +215,13 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: 7th voter — volume-weighted price deviation with vol-adaptive window.
-            # Window scales 8 (high vol) -> 18 (low vol) via continuous tanh on vol_ratio.
-            # In high-vol crash, shorter window makes VWAP more responsive to regime shifts.
-            # In low-vol sideways/rally, longer window stabilizes VWAP against chop noise.
-            # Continuous (no boundary), per-symbol-per-bar adaptive.
-            _vwap_n = int(round(13.0 - 5.0 * np.tanh((vol_ratio - 1.0) / 0.4)))
-            _vwap_n = max(8, min(18, _vwap_n))
+            # Architectural: 7th voter — volume-weighted price deviation.
+            # Volume data is orthogonal to all 6 existing voters (which use price-derived
+            # series only). Compute 12-bar VWAP using (high+low+close)/3 typical price
+            # weighted by volume; voter signals when current close deviates upward (bull)
+            # from VWAP. Captures genuine volume-confirmed directional pressure independent
+            # of moving averages, RSI, MACD, slope. New data dependency on volume * price.
+            _vwap_n = 12
             _vol_arr = bd.history["volume"].values[-_vwap_n:]
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
