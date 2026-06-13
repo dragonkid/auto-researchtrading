@@ -118,11 +118,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Architectural: per-symbol entry-time quality score (1 - opp_ratio_atten).
-        # Captured at entry, used at exit to scale _exit_thresh: high-quality entries
-        # (decisive one-sided voter consensus) get more rope (higher exit_thresh);
-        # marginal entries (split voters) keep baseline. Persistent through position life.
-        self._entry_quality = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -545,11 +540,8 @@ class Strategy:
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
-                    # Capture entry quality: 1.0 at perfect one-sided consensus, ~0.7 at high opp_ratio.
-                    self._entry_quality[symbol] = _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
-                    self._entry_quality[symbol] = _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -866,17 +858,7 @@ class Strategy:
                 # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
-                # Architectural: entry-quality gated exit_thresh boost. New per-symbol state
-                # (_entry_quality captured at entry) drives a new control flow at the exit
-                # decision. High-quality entries (low opp_ratio at entry, _entry_quality near
-                # 1.0) get up to +0.10 exit_thresh, giving the position more rope to develop
-                # through transient noise. Marginal entries (_entry_quality near 0.7) get no
-                # boost (~0). Distinct from _scale_in_winning (which gates on bars_held + pnl):
-                # this is persistent through position life and depends on entry-time conviction
-                # rather than current pnl trajectory. Smooth (linear interp on stored quality).
-                _eq = self._entry_quality.get(symbol, 1.0)
-                _eq_boost = 0.10 * max(0.0, (_eq - 0.7) / 0.3)  # 0.0 at eq=0.7, 0.10 at eq=1.0
-                _exit_thresh = (1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0) + _eq_boost
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -987,7 +969,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_quality):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
