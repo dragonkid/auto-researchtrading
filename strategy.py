@@ -136,6 +136,13 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol entry-time own-side voter strong-sum.
+        # Records the side's strong-sum at the bar of entry, used to detect
+        # post-entry conviction decay as an exit pressure source distinct from
+        # slope/peak/time/MAE (which use price-derived state). When current
+        # own-side strong-sum has dropped substantially below entry-time value,
+        # entry thesis has weakened even if price hasn't yet confirmed.
+        self._entry_strong = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -867,12 +874,35 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: entry-conviction decay exit pressure (7th soft source).
+                # Distinct mechanism from existing exit pressures (which use price-derived
+                # state — slope, peak, MAE, time, vol-expansion). Mechanism: at entry
+                # bar, own-side voter strong-sum was at _entry_strong[symbol]; on each
+                # subsequent bar, if current own-side strong-sum has dropped substantially
+                # below entry-time value, the entry thesis has weakened even before
+                # price-state pressures fire. Captures the "voters quietly turned" pattern
+                # before slope/peak confirm. New cross-bar data dependency on entry-time
+                # voter conviction; new control flow distinguishing first bar (no decay
+                # yet) from later bars. Activation: only after bar 2 (gives scale-in time
+                # to develop), only on losing/marginal positions (don't pressure-exit
+                # winners on conviction noise — pp_pressure handles winning exits).
+                _cd_pressure = 0.0
+                _entry_str_v = self._entry_strong.get(symbol, 0.0)
+                if _entry_str_v > 0.5 and bars_held >= 2:
+                    _curr_side_strong = _bull_strong if current_pos > 0 else _bear_strong
+                    _conv_decay = max(0.0, (_entry_str_v - _curr_side_strong) / max(_entry_str_v, 1e-6))
+                    # Activate above 0.50 decay; ramp smoothly to 0.35 cap at 0.85+ decay.
+                    _cd_pressure = 0.35 * max(0.0, min(1.0, (_conv_decay - 0.50) / 0.35))
+                # Weight: only fire on currently-losing or marginal positions (avoid
+                # double-counting with pp_pressure on winners — peak is a stronger
+                # exit signal than conviction shifts when position is profitable).
+                _w_cd = max(0.0, min(1.0, 0.5 - 0.5 * _pnl_scale))  # 1.0 at full stop, 0.0 in profit
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_cd * _cd_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -986,12 +1016,14 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_strong):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Record entry-time own-side strong-sum for conviction-decay tracking.
+                    self._entry_strong[symbol] = _bull_strong if target > 0 else _bear_strong
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
