@@ -122,6 +122,12 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
+        # Architectural: per-symbol entry-time ret_long snapshot. Captures the
+        # long-window trend at the moment the position opened. Used to identify
+        # counter-trend positions whose "counter-trend-ness" persists even after
+        # mid-position trend drift makes current ret_long look neutral. New
+        # cross-timescale state: positions remember their entry regime.
+        self._entry_ret_long = {}
         # Architectural: per-symbol per-voter directional history (8-bar rolling).
         # Used to compute per-voter directional persistence (fraction of last
         # K bars where voter signal sign matched). High-persistence voters
@@ -663,7 +669,21 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: entry-time counter-trend exit pressure (6th source).
+                # Uses per-position state _entry_ret_long captured at entry.
+                # Counter-trend at entry: position direction opposes long-window trend
+                # observed at entry-time. Magnitude scales with entry trend strength
+                # via tanh on |entry_ret_long|/0.05 (saturates near strong trends).
+                # One-sided: only fires for losing positions (pos_pnl < 0) — winning
+                # counter-trend positions are validated and should run. Continuous,
+                # smooth, persists throughout position lifetime independent of mid-
+                # position trend drift. New state-driven exit pressure term.
+                _entry_rl = self._entry_ret_long.get(symbol, 0.0)
+                _pos_dir_ct = 1.0 if current_pos > 0 else -1.0
+                _ct_alignment = -np.tanh(_entry_rl * _pos_dir_ct / 0.05)  # +1 strong counter-trend, -1 strong with-trend
+                _ct_pressure = 0.5 * max(0.0, _ct_alignment)  # 0..0.5, only counter-trend
+                _w_ct = max(0.0, -_pnl_scale)  # only fire on losing positions
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ct * _ct_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -725,10 +745,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_ret_long):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
+                    self._entry_ret_long[symbol] = ret_long
 
         return signals
