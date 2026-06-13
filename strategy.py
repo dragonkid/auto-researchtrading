@@ -269,16 +269,23 @@ class Strategy:
             # flip-prone voters get down to 0.7x. Smooth (continuous over time as
             # history rolls forward). New per-symbol per-voter state dependency:
             # voter aggregation weight depends on each voter's recent flip-rate.
-            _sign_hist = self._voter_sign_history.get(symbol, [])
-            _current_signs = tuple(1 if s > 0 else -1 for s in _voter_signals_bull)
-            _sign_hist.append(_current_signs)
-            if len(_sign_hist) > 8:
-                _sign_hist = _sign_hist[-8:]
-            self._voter_sign_history[symbol] = _sign_hist
-            # Compute per-voter directional persistence
-            if len(_sign_hist) >= 4:
-                _hist_arr = np.array(_sign_hist)  # (K, 7)
-                _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
+            # Architectural: magnitude-weighted persistence replacing binary-sign aggregation.
+            # Old: binary sign per bar → persistence = |sum(signs)|/N counts a near-zero
+            # signal flip identically to a far-from-zero flip. New: store raw signal values
+            # → persistence = |sum(signal)| / sum(|signal|) gives weight to magnitude. A voter
+            # that hovers near zero contributes equally to numerator and denominator (low
+            # persistence influence); a voter with strong directional history dominates.
+            # Reduces noise from near-zero voter flips downweighting active voters.
+            _sig_hist = self._voter_sign_history.get(symbol, [])
+            _sig_hist.append(tuple(_voter_signals_bull))
+            if len(_sig_hist) > 8:
+                _sig_hist = _sig_hist[-8:]
+            self._voter_sign_history[symbol] = _sig_hist
+            if len(_sig_hist) >= 4:
+                _arr = np.array(_sig_hist)  # (K, 7)
+                _num = np.abs(_arr.sum(axis=0))
+                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
+                _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
                 _persistence_mult = np.ones(7)
