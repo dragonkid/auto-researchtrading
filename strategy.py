@@ -683,24 +683,15 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Architectural reformulation: replace bilateral two-sided voter_bias
-                # with single direction-NET signal. Old: -0.20*chop_amp*tanh(side) +
-                # 0.20*tanh(opp). New: 0.25 * tanh((opp - side) / 0.30) with chop_amp
-                # applied symmetrically. Single quantity (relative conviction balance)
-                # captures the same information as two opposing terms but with cleaner
-                # gradient at margin balance (zero output → smooth transition through
-                # the no-bias point). Mechanism: only the NET direction of conviction
-                # matters; if both sides have margin (rare but possible), they cancel.
-                # This is a function-shape change to the exit-fusion: was non-monotonic
-                # in (side, opp), now monotonic in (opp - side).
+                # Architectural refinement: chop-amplified own-side subtraction.
+                # In low-trend (chop / sideways), the with-position voters more reliably
+                # validate continued hold; amplify subtraction to preserve hold semantics
+                # (recovers sideways regression from base bilateral voter_bias). In trends,
+                # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
+                # (reversal evidence equally weighted across regimes). New cross-timescale
+                # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
-                _net_margin = _opp_margin - _side_margin  # positive = exit signal, negative = hold signal
-                # Asymmetric scaling: hold side amplified by chop_amp (preserves
-                # original chop-amplified subtraction); exit side baseline.
-                if _net_margin >= 0:
-                    _voter_bias = 0.25 * np.tanh(_net_margin / 0.30)
-                else:
-                    _voter_bias = 0.25 * _chop_amp * np.tanh(_net_margin / 0.30)
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
