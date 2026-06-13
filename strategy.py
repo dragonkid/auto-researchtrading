@@ -230,27 +230,14 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Architectural: vol-adaptive voter signal normalization. Voters 1,3,4,5,6
-            # use fixed divisors (mid*const, 0.00012, 0.00010, 0.00025, 0.0015) that
-            # don't track regime volatility. In high-vol (crash) the underlying signals
-            # (EMA spread, MACD diff, slope, VWAP dev) are 1.5-2x larger so voter
-            # tanh saturates near 1 — voter loses gradient. In low-vol (sideways) the
-            # same signals are smaller relative to fixed divisor — voter outputs cluster
-            # near 0.5. Multiply non-RSI/non-ret_short divisors by sqrt(vol_ratio) so
-            # each voter operates in its informative gradient region across regimes.
-            # Continuous (smooth in vol_ratio), preserves voter sign semantics, no
-            # boundary, no new state. RSI and ret_short voters left unchanged: RSI is
-            # bounded (0-100) so already vol-invariant; ret_short divides by dyn_threshold
-            # which is already vol-scaled.
-            _vol_scale = max(0.6, min(1.8, vol_ratio ** 0.5))
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
-                (_ef - _es) / (mid * 0.0008 * _vol_scale),
+                (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
-                (_macd_diff - 0.0003) / (0.00012 * _vol_scale),
-                (_lr_slope - 0.00015) / (0.00010 * _vol_scale),
-                (_ea_slope - 0.0005) / (0.00025 * _vol_scale),
-                _vwap_dev / (0.0015 * _vol_scale),  # 7th voter: VWAP deviation, vol-scaled
+                (_macd_diff - 0.0003) / 0.00012,
+                (_lr_slope - 0.00015) / 0.00010,
+                (_ea_slope - 0.0005) / 0.00025,
+                _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
