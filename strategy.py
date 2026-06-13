@@ -375,14 +375,20 @@ class Strategy:
             # bigger amplitudes and combine both knobs. Window: [0.4, 2.5];
             # Size mult: [0.6, 1.3] at fresh exit. Stack to give post-stopout
             # the largest combined attenuation.
+            # Branch step 6: one-sided LOSS-only conditioning. Step 5 confirmed
+            # bull/crash benefit but rally regression — the post-WINNER size boost
+            # was hurting rally counter-trend bear sequences (next entry after a
+            # winner is often lower-quality and doesn't deserve a size boost).
+            # Keep loss-side stretch (cooldown window expansion + size attenuation
+            # after losses), drop the symmetric win-side acceleration entirely.
+            # max(0, _outcome_tanh) zeros out the win side.
             _outcome_tanh = np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # [-1, 1]
-            _outcome_window_scale = 1.0 - 0.6 * _outcome_tanh  # [0.4, 2.5] (well, [0.4, 1.6] bounded by tanh)
+            _loss_only = -min(0.0, _outcome_tanh)  # [0, 1] only on loss (positive when loss)
+            _outcome_window_scale = 1.0 + 0.6 * _loss_only  # [1.0, 1.6] only stretches on loss
             _cd_window = _cd_window_base * _outcome_window_scale
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_decay = max(0.0, 1.0 - _bars_since_exit / 5.0)
-            _outcome_size_mult = 1.0 - 0.30 * _outcome_decay * _outcome_tanh * -1.0  # loss → <1, win → >1
-            # tanh(loss) < 0 → -tanh > 0 → mult = 1 - 0.30 * positive < 1 (smaller size after loss)
-            # tanh(win) > 0 → -tanh < 0 → mult = 1 - 0.30 * negative > 1 (larger size after win)
+            _outcome_size_mult = 1.0 - 0.30 * _outcome_decay * _loss_only  # [0.7, 1.0] only attenuates after loss
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
