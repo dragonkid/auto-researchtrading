@@ -818,18 +818,7 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # Architectural: MAE-depth gate on opp-side voter_bias (NEW cross-component dep).
-                # Position MAE depth as scaled fraction of stop captures position's adverse history:
-                # shallow MAE (|MAE|<<stop) = position has been clean → opp-voter spikes likely
-                # noise (filter); deep MAE (|MAE|~=stop) = position has survived adverse leg →
-                # opp-voter spikes carry real reversal signal (amplify). Continuous tanh on
-                # |MAE|/stop, in [0.6, 1.0]: clean positions get 0.6x opp_bias contribution,
-                # adverse-recovered positions get full 1.0x. New data-flow: MAE state (already
-                # tracked for _ar_pressure) now also gates opp_bias additive term — orthogonal
-                # use of existing per-symbol state. Multi-variable: adds new gate to fusion.
-                _mae_e = self._mae.get(symbol, 0.0)
-                _mae_depth_amp = 0.6 + 0.4 * max(0.0, min(1.0, np.tanh(-_mae_e / abs(STOP_LOSS_PCT) / 0.5)))
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * _mae_depth_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
