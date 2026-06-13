@@ -139,10 +139,6 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Two-bar exit confirmation: per-symbol prior-bar exit_pressure ratio
-        # (relative to _exit_thresh). When a soft-exit fires marginally, require
-        # confirmation by a 2nd bar above threshold OR a strong single-bar burst.
-        self._prev_exit_ratio = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -895,20 +891,9 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural: two-bar exit confirmation gate (new per-symbol
-                # state _prev_exit_ratio + new control flow at exit decision).
-                # Require either (a) consecutive bars above threshold, or
-                # (b) strong single-bar burst >= 1.3 * _exit_thresh, or
-                # (c) stop-loss saturation (always honored).
-                # Marginal single-bar exits (1.0..1.3x) are deferred one bar to
-                # filter flip-noise on the exit decision boundary.
-                _exit_ratio = _exit_pressure / max(_exit_thresh, 1e-6)
-                _prev_ratio = self._prev_exit_ratio.get(symbol, 0.0)
-                _exit_confirmed = (_exit_ratio >= 1.0 and _prev_ratio >= 1.0) or _exit_ratio >= 1.3
-                self._prev_exit_ratio[symbol] = _exit_ratio
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _exit_confirmed and target != 0:
+                elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
@@ -982,7 +967,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._prev_exit_ratio):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
