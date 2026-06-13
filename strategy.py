@@ -444,10 +444,22 @@ class Strategy:
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural: trend-aligned cold-entry size BOOST (symmetric mirror of
+                # _ct_atten). When entering a position aligned with strong long-window trend
+                # (bull entry in uptrend, bear entry in downtrend), amplify first-bar
+                # commitment up to 1.20x in strong trends. Targets rally regime where
+                # winning trend-aligned longs are too small to recover cost drag — net
+                # rally return is -7.8% annualized despite directionally-correct entries.
+                # Gated above |ret_long|>0.03 (same gate as _ct_atten); max boost 0.20
+                # (trend-aligned entries take up to 1.20x size in strong trend). Smooth
+                # via tanh on signed ret_long. New cross-timescale data dependency:
+                # cold-entry first-bar size depends on trend agreement magnitude.
+                _bull_ta_boost = 1.0 + 0.20 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))    # bull entry in uptrend
+                _bear_ta_boost = 1.0 + 0.20 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))   # bear entry in downtrend
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ta_boost
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ta_boost
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
