@@ -118,13 +118,6 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: per-symbol per-voter directional history (8-bar rolling).
-        # Used to compute per-voter directional persistence (fraction of last
-        # K bars where voter signal sign matched). High-persistence voters
-        # are weighted higher in strong-sum aggregation; flip-prone voters
-        # are downweighted. New time-varying voter weighting based on each
-        # voter's own track record.
-        self._voter_sign_history = {}
         # Architectural: per-symbol entry-bar history (rolling list of bar_count
         # values at which entries opened). Used by trade-frequency self-regulator
         # to raise the strong-sum admission threshold when recent entry rate is
@@ -260,29 +253,15 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
-            # Architectural: per-voter directional persistence weighting.
-            # Track each voter's signal sign over last 8 bars. Persistence =
-            # |sum(signs)| / count → 1.0 if voter held one direction continuously,
-            # 0.0 if voter flipped maximally. Multiply base weight by
-            # (0.7 + 0.6 * persistence) so consistent voters get up to 1.3x weight,
-            # flip-prone voters get down to 0.7x. Smooth (continuous over time as
-            # history rolls forward). New per-symbol per-voter state dependency:
-            # voter aggregation weight depends on each voter's recent flip-rate.
-            _sign_hist = self._voter_sign_history.get(symbol, [])
-            _current_signs = tuple(1 if s > 0 else -1 for s in _voter_signals_bull)
-            _sign_hist.append(_current_signs)
-            if len(_sign_hist) > 8:
-                _sign_hist = _sign_hist[-8:]
-            self._voter_sign_history[symbol] = _sign_hist
-            # Compute per-voter directional persistence
-            if len(_sign_hist) >= 4:
-                _hist_arr = np.array(_sign_hist)  # (K, 7)
-                _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
-                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
-            else:
-                _persistence_mult = np.ones(7)
-            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
+            # Architectural simplification: removed per-voter persistence_mult weighting.
+            # Mechanism multiplied base weights by [0.7, 1.3] based on 8-bar voter sign
+            # persistence. The signal-sign aggregation is COARSE (binary +1/-1 per voter
+            # per bar) — near-zero signals during regime transitions produce noise-driven
+            # sign flips that downweight legitimate transitional voters at exactly the
+            # bars where post-chop directional signals emerge. The conviction-margin
+            # quintic ramp + clipping already filters within-bar noise; persistence-history
+            # adds cross-bar correlated noise on top. New per-bar voter weight = base only.
+            _voter_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
