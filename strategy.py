@@ -510,13 +510,22 @@ class Strategy:
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
-                # Slopes at 8/16/32 bars; count sign-agreements with entry direction.
-                # Sharper map: 3/3 → 1.0x, 2/3 → 0.85x, 1/3 → 0.60x, 0/3 → 0.40x.
+                # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
+                # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
+                # weighted alignment. Old map ignored slope MAGNITUDE — a barely-positive
+                # 8-bar slope counted identically to a strongly-positive one, creating
+                # boundary noise when small slopes near zero flip sign. New: alignment_w =
+                # tanh(slope_w * pos_dir / scale_w) ∈ [-1, +1] per window, then average
+                # the three. Attenuation = 0.40 + 0.60 * (avg_align + 1)/2, continuous in
+                # [0.40, 1.00]. Boundary at slope=0 is smooth (tanh), not stepped. Scales
+                # picked per-window to give similar saturation thresholds.
                 _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
-                _consensus_map = (0.40, 0.60, 0.85, 1.0)
-                _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
-                _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
+                _cons_scales = (0.0010, 0.0007, 0.0005)  # window-specific saturation
+                _bull_align = sum(np.tanh(s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
+                _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
+                _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
+                _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
                 # Architectural: cross-symbol concurrent-position attenuator.
                 # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
