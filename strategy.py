@@ -925,21 +925,9 @@ class Strategy:
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                    # Architectural: vol-expansion disable on graduated path (new cross-
-                    # component data dep). When vol_6/vol_18 expansion ratio > 1.3 (sharp
-                    # bounce / regime-shift signal), DISABLE the graduated path — fall
-                    # back to binary full exit even for trend-aligned in-profit positions.
-                    # In sharp bounces (especially crash dead-cats), opp-voter spike +
-                    # vol expansion is genuine reversal evidence; preserving partial
-                    # position absorbs the bounce. In calm trend continuation, graduated
-                    # remains active. Continuous via tanh in [1.3, 2.0].
-                    _vol6_og = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
-                    _vol18_og = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
-                    _vol_exp_og = _vol6_og / _vol18_og
-                    _vol_disable_og = max(0.0, np.tanh((_vol_exp_og - 1.3) / 0.4))  # [0, ~1]
-                    _grad_gate = _trend_align_og * _profit_gate_og * (1.0 - _vol_disable_og)  # all three
+                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Blend: full exit (1.0) by default, graduated only when all gates hold.
+                    # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
