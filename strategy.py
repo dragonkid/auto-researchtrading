@@ -592,16 +592,6 @@ class Strategy:
                 _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
                 _trend_align = max(0.0, np.tanh(ret_long * _pos_dir_sl / 0.05))  # in [0, ~1]
                 _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.35 * _trend_align)
-                # Architectural: slope-acceleration confirmation modulator. Compute slope
-                # acceleration as (recent 8-bar slope - lagged 16-bar slope). When slope-
-                # against is rising (more negative for longs / more positive for shorts),
-                # the reversal signal is strengthening — boost _sl_slope_pressure. When
-                # slope-against is decelerating, the signal is fading — attenuate. Smooth
-                # via tanh, max ±15%. Decouples instantaneous slope from its trajectory.
-                _slp8 = _fast_slope(np.log(_hl2[-8:]))
-                _slp_accel_against = (-_slp8 + _exit_slope) if current_pos > 0 else (_slp8 - _exit_slope)
-                _accel_mod = 0.15 * np.tanh(_slp_accel_against / 0.0004)  # in [-0.15, +0.15]
-                _sl_slope_pressure = max(0.0, min(1.0, _sl_slope_pressure * (1.0 + _accel_mod)))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
