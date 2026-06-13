@@ -797,7 +797,12 @@ class Strategy:
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
                 if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6)))
+                    # Trend-gated activation: in chop (low |ret_long|), peaks are
+                    # rare AND likely mean-reverting — disable harvest to let small
+                    # sideways wins run. In trending regimes (high |ret_long|), peaks
+                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
+                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
