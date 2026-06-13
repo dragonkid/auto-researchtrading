@@ -122,6 +122,13 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
+        # Architectural: per-symbol per-voter directional history (8-bar rolling).
+        # Used to compute per-voter directional persistence (fraction of last
+        # K bars where voter signal sign matched). High-persistence voters
+        # are weighted higher in strong-sum aggregation; flip-prone voters
+        # are downweighted. New time-varying voter weighting based on each
+        # voter's own track record.
+        self._voter_sign_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -224,7 +231,29 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            _voter_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
+            # Architectural: per-voter directional persistence weighting.
+            # Track each voter's signal sign over last 8 bars. Persistence =
+            # |sum(signs)| / count → 1.0 if voter held one direction continuously,
+            # 0.0 if voter flipped maximally. Multiply base weight by
+            # (0.7 + 0.6 * persistence) so consistent voters get up to 1.3x weight,
+            # flip-prone voters get down to 0.7x. Smooth (continuous over time as
+            # history rolls forward). New per-symbol per-voter state dependency:
+            # voter aggregation weight depends on each voter's recent flip-rate.
+            _sign_hist = self._voter_sign_history.get(symbol, [])
+            _current_signs = tuple(1 if s > 0 else -1 for s in _voter_signals_bull)
+            _sign_hist.append(_current_signs)
+            if len(_sign_hist) > 8:
+                _sign_hist = _sign_hist[-8:]
+            self._voter_sign_history[symbol] = _sign_hist
+            # Compute per-voter directional persistence
+            if len(_sign_hist) >= 4:
+                _hist_arr = np.array(_sign_hist)  # (K, 6)
+                _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
+                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
+            else:
+                _persistence_mult = np.ones(6)
+            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
