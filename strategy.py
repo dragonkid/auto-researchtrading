@@ -931,13 +931,12 @@ class Strategy:
                         _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
                     else:
                         _pnl_traj_slope = 0.0
-                    # Saturate at 0..0.005 pos_pnl/bar; max +0.10 floor adjustment.
-                    # Branch step 5: ASYMMETRIC — only UPWARD trajectory adjustment (recovery)
-                    # raises de_floor. Downward trajectory does NOT lower de_floor because
-                    # slope-against and pp_pressure already capture deterioration. This avoids
-                    # double-counting on losing positions while preserving the recovery-protection
-                    # benefit on dead-cat-bounce winning shorts and MAE-recovery losers.
-                    _traj_adj = 0.10 * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
+                    # Branch step 6: asymmetric (positive only) AND gated to losing/breakeven
+                    # positions (pos_pnl <= 0). Bull/sideways winners (pos_pnl > 0.005) skip the
+                    # recovery boost entirely — pp_pressure handles those. Crash/rally MAE-
+                    # recovery and counter-trend pullback recoveries (pos_pnl <= 0) keep boost.
+                    _loss_gate = max(0.0, min(1.0, -pos_pnl / 0.005 + 1.0))  # 1 at pnl<=0, 0 at pnl>=0.005
+                    _traj_adj = 0.10 * max(0.0, np.tanh(_pnl_traj_slope / 0.005)) * _loss_gate
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
