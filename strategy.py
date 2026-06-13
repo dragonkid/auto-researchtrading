@@ -754,8 +754,15 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
+                # Architectural: cross-symbol concurrent-position exit pressure additive term.
+                # When 2+ symbols (including self) are concurrently loaded, add small
+                # additive exit pressure scaled by _n_active. Mirrors Exp2 (entry-side
+                # attenuator): correlated multi-symbol exposure increases exit urgency.
+                # Bounded magnitude (max 0.06 at n_active=3), only fires when in loss
+                # (_pnl_scale < 0) to avoid cutting winning concurrent positions.
+                _concurrent_exit_press = 0.06 * max(0.0, np.tanh((_n_active - 1.5) / 1.0)) * max(0.0, -_pnl_scale)
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias + _concurrent_exit_press
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
