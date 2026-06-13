@@ -917,6 +917,15 @@ class Strategy:
                     target = 0.0
                 elif _over_thresh_now and _was_armed and target != 0:
                     target = 0.0
+                elif _over_thresh_now and not _was_armed and target != 0:
+                    # Branch step 5: deferred-exit penalty applies on bar-1 of persistence.
+                    # When persistence gate just deferred a binary exit (over now, not
+                    # previously armed), apply an immediate 50% size cut. This works
+                    # regardless of bars_held (whereas step 4 was gated to bars_held>=2,
+                    # so most fresh-entry deferred exits got NO size response — the
+                    # persistence gate bought time without paying any cost). The 50%
+                    # cut is the cost paid for getting one bar of confirmation evidence.
+                    target = target * 0.5
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
                     # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
@@ -935,17 +944,6 @@ class Strategy:
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
-                        # Branch step 4: deferred-exit penalty. When the persistence
-                        # gate JUST deferred a would-be binary exit this bar (_over_thresh_now
-                        # AND NOT _was_armed), apply an additional 50% size cut on top of
-                        # the standard de-risk. The persistence gate buys 1 bar of evidence;
-                        # the penalty ensures the position isn't held at full size during
-                        # that confirmation bar. If the next bar confirms (still over),
-                        # full exit fires; if it doesn't, the position resumes scaling
-                        # but at the reduced size — a real cost for noise spikes that
-                        # rewards true reversals more than transient ones.
-                        if _over_thresh_now and not _was_armed:
-                            _de_risk = _de_risk * 0.5
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
