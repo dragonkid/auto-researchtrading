@@ -492,30 +492,13 @@ class Strategy:
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
-                # Compute slopes at 3 different lookbacks (8/16/32 bars) on HL2.
-                # Count how many slope-signs agree with proposed entry direction.
-                # 3/3 → full size, 2/3 → 0.88x attenuation, 1/3 → 0.70x attenuation,
-                # 0/3 → 0.55x attenuation. Distinct from prior multi-window VOTER
-                # attempt (which replaced single 16-bar slope with mean — catastrophic
-                # for rally). This is an ADDITIONAL gate on size, leaving voters
-                # unchanged. Captures multi-timeframe alignment as conviction
-                # measure for first-bar commitment, structurally orthogonal to
-                # voter strong-sum. New cross-timescale data dependency: first-bar
-                # size depends on slope-sign agreement across 3 windows.
+                # Slopes at 8/16/32 bars; count sign-agreements with entry direction.
+                # 3/3 → 1.0x, 2/3 → 0.88x, 1/3 → 0.70x, 0/3 → 0.55x.
                 _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _slope_consensus_bull = 0
-                _slope_consensus_bear = 0
-                for _w_e in (8, 16, 32):
-                    if len(_hl2_e) >= _w_e:
-                        _ss = _fast_slope(np.log(_hl2_e[-_w_e:]))
-                        if _ss > 0:
-                            _slope_consensus_bull += 1
-                        elif _ss < 0:
-                            _slope_consensus_bear += 1
-                # Map agree-count to attenuator: 3→1.0, 2→0.88, 1→0.70, 0→0.55
+                _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
                 _consensus_map = (0.55, 0.70, 0.88, 1.0)
-                _bull_consensus_atten = _consensus_map[_slope_consensus_bull]
-                _bear_consensus_atten = _consensus_map[_slope_consensus_bear]
+                _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
+                _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
                 # Architectural: cross-symbol concurrent-position attenuator.
                 # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
