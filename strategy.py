@@ -790,6 +790,19 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: trend-aligned mature-position exit-threshold buffer.
+                # Independent of scale-in protection: past ENTRY_FULL_BARS, when position
+                # is in profit AND slope agrees AND profit-magnitude is meaningful, raise
+                # exit_thresh by up to +0.10 (small additive). New cross-component data
+                # dependency: mature exit-threshold depends on jointly profit + slope-agree
+                # + slope_strength. Distinct from scale_in_winning protection (which cuts
+                # off at ENTRY_FULL_BARS) and from _pp_pressure (which protects giveback
+                # AFTER peak, not the threshold itself). Mechanism: lets fully-armed winning
+                # trend positions absorb noise spikes that would cross 1.0 threshold but
+                # not 1.10. Continuous via tanh on slope_strength × profit_magnitude.
+                if not _scale_in_winning and pos_pnl > 0 and _slope_agrees:
+                    _trend_align_buffer = 0.10 * min(1.0, _slope_strength) * max(0.0, np.tanh(_profit_magnitude / 0.5))
+                    _exit_thresh = _exit_thresh + _trend_align_buffer
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
