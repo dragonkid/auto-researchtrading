@@ -839,13 +839,29 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
-                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
-                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
-                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
-                # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural fusion change: linear sum -> p-norm aggregation (p=3).
+                # Old: _soft_sum = sum(w_i * p_i). Many small simultaneous pressures could
+                # cumulatively exceed the exit threshold even when no single pressure was
+                # strong — diffuse-noise additivity. New: p-norm fusion treats the soft
+                # pressures as an L_p norm, biasing toward the dominant signal.
+                #   _soft_agg = (sum(w_i * p_i)^p)^(1/p)
+                # Properties: one signal at value V -> V (preserves unit-threshold semantics);
+                # K equal weak signals at V/K -> V*K^(1/p - 1) (discounted vs linear sum);
+                # two strong signals 1.0+1.0 -> 2^(1/p) (composes but sub-linearly).
+                # Mechanism: differentiates "one dominant exit reason" (real signal) from
+                # "many faint exit reasons" (noise cluster). The fusion shape change is
+                # decision-architecture: same components, fundamentally different aggregation.
+                _p_norm = 3.0
+                _soft_terms = (
+                    (_w_slope * _sl_slope_pressure) ** _p_norm
+                    + (_w_pp * _pp_pressure) ** _p_norm
+                    + (_w_time * _time_pressure) ** _p_norm
+                    + (_w_ve * _ve_pressure) ** _p_norm
+                    + (_w_ep * _ep_pressure) ** _p_norm
+                    + (_w_ar * _ar_pressure) ** _p_norm
+                )
+                _soft_agg = _soft_terms ** (1.0 / _p_norm) if _soft_terms > 0 else 0.0
+                _exit_pressure = max(_sl_pressure, _soft_agg) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
