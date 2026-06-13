@@ -682,14 +682,15 @@ class Strategy:
                 # Uses same robust median exit-slope for consistency within exit subsystem.
                 _slope_agrees = (_exit_slope > 0 and current_pos > 0) or (_exit_slope < 0 and current_pos < 0)
                 _slope_strength = min(1.0, abs(_exit_slope) / 0.0006)
-                # Architectural: vol-conditioned symmetric momentum hold bonus.
-                # Slope-against shortens max_hold but only at full strength when
-                # slope is signal-dominated (high vol). In low-vol (rally chop) the
-                # shortening is attenuated by min(1, vol_ratio) — slope noise in
-                # rally would otherwise create noise-driven early time exits.
-                # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
-                _short_atten = min(1.0, vol_ratio)
-                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                # Architectural simplification: removed _short_atten vol-attenuation on
+                # slope-against shortening. _w_slope * _sl_slope_pressure already provides
+                # vol-conditioned slope pressure (via _slope_thresh and _slope_band widening
+                # in high vol). The asymmetric vol-attenuation on hold_adj duplicated
+                # vol-conditioning of the slope signal at a different decision point;
+                # removing unifies the slope-against penalty across vol regimes (extension
+                # was already unconditional). Single-variable architectural simplification
+                # to the time-pressure subsystem decision boundary.
+                _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -1.0)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
