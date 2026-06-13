@@ -216,7 +216,15 @@ class Strategy:
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
-            _voter_weights = (0.7, 1.25, 1.10, 1.00, 0.85, 1.10)
+            # Architectural: trend-strength weight redistribution. In strong trends
+            # (high abs(ret_long)), shift weight from mean-reverting voters
+            # (RSI=idx2, MACD=idx3) to trend-confirming voters (EMA_cross=idx1,
+            # EMA_slope=idx5). In chop, weights stay near base. Continuous via
+            # tanh on abs(ret_long)/0.04. New cross-timescale data dependency:
+            # voter aggregation function depends on long-window return.
+            _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
+            _wt_shift = 0.20 * _trend_strength_w
+            _voter_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
