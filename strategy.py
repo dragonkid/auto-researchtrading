@@ -227,6 +227,22 @@ class Strategy:
             _voter_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: voter-class dual-gate admission. Split 6 voters into
+            # two classes — trend-confirming (EMA_cross=idx1, slope_16=idx4,
+            # EMA_slope=idx5) and mean-reverting (ret_short=idx0, RSI=idx2,
+            # MACD=idx3). Compute per-class strong-sums. Entry admission requires
+            # BOTH classes to clear a per-class admission threshold (half of
+            # _strong_min). This filters pure mean-reversion entries lacking
+            # trend confirmation — exactly the rally-bear-loss pattern (RSI
+            # overbought + MACD decel firing while EMA/slope all bullish).
+            # Continuous via the existing soft-tanh confs; only the aggregation
+            # function changes (one path becomes two parallel paths).
+            _trend_idx = (1, 4, 5)
+            _mr_idx = (0, 2, 3)
+            _bull_trend = sum(max(0.0, (_bull_confs[i] - 0.5) ** 5 * 97.66) * _voter_weights[i] for i in _trend_idx)
+            _bull_mr = sum(max(0.0, (_bull_confs[i] - 0.5) ** 5 * 97.66) * _voter_weights[i] for i in _mr_idx)
+            _bear_trend = sum(max(0.0, (_bear_confs[i] - 0.5) ** 5 * 97.66) * _voter_weights[i] for i in _trend_idx)
+            _bear_mr = sum(max(0.0, (_bear_confs[i] - 0.5) ** 5 * 97.66) * _voter_weights[i] for i in _mr_idx)
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
@@ -391,9 +407,16 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Architectural: dual-class admission — both trend and mean-rev
+                # classes must individually clear a per-class floor (half of
+                # the total _strong_min). Continuous in the same sense as the
+                # main strong-sum gate (each conf already tanh-soft).
+                _class_floor = 0.5 * _strong_min
+                _bull_dual_ok = _bull_trend >= _class_floor and _bull_mr >= _class_floor
+                _bear_dual_ok = _bear_trend >= _class_floor and _bear_mr >= _class_floor
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_dual_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj)
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_dual_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
