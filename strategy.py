@@ -746,15 +746,23 @@ class Strategy:
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
-                # Architectural simplification: removed vol-expansion exit pressure (_ve term).
-                # Mechanism overlapped with: (1) _pp_pressure (peak-profit giveback already
-                # locks gains on regime shift), (2) _w_pp vol-conditioning (high-vol
-                # amplifies pp-side weight already), (3) _slope-against (regime shift
-                # produces adverse slope which slope-pressure captures). The 6/18 vol
-                # ratio rarely produces meaningful pressure (max 0.6 contribution gated
-                # by tanh activation above 1.3x ratio); when it fires, redundant signals
-                # already drive _exit_pressure. Removing simplifies fusion to 4 soft
-                # sources (slope/pp/time/early-profit-lock) without losing orthogonal info.
+                # Architectural: volatility-expansion exit pressure (5th source).
+                # When recent 6-bar realized vol substantially exceeds 18-bar
+                # realized vol (vol-of-vol expansion), the price regime has
+                # shifted — earlier slope/peak/time signals may be stale. Compute
+                # vol_expansion = vol_6 / vol_18, smooth via tanh, contribute
+                # smooth pressure [0, 0.6]. Acts as a regime-shift detector
+                # orthogonal to slope (direction) and pp (magnitude). New
+                # data-dependent exit pressure term in the fusion sum.
+                _vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+                _vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+                _vol_expansion = _vol_6 / _vol_18
+                # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
+                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Profit-side weight: only fire when in profit (lock gains on
+                # regime shift); don't punish losing positions for vol expansion
+                # since slope-against already handles adverse moves.
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Architectural: early-profit-lock exit pressure (5th soft source).
                 # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
                 # Sub-peak profitable positions that give back early gains receive NO
@@ -787,7 +795,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ep * _ep_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
