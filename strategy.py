@@ -767,7 +767,17 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: trend-aligned own-side amplifier (symmetric extension of opp_atten).
+                # In strong trends WHERE position is trend-aligned, amplify the own-side voter_bias
+                # subtraction to let winning trend positions with strong own-side conviction resist
+                # moderate exit pressures even more. Bull-position-in-uptrend / bear-position-in-
+                # downtrend with strong own-side voters subtract more from exit_pressure, holding
+                # through noise spikes that would otherwise cross the threshold. Max 40% amplification
+                # at saturated trend alignment (1.4x own-side subtraction). Counter-trend and chop
+                # unchanged (mechanism gates on positive trend_align_vb only). New cross-component
+                # data dep: own-side voter_bias subtraction depends on (ret_long, position direction).
+                _own_amp = 1.0 + 0.40 * _trend_align_vb  # max 40% amp in strong trend-aligned
+                _voter_bias = -0.20 * _chop_amp * _own_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
