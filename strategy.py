@@ -332,6 +332,7 @@ class Strategy:
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
+            in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -399,7 +400,7 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
 
-            if current_pos == 0:
+            if current_pos == 0 and not in_cooldown:
                 # Architectural: Donchian range-position entry gate. Orthogonal
                 # data dependency: computes current price's position within the
                 # last 20-bar high/low range, range_pos in [0, 1] where 0 = at
@@ -845,7 +846,7 @@ class Strategy:
                 # opp-side reversal triggers partial position scaling, not binary.
                 _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
                             (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
-                if _opp_gate:
+                if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
                     # exit (cut risk fast). Trend-aligned + in-profit (crash short
