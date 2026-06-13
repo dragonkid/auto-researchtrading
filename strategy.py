@@ -661,20 +661,7 @@ class Strategy:
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
-                # Architectural: counter-trend opp-side addition dampener.
-                # When position is COUNTER-TREND (long in downtrend, short in uptrend),
-                # opposite-side voters mostly confirm the broader trend — they fire on
-                # legitimate trend signals (EMA cross, MACD, slope) that AGREE with the
-                # market's direction, not on actual reversal evidence. Adding their bias
-                # to exit pressure causes premature exits on counter-trend pullback plays.
-                # Dampen opp-side addition proportional to counter-trend magnitude.
-                # Trend-aligned positions: no dampening (full reversal evidence).
-                # Counter-trend positions: up to 60% dampening at strong counter-trend.
-                # Continuous via tanh on (-ret_long * pos_dir / 0.05).
-                _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
-                _counter_trend_str = max(0.0, np.tanh(-ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
-                _opp_dampen = 1.0 - 0.60 * _counter_trend_str
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_dampen * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
