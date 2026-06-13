@@ -931,11 +931,11 @@ class Strategy:
                         _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
                     else:
                         _pnl_traj_slope = 0.0
-                    # Branch step 13: push base floor further to 0.45 with same trajectory adj.
-                    # If 0.50 was strict-progress over 0.55-baseline (step 12 +0.004 progress),
-                    # 0.45 may extend the gain.
+                    # Branch step 14: base 0.52 (between 0.50 best progress and 0.55 baseline).
+                    # 0.45 too aggressive; 0.50 too aggressive vs absolute baseline. Try 0.52
+                    # for finer tuning.
                     _traj_adj = 0.15 * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
-                    _de_floor = 0.45 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
+                    _de_floor = 0.52 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
