@@ -638,24 +638,19 @@ class Strategy:
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
-                # Architectural: cross-timescale slope DIVERGENCE replacing mean-of-3.
-                # Old: _exit_slope = mean of 12/16/22-bar slopes — three highly-correlated
-                # estimates of medium-window log slope. New: compute SHORT (8-bar) and
-                # LONG (24-bar) slopes; exit_slope is the SHORT slope when SHORT opposes
-                # LONG (genuine short-term reversal vs long trend), else exit_slope = LONG
-                # slope (smooth long-window estimate). Divergence-aware: when short and
-                # long agree (no reversal forming), pressure follows the longer-timescale
-                # smoother estimate; when short diverges from long, the short-window
-                # reversal signal drives exit. New control flow at exit subsystem:
-                # slope-pressure source switches based on cross-timescale agreement.
+                # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
+                # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
+                # entry & exit noise. Computing slopes at 12/16/22 and taking median decouples
+                # exit-noise from entry-noise AND robust-aggregates against single-window outliers.
+                # Multi-window slope MEAN (not median): mean averages out window-specific noise
+                # better than median in low-vol where all 3 slopes are small and noise-dominated.
+                # Median can flip on a single window; mean spreads the contribution.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-                _short_slope = _fast_slope(np.log(_hl2[-8:]))
-                _long_slope = _fast_slope(np.log(_hl2[-24:]))
-                # Divergence: short and long have opposite signs
-                if _short_slope * _long_slope < 0:
-                    _exit_slope = float(_short_slope)  # short-term reversal driving exit
-                else:
-                    _exit_slope = float(_long_slope)   # smooth long-window estimate
+                _slopes = []
+                for _w in (12, 16, 22):
+                    _ll = _fast_slope(np.log(_hl2[-_w:]))
+                    _slopes.append(_ll)
+                _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
