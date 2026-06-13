@@ -759,14 +759,7 @@ class Strategy:
                 # voter_bias depends on (ret_long, position direction).
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
-                # Architectural: pnl-conditioned opp_atten. Trend-aligned WINNING positions
-                # benefit from opp-bias attenuation (noise during natural pullbacks).
-                # Trend-aligned LOSING positions need FULL opp-bias (reversal evidence on
-                # a losing position is real signal, not noise spike). Smooth via tanh on
-                # pos_pnl: attenuation only fires when pos_pnl > 0; ramps to full strength
-                # near peak. Counter-trend / chop: unchanged.
-                _profit_atten_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                _opp_atten = 1.0 - 0.50 * _trend_align_vb * _profit_atten_gate  # max 50% only for trend-aligned winners
+                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
