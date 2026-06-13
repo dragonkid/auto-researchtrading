@@ -311,7 +311,16 @@ class Strategy:
             self._recent_strongs[symbol] = _hist
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: per-symbol baseline-vol admission modifier (NEW cross-symbol
+            # data dep at entry decision boundary). High-baseline-vol symbols (SOL ~0.022
+            # vs BTC ~0.012) have noisier voter signals at any given strong-sum level;
+            # tighten admission proportionally. Smooth tanh on (baseline_vol - TARGET_VOL)
+            # / TARGET_VOL. Range [-0.10, +0.10] on strong_min. SOL gets ~+8% tightening,
+            # BTC ~-3% relaxation, ETH neutral. Decouples noise-floor from generic
+            # TARGET_VOL anchor; per-symbol structural noise becomes part of the admission
+            # decision.
+            _sym_strong_adj = 0.10 * np.tanh((_baseline_vol - TARGET_VOL) / TARGET_VOL)
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + _sym_strong_adj
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
