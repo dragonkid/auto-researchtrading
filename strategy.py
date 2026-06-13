@@ -675,10 +675,22 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Profit-side weight: only fire when in profit (lock gains on
-                # regime shift); don't punish losing positions for vol expansion
-                # since slope-against already handles adverse moves.
-                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Architectural: counter-trend losing-position vol-expansion exit weight.
+                # Old: _w_ve fired only on profit (lock gains on regime shift).
+                # New: ALSO fire on counter-trend losing positions (e.g., rally bear
+                # losing during vol expansion = rally resumption signal — cut shorts fast).
+                # Profit-side weight unchanged. Loss-side weight gated on counter-trend
+                # alignment AND trend magnitude (continuous tanh on -ret_long*pos_dir/0.05
+                # AND trend strength gate). Avoids triggering on chop where vol expansion
+                # is noise, AND avoids triggering on trend-aligned losses (recoverable).
+                # New cross-timescale data dependency: vol-expansion exit weight depends
+                # on long-window trend direction relative to position.
+                _pos_dir_ve = 1.0 if current_pos > 0 else -1.0
+                _ct_align_ve = max(0.0, np.tanh(-ret_long * _pos_dir_ve / 0.05))  # [0, ~1] counter-trend strength
+                _trend_mag_ve = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # gate above |ret_long|>0.03
+                _loss_pnl_ve = max(0.0, -_pnl_scale)  # [0, 1] only losing positions
+                _w_ve_loss = 0.7 * _loss_pnl_ve * _ct_align_ve * _trend_mag_ve  # max 0.7 weight in worst case
+                _w_ve = max(0.0, _pnl_scale) + _w_ve_loss  # symmetric, additive
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
