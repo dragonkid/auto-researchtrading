@@ -768,12 +768,30 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
+                # Architectural: 6th exit source — range-extreme exit pressure.
+                # New cross-bar data dependency on 20-bar high/low range. When position
+                # is profitable AND price is at/near the range extreme on the WIN side
+                # (long near range high, short near range low), apply continuous tanh
+                # exit pressure. Captures "blow-off top / climax" reversals orthogonal
+                # to slope (path direction) and giveback (peak-relative). Profit-gated
+                # via _pnl_scale: only locks gains at extremes, doesn't accelerate
+                # losing positions which already have slope/sl pressure. Continuous via
+                # tanh on (range_pos_aligned - 0.85) / 0.10. Caps at 0.4 (subordinate
+                # to slope/pp; this is a regime-shift detector, not primary exit).
+                _re_n = 20
+                _re_hi = bd.history["high"].values[-_re_n:].max()
+                _re_lo = bd.history["low"].values[-_re_n:].min()
+                _re_pos = (mid - _re_lo) / max(_re_hi - _re_lo, 1e-6)  # in [0, 1]
+                # Position-side aligned extremes: long wins at top (1.0), short wins at bottom (0.0).
+                _re_aligned = _re_pos if current_pos > 0 else (1.0 - _re_pos)
+                _re_pressure = 0.4 * max(0.0, np.tanh((_re_aligned - 0.85) / 0.10))
+                _w_re = max(0.0, _pnl_scale)  # only fire when in profit
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_re * _re_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
