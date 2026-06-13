@@ -945,14 +945,8 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                # Architectural simplification: removed redundant bear_votes/bull_votes >= FLIP_MIN_VOTES
-                # count gates from _opp_gate. Strong-sum gates (_bear_strong >= _bear_strong_min) are
-                # highly correlated with the count gates (both derive from the same _bull_confs values).
-                # Strong-sum is the primary discriminator (uses voter weights + quintic ramp); count is
-                # coarser. Parallel to entry-side simplification of MIN_VOTES count gate. Removes
-                # correlated-noise amplification at the reversal decision boundary.
-                _opp_gate = (current_pos > 0 and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
