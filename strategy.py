@@ -219,19 +219,17 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: 7th voter — On-Balance Volume (OBV) slope.
-            # Pure volume-direction signal: cumulative sum of signed volume
-            # (+volume if close>prev_close, -volume otherwise). OBV slope captures
-            # whether accumulation/distribution is trending up or down, independent
-            # of price level (unlike VWAP which is price-weighted). Decorrelated
-            # from all 6 price-derived voters.
-            _obv_n = 16
-            _ob_closes = closes[-_obv_n - 1:]
-            _ob_vols = bd.history["volume"].values[-_obv_n:]
-            _ob_signed = np.where(_ob_closes[1:] > _ob_closes[:-1], _ob_vols, -_ob_vols)
-            _obv_cum = np.cumsum(_ob_signed)
-            # Slope of OBV normalized by mean volume (unit-free)
-            _vwap_dev = _fast_slope(_obv_cum) / max(_ob_vols.mean(), 1e-10)
+            # Architectural: 7th voter — volume-weighted price deviation.
+            # Volume data is orthogonal to all 6 existing voters (which use price-derived
+            # series only). Compute 12-bar VWAP using (high+low+close)/3 typical price
+            # weighted by volume; voter signals when current close deviates upward (bull)
+            # from VWAP. Captures genuine volume-confirmed directional pressure independent
+            # of moving averages, RSI, MACD, slope. New data dependency on volume * price.
+            _vwap_n = 12
+            _vol_arr = bd.history["volume"].values[-_vwap_n:]
+            _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
+            _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
+            _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -239,7 +237,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
-                _vwap_dev / 0.08,  # 7th voter: OBV slope (volume-direction trend)
+                _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
