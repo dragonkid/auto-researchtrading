@@ -122,6 +122,11 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
+        # Architectural: per-symbol entry-bar own-side strong-sum snapshot.
+        # Captures the voter conviction at entry time. Used during scale-in
+        # to attenuate further commitment when ongoing conviction has decayed
+        # vs entry-time conviction (signal was a transient spike, not sustained).
+        self._entry_strong = {}
         # Architectural: per-symbol per-voter directional history (8-bar rolling).
         # Used to compute per-voter directional persistence (fraction of last
         # K bars where voter signal sign matched). High-persistence voters
@@ -446,8 +451,10 @@ class Strategy:
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten
+                    self._entry_strong[symbol] = _bull_strong
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten
+                    self._entry_strong[symbol] = _bear_strong
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -470,6 +477,23 @@ class Strategy:
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
                     _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
+                    # Architectural: conviction-decay scale-in attenuator. Snapshot
+                    # entry-bar own-side strong-sum; compare to current bar's own-side
+                    # strong-sum. If conviction has decayed > 30% vs entry, attenuate
+                    # the per-bar ramp increment (scale-in entries on transient signal
+                    # spikes get held at lower commitment until conviction sustains).
+                    # Smooth via tanh on conviction_ratio = current/entry - 1. Max
+                    # attenuation 0.50 (decayed scale-in gets half-ramp). New cross-bar
+                    # state dependency: scale-in trajectory depends on conviction memory.
+                    _entry_str = self._entry_strong.get(symbol, 0.0)
+                    if _entry_str > 1e-6:
+                        _curr_own = _bull_strong if current_pos > 0 else _bear_strong
+                        _conv_ratio = _curr_own / _entry_str
+                        # tanh ramp: 0 attenuation at ratio>=1, -0.50 at ratio<=0.5
+                        _conv_attn = 1.0 - 0.50 * max(0.0, np.tanh((1.0 - _conv_ratio) / 0.30))
+                    else:
+                        _conv_attn = 1.0
+                    _ramp_attn = _ramp_attn * _conv_attn
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
@@ -738,7 +762,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_strong):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
