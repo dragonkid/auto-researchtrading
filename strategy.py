@@ -592,26 +592,11 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Architectural: slope-acceleration exit pressure (6th source).
-                # Compares recent 6-bar slope vs prior 6-bar slope (bars [-13:-7]).
-                # When recent slope decelerates AGAINST position (e.g., long with
-                # weakening uptrend or accelerating downtrend), signal is earlier
-                # than the slope-against pressure (which fires only when slope
-                # crosses zero against pos). Second-derivative on log-HL2.
-                # Orthogonal to slope (level), pp (magnitude), ve (volatility).
-                _accel_recent = _fast_slope(np.log(_hl2[-6:]))
-                _accel_prior = _fast_slope(np.log(_hl2[-13:-7]))
-                _accel = _accel_recent - _accel_prior
-                _accel_against = -_accel if current_pos > 0 else _accel
-                _accel_pressure = 0.5 * max(0.0, np.tanh(_accel_against / 0.0006))
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Acceleration-against weight: heavier in profit (lock gains on early
-                # weakness), lighter in loss (avoid double-count with slope-against).
-                _w_accel = 0.6 + 0.4 * max(0.0, _pnl_scale)
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_accel * _accel_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
