@@ -606,21 +606,9 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Architectural: peak-anchored progressive stop tightening.
-                # New control flow at SL decision boundary. Once peak_pnl crosses ~0.7*_pp_min
-                # (~1.7% profit on a position), the effective stop progressively tightens
-                # from full _stop_abs toward 0.7*_stop_abs as peak grows. Mechanism:
-                # positions that have shown profit have proven their initial entry thesis,
-                # but if they're now reverting toward entry the reversal evidence is mounting.
-                # Tightening protects realized profit by limiting drawdown. Smooth tanh on
-                # peak/_pp_min - 0.7. New cross-bar dep: SL band depends on peak history.
-                # _pp_min computed inline here (also referenced later for soft pressures).
-                _pp_min_anchor = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                _stop_tighten_t = max(0.0, min(1.0, np.tanh((self.peak_pnl.get(symbol, 0.0) / max(_pp_min_anchor, 1e-6) - 0.7) / 0.6)))
-                _stop_eff = _stop_abs * (1.0 - 0.30 * _stop_tighten_t)
                 _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_eff
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_eff - _band_half)) / (2.0 * _band_half)))
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
