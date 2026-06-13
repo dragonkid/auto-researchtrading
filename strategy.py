@@ -887,25 +887,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: deep-MAE exit-threshold tightening (new control flow at
-                # exit decision boundary using existing _mae state). When MAE is deep
-                # (substantially below stop magnitude) AND current pos_pnl is still
-                # adverse (not yet recovered), the position has experienced sustained
-                # adversity — lower the exit threshold so smaller exit-pressure signals
-                # can trigger exit. Distinct from _ar_pressure (which fires on recovery
-                # toward breakeven); this fires on persistent adversity. New cross-state
-                # data dep at exit_thresh: threshold depends on (mae_depth, pos_pnl_sign).
-                # Continuous via tanh; max reduction 0.20 (exit_thresh as low as 0.80).
-                # Smooth (no boundary). Skipped for winning scale-in (preserves bull
-                # early-winning protection that's load-bearing).
-                if not _scale_in_winning:
-                    _curr_mae_thresh = self._mae.get(symbol, 0.0)
-                    # MAE depth ratio: 0 at MAE=0, 1 at MAE = -2*stop. Saturates beyond.
-                    _mae_depth = min(1.0, max(0.0, -_curr_mae_thresh / (2.0 * abs(STOP_LOSS_PCT))))
-                    # Adverse-pnl gate: only tighten when current pos_pnl still negative.
-                    # tanh on (-pos_pnl)/abs(stop): 0 at pos_pnl>=0, 1 at pos_pnl<=-stop.
-                    _adverse_gate = max(0.0, min(1.0, np.tanh(max(0.0, -pos_pnl) / abs(STOP_LOSS_PCT))))
-                    _exit_thresh = _exit_thresh - 0.20 * _mae_depth * _adverse_gate
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
