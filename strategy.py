@@ -620,30 +620,13 @@ class Strategy:
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                # Architectural: smooth pp-activation ramp replacing hard binary gate.
-                # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
-                # boundary at peak == _pp_min creates noise discontinuity in stab tests.
-                # Replace with smooth tanh activation (peak_pnl/_pp_min - 1.0) scaled by 0.5,
-                # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
-                # This is a primitive change to pp_pressure activation: was binary gate,
-                # now continuous mixture between unconditional pp_pressure and zero.
-                # Trend-gated smooth activation: smooth ramp only in trending regimes
-                # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
-                # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
-                # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
-                # Narrow boundary smoothing only: linear ramp in [0.95, 1.04]*_pp_min.
-                # Slightly narrower upper bound — restores baseline pp_pressure faster
-                # at peak ratios above 1.04, recovering raw revenue while keeping the
-                # bull-boosting smoothing in the [0.95, 1.04] band.
+                # Architectural simplification: removed _pp_activation piecewise
+                # gate at [0.95, 1.04]*_pp_min. The early-profit-lock (_ep_pressure)
+                # already protects sub-peak (peak below _pp_min*0.95) via its own
+                # activation ramp; pp_pressure now activates purely on giveback_ratio
+                # exceeding _pp_lower band. Removes 7 lines and a hardcoded boundary.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                if _pp_ratio <= 0.95:
-                    _pp_activation = 0.0
-                elif _pp_ratio >= 1.04:
-                    _pp_activation = 1.0
-                else:
-                    _pp_activation = (_pp_ratio - 0.95) / 0.09
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                _pp_pressure = _pp_raw * _pp_activation
+                _pp_pressure = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
