@@ -615,36 +615,6 @@ class Strategy:
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
-                # Architectural: slope-acceleration (2nd derivative) for momentum-decay
-                # detection. New data dep on prior-bar slope: compute 12-bar slope at
-                # bar t-3 (using close[-15:-3]) and compare to current 12-bar slope to
-                # get _slope_accel = (_curr - _prior) / 3 (per-bar change in slope).
-                # When position-aligned slope is DECELERATING sharply (winning trend
-                # losing momentum), momentum-decay exit pressure fires BEFORE slope
-                # crosses to against. Distinct from _sl_slope_pressure (which fires
-                # only when slope is against position). Captures the pre-reversal
-                # "winners losing steam" pattern that current slope-against misses
-                # until full reversal. Symmetric per-side via _pos_dir.
-                _slope_prior_12 = _fast_slope(np.log(_hl2[-15:-3]))
-                _slope_curr_12 = _slopes[0]  # 12-bar slope at current bar
-                _pos_dir_dec = 1.0 if current_pos > 0 else -1.0
-                # When position-aligned slope DECELERATING: prior_aligned > curr_aligned > 0
-                _slope_aligned_prior = _slope_prior_12 * _pos_dir_dec
-                _slope_aligned_curr = _slope_curr_12 * _pos_dir_dec
-                # Pressure fires only when: was favorable (prior > +threshold) AND has
-                # decelerated significantly (curr < prior * 0.4) AND still nonnegative
-                # (so slope-against handles the negative-slope case). This window
-                # captures "momentum dying before reversal" specifically.
-                _dec_pre_thr = 0.0004
-                if _slope_aligned_prior > _dec_pre_thr and _slope_aligned_curr < _slope_aligned_prior * 0.4 and _slope_aligned_curr > -0.0001:
-                    _decel_ratio = 1.0 - _slope_aligned_curr / max(_slope_aligned_prior, 1e-6)  # in (0.6, 1.0]
-                    _decel_pressure = 0.45 * max(0.0, min(1.0, (_decel_ratio - 0.6) / 0.4))
-                else:
-                    _decel_pressure = 0.0
-                # Weight: only profit-side (in loss, slope-against already handling); attenuated
-                # by trend-strength inversely (in strong trend, deceleration may be
-                # temporary consolidation; in chop, more likely real momentum end).
-                _w_dec = max(0.0, _pnl_scale) * (1.0 - 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.05)))
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
@@ -863,7 +833,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_dec * _decel_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
