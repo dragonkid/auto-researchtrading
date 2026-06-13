@@ -574,21 +574,6 @@ class Strategy:
                 # coupling: exit pressure depends on continuously-evaluated entry voter sum.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
-                # Architectural: volume-spike exit-pressure attenuator (orthogonal to voter conviction).
-                # When current bar volume exceeds 24-bar median by >1.5x, the price move is
-                # more likely to be a real signal-driven move than noise. Attenuate non-stop
-                # exit pressures by up to 25% (continuous tanh on volume_ratio - 1.5).
-                # New cross-bar data dependency on relative volume; orthogonal to _voter_attn
-                # (which uses voter strong-sums) and _ve_pressure (which uses vol-of-vol).
-                # Volume is a flow/intensity primitive — a high-volume bar against position
-                # may be informative (real reversal), but also more likely to mean-revert
-                # within session. Position-direction agnostic: amplifies signal-confidence
-                # on either side, so we only relax exit pressure (slow exits, give signal time).
-                _vol_recent = bd.history["volume"].values[-25:-1]
-                _vol_med = max(np.median(_vol_recent), 1e-6)
-                _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_med
-                _vol_spike_factor = 1.0 - 0.25 * max(0.0, np.tanh((_vol_curr_ratio - 1.5) / 1.0))
-                _voter_attn = _voter_attn * _vol_spike_factor
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
