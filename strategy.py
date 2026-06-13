@@ -595,7 +595,13 @@ class Strategy:
                 # via tanh on margin/0.30. Floor at 1.5 bars. New cross-bar data dependency:
                 # scale-in pace depends on live-bar voter conviction, not just entry-time.
                 _live_side_margin = _bull_margin if current_pos > 0 else _bear_margin
-                _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30))  # [0, ~1]
+                # Trend-magnitude gate on conv-accel: in strong long-window trends
+                # the trend itself supplies signal continuity — additional live-conviction
+                # acceleration front-loads the position into volatile early-trend bars
+                # (bull regression in fff46ce keep). Mute the accelerator proportional to
+                # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
+                _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
+                _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
                 _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
