@@ -628,10 +628,10 @@ class Strategy:
                 # Mature-position gate: ramp from bars_held=ENTRY_FULL_BARS to 3 bars after.
                 # Wider ramp (3 bars vs 2) gives crash bounces extra protection.
                 _opp_mature_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / 3.0))
-                # Loss-magnitude bandpass: fire when in any loss; quicker activation
-                # via 0.003 scale (was 0.006). Rally bear shorts often sit at small but
-                # persistent losses — wider activation reaches them sooner.
-                _opp_loss_gate = max(0.0, np.tanh(-pos_pnl / 0.003))
+                # Loss-magnitude bandpass: fire only when in moderate loss (pos_pnl < 0).
+                # Positions in profit shouldn't be cut on opposite-side noise — they have
+                # signal validation. Smooth via tanh on -pos_pnl scaled by 0.6%.
+                _opp_loss_gate = max(0.0, np.tanh(-pos_pnl / 0.006))
                 _opp_pressure = 1.0 * max(0.0, _opp_pressure_raw) * _cooldown_factor * _opp_mature_gate * _opp_loss_gate
                 _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure) + _opp_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
