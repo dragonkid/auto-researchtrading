@@ -393,24 +393,7 @@ class Strategy:
                 # low-vol (rally chop, where noise dominates), relaxed in high-vol
                 # (crash, where reactive entries matter). New control-flow path:
                 # entry depends on 2-bar history, not single bar.
-                # Architectural: voter-flip-rate adaptive persistence. Uses already-
-                # computed _persistence (per-voter directional persistence over last
-                # 8 bars) to derive an aggregate signal stickiness measure. When voters
-                # are collectively flippy (mean persistence low), require stricter
-                # entry persistence (higher gate). When voters are sticky (mean
-                # persistence high), relax persistence. Orthogonal to vol_ratio
-                # (price-magnitude based) because _persistence is signal-sign based.
-                # Continuous via tanh on signal-stickiness deviation from 0.5. Adds
-                # +/- 0.10 to base factor. New cross-bar data dependency: entry gate
-                # depends on aggregate signal flip behavior in last 8 bars.
-                if len(_sign_hist) >= 4:
-                    _voter_stickiness = float(np.mean(_persistence))  # in [0, 1]
-                else:
-                    _voter_stickiness = 0.5
-                # Stickiness 0.5 -> 0 adjustment; <0.5 raises factor (stricter), >0.5 relaxes.
-                _stick_adj = -0.12 * np.tanh((_voter_stickiness - 0.55) / 0.20)
-                _entry_persist_factor = 0.65 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6)) + _stick_adj
-                _entry_persist_factor = max(0.55, min(1.05, _entry_persist_factor))
+                _entry_persist_factor = 0.65 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
