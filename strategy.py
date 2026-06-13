@@ -136,16 +136,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: cross-symbol exit-pressure ledger (per-bar, used with one-bar lag).
-        # Stores last-bar's _soft_sum for each symbol that was holding a position. Used
-        # at the exit decision boundary to detect BROAD portfolio reversal: when other
-        # symbols simultaneously show high exit pressure, an idiosyncratic position's
-        # mid-band exit pressure is amplified (broad regime shift confirms exit). Conversely,
-        # when other symbols show low exit pressure, idiosyncratic high-pressure is
-        # mildly attenuated (single-symbol noise spike less reliable). New cross-symbol
-        # data dependency at the exit decision boundary, distinct from existing
-        # _n_active (entry-side, position-count only — does not carry signal).
-        self._prev_exit_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -159,12 +149,6 @@ class Strategy:
         # transitions where all 3 symbols move together. New cross-symbol data
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
-
-        # Architectural: cross-symbol exit-pressure baseline (one-bar lag, EXcluding-self computed per-symbol below).
-        # Snapshot prior bar's stored exit pressures BEFORE this bar's loop overwrites them.
-        _prev_xs_pressures = dict(self._prev_exit_pressure)
-        # Reset for this bar; entries below populate as positions are evaluated.
-        self._prev_exit_pressure = {}
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -887,21 +871,6 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                # Architectural: cross-symbol exit confirmation. Use other-symbol prior-bar
-                # exit pressures (one-bar lag) to amplify or attenuate this symbol's soft_sum.
-                # When peers show high exit pressure simultaneously → broad regime reversal,
-                # confirm by amplifying. When peers show none → idiosyncratic, mild attenuation.
-                # Continuous tanh modulation in [-0.10, +0.15]: peers near 0 → -0.10x; peers
-                # at ~0.8 average → +0.15x. New cross-symbol data dep at exit-pressure fusion;
-                # distinct from per-symbol pressures (orthogonal portfolio-level reversal signal).
-                # Store current symbol's _soft_sum for next bar's peer baseline.
-                self._prev_exit_pressure[symbol] = float(_soft_sum)
-                _peers = [v for k, v in _prev_xs_pressures.items() if k != symbol]
-                if len(_peers) > 0:
-                    _peer_avg = float(np.mean(_peers))
-                    # Centered at 0.4 (typical mid-band); amplify above, mild attenuate below.
-                    _xs_mod = 1.0 + 0.15 * np.tanh((_peer_avg - 0.4) / 0.3) - 0.05 * max(0.0, np.tanh((0.2 - _peer_avg) / 0.2))
-                    _soft_sum = _soft_sum * _xs_mod
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
