@@ -531,10 +531,37 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: range-gated bar-rejection entry attenuator.
+                # Combines two orthogonal mechanisms:
+                #   (a) intra-bar close-location (CLV) — close near low = bull-bar weak
+                #   (b) bar-range magnitude vs recent avg — large-range bars carry
+                #       meaningful directional information; tiny-range bars (noise)
+                #       should not trigger rejection attenuation.
+                # Mechanism: rejection attenuation fires ONLY when current bar range
+                # is > 1.0x the 14-bar mean range AND clv is on the rejecting side.
+                # Smooth via tanh on both range-ratio (gate activation) and clv
+                # (attenuation magnitude). New ortho data deps: intra-bar OHLC structure
+                # AND cross-bar bar-range comparison. Distinct from vol_ratio (log-return
+                # std) which measures path noise, not single-bar range.
+                _hi_curr = bd.history["high"].values[-1]
+                _lo_curr = bd.history["low"].values[-1]
+                _range_curr = _hi_curr - _lo_curr
+                _ranges_14 = bd.history["high"].values[-15:-1] - bd.history["low"].values[-15:-1]
+                _range_mean = max(_ranges_14.mean(), 1e-10)
+                _range_ratio = _range_curr / _range_mean
+                # Gate: 0 below 1.0x, smooth ramp to 1.0 by 1.5x. Tiny-range bars exempt.
+                _range_gate = max(0.0, min(1.0, (_range_ratio - 1.0) / 0.5))
+                _clv_curr = (mid - _lo_curr) / max(_range_curr, 1e-6)  # in [0,1]
+                # Bull entry: weak when clv_curr < 0.5 → attenuate
+                _bull_clv_dev = max(0.0, np.tanh((0.5 - _clv_curr) / 0.20))  # ramps 0..1
+                _bear_clv_dev = max(0.0, np.tanh((_clv_curr - 0.5) / 0.20))
+                # Max 30% attenuation, gated by bar-range significance.
+                _bull_reject_atten = 1.0 - 0.30 * _range_gate * _bull_clv_dev
+                _bear_reject_atten = 1.0 - 0.30 * _range_gate * _bear_clv_dev
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_reject_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_reject_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
