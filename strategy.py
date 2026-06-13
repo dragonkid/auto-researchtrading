@@ -542,17 +542,7 @@ class Strategy:
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
-                # Architectural: trend-aligned _pp_pressure attenuation. Same pattern as
-                # slope-pressure: when position aligns with strong long-window trend,
-                # peak-profit (trailing) pressure is attenuated to let winners ride.
-                # Distinct from existing giveback-amplification trend gate (cd0dd1f) which
-                # softens the giveback-ratio multiplier — this directly attenuates the
-                # _pp_pressure output itself, after the activation ramp. Only fires at
-                # strong trend alignment (saturate at ret_long*pos_dir / 0.06), max 30%
-                # attenuation. Smooth via tanh.
-                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
-                _trend_align_pp = max(0.0, np.tanh(ret_long * _pos_dir_pp / 0.06))
-                _pp_pressure = _pp_raw * _pp_activation * (1.0 - 0.30 * _trend_align_pp)
+                _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
