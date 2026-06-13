@@ -736,14 +736,23 @@ class Strategy:
                 # OR small loss <0.4*stop). New cross-bar data dependency on early-
                 # peak giveback. New control flow: separate exit term for sub-peak
                 # giveback decoupled from _pp_pressure activation gate.
+                # Architectural: counter-trend early-profit-lock tightening.
+                # When position direction opposes long-window trend (bear in uptrend
+                # or bull in downtrend), tighten the early-profit-lock by lowering
+                # the giveback fire threshold from 0.30 to 0.15 (locks small profits
+                # faster on counter-trend positions which are statistically more
+                # likely to revert against position). Continuous via tanh on
+                # (-ret_long * pos_dir / 0.04). New cross-timescale data dependency:
+                # _ep giveback threshold depends on trend-position alignment.
+                _pos_dir_ep = 1.0 if current_pos > 0 else -1.0
+                _ct_strength = max(0.0, np.tanh(-ret_long * _pos_dir_ep / 0.04))  # in [0, ~1]
+                _ep_giveback_fire = 0.30 - 0.15 * _ct_strength  # in [0.15, 0.30]
                 _ep_peak_floor = 0.15 * _pp_min  # widened from 0.30 to capture earlier peaks
                 if self.peak_pnl[symbol] > _ep_peak_floor and _pp_ratio < 0.95:
                     # Activation: 0 at peak_pnl == _ep_peak_floor, 1 at peak_pnl == _pp_min*0.95
                     _ep_activation = max(0.0, min(1.0, (self.peak_pnl[symbol] - _ep_peak_floor) / max(0.95 * _pp_min - _ep_peak_floor, 1e-6)))
                     _ep_giveback_ratio = _giveback / max(self.peak_pnl[symbol], 1e-6)
-                    # Branch step 3: lowered giveback fire threshold from 0.40 to 0.30
-                    # to catch earlier small-peak giveback signals across regimes.
-                    _ep_pressure = 0.5 * max(0.0, min(1.0, (_ep_giveback_ratio - 0.30) / 0.40)) * _ep_activation
+                    _ep_pressure = 0.5 * max(0.0, min(1.0, (_ep_giveback_ratio - _ep_giveback_fire) / 0.40)) * _ep_activation
                 else:
                     _ep_pressure = 0.0
                 # Weight: only fire on currently-profitable / minor-loss positions
