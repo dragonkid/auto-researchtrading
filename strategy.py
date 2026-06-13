@@ -632,20 +632,6 @@ class Strategy:
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                # Architectural: trend-aligned-position pp_min uplift (new cross-component dep
-                # at exit on long-window trend + position direction). Trend-aligned positions
-                # in strong trends are early in much longer trend runs; standard _pp_min trips
-                # the trailing stop too early on transient pullbacks before the trend extends.
-                # Uplift _pp_min by up to +60% for trend-aligned positions in strong trends
-                # (|ret_long| > 0.04), continuous via tanh. Counter-trend positions keep
-                # standard _pp_min (their peaks are reversal-fragile). Distinct from
-                # _pm_trend_atten (which attenuates giveback amplifier inside _giveback_ratio) —
-                # this raises the activation threshold itself, delaying when pp_pressure
-                # starts firing. Architectural: changes the activation BAR, not just the slope.
-                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
-                _trend_align_pp = max(0.0, np.tanh(ret_long * _pos_dir_pp / 0.05))  # [0, ~1]
-                _pp_trend_uplift = 1.0 + 0.60 * _trend_align_pp * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.04))
-                _pp_min = _pp_min * _pp_trend_uplift
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
