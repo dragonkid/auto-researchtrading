@@ -828,7 +828,20 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural: multi-channel co-firing bonus on exit fusion.
+                # Old: max(sl_pressure, soft_sum) — winner-takes-all. When sl=0.5 and soft_sum=0.7
+                # co-occur (moderate stop pressure + moderate slope/giveback), the fusion takes
+                # 0.7 and discards the sl evidence. New: max() base + sl×soft co-firing bonus.
+                # When both pressures fire moderately (e.g., sl=0.5, soft_sum=0.7), bonus adds
+                # 0.5*min(0.7, 1.0)*0.4 = 0.14 on top of max — multi-channel agreement raises
+                # exit pressure super-additively. When only one fires (sl=0 or soft_sum=0),
+                # bonus is 0 — degenerates to original max() behavior. Mechanism rationale:
+                # multiple independent exit signals co-firing is itself evidence of regime
+                # shift; max() fusion ignores this co-firing information. Crash regime where
+                # sl tightening + slope reversal often co-occur should benefit most. New
+                # cross-component data dependency: exit fusion uses joint-firing signal.
+                _co_fire = _sl_pressure * min(_soft_sum, 1.0) * 0.40
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _co_fire + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
