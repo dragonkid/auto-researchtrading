@@ -931,9 +931,14 @@ class Strategy:
                         _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
                     else:
                         _pnl_traj_slope = 0.0
-                    # Branch step 8: magnitude 0.20 (was 0.15) — push further toward keep
-                    # criterion. Step 7 showed +0.005 progress over step 6.
-                    _traj_adj = 0.20 * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
+                    # Branch step 9: magnitude 0.15 + counter-trend gate. Recovery boost only
+                    # fires for positions OPPOSING the long-window trend (bear in rally, bull in
+                    # crash). Trend-aligned positions don't need it (their slope-against / pp
+                    # already protects). Counter-trend positions experiencing recovery from MAE
+                    # are exactly the cases where de-risk should be suppressed.
+                    _pos_dir_traj = 1.0 if current_pos > 0 else -1.0
+                    _ct_align = max(0.0, -np.tanh(ret_long * _pos_dir_traj / 0.04))  # 1 in counter-trend, 0 in aligned
+                    _traj_adj = 0.15 * max(0.0, np.tanh(_pnl_traj_slope / 0.005)) * _ct_align
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
