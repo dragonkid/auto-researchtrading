@@ -531,10 +531,25 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: volume-strength entry size attenuator.
+                # Distinct from VWAP voter (which measures PRICE deviation from
+                # vol-weighted avg) — this measures volume MAGNITUDE relative to
+                # recent baseline. Compute current bar volume / 20-bar median volume.
+                # When ratio < 0.6, recent move likely lacks participation (illiquid
+                # drift); attenuate first-bar size smoothly. Above 1.0, no
+                # attenuation (genuine volume-confirmed move). Continuous via tanh.
+                # Max attenuation 20% during deep volume drought. Orthogonal to
+                # all existing voter signals (which are price-derived). New cross-bar
+                # data dependency on volume time series at entry decision boundary.
+                _vol_now = bd.history["volume"].values[-1]
+                _vol_med20 = max(np.median(bd.history["volume"].values[-21:-1]), 1e-6)
+                _vol_str_ratio = _vol_now / _vol_med20
+                # Attenuate when ratio < 0.8: tanh activates as ratio drops below 0.8 toward 0.4.
+                _vol_str_atten = 1.0 - 0.20 * max(0.0, np.tanh((0.8 - _vol_str_ratio) / 0.30))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_str_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_str_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
