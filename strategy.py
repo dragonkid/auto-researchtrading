@@ -850,6 +850,26 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: own-side conviction-trajectory exit-threshold modulator.
+                # Compute 3-bar trajectory of own-side strong-sum from rolling _hist.
+                # When own-side strong-sum is DECAYING (current < prior), voters are
+                # losing conviction in the position — lower exit_thresh so soft pressure
+                # fires sooner. When own-side is RISING, exit_thresh stays at base.
+                # Distinct from _voter_bias (which uses current absolute margin) — this
+                # uses *change* over 3 bars. Distinct from _recent_strongs entry use
+                # (currently only feeds entry-persistence gate). Smooth via tanh on
+                # normalized trajectory delta. Activates only on losing positions
+                # (avoid premature exits on winning trend positions where own-side
+                # strong-sum naturally fluctuates with peaks/pullbacks). New cross-bar
+                # data dependency: exit_thresh on rolling strong-sum slope.
+                if len(_hist) >= 3 and pos_pnl < 0:
+                    _own_strong_now = _hist[-1][0] if current_pos > 0 else _hist[-1][1]
+                    _own_strong_prior = (_hist[-3][0] + _hist[-2][0]) / 2.0 if current_pos > 0 else (_hist[-3][1] + _hist[-2][1]) / 2.0
+                    _conv_delta = (_own_strong_now - _own_strong_prior) / max(_own_strong_prior, 1e-6)
+                    # Negative delta = decay; positive delta = no adjustment.
+                    # tanh on -_conv_delta / 0.30: full activation around -30% decay.
+                    _decay_factor = max(0.0, np.tanh(-_conv_delta / 0.30))  # [0, ~1]
+                    _exit_thresh = _exit_thresh * (1.0 - 0.18 * _decay_factor)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
