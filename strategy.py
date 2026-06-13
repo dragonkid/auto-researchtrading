@@ -436,17 +436,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Architectural: trend-asymmetric stop tightening for counter-trend
-                # positions. When current_pos opposes ret_long (counter-trend trade),
-                # tighten stop because momentum is structural headwind. When position
-                # aligns with ret_long (with-trend), keep standard stop. Continuous
-                # tanh on (ret_long * pos_dir) scaled by 0.04. New data dependency:
-                # stop magnitude depends on position-vs-long-window-trend alignment.
-                # One-sided contraction only (max -25% tightening for fully counter-
-                # trend positions); never expands stop.
-                _pos_dir_st = 1.0 if current_pos > 0 else -1.0
-                _trend_align = np.tanh(ret_long * _pos_dir_st / 0.04)  # [-1, 1]
-                _stop_abs *= 1.0 - 0.25 * max(0.0, -_trend_align)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
