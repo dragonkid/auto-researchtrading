@@ -913,23 +913,37 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
-                if not in_cooldown and _opp_gate:
-                    # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
-                    # Counter-trend (rally bear) OR losing positions: binary full
-                    # exit (cut risk fast). Trend-aligned + in-profit (crash short
-                    # winning): graduated partial exit (preserves winning trend
-                    # position through noise spikes). Both gates must hold for
-                    # graduated behavior to engage. Continuous via tanh blend.
+                # Architectural: smooth opp-gate replacing 3-binary-AND boundary.
+                # Old: opp_gate = (opp_votes >= 2.80) AND (opp_strong >= opp_min) AND (trend_avg
+                # adverse). All three hard binary gates create 3 simultaneous decision boundaries
+                # in the exit path — each individually noise-sensitive. New: smooth multiplicative
+                # admission probability from each gate, then smooth-fire exit scaling.
+                # Mechanism:
+                #   p_margin = smooth ramp on opp_margin > 0 (was bins to ≥opp_min)
+                #   p_trend  = smooth ramp on adverse trend_avg (was hard < 0)
+                # Both factors in [0,1]; their product modulates the opp_exit_frac. Eliminates
+                # the binary FLIP_MIN_VOTES gate (vote-count was redundant with strong-sum gate
+                # that this replaces with a smooth ramp). Result: opp-side scale-down activates
+                # gradually as opp evidence + adverse trend co-occur, without binary noise.
+                # New decision-architecture: opp-gate is now a smooth gradient across the
+                # joint opp_margin × trend_adverse space rather than a multi-AND boundary.
+                _pos_dir_og2 = 1.0 if current_pos > 0 else -1.0
+                _opp_margin_smooth = max(0.0, np.tanh(_opp_margin / 0.20))  # 0 at margin<=0, ramps to ~1
+                _trend_adverse = max(0.0, np.tanh(-trend_avg * _pos_dir_og2 / 0.005))  # 0 if trend favorable
+                _opp_gate_p = _opp_margin_smooth * _trend_adverse  # joint probability [0,1]
+                if not in_cooldown and _opp_gate_p > 0.05:
+                    # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT (unchanged inner logic).
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
-                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
+                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))
+                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                    _grad_gate = _trend_align_og * _profit_gate_og
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    target = current_pos * (1.0 - _opp_exit_frac)
+                    # Scale exit-fraction by joint admission probability (smooth replacement
+                    # of binary 3-AND gate). Weak evidence triggers tiny scale-down; strong
+                    # evidence triggers the full graduated/binary opp-exit.
+                    _opp_exit_frac_p = _opp_exit_frac * _opp_gate_p
+                    target = current_pos * (1.0 - _opp_exit_frac_p)
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
