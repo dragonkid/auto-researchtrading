@@ -908,18 +908,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: calendar-activity exit-threshold modulator (NEW cross-subsystem
-                # data dep between the entry-side calendar-cycle product and exit-threshold).
-                # Currently the 6-cycle _activity signal only conditions entry size. At exit,
-                # high-activity hours (US peak, mid-week, mid-month, etc.) carry stronger
-                # directional moves — soft exit pressures during these windows are more
-                # likely real signal and deserve earlier action (slightly lower threshold).
-                # Low-activity hours have noisier price action — require marginally more
-                # pressure to exit. _activity in [0,1]; map to [0.97, 1.03] multiplier.
-                # Reuses existing computed _ts_h pathway (no new state). Smooth, no boundary.
-                _ts_h_e = bd.timestamp // 3600000
-                _activity_e = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h_e % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h_e // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h_e // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h_e // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h_e // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h_e // 24) % 365 - 182.0) / 365.0)))
-                _exit_thresh *= 1.03 - 0.06 * _activity_e
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
