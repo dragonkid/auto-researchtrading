@@ -597,6 +597,23 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: stale-loser stop tightening. New cross-bar data dep
+                # on bars_held within stop-loss subsystem. When a losing position has
+                # been held long enough that the original entry hypothesis is stale
+                # (bars_held > 8) AND still in loss (pos_pnl < 0), tighten _stop_abs
+                # progressively. Smooth via tanh; max 25% tightening reached at
+                # bars_held=20+. Trend-aligned losers get LESS tightening (maintain
+                # patience for trend-aligned recovery); counter-trend / chop losers
+                # get full tightening. Distinct from _time_pressure (soft exit weighted
+                # in soft_sum) — this raises _sl_pressure directly, which participates
+                # in max(_sl_pressure, _soft_sum) at potentially different magnitude
+                # and engages the stop-loss-saturation exemption. New control flow
+                # within the stop-loss subsystem.
+                _pos_dir_st = 1.0 if current_pos > 0 else -1.0
+                _trend_align_st = max(0.0, np.tanh(ret_long * _pos_dir_st / 0.05))  # [0, ~1]
+                _stale_factor = max(0.0, np.tanh((bars_held - 8) / 6.0))  # 0 below 8 bars, ramps toward 1
+                _stale_tighten = 1.0 - 0.25 * _stale_factor * (1.0 - 0.6 * _trend_align_st) * (1.0 if pos_pnl < 0 else 0.0)
+                _stop_abs = _stop_abs * _stale_tighten
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
