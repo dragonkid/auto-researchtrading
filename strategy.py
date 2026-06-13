@@ -651,7 +651,23 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: volume-collapse exit pressure (6th source).
+                # New data dependency: trading volume directly (vol_expansion uses
+                # returns-std, not volume). When current 4-bar mean volume drops
+                # well below 20-bar mean volume, price moves are unsupported by
+                # participation — giveback risk rises for profitable positions
+                # because the supporting flow has dried up. Smooth via tanh on
+                # ratio (vol_4 / vol_20). Pressure activates as ratio drops below
+                # 0.7 toward 0.4. Continuous, bounded [0, 0.5]. Profit-side only
+                # (don't penalize losing positions for low-volume bars — slope
+                # handles directional reversals; this is a profit-protection
+                # signal). Orthogonal to all 5 existing exit pressures.
+                _vol_4 = bd.history["volume"].values[-4:].mean()
+                _vol_20 = bd.history["volume"].values[-20:].mean()
+                _vol_collapse_ratio = _vol_4 / max(_vol_20, 1e-10)
+                _vc_pressure = 0.5 * max(0.0, np.tanh((0.7 - _vol_collapse_ratio) / 0.20))
+                _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_vc * _vc_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
