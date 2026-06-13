@@ -679,27 +679,11 @@ class Strategy:
                 # Stop-loss path retains binary exit (full saturation already triggers).
                 # New control flow: exit decision is a continuous mapping from
                 # exit_pressure ratio to target multiplier, not a single threshold.
-                # Architectural: minimum-hold floor for non-SL exits. New
-                # control-flow path: short-lived exits only allowed via stop-loss
-                # saturation. Below MIN_HOLD bars, soft-pressure exits (slope, pp,
-                # time, ve) are blocked even if pressure crosses threshold —
-                # forces signal commitment to mature beyond first-bar noise. SL
-                # exemption preserves catastrophic protection. Floor scales with
-                # vol_ratio: tighter (1 bar) in high vol where reversals are
-                # decisive, wider (3 bars) in low vol where noise jitter
-                # dominates. Continuous via vol_ratio. New decision-boundary
-                # constraint orthogonal to all pressure attenuators (which scale
-                # contributions); this directly blocks the binary exit gate
-                # below a hard bar count. Different from time_pressure (which
-                # adds positive pressure based on age) — this gates AGAINST
-                # exit when too young.
-                _min_hold_bars = 1.0 + 2.0 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5))  # 3 in low vol, 1 in high
-                _young_position = bars_held < _min_hold_bars
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _exit_pressure >= _exit_thresh and target != 0 and not _young_position:
+                elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                elif target != 0 and not _young_position:
+                elif target != 0:
                     # Architectural: vol-conditioned partial-exit floor.
                     # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
                     # smoother small position scaling — exploits chop-friendly partial exits).
