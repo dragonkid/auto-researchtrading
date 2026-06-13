@@ -139,6 +139,10 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Architectural: per-symbol entry-time-frozen _pp_min. Captures vol_ratio
+        # at entry and freezes the pp_min for the position duration. Prevents
+        # vol-spikes-during-hold from inflating _pp_min and delaying pp_activation.
+        self._entry_pp_min = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -643,7 +647,12 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                # Architectural: entry-time-frozen _pp_min. Use the vol_ratio at entry
+                # bar to compute pp_min, frozen for position duration. Prevents vol-spikes
+                # mid-hold from inflating pp_min and delaying _pp_pressure activation.
+                if symbol not in self._entry_pp_min:
+                    self._entry_pp_min[symbol] = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                _pp_min = self._entry_pp_min[symbol]
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
@@ -967,12 +976,13 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_pp_min):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._entry_pp_min.pop(symbol, None)  # will be re-frozen at next bar with then-current vol
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
