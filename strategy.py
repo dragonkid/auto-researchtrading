@@ -139,11 +139,6 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: cross-symbol vol-expansion synchronization tracking.
-        # Per-bar dict keyed by bar_count; each symbol's _vol_expansion is recorded.
-        # When ≥2 of 3 symbols simultaneously show vol_expansion > 1.3, structural
-        # regime shift confirmed (macro event vs single-symbol noise spike).
-        self._sym_vol_exp = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -808,22 +803,6 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Architectural: cross-symbol vol-expansion synchronization booster.
-                # Record this symbol's vol_expansion at this bar; check how many other
-                # symbols at this bar have vol_expansion > 1.3 (structural regime shift).
-                # When ≥2 of 3 symbols sync-expand, amplify _ve_pressure by 1.3x (max).
-                # New cross-symbol data dep at exit fusion: per-symbol _ve_pressure now
-                # gated by portfolio-level synchronized regime shift indicator.
-                self._sym_vol_exp.setdefault(self.bar_count, {})[symbol] = _vol_expansion
-                _bar_exps = self._sym_vol_exp.get(self.bar_count, {})
-                _sync_count = sum(1 for v in _bar_exps.values() if v > 1.3)
-                _sync_boost = 1.0 + 0.30 * max(0.0, min(1.0, (_sync_count - 1.0)))  # 1.0 if <=1 sync, 1.30 if >=2
-                _ve_pressure = _ve_pressure * _sync_boost
-                # Cleanup old bars to avoid unbounded dict growth
-                if self.bar_count % 50 == 0:
-                    for _bk in list(self._sym_vol_exp.keys()):
-                        if _bk < self.bar_count - 5:
-                            self._sym_vol_exp.pop(_bk, None)
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
