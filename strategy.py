@@ -453,8 +453,25 @@ class Strategy:
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural: conviction-derivative persistence factor adjustment.
+                # New cross-bar derivative dep: when conviction (strong-sum) is GROWING
+                # bar-over-bar, reduce the persistence factor (allow earlier admission —
+                # rising conviction is signal). When SHRINKING (fading conviction),
+                # raise the persistence factor (require sustained higher floor).
+                # Continuous via tanh on bar-over-bar delta normalized by typical
+                # _bull_strong_min scale. Bounded ±0.10 modulation.
+                if len(_hist) >= 2:
+                    _bull_strong_delta = _hist[-1][0] - _hist[-2][0]
+                    _bear_strong_delta = _hist[-1][1] - _hist[-2][1]
+                else:
+                    _bull_strong_delta = 0.0
+                    _bear_strong_delta = 0.0
+                _bull_pf_mod = -0.10 * np.tanh(_bull_strong_delta / max(_bull_strong_min * 0.30, 1e-6))
+                _bear_pf_mod = -0.10 * np.tanh(_bear_strong_delta / max(_bear_strong_min * 0.30, 1e-6))
+                _bull_persist_factor = max(0.55, min(1.05, _entry_persist_factor + _bull_pf_mod))
+                _bear_persist_factor = max(0.55, min(1.05, _entry_persist_factor + _bear_pf_mod))
+                _bull_persist_ok = _min_bull_2 >= _bull_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _bear_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
