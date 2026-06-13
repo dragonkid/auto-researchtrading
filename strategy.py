@@ -872,36 +872,19 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure_raw = max(_sl_pressure, _soft_sum) + _voter_bias
-                # Architectural: EMA-smoothed exit pressure to filter single-bar noise spikes.
-                # New per-symbol state (_prev_exit_pressure) drives a 2-bar weighted blend:
-                #   smoothed = 0.65 * current + 0.35 * prior
-                # Saturation override: when _sl_pressure >= 0.95 (hard stop dominant), bypass
-                # smoothing entirely so structural exits are not delayed. New control flow
-                # at exit decision: voter_bias / slope-pressure single-bar spikes are filtered
-                # without delaying real exits. Bull/rally benefit: opposite-side voter spikes
-                # during pullbacks (bull voters firing on bear positions during rally pullbacks)
-                # need 2 bars to drive exit pressure above threshold. Crash benefit: bear voter
-                # spikes during dead-cat bounces on short positions — single-bar noise filtered,
-                # but sustained bull-voter strength still trips exit (ramps up over 2 bars).
-                # Sideways: small effect since chop produces shorter-lived pressure spikes
-                # that get filtered, possibly slightly raising hold time.
-                _prior_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
-                # Branch step 2: gate smoothing on chop/loss/counter-trend conditions.
-                # Trend-aligned + in-profit: use raw exit_pressure (no smoothing) so bull/rally
-                # winners exit promptly on legitimate pullback signals — restores fast trim.
-                # Chop / losing / counter-trend: full smoothing (filters dead-cat / spike noise).
-                # Continuous blend weight via tanh on (trend_align * profit_gate).
-                _pos_dir_sm = 1.0 if current_pos > 0 else -1.0
-                _trend_align_sm = max(0.0, np.tanh(ret_long * _pos_dir_sm / 0.05))  # [0, ~1]
-                _profit_gate_sm = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                _smooth_disable = _trend_align_sm * _profit_gate_sm  # both required for disable
-                _smooth_alpha_dyn = 0.35 * (1.0 - _smooth_disable)  # 0 in winning trend, 0.35 in chop/loss
+                # Branch step 3: smooth ONLY the voter_bias term (most volatile single-bar
+                # component from voter strong-sum spikes). All other pressures (slope/pp/time/
+                # ve/ep/ar/sl) are already smooth by construction. _voter_bias swings rapidly
+                # between -0.20*_chop_amp and +0.20*_opp_atten when opposite-side conviction
+                # flips bar-to-bar in noisy regimes. New state: only prior bar's voter_bias.
+                # Saturation override: when _sl_pressure >= 0.95, use raw voter_bias.
+                _prior_vb = self._prev_exit_pressure.get(symbol, _voter_bias)
                 if _sl_pressure >= 0.95:
-                    _exit_pressure = _exit_pressure_raw
+                    _vb_smoothed = _voter_bias
                 else:
-                    _exit_pressure = (1.0 - _smooth_alpha_dyn) * _exit_pressure_raw + _smooth_alpha_dyn * _prior_ep
-                self._prev_exit_pressure[symbol] = _exit_pressure_raw
+                    _vb_smoothed = 0.65 * _voter_bias + 0.35 * _prior_vb
+                self._prev_exit_pressure[symbol] = _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _vb_smoothed
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
