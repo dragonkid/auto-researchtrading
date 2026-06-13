@@ -222,6 +222,31 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            # Architectural: 8th voter — volume-price slope concordance.
+            # Orthogonal to VWAP (which measures position vs volume-weighted level)
+            # and to all price-only voters: this measures CHANGE concordance between
+            # volume and price over a 10-bar window. When price slope and volume slope
+            # share sign, directional move is volume-confirmed (signal-rich). When they
+            # diverge (price up on falling volume), directional move is unconfirmed
+            # (likely pullback / weak rally). Voter output = sign(price_slope) when
+            # concordant, attenuated toward 0 when discordant. Uses log-volume and
+            # log-price to compare relative changes. New cross-series differential
+            # data dependency. Continuous via tanh.
+            _vps_n = 10
+            _vps_log_p = np.log(closes[-_vps_n:])
+            _vps_log_v = np.log(np.maximum(bd.history["volume"].values[-_vps_n:], 1e-6))
+            _p_slope_n = _fast_slope(_vps_log_p)
+            _v_slope_n = _fast_slope(_vps_log_v)
+            # Concordance signal: positive when both slopes positive (bull-confirmed),
+            # negative when both negative (bear-confirmed), small when discordant.
+            # Scale: price slope ~0.001/bar typical, volume slope much wider ~0.05/bar.
+            # Normalize each separately, then take signed-product-like combination:
+            # sign(p_slope) * (|p_slope_norm| + |v_slope_norm|) when concordant; else attenuate.
+            _p_norm = _p_slope_n / 0.0008
+            _v_norm = _v_slope_n / 0.04
+            # Use sign-agreement bonus: full magnitude when same sign, 0.3x when opposite sign.
+            _concord = 1.0 if (_p_norm * _v_norm) >= 0 else 0.3
+            _vps_signal = np.sign(_p_norm) * (abs(_p_norm) * _concord + 0.3 * _v_norm * _concord)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -230,6 +255,7 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
+                _vps_signal,  # 8th voter: volume-price slope concordance
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -256,7 +282,10 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
+            # 8th voter (vol-price concordance) is informative across regimes but
+            # noisier in chop (volume slope on small samples is noisy). Mid weight ~0.7.
+            _vps_wt = 0.55 + 0.30 * _trend_strength_w  # in [0.55, ~0.85]
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, _vps_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -273,11 +302,11 @@ class Strategy:
             self._voter_sign_history[symbol] = _sign_hist
             # Compute per-voter directional persistence
             if len(_sign_hist) >= 4:
-                _hist_arr = np.array(_sign_hist)  # (K, 7)
+                _hist_arr = np.array(_sign_hist)  # (K, 8)
                 _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(7)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
