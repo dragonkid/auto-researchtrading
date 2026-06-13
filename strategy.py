@@ -122,14 +122,6 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: per-symbol accumulated opposite-side voter evidence.
-        # While in position, each bar where opposite-side strong-sum is meaningful
-        # adds to a leaky-integrator state. When evidence accumulates over multiple
-        # bars (sustained opposing voter consensus), exit pressure rises. Decays
-        # with constant rate when opposite signal is absent. Reset on entry/exit.
-        # Different from current-bar _voter_attn (instantaneous) and _opp_gate
-        # (binary single-bar trigger). New cross-bar state for exit-side fusion.
-        self._opp_evidence = {}
         # Architectural: per-symbol per-voter directional history (8-bar rolling).
         # Used to compute per-voter directional persistence (fraction of last
         # K bars where voter signal sign matched). High-persistence voters
@@ -671,29 +663,7 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: leaky-integrator opposite-side voter evidence
-                # (6th source). Each bar in position, compute opposite-side
-                # margin clipped at 0 (no positive contribution from opposing
-                # weakness). Add to evidence with smoothing alpha=0.3, decay
-                # to zero with (1-0.3) when no opposite signal present. When
-                # evidence accumulates over multiple bars (sustained reversal
-                # consensus), exit pressure rises. Saturates near 1.0 after
-                # ~3 bars of full opposite-side conviction. Different from
-                # _voter_attn (current-bar one-sided dampener) and _opp_gate
-                # (single-bar binary). Profit-neutral weight: fire regardless
-                # of pos_pnl since accumulated opposite consensus is real
-                # reversal signal at any pnl state.
-                _opp_margin_now = _bear_margin if current_pos > 0 else _bull_margin
-                _opp_inst = max(0.0, np.tanh(_opp_margin_now / 0.30))  # 0..1
-                _prev_oe = self._opp_evidence.get(symbol, 0.0)
-                _opp_ev = 0.7 * _prev_oe + 0.3 * _opp_inst
-                self._opp_evidence[symbol] = _opp_ev
-                _oe_pressure = max(0.0, min(1.0, (_opp_ev - 0.20) / 0.40))  # ramp [0.2..0.6]
-                # Vol-gated weight: stronger in low-vol (chop where opposite
-                # voters more reliable as reversal signal), weaker in high-vol
-                # (crash where opposite voters fire on bounces, not regime shift).
-                _w_oe = 0.6 * max(0.0, min(1.0, (1.2 - vol_ratio) / 0.5))
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_oe * _oe_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -755,11 +725,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._opp_evidence):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._opp_evidence[symbol] = 0.0
 
         return signals
