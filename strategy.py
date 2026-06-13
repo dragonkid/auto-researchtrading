@@ -302,8 +302,23 @@ class Strategy:
             else:
                 _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: volume-weighted voter aggregation amplifier.
+            # High-volume current bar = signal-confirming; voters fire on info-rich bars.
+            # Low-volume current bar = thin-tape, low-conviction; voters may fire on noise.
+            # Compute current-bar volume vs 24-bar average; modulate aggregate strong-sum
+            # via tanh smoothing in [0.85, 1.15]. New cross-bar data dep at voter
+            # aggregation level (different from existing _vol_entry_atten which is
+            # entry-size only — this affects whether the gate even fires). Multi-variable:
+            # single volume signal modulates BOTH _bull_strong and _bear_strong identically,
+            # changing the entry-decision boundary symmetrically. Decoupled from
+            # _vol_entry_atten (which sizes admitted entries) — this gates admission itself.
+            _vol_recent_24 = bd.history["volume"].values[-25:-1]
+            _vol_recent_avg = max(_vol_recent_24.mean(), 1e-10)
+            _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_recent_avg
+            # Smooth tanh: vol_curr_ratio=0.5 -> ~0.88, =1.0 -> 1.0, =1.5 -> ~1.12
+            _vol_voter_amp = 1.0 + 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5)
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _vol_voter_amp
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _vol_voter_amp
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
