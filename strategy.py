@@ -670,12 +670,43 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Architectural: breakout-extreme-against exit pressure (6th source).
+                # When position is short and price has recently broken to a 30-bar
+                # high (or position is long and price has broken to a 30-bar low),
+                # the position is structurally counter-trend at the moment of an
+                # explicit price-action regime confirmation. Exit pressure scales
+                # with how recently the extreme occurred: bar-aged decay over 8 bars.
+                # New cross-timescale data dependency: exit pressure depends on
+                # 30-bar high/low extreme age (orthogonal to slope/vol/voter/pp).
+                # Activates only when net price-extreme is fresh and against position
+                # — avoids firing on stale extremes. Smooth via continuous decay.
+                _bo_n = 30
+                _bo_high = bd.history["high"].values[-_bo_n:]
+                _bo_low = bd.history["low"].values[-_bo_n:]
+                _bo_high_idx = int(np.argmax(_bo_high))   # 0=oldest, _bo_n-1=newest
+                _bo_low_idx = int(np.argmin(_bo_low))
+                # Age in bars (0=current bar is the extreme, _bo_n-1=oldest extreme).
+                _bo_high_age = (_bo_n - 1) - _bo_high_idx
+                _bo_low_age = (_bo_n - 1) - _bo_low_idx
+                # Decay: full pressure at age=0, zero at age=8. Linear ramp.
+                _bo_high_fresh = max(0.0, 1.0 - _bo_high_age / 8.0)
+                _bo_low_fresh = max(0.0, 1.0 - _bo_low_age / 8.0)
+                if current_pos < 0:
+                    _bo_pressure = 0.5 * _bo_high_fresh   # short + fresh new high → exit pressure
+                elif current_pos > 0:
+                    _bo_pressure = 0.5 * _bo_low_fresh    # long + fresh new low → exit pressure
+                else:
+                    _bo_pressure = 0.0
+                # Loss-gate: pressure only when position is losing (pos_pnl < 0)
+                # to avoid forcing winners out on profit-taking that briefly retests
+                # extremes; counter-trend losses are the target failure mode.
+                _w_bo = max(0.0, -_pnl_scale)  # in [0, 1], only when losing
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_bo * _bo_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
