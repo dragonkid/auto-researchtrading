@@ -625,12 +625,14 @@ class Strategy:
                 _opp_strong_margin = max(0.0, (_opp_strong - _opp_strong_min) / max(_opp_strong_min, 1e-6))
                 _opp_votes_margin = max(0.0, (_opp_votes - FLIP_MIN_VOTES) / FLIP_MIN_VOTES)
                 _opp_pressure_raw = np.tanh(_opp_strong_margin / 0.20) * np.tanh(_opp_votes_margin / 0.15) * np.tanh(_opp_trend_mag / 0.005)
-                # Mature-position gate: opp_pressure fires only after scale-in completes
-                # (bars_held > ENTRY_FULL_BARS) AND in moderate loss (pos_pnl in [-stop/2, 0]).
-                # Protects early-life positions where signal hasn't had time to play out;
-                # cuts persistently-losing positions where opposite-side has time to validate.
-                _opp_mature_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / 2.0))
-                _opp_pressure = 0.8 * max(0.0, _opp_pressure_raw) * _cooldown_factor * _opp_mature_gate
+                # Mature-position gate: ramp from bars_held=ENTRY_FULL_BARS to 3 bars after.
+                # Wider ramp (3 bars vs 2) gives crash bounces extra protection.
+                _opp_mature_gate = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / 3.0))
+                # Loss-magnitude bandpass: fire only when in moderate loss (pos_pnl < 0).
+                # Positions in profit shouldn't be cut on opposite-side noise — they have
+                # signal validation. Smooth via tanh on -pos_pnl scaled by 0.6%.
+                _opp_loss_gate = max(0.0, np.tanh(-pos_pnl / 0.006))
+                _opp_pressure = 1.0 * max(0.0, _opp_pressure_raw) * _cooldown_factor * _opp_mature_gate * _opp_loss_gate
                 _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure) + _opp_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
