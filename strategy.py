@@ -306,7 +306,19 @@ class Strategy:
             self._recent_strongs[symbol] = _hist
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: trend-consistency-aware admission tightening.
+            # New cross-bar data dep: compute sign-agreement of last 4 non-overlapping
+            # 4-bar returns. When consistency is high (all 4 agree), trend is structurally
+            # stable — loosen _strong_min by up to 8% (admit more). When inconsistent
+            # (mixed signs — chop/transition), tighten by up to 12%. Orthogonal to
+            # rsi_trend_str (which measures MAGNITUDE of long-window return), this
+            # measures DIRECTIONAL CONSISTENCY across shorter blocks. Smooth via tanh.
+            # Net: in consistent trend, mech reduces admission; in chop, mech raises it.
+            _rets_4 = np.array([(closes[-1 - 4*i] - closes[-1 - 4*(i+1)]) / max(closes[-1 - 4*(i+1)], 1e-10) for i in range(4)])
+            _signs_4 = np.sign(_rets_4)
+            _consistency = abs(_signs_4.sum()) / 4.0  # in [0, 1], 1=all agree, 0=balanced
+            _consistency_adj = -0.08 * _consistency + 0.12 * (1.0 - _consistency)  # range [-0.08, +0.12]
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) + _consistency_adj
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
