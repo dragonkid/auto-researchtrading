@@ -361,7 +361,10 @@ class Strategy:
             # extends cooldown window AND attenuates first-bar size; winners leave
             # cooldown unchanged. Effect decays over 5 bars.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
+            # Gate on loss MAGNITUDE: only substantial losses (>50% of stop) trigger.
+            # Tiny chop-losses (sideways noise) leave cooldown unchanged.
+            _lp = self._last_exit_pnl.get(symbol, 0.0)
+            _loss_only = max(0.0, -np.tanh((_lp + 0.5 * abs(STOP_LOSS_PCT)) / abs(STOP_LOSS_PCT)))
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
