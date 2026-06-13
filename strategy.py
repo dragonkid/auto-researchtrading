@@ -643,6 +643,21 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: profit-milestone breakeven-tightening stop.
+                # New control flow: hard stop boundary itself shifts upward (toward
+                # breakeven and beyond) once peak_pnl has crossed profit milestones.
+                # This is structurally distinct from soft pp_pressure / ep_pressure
+                # (which add soft exit signal on giveback) — the HARD stop level
+                # itself is ratcheted. Continuous via tanh on (peak_pnl / _pp_min).
+                #   peak <= 0:           full ATR stop (_stop_abs)
+                #   peak == 0.5*_pp_min: stop at 0.5*_stop_abs (entry-side -50%)
+                #   peak >= 1.0*_pp_min: stop at 0 (breakeven)
+                # Effective loss: _loss is computed against entry; tightening shifts
+                # the stop band closer to 0 by reducing _stop_abs. Smooth.
+                _peak_now = self.peak_pnl.get(symbol, 0.0)
+                _pp_min_for_stop = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                _stop_tighten = max(0.0, min(1.0, np.tanh((_peak_now / max(_pp_min_for_stop, 1e-6)) / 0.5)))
+                _stop_abs = _stop_abs * (1.0 - 0.6 * _stop_tighten)  # tighten up to 60%
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
