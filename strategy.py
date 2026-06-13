@@ -825,19 +825,9 @@ class Strategy:
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                # Architectural: trend-aligned attenuation of _w_ar.
-                # Symmetric to _sl_slope_pressure trend-aligned attenuation. When a losing
-                # position is trend-aligned with strong long-window trend (rare but real:
-                # e.g., crash short that dipped on dead-cat bounce and is now recovering
-                # as crash resumes), the "recovery from MAE" is the trend resuming —
-                # NOT a sign to exit. Attenuate _w_ar proportional to tanh(ret_long *
-                # pos_dir / 0.05). Trend-aligned & strong-trend: max 50% attenuation.
-                # Counter-trend (rally bear, sideways losers): unchanged (full weight).
-                # New cross-timescale data dep: adverse-recovery weight depends on long-
-                # window trend alignment with position direction.
-                _pos_dir_ar = 1.0 if current_pos > 0 else -1.0
-                _trend_align_ar = max(0.0, np.tanh(ret_long * _pos_dir_ar / 0.05))  # in [0, ~1]
-                _w_ar = 1.0 - 0.50 * _trend_align_ar
+                # Weight: only fire on currently-losing positions (definitionally — gated above);
+                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
+                _w_ar = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
