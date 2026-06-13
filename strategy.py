@@ -141,6 +141,14 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-symbol concurrent-position attenuator state.
+        # Count active positions across BTC/ETH/SOL at the start of the bar.
+        # Used in entry path to attenuate first-bar size when correlated symbols
+        # already loaded — reduces simultaneous-stressed exposure during regime
+        # transitions where all 3 symbols move together. New cross-symbol data
+        # dependency on portfolio state; symmetric across symbols.
+        _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -483,10 +491,15 @@ class Strategy:
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural: cross-symbol concurrent-position attenuator.
+                # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
+                # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
+                # Reduces correlated risk during multi-symbol entry pile-ups.
+                _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
