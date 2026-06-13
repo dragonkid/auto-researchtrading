@@ -789,7 +789,27 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: conviction-velocity modulator on own-side voter_bias.
+                # Uses _recent_strongs (rolling 3-bar strong-sum history already maintained
+                # for entry-persistence gate) to compute own-side conviction velocity =
+                # (latest - earliest) / max(earliest, eps). Range scaled by tanh; in [-1,+1].
+                # Positive velocity (rising conviction) AMPLIFIES the own-side subtraction
+                # (let position run, voters still building); negative velocity (decaying
+                # conviction) DAMPENS it (let exit pressures fire normally). Multiplier
+                # range [0.7, 1.3]. New cross-bar/cross-component data dep at exit fusion:
+                # voter_bias own-side magnitude now depends on conviction TRAJECTORY, not
+                # just instantaneous margin. Distinct from _persistence_mult (which weights
+                # voters by sign consistency at AGGREGATION time) — this gates the FUSED
+                # voter_bias at EXIT decision time by strong-sum dynamics.
+                if len(_hist) >= 2:
+                    _own_idx = 0 if current_pos > 0 else 1
+                    _strong_earliest = _hist[0][_own_idx]
+                    _strong_latest = _hist[-1][_own_idx]
+                    _conv_velocity = np.tanh((_strong_latest - _strong_earliest) / max(_strong_earliest, 0.5))
+                    _vb_velocity_mult = 1.0 + 0.30 * _conv_velocity  # in [0.70, 1.30]
+                else:
+                    _vb_velocity_mult = 1.0
+                _voter_bias = -0.20 * _chop_amp * _vb_velocity_mult * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
