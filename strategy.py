@@ -842,29 +842,6 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: opposite-side voter conviction soft pressure (7th).
-                # Distinct from binary opp_gate (which requires trend_avg sign flip):
-                # this fires partially on opposite-side conviction BEFORE the macro
-                # trend has confirmed reversal. Captures early-reversal signal that
-                # the trend_avg-gated opp_gate currently misses. Continuous via
-                # tanh on opposite-side margin, capped at 0.40 (subordinate to
-                # binary opp_gate's full-exit semantics — soft pressure can de-risk
-                # via the unified _de_risk path but cannot force binary exit alone).
-                # Trend-attenuated: when own-side trend is strong (trend-aligned
-                # position in strong trend), soft opp-pressure shrinks since opp
-                # voter spikes there are more often pullback noise than reversal.
-                # Symmetric across long/short. New cross-component data dep at
-                # exit fusion: soft_sum gains a voter-derived pressure orthogonal
-                # to slope (price-derivative), pp (peak-derivative), and ve (vol-
-                # derivative). New control flow: opp-side reversal signal now has
-                # both a binary exit branch AND a graduated soft-pressure branch.
-                _pos_dir_op = 1.0 if current_pos > 0 else -1.0
-                _trend_align_op = max(0.0, np.tanh(ret_long * _pos_dir_op / 0.05))  # [0, ~1]
-                _opp_atten_op = 1.0 - 0.50 * _trend_align_op  # trend-aligned: half magnitude
-                _opp_pressure = 0.40 * _opp_atten_op * max(0.0, min(1.0, np.tanh(_opp_margin / 0.25)))
-                # Weight: only fire on losing or barely-profitable positions
-                # (let winners run; sl/pp/ep handle profit-side risk).
-                _w_op = max(0.0, 1.0 - max(0.0, _pnl_scale))  # 1.0 at loss/zero, 0.0 at profit
                 # Architectural: adverse-recovery exit pressure (6th soft source).
                 # New per-symbol state (MAE low-water mark) drives a new control flow:
                 # when current pos_pnl has substantially recovered from MAE but is still
@@ -893,7 +870,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_op * _opp_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
