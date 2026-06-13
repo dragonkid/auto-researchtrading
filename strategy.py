@@ -119,6 +119,9 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # Architectural: previous-bar exit pressure (per-symbol) for exit-persistence gate.
+        # Mid-band exit pressures must persist 2 bars before triggering (filters noise spikes).
+        self._prev_exit_pressure = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -713,6 +716,26 @@ class Strategy:
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural: exit-persistence gate. Filter single-bar exit-pressure
+                # spikes by requiring previous-bar exit_pressure to also be above a
+                # confirmation floor. Mid-band exit pressure (between _de_floor and
+                # _exit_thresh) gets attenuated when previous bar was clearly below
+                # the confirmation floor — single-bar noise spikes that would
+                # trigger partial-exit ramp without genuine sustained pressure
+                # are dampened. Stop-loss saturation bypasses this (full _sl bypass).
+                # Smooth tanh on previous-bar pressure relative to confirmation
+                # floor (0.50 of _exit_thresh). New cross-bar state dependency on
+                # exit pressure.
+                _prev_ep = self._prev_exit_pressure.get(symbol, _exit_pressure)
+                # Confirmation factor: 1 when prev pressure >= 0.50 (sustained), 0 when prev was clearly low.
+                _ep_confirm = 0.5 * (1.0 + np.tanh((_prev_ep - 0.50) / 0.20))  # [0, 1]
+                # Apply confirmation only to soft component (above sl saturation, sl always honored).
+                # Blend: exit_pressure * (0.65 + 0.35 * _ep_confirm). Range: 65%-100% scale.
+                # Single-bar spike: prev_ep ~0 -> _ep_confirm ~0 -> exit_pressure scaled to 65%.
+                # Sustained pressure: prev_ep >= 0.5 -> _ep_confirm ~1 -> exit_pressure full.
+                if _sl_pressure < 0.95:
+                    _exit_pressure = _exit_pressure * (0.65 + 0.35 * _ep_confirm)
+                self._prev_exit_pressure[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -796,7 +819,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._prev_exit_pressure):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
