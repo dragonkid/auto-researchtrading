@@ -602,7 +602,28 @@ class Strategy:
                 # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
                 _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
                 _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
+                # Architectural multi-variable: PnL-confirmed scale-in pace asymmetry
+                # gated on TREND-ALIGNED positions. When position is in profit AND
+                # trend-aligned (bull long in uptrend, crash short in downtrend), the
+                # thesis is validated by both pnl AND trend — accelerate scale-in to
+                # capture more signal. When in loss AND trend-aligned, the thesis is
+                # weakened — slow scale-in (avoid compounding). For COUNTER-TREND
+                # positions (rally bear, etc.), no pnl-conditioned pace change because
+                # pnl noise during pullback peaks does not reflect thesis (prior attempt
+                # failed for this reason — rally counter-trend regressed). Pre-compute
+                # pos_pnl since this block is before exit subsystem computes it.
+                # Bars 0: pos_pnl = 0 (no pace adjustment); bars 1+: pnl-asymmetric.
+                _pos_pnl_si = 0.0
+                if current_pos != 0:
+                    _entry_p_si = self.entry_prices.get(symbol, mid)
+                    _pos_pnl_si = (mid - _entry_p_si) / _entry_p_si
+                    if current_pos < 0:
+                        _pos_pnl_si = -_pos_pnl_si
+                _pos_dir_si = 1.0 if current_pos > 0 else -1.0
+                _trend_align_si = max(0.0, np.tanh(ret_long * _pos_dir_si / 0.04))  # [0,~1] only trend-aligned fires
+                _pnl_pace = np.tanh(_pos_pnl_si / abs(STOP_LOSS_PCT)) * _trend_align_si  # [-1,+1] gated by trend-align
+                # Subtract from pace when positive (accel); add when negative (slow). Max ±0.6 bars.
+                _entry_full_bars_dyn = max(1.0, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel - 0.6 * _pnl_pace)  # [1.0, 4.6]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
