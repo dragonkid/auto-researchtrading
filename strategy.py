@@ -652,12 +652,7 @@ class Strategy:
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
-                # Architectural: trend-amplified opposite-side voter_bias (symmetric to chop_amp).
-                # In strong long-window trends (|ret_long|>0.04), opposite-side conviction is
-                # rarer and more reliable as reversal evidence — amplify ADDITION proportionally.
-                # In chop, base 0.20 (current). Continuous tanh on abs(ret_long).
-                _trend_amp = 1.0 + 0.5 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.04))
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
