@@ -243,17 +243,18 @@ class Strategy:
             _sign_hist = self._voter_sign_history.get(symbol, [])
             _current_signs = tuple(1 if s > 0 else -1 for s in _voter_signals_bull)
             _sign_hist.append(_current_signs)
-            if len(_sign_hist) > 12:
-                _sign_hist = _sign_hist[-12:]
+            if len(_sign_hist) > 8:
+                _sign_hist = _sign_hist[-8:]
             self._voter_sign_history[symbol] = _sign_hist
             # Compute per-voter directional persistence.
-            # Branch step 6: lengthen window 8→12 bars for more reliable persistence
-            # signal; weaker persistence values get less extreme penalty since rare
-            # genuine flips have lower weight in the longer denominator.
-            if len(_sign_hist) >= 6:
+            # Branch step 7: revert to 8-bar window; narrow amplification range
+            # from [0.7, 1.3] to [0.8, 1.2] (less aggressive penalty on flips,
+            # less aggressive boost on consistency). Soft application may
+            # preserve crash's protective flip-bias.
+            if len(_sign_hist) >= 4:
                 _hist_arr = np.array(_sign_hist)  # (K, 6)
                 _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
-                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
+                _persistence_mult = 0.8 + 0.4 * _persistence  # in [0.8, 1.2]
             else:
                 _persistence_mult = np.ones(6)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
