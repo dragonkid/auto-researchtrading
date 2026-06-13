@@ -907,7 +907,7 @@ class Strategy:
                     _trend_align_tp = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))
                     _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))
                     _deep_peak_tp = max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.6 * _mae_clean * _trend_align_tp * _deep_peak_tp)
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.8 * _mae_clean * _trend_align_tp * _deep_peak_tp)
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
