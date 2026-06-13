@@ -524,6 +524,20 @@ class Strategy:
                     _ramp_attn = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
+                    # Architectural: conviction-decay scale-in attenuator.
+                    # Currently scale-in proceeds mechanically regardless of whether the
+                    # original entry's same-side conviction has eroded post-entry. If
+                    # voter strong-sum has decayed below the admission threshold during
+                    # the 3-bar scale-in window, the original signal is being invalidated
+                    # but we keep adding size. This term smoothly attenuates _eff_progress
+                    # via own-side margin: positive margin (sustained conviction) → no
+                    # attenuation; negative margin (fading conviction) → attenuated ramp,
+                    # capping size growth without reversing already-committed position.
+                    # Continuous via tanh on _own_margin. New cross-bar data dependency:
+                    # scale-in ramp depends on current voter strong-sum vs admission.
+                    _own_margin_si = _bull_margin if current_pos > 0 else _bear_margin
+                    _conv_atten = 0.5 + 0.5 * max(-1.0, min(1.0, np.tanh(_own_margin_si / 0.30)))  # in [0, 1]
+                    _eff_progress = _eff_progress * _conv_atten
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
