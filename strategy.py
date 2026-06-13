@@ -749,22 +749,12 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: early-bar loss accelerator (6th soft source).
-                # First ENTRY_FULL_BARS bars are noise-vulnerable: position not at full size
-                # and slope/peak signals immature. When fresh entry goes adversely fast (loss
-                # exceeds 0.5x stop within first ~3 bars), accelerate exit before _sl_pressure
-                # arms. Age gate via tanh decays the term after maturity. Targets premature
-                # counter-trend entries during rally pullbacks and crash bounces.
-                _eb_age_gate = max(0.0, np.tanh((ENTRY_FULL_BARS + 1 - bars_held) / 2.0))
-                _eb_loss_norm = (-pos_pnl) / abs(STOP_LOSS_PCT)
-                _eb_pressure = 0.5 * max(0.0, np.tanh((_eb_loss_norm - 0.5) / 0.3)) * _eb_age_gate
-                _w_eb = max(0.0, -_pnl_scale)  # only fires in loss
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_eb * _eb_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
