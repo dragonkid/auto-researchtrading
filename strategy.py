@@ -370,7 +370,14 @@ class Strategy:
             # (loss=1.6x window, win=0.7x window, breakeven=1.0x). New cross-
             # trade state dependency at the entry-side cooldown decision.
             _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
-            _outcome_scale = 1.0 - 0.30 * np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # in [~0.7, ~1.6]
+            # Branch step 2: trend-gate the outcome scaling. In sideways/chop
+            # (cooldown_trend_strength near 0), exit pnls are dominated by chop
+            # noise — outcome conditioning amplifies random small-win/small-loss
+            # variance into cooldown jitter. In trends (cooldown_trend_strength
+            # near 1), exit pnls carry directional signal (stopout = trend
+            # continuation, winner = trend continuation). Multiply outcome
+            # scaling by trend strength so chop reverts to base window.
+            _outcome_scale = 1.0 - 0.30 * cooldown_trend_strength * np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # in [~0.7, ~1.6] in trend, 1.0 in chop
             _cd_window = _cd_window_base * _outcome_scale
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
