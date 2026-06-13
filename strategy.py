@@ -118,17 +118,6 @@ class Strategy:
         self._mae = {}
         self.bar_count = 0
         self.smoothed_trend = {}
-        # Architectural: per-symbol 2-bar EMA-smoothed conviction margins.
-        # Stored as dict {symbol: (smoothed_bull_margin, smoothed_bear_margin)}.
-        # Smoothed at alpha=0.5 each bar. Used SOLELY in _voter_bias computation
-        # (exit fusion) — leaves _bull_margin/_bear_margin raw for the entry path
-        # which still requires single-bar conviction. New control flow: voter_bias
-        # uses smoothed margins; entry decisions unchanged. Distinct from
-        # _persistence_mult (per-voter weighting at strong-sum aggregation) and
-        # _recent_strongs (3-bar strong-sum history for entry persistence) —
-        # operates at the margin level, after admission threshold normalization,
-        # at the SOFT-EXIT decision boundary only.
-        self._smoothed_margins = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
@@ -785,16 +774,8 @@ class Strategy:
                 #      (bilateral — explicit reversal evidence raises exit).
                 # Bilateral-additive fusion decouples voter influence from individual
                 # pressure terms while preserving net effect on exit decision.
-                # Architectural: 2-bar EMA-smoothed margins at voter_bias.
-                # New per-symbol state filters single-bar margin jitter at the exit
-                # fusion boundary. Update each bar at alpha=0.5. Used ONLY for
-                # voter_bias computation (exit path); entry path retains raw margins.
-                _prev_sm = self._smoothed_margins.get(symbol, (_bull_margin, _bear_margin))
-                _sm_bull = 0.5 * _bull_margin + 0.5 * _prev_sm[0]
-                _sm_bear = 0.5 * _bear_margin + 0.5 * _prev_sm[1]
-                self._smoothed_margins[symbol] = (_sm_bull, _sm_bear)
-                _side_margin = _sm_bull if current_pos > 0 else _sm_bear
-                _opp_margin = _sm_bear if current_pos > 0 else _sm_bull
+                _side_margin = _bull_margin if current_pos > 0 else _bear_margin
+                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
                 # Architectural refinement: chop-amplified own-side subtraction.
                 # In low-trend (chop / sideways), the with-position voters more reliably
                 # validate continued hold; amplify subtraction to preserve hold semantics
