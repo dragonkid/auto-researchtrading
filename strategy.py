@@ -596,7 +596,21 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: trend-alignment exit-pressure attenuator on
+                # SLOPE+VE only. Sl_slope and vol-expansion are "regime-shift"
+                # pressures — they fire on short-term price action. When the
+                # position aligns with a STRONG long-window trend, these short-
+                # term signals are more likely to be pullback noise than real
+                # reversal. Apply only when trend is strong enough (|ret_long|
+                # > 0.04) AND position is aligned, via two-stage tanh gating.
+                # Peak-profit, time, sl_pressure (protective/structural)
+                # untouched. Distinct from _voter_attn (voter conviction axis);
+                # this is the long-window trend axis. Continuous, one-sided.
+                _pos_dir_te = 1.0 if current_pos > 0 else -1.0
+                _trend_mag_te = max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.04))
+                _trend_align_te = max(0.0, np.tanh(trend_avg * _pos_dir_te / 0.012))
+                _trend_protect = 1.0 - 0.30 * _trend_mag_te * _trend_align_te
+                _exit_pressure = _sl_pressure + _voter_attn * (_trend_protect * (_w_slope * _sl_slope_pressure + _w_ve * _ve_pressure) + _w_pp * _pp_pressure + _w_time * _time_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
