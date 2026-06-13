@@ -937,26 +937,6 @@ class Strategy:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
-                    elif bars_held > ENTRY_FULL_BARS and pos_pnl > 0 and abs(current_pos) < 0.95 * abs(target):
-                        # Architectural: position REBUILD path after prior partial exit.
-                        # New control flow at exit subsystem: currently after _de_risk shrinks
-                        # the position, there is no recovery — if exit_pressure subsequently
-                        # falls back to mid-band the position stays sub-sized. This rebuild
-                        # path activates when (1) past initial scale-in, (2) currently in
-                        # profit (false-alarm signal — original entry direction confirmed),
-                        # (3) actual position is meaningfully below the sized target. It
-                        # adds back fraction of the gap proportional to how far below
-                        # _de_floor*_exit_thresh the current pressure is (full rebuild rate
-                        # at zero pressure, zero rebuild rate at exactly _de_floor*_exit_thresh).
-                        # Cap rebuild step at 25% of the gap per bar to avoid sudden re-leverage.
-                        # Trend-gated: only fires when slope still AGREES (no rebuild during
-                        # genuine reversals where the de-risk was correct).
-                        _rebuild_room = 1.0 - _exit_pressure / max(_de_floor * _exit_thresh, 1e-6)
-                        _rebuild_room = max(0.0, min(1.0, _rebuild_room))
-                        if _slope_agrees and _rebuild_room > 0:
-                            _gap = target - current_pos  # signed
-                            _rebuild_step = 0.25 * _rebuild_room
-                            target = current_pos + _gap * _rebuild_step
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
