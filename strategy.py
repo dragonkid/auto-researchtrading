@@ -329,15 +329,14 @@ class Strategy:
             # +15% admission cost during legitimate correlated entry pile-ups (e.g. multi-
             # symbol crash legs). Per-symbol regulator alone provides sufficient churn
             # protection. Code-structure removal: 7 lines + state tracking eliminated.
-            # Architectural: ONE-SIDED counter-trend admission tightening. Bear
-            # admission tightens in uptrend (counter-trend bears need stronger
-            # conviction); bull admission tightens in downtrend. Trend-aligned
-            # entries unchanged (preserves crash trend-aligned short admission).
-            # Smooth tanh on ret_long/0.04, +0.10 max on counter-trend side only.
-            # 20-bar ret_long timescale orthogonal to _trend_biased (10-bar) gate.
+            # Architectural: ONE-SIDED trend-aligned admission relaxation. Bull
+            # admission relaxes in uptrend, bear admission relaxes in downtrend.
+            # Counter-trend entries unchanged. Smooth tanh on ret_long/0.04,
+            # -0.10 max on trend-aligned side only. 20-bar ret_long timescale
+            # orthogonal to _trend_biased (10-bar) gate.
             _trend_cross_admit = 0.10 * np.tanh(ret_long / 0.04)
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 + max(0.0, -_trend_cross_admit))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + max(0.0, _trend_cross_admit))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - max(0.0, _trend_cross_admit))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 - max(0.0, -_trend_cross_admit))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
