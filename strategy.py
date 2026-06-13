@@ -767,7 +767,15 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural: hold-duration-conditioned voter_bias attenuator.
+                # Voter signals at bar 10+ are reasoning about NEW entries (current bar
+                # voter conviction) rather than validating the original held-position
+                # thesis. Attenuate _voter_bias by tanh-decay over bars_held: full weight
+                # at bars 0-3 (entry-thesis still fresh), decays toward 0.5x at bars 12+.
+                # New cross-bar data dep at exit voter_bias subsystem; orthogonal to
+                # existing pnl-conditioning of pressure weights. Continuous tanh.
+                _bias_age_atten = 1.0 - 0.50 * max(0.0, np.tanh((bars_held - 5.0) / 6.0))
+                _voter_bias = _bias_age_atten * (-0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30)))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
