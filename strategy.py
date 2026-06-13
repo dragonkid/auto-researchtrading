@@ -931,10 +931,8 @@ class Strategy:
                         _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
                     else:
                         _pnl_traj_slope = 0.0
-                    # Branch step 15: tighten slope saturation 0.005 -> 0.0025 (faster activation
-                    # for small recovery slopes). Catches gentler recoveries that previously
-                    # produced sub-saturated _traj_adj.
-                    _traj_adj = 0.15 * max(0.0, np.tanh(_pnl_traj_slope / 0.0025))
+                    # Branch step 16: saturation 0.0015 (tighter than step 15 0.0025).
+                    _traj_adj = 0.15 * max(0.0, np.tanh(_pnl_traj_slope / 0.0015))
                     _de_floor = 0.52 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
