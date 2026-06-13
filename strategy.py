@@ -116,13 +116,6 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Per-symbol entry-time linreg slope snapshot. Used at exit by slope-reversal
-        # detector: if the current exit-time multi-window slope mean has flipped sign
-        # vs entry-time _lr_slope, that's confirmed regime-flip-since-entry → boost
-        # _w_slope weight. Distinct from current-bar slope-against pressure (which
-        # uses current direction relative to position) — this measures slope CHANGE
-        # SINCE ENTRY, capturing trend deterioration that current-state reads miss.
-        self._entry_slope = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -724,23 +717,7 @@ class Strategy:
                 # removal: 1 cross-bar dependency on bars_held removed from _w_slope
                 # and _w_pp; both revert to single-factor weights.
                 _scale_in_w = 1.0
-                # Architectural: slope-reversal-since-entry boost on _w_slope.
-                # New state dependency on _entry_slope (snapshot at entry). When the
-                # current bar's _lr_slope direction MATCHES the position direction
-                # AS IT WAS AT ENTRY, but ENTRY-TIME slope was opposite of current,
-                # that's confirmed regime-flip-since-entry. Compute alignment:
-                # entry_slope * pos_dir > 0 means entry was made WITH local slope;
-                # current _lr_slope * pos_dir < 0 means current slope opposes pos.
-                # Reversal-since-entry: entry was favorable, current is adverse.
-                # Smooth detection: tanh on (entry_align - current_align) / 0.0008
-                # (slope-scale similar to voter slope thresholds). Boost _w_slope
-                # by up to +0.25 when reversal confirmed. Continuous; no hard switch.
-                _es_e = self._entry_slope.get(symbol, _lr_slope)
-                _pos_dir_es = 1.0 if current_pos > 0 else -1.0
-                _entry_align = _es_e * _pos_dir_es
-                _curr_align = _lr_slope * _pos_dir_es
-                _slope_reversal = max(0.0, np.tanh((_entry_align - _curr_align) / 0.0008))
-                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale) + 0.25 * _slope_reversal  # heavier in loss + on slope flip-since-entry
+                _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
@@ -984,13 +961,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_slope):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._entry_slope[symbol] = _lr_slope
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
