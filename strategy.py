@@ -135,6 +135,12 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol recent exit-pnl history (rolling 5 outcomes).
+        # Used by losing-streak entry-frac attenuator: after consecutive losing
+        # exits, entry frac attenuates smoothly. New feedback loop: realized
+        # outcome → forward entry sizing on same symbol. Caps streak influence
+        # at 3 consecutive losers (max attenuation 0.20).
+        self._recent_exit_pnls = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -398,7 +404,19 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: per-symbol losing-streak entry-frac attenuator.
+            # After consecutive losing exits on same symbol, smoothly attenuate first-bar
+            # entry frac. New feedback loop: realized exit outcome → forward entry sizing.
+            # Tanh on streak count (0.5 center, 1.5 width); max attenuation -0.05 at 3+ losers.
+            _exits = self._recent_exit_pnls.get(symbol, [])
+            _losing_streak = 0
+            for _ep in reversed(_exits):
+                if _ep < 0:
+                    _losing_streak += 1
+                else:
+                    break
+            _streak_adj = -0.05 * max(0.0, np.tanh((_losing_streak - 0.5) / 1.5))
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _streak_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural: Donchian range-position entry gate. Orthogonal
@@ -861,6 +879,15 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    # Capture exit pnl for losing-streak attenuator BEFORE clearing entry state.
+                    if symbol in self.entry_prices:
+                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                        if current_pos < 0:
+                            _exit_pnl = -_exit_pnl
+                        _ph = self._recent_exit_pnls.setdefault(symbol, [])
+                        _ph.append(_exit_pnl)
+                        if len(_ph) > 5:
+                            _ph.pop(0)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
