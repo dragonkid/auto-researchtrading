@@ -947,11 +947,16 @@ class Strategy:
                     # primitive at the threshold subsystem.
                     _peak_ratio_de = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     _peak_de_relax = max(0.0, min(1.0, np.tanh(_peak_ratio_de / 1.5)))  # in [0, ~1] as peak rises
-                    # Branch step 5: vol-gated relax. Restrict relaxation to low/moderate
-                    # vol regimes (vol_ratio <= 1.0). High-vol crash should keep TIGHT floor
-                    # because dead-cat bounces feed false peaks. Continuous tanh.
-                    _low_vol_gate = 1.0 - max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, 1], =1 at vol_ratio<=1
-                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.06 * _peak_de_relax * _trend_align * _low_vol_gate
+                    # Branch step 4: add hold-maturity gate. Dead-cat bounces resolve within
+                    # 3-4 bars; relaxing floor only after the position survived past initial
+                    # scale-in window filters those false peaks. Maturity ramps from 0 at
+                    # bars_held=ENTRY_FULL_BARS to 1 at bars_held=ENTRY_FULL_BARS+4 (linear).
+                    # Composes multiplicatively with trend-align and peak-relax (all three
+                    # must register for full relaxation). Distinct from existing scale-in-
+                    # winning bonus (which raises threshold during scale-in); this controls
+                    # the DE-FLOOR specifically and post-maturity behavior.
+                    _hold_maturity = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / 4.0))
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) - 0.06 * _peak_de_relax * _trend_align * _hold_maturity
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
