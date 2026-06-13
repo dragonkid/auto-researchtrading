@@ -136,11 +136,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol prior _sl_slope_pressure for 2-bar persistence
-        # requirement on slope-against pressure. Slope-against firing for only one
-        # bar is more likely noise than reversal; persistence gate filters single-
-        # bar slope flips while preserving sustained reversal signals.
-        self._prev_slope_pressure = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -672,16 +667,6 @@ class Strategy:
                 _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
                 _trend_align = max(0.0, np.tanh(ret_long * _pos_dir_sl / 0.05))  # in [0, ~1]
                 _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.35 * _trend_align)
-                # Architectural: 2-bar persistence requirement on slope-against pressure.
-                # Slope-against firing for a single bar is dominantly noise — sustained
-                # adverse slope across consecutive bars is the real reversal signal. Use
-                # min of current and prior bar's _sl_slope_pressure: if either bar shows
-                # weak pressure, output stays weak; sustained pressure across both bars
-                # passes through. Symmetric to the entry-side _entry_persist_factor 2-bar
-                # min gate. New per-symbol state dep at exit subsystem.
-                _prev_slp = self._prev_slope_pressure.get(symbol, _sl_slope_pressure)
-                self._prev_slope_pressure[symbol] = _sl_slope_pressure
-                _sl_slope_pressure = min(_sl_slope_pressure, _prev_slp)
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
@@ -994,7 +979,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._prev_slope_pressure):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
