@@ -783,19 +783,7 @@ class Strategy:
                 # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
-                # Architectural multi-variable: opp-margin-conditioned _chop_amp fade.
-                # Original _chop_amp fires uniformly in chop (|ret_long|<0.03) regardless
-                # of opp-side conviction state. New: _chop_amp fades when opp_margin is
-                # strong (real reversal evidence — don't artificially amplify hold). Full
-                # amplification when opp evidence is weak (true bilateral chop noise).
-                # New cross-component data dep: own-side hold-amplification depends on
-                # opp-side conviction magnitude. Targets the sideways-drag insight (where
-                # _chop_amp slightly over-holds) without disabling crash/rally chop-interlude
-                # protection (in those, opp_margin is typically near-zero during legitimate
-                # hold bars, so _chop_amp_fade ~= 0 and amplification is preserved).
-                _chop_amp_base = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))
-                _chop_amp_fade = max(0.0, min(1.0, np.tanh(_opp_margin / 0.40)))  # 0=weak opp, 1=strong opp
-                _chop_amp = 1.0 + (_chop_amp_base - 1.0) * (1.0 - 0.50 * _chop_amp_fade)
+                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
