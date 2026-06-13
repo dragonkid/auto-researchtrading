@@ -874,34 +874,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: excursion-range whipsaw exit pressure (7th soft source).
-                # Net new derived state combining peak_pnl (high-water) and _mae (low-water):
-                #   excursion_range = peak - mae (lifetime pnl swing magnitude)
-                #   excursion_pos = (pos_pnl - mae) / excursion_range in [0, 1]
-                # Fires on positions with WIDE lifetime excursion (range > 0.025) that are
-                # currently in the LOWER half of their excursion (excursion_pos < 0.4).
-                # Mechanism: position experienced large swings but currently sitting near
-                # its low-water — whipsaw-prone, high probability of further adverse leg.
-                # Distinct from _ar_pressure (fires only AT mae on losing positions) and
-                # from _pp_pressure (fires on giveback from peak with peak > _pp_min).
-                # The excursion-range mechanism captures mid-swing positions whose RANGE
-                # itself indicates instability, regardless of absolute pnl level.
-                # Gated above pos_pnl > -0.6*|STOP_LOSS_PCT| so big losers (slope handles)
-                # don't double-count. Cap 0.30. New cross-bar derived state at exit fusion.
-                _ex_range = self.peak_pnl[symbol] - self._mae.get(symbol, 0.0)
-                _xp_pressure = 0.0
-                if _ex_range > 0.025 and pos_pnl > -0.6 * abs(STOP_LOSS_PCT):
-                    _ex_pos = (pos_pnl - self._mae.get(symbol, 0.0)) / max(_ex_range, 1e-6)
-                    _xp_pressure = 0.30 * max(0.0, min(1.0, (0.4 - _ex_pos) / 0.4))
-                # Weight: full weight when pos_pnl near zero (mid-life), tapers as we
-                # move toward either extreme of the excursion (where pp/ar already fire).
-                _w_xp = 1.0 - 0.5 * abs(_pnl_scale)
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_xp * _xp_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
