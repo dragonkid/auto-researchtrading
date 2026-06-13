@@ -836,16 +836,13 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural fusion change: addition-with-cap replaces max(sl, soft_sum).
-                # Old max: when sl is mid-band (e.g. 0.5), sl=0.5 dominates regardless of softs.
-                # New: sl + soft_sum (capped at 1.5) — mid-band sl ADDITIVELY combines with softs,
-                # so a 0.5 sl + 0.5 soft_sum exits the position (was 0.5 → no exit). At sl=1.0
-                # saturation the cap at 1.5 keeps behavior approximately same as before. New
-                # decision-architecture: sl and soft pressures blend additively in the mid-band
-                # zone, capturing positions that have moderate stop pressure AND moderate soft
-                # pressure simultaneously (was missed by max).
+                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
+                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
+                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
+                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
+                # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = min(1.5, _sl_pressure + _soft_sum) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
