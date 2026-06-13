@@ -564,8 +564,14 @@ class Strategy:
                 # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
-                if bars_held <= ENTRY_FULL_BARS:
-                    _eff_progress = bars_held / ENTRY_FULL_BARS
+                if bars_held <= ENTRY_FULL_BARS + 1:
+                    # Architectural: conviction-quality conditioned scale-in pace
+                    # (narrow range — minor adjustment around base 3-bar).
+                    # High-quality entries (q=1.0) reach full size in 2.5 bars;
+                    # low-quality entries (q=0.0) take 3.5 bars. Continuous.
+                    _eq_val = self._entry_quality.get(symbol, 0.5)
+                    _eff_full_bars = 3.5 - 1.0 * _eq_val  # range 2.5..3.5
+                    _eff_progress = bars_held / _eff_full_bars
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
@@ -843,15 +849,6 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                # Architectural: entry-quality conditioned exit-pressure amplifier.
-                # Low-quality entries (saved at entry-time as _entry_quality in [0, 1])
-                # get amplified soft_sum so they exit faster — bad entries shouldn't
-                # linger. High-quality entries get slight protective discount.
-                # Smooth multiplier in [0.92, 1.20] from quality [1.0, 0.0].
-                # New cross-bar persistent state used by exit subsystem.
-                _eq_val = self._entry_quality.get(symbol, 0.5)
-                _exit_quality_mult = 1.20 - 0.28 * _eq_val  # 1.20 at q=0, 0.92 at q=1
-                _soft_sum = _soft_sum * _exit_quality_mult
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
