@@ -116,6 +116,12 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Architectural: per-symbol last-exit PnL outcome.
+        # Used by outcome-conditioned cooldown: large losses lengthen cooldown
+        # (avoid revenge entries after stopouts), large wins shorten cooldown
+        # (winner-momentum continues). New per-symbol state + new data dependency
+        # at cooldown-window computation.
+        self._last_exit_pnl = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -356,7 +362,16 @@ class Strategy:
             # surges right after exit. New control flow: post-exit re-entry is gradient-attenuated
             # rather than gated.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
+            _cd_window_base = max(0.6, 1.5 - 0.9 * cooldown_trend_strength)  # 1.5 in chop, 0.6 in strong trend
+            # Architectural: outcome-conditioned cooldown duration. Last-exit
+            # PnL stretches cooldown after losses (revenge-entry filter) and
+            # shortens after wins (winner-momentum continuation). Smooth tanh
+            # on _last_exit_pnl scaled by stop-loss magnitude. Range: 0.7x..1.6x
+            # (loss=1.6x window, win=0.7x window, breakeven=1.0x). New cross-
+            # trade state dependency at the entry-side cooldown decision.
+            _last_pnl = self._last_exit_pnl.get(symbol, 0.0)
+            _outcome_scale = 1.0 - 0.30 * np.tanh(_last_pnl / abs(STOP_LOSS_PCT))  # in [~0.7, ~1.6]
+            _cd_window = _cd_window_base * _outcome_scale
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
@@ -986,6 +1001,14 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    # Capture exit pnl for outcome-conditioned cooldown.
+                    # pos_pnl is defined only in the current_pos != 0 branch above;
+                    # when target==0 here we must be exiting (current_pos was nonzero).
+                    if current_pos != 0:
+                        _exit_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                        if current_pos < 0:
+                            _exit_pnl = -_exit_pnl
+                        self._last_exit_pnl[symbol] = _exit_pnl
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
