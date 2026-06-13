@@ -226,13 +226,24 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            # Architectural: voter-6 residualization. EMA_slope (voter 6) and
+            # linreg_slope (voter 4) are highly correlated — both measure
+            # smooth-price upward trajectory. Co-firing creates correlated noise
+            # amplification at the strong-sum gate. Replace EMA_slope raw value
+            # with its RESIDUAL after linreg-slope projection: residual captures
+            # only the EMA_slope component orthogonal to linreg_slope. Coefficient
+            # of projection: ratio of typical scales (EMA_slope ~0.0005,
+            # linreg_slope ~0.00015) → 3.33; using 3.0 as smooth approximation.
+            # New cross-voter data dependency in signal definition: voter 6's
+            # signal depends on voter 4's raw value.
+            _ea_slope_resid = _ea_slope - 3.0 * _lr_slope
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
-                (_ea_slope - 0.0005) / 0.00025,
+                _ea_slope_resid / 0.00025,  # residualized: orthogonal to voter 4
                 _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
