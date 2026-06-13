@@ -437,15 +437,25 @@ class Strategy:
                 # New cross-timescale data dependency: entry gate strictness on
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
-                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
+                # Architectural: direction-asymmetric persistence factor. Counter-trend
+                # entries (bull in downtrend, bear in uptrend) need faster commitment to
+                # capture short-burst pullback/dead-cat reversals — relax persistence
+                # by additional 0.15 when entry direction opposes ret_long sign.
+                # Trend-aligned entries keep stricter persistence (sustained signal
+                # required). New cross-timescale data dependency: persistence factor
+                # depends on (entry direction, ret_long sign).
+                _ct_relax_bull = 0.15 * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
+                _ct_relax_bear = 0.15 * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                _bull_persist_factor = 0.95 - 0.30 * _trend_str_persist - _ct_relax_bull
+                _bear_persist_factor = 0.95 - 0.30 * _trend_str_persist - _ct_relax_bear
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                _bull_persist_ok = _min_bull_2 >= _bull_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _bear_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
