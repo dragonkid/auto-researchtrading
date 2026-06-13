@@ -498,7 +498,13 @@ class Strategy:
                 # window trend alignment.
                 _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
                 _trend_align = max(0.0, np.tanh(ret_long * _pos_dir_sl / 0.05))  # in [0, ~1]
-                _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.35 * _trend_align)
+                # Symmetric extension: counter-trend positions get _sl_slope_pressure
+                # amplified (faster exit on adverse moves when fighting long-window trend).
+                # Trend-aligned: -35% attenuation; counter-trend: +25% amplification.
+                # New data dependency on counter-trend signal applied to slope subsystem.
+                _trend_counter = max(0.0, np.tanh(-ret_long * _pos_dir_sl / 0.05))
+                _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.35 * _trend_align + 0.25 * _trend_counter)
+                _sl_slope_pressure = max(0.0, min(1.0, _sl_slope_pressure))
 
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
