@@ -840,20 +840,8 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                # Architectural: require short-window slope confirmation for opp_gate
-                # firing. Existing checks: opposite-side vote count + strong-sum +
-                # long-window trend sign (trend_avg). New gate: short-window exit_slope
-                # must also point in the reversal direction (down for long-position
-                # reversal, up for short-position reversal). This adds a third
-                # independent timescale (short slope) to the existing long-window
-                # trend_avg + voter conviction. Three-timescale convergence (voters
-                # near-bar, slope short-window, trend long-window) filters chop noise
-                # in opp_gate firing without altering the graduated-exit math. New
-                # data dependency: opp_gate boolean depends on short-window slope sign.
-                _opp_slope_long = _exit_slope < 0   # slope confirms long-position reversal
-                _opp_slope_short = _exit_slope > 0  # slope confirms short-position reversal
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _opp_slope_long) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _opp_slope_short)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
