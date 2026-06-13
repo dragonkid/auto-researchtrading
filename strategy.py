@@ -319,7 +319,18 @@ class Strategy:
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj)
+            # Architectural: bilateral-conviction first-bar attenuator (entry-side
+            # parallel of net-margin voter_attn from 9cef1eb keep). When BOTH
+            # bull and bear margins are positive (both sides have strong voter
+            # conviction simultaneously — regime indecision or imminent reversal),
+            # commit less initial size. min(_bull_margin, _bear_margin) measures
+            # bilateral-strong state: 0 if one side is below admission, positive
+            # only when both clear it. tanh activates smoothly above 0.05; max
+            # attenuation -0.04 on _entry_frac_dyn. New cross-voter data dependency
+            # at entry (mirrors voter_attn at exit).
+            _bilateral_strong = max(0.0, min(_bull_margin, _bear_margin))
+            _bilat_adj = -0.04 * np.tanh(_bilateral_strong / 0.20)
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _confluence_adj + _er_adj + _bilat_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural: Donchian range-position entry gate. Orthogonal
