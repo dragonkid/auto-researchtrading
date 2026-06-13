@@ -833,30 +833,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                # Architectural: dispersion-weighted soft-sum aggregation.
-                # Old: simple additive _soft_sum could accumulate small contributions
-                # from many sources into exit-triggering total even when no single source
-                # was decisive. New: compute weighted contributions, then renormalize by
-                # a concentration factor. When one source dominates (high max relative
-                # to sum), full sum is used. When sources are evenly distributed (many
-                # weak fires), attenuate by up to 25%. concentration = max_term / sum_terms.
-                # New control flow: soft-sum aggregation depends on contribution distribution
-                # across the 6 soft-pressure sources, not just their additive total.
-                _terms = (
-                    _w_slope * _sl_slope_pressure,
-                    _w_pp * _pp_pressure,
-                    _w_time * _time_pressure,
-                    _w_ve * _ve_pressure,
-                    _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure,
-                )
-                _soft_sum_raw = sum(_terms)
-                _max_term = max(_terms)
-                _concentration = _max_term / max(_soft_sum_raw, 1e-6)  # in [1/6, 1]
-                # Smooth dispersion attenuation: full weight when concentration >= 0.6 (one dominant);
-                # attenuate to 0.75x when concentration <= 0.25 (uniform distribution).
-                _dispersion_factor = 0.75 + 0.25 * max(0.0, min(1.0, (_concentration - 0.25) / 0.35))
-                _soft_sum = _soft_sum_raw * _dispersion_factor
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
