@@ -294,32 +294,14 @@ class Strategy:
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
-            # Architectural: directional-confluence first-bar amplifier.
-            # When 16-bar log-price slope (_lr_slope) aligns in sign and magnitude
-            # with the trend_avg gate, the entry is a high-confluence event — two
-            # orthogonal-window signals agree. Continuous tanh on the product
-            # _lr_slope * trend_avg (positive = same direction, scale by typical
-            # trending magnitudes 0.0005 * 0.02 = 1e-5). One-sided positive boost
-            # only (negative product stays at 0). Adds [+0.0, +0.06] to first-bar
-            # frac. Does NOT couple to entry voter signals — uses two trend-window
-            # primitives that are not in the strong-sum.
-            # Vol-adaptive scale: in low-vol both signals shrink, so the
-            # confluence threshold scales down with vol_ratio**2 to maintain
-            # similar activation across regimes.
-            _confluence_raw = _lr_slope * trend_avg
-            _confluence_scale = 1e-5 * max(0.7, min(2.0, vol_ratio ** 2))
-            _confluence_adj = 0.06 * np.tanh(max(0.0, _confluence_raw) / _confluence_scale)
-            # Architectural: triple-source confluence amplifier. When EMA slope sign
-            # agrees with ret_long sign (long-window EMA confirms long-window return),
-            # this is a third-source agreement on top of the slope*trend_avg confluence.
-            # Triple-confluence is rare and high-quality; amplify _confluence_adj by
-            # smooth factor up to 1.5x. Continuous on smooth product of soft sign
-            # indicators, not binary. Adds new data dependency: _confluence_adj scales
-            # with cross-timescale agreement (EMA vs LR_slope vs MED2 trend_avg).
-            _ea_sign_soft = np.tanh(_ea_slope / 0.0008)        # smooth sign of EMA slope
-            _rl_sign_soft = np.tanh(ret_long / 0.02)           # smooth sign of long-return
-            _triple_agree = max(0.0, _ea_sign_soft * _rl_sign_soft)  # both same sign
-            _confluence_adj *= 1.0 + 0.5 * _triple_agree
+            # Architectural simplification: removed _confluence_adj first-bar amplifier
+            # (LR_slope * trend_avg confluence + triple-source EMA-sign agreement).
+            # Triple-amplifier removal showed null effect; underlying _confluence_adj
+            # likely also marginal since the entry-side _entry_conv_adj (conviction
+            # margin amplifier) provides similar conviction-aware first-bar sizing
+            # using directly-related voter strong-sum data. Removing entire stack
+            # eliminates redundant cross-correlated first-bar boost.
+            _confluence_adj = 0.0
             # Architectural: Kaufman efficiency ratio gate on initial commitment.
             # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
             # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
