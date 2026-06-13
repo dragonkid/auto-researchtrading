@@ -953,8 +953,28 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Architectural multi-variable: VWAP-deviation confirmation gate on _opp_gate.
+                # New cross-component data dep: VWAP deviation (already computed for 7th voter
+                # at entry but not used at exit) confirms or attenuates opp-side reversal.
+                # Mechanism: when opp-side reversal is volume-confirmed (vwap_dev aligned with
+                # opp direction), gate fires normally. When vwap_dev disagrees (institutional
+                # flow still on current-position side), require higher opp_margin to fire —
+                # filters noise-driven opp-voter spikes in regimes where price action diverges
+                # from volume-weighted price flow. Multi-variable: (a) new data dep on _vwap_dev
+                # at exit subsystem, (b) restructured _opp_gate condition with VWAP confirmation,
+                # (c) margin-threshold elevation when VWAP disconfirms. Genuinely novel — VWAP
+                # signal currently only used at entry.
+                _opp_dir = -1.0 if current_pos > 0 else 1.0  # opp-side direction sign
+                _vwap_confirms_opp = _vwap_dev * _opp_dir  # >0 when vwap aligned with opp
+                # Continuous threshold elevation: when vwap disagrees (vwap_confirms_opp<0),
+                # require higher opp margin. Threshold scales 1.0x (vwap confirms) to 1.4x
+                # (vwap disagrees strongly) via tanh on -vwap_confirms_opp/0.0008.
+                _opp_thresh_mult = 1.0 + 0.40 * max(0.0, np.tanh(-_vwap_confirms_opp / 0.0008))
+                _opp_strong_floor = (_bear_strong_min if current_pos > 0 else _bull_strong_min) * _opp_thresh_mult
+                _opp_strong_val = _bear_strong if current_pos > 0 else _bull_strong
+                _opp_votes_val = bear_votes if current_pos > 0 else bull_votes
+                _opp_trend_ok = (current_pos > 0 and trend_avg < 0) or (current_pos < 0 and trend_avg > 0)
+                _opp_gate = _opp_votes_val >= FLIP_MIN_VOTES and _opp_strong_val >= _opp_strong_floor and _opp_trend_ok
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
