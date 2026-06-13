@@ -783,6 +783,23 @@ class Strategy:
                 # Stop-loss path retains binary exit (full saturation already triggers).
                 # New control flow: exit decision is a continuous mapping from
                 # exit_pressure ratio to target multiplier, not a single threshold.
+                # Architectural: profit-target partial harvest (decision-architecture
+                # change to exit subsystem). When peak_pnl crosses into profit-target
+                # territory (peak >= 1.6*_pp_min), apply a smooth size scale-down of
+                # up to 30% — independent from giveback-based _pp_pressure trailing.
+                # This harvests realized peak gains proactively when profit target is
+                # hit, even if pos_pnl is currently still near peak (no giveback yet).
+                # Ramps smoothly over [1.6*_pp_min, 2.2*_pp_min] via tanh. Subtractive
+                # from current target, applied BEFORE exit-threshold logic so it
+                # composes correctly with both binary and de-risk exit paths. Skipped
+                # if _sl_pressure dominant (full exit will follow). New control flow:
+                # exit subsystem now has THREE size-decision paths: full exit, de-risk
+                # ramp, and take-profit scale-down — orthogonal to giveback trailing.
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
+                    _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6)))
+                    target = target * (1.0 - _tp_scale)
+
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
