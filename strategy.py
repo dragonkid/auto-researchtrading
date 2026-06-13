@@ -360,23 +360,20 @@ class Strategy:
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             in_cooldown = False  # binary gate dissolved; cooldown_factor attenuates size instead
 
-            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
-
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            # Architectural simplification: removed HIGH_VOTE_BOOST_MULT (constant 1.20).
-            # Always-on positive size bias is redundant: strong-sum entry gate already
-            # filters by voter conviction, and the conviction-margin first-bar adjuster
-            # (_entry_conv_adj) provides conviction-aware sizing. The fixed 1.20x
-            # multiplier was load-bearing only as raw size scale, not as a conviction signal.
-            # Architectural simplification: removed vol_confirm_mult (volume ratio bounded to
-            # [0.98, 1.10]). Effect was structurally tiny (max 12% range, floor near 1.0) —
-            # the mechanism could only boost size, never meaningfully cut it. The combined_mult
-            # already has multiple vol-conditioning channels (vol_ratio direct, calm_boost,
-            # sideways_boost) — adding a near-constant volume multiplier added LOC without
-            # orthogonal signal. Removing eliminates redundant near-constant size scaling.
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
+            # Architectural simplification: removed calm_boost size multiplier.
+            # calm_boost was a 1.0..1.8 multiplier firing when vol_short<vol_long AND
+            # vol_ratio<1.7 (calm regime detection). Redundant with sideways_boost
+            # (rsi_trend-based, fires in chop), vol_ratio direct attenuator (TARGET_VOL/
+            # realized_vol — low vol = high mult), and CROSS_ASSET_FIXED_BOOST (chop
+            # additive). Four vol/regime-aware multipliers stacked multiplicatively;
+            # calm_boost overlaps with vol_ratio direct (both fire in low vol) and
+            # sideways_boost (both fire in chop). Removing eliminates redundant vol-
+            # conditioning channel. Code-structure removal: 1 line + vol_short/vol_long
+            # cross-bar computation eliminated.
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
             # Architectural simplification: removed _xa_boost (post-cap chop-only +8% boost).
             # Redundant with sideways_boost (max +50% in chop) and CROSS_ASSET_FIXED_BOOST
             # (already in combined_mult, max +15% in chop). Three chop-amplifying multipliers
