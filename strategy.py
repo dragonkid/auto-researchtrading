@@ -898,16 +898,11 @@ class Strategy:
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    # Architectural: trend-aligned MAE-cleanliness gate on _tp_scale.
-                    # Clean MAE suppresses harvest only when position is trend-aligned
-                    # (bull longs / crash shorts, peak = trend extension). Counter-trend
-                    # positions (rally bears) get full harvest regardless of MAE because
-                    # their peaks are structurally mean-reverting.
-                    _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_tp = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))
-                    _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))
-                    _deep_peak_tp = max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _mae_clean * _trend_align_tp * _deep_peak_tp)
+                    # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
+                    # when peak is a confirmed trend extension. Counter-trend or rally
+                    # pullback peaks get full harvest (mean-reverting by structure).
+                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
