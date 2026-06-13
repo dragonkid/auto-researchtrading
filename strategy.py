@@ -147,6 +147,27 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
+        # Architectural: cross-asset agreement strength (NEW DATA DEP cross-symbol).
+        # Compute each symbol's 20-bar return; the agreement strength is the magnitude
+        # of the AVERAGE signed return relative to the AVERAGE absolute return (in [0,1]).
+        # When all 3 symbols move in the same direction, agreement -> 1; when they
+        # disagree, agreement -> 0. Smooth (no boundary). Different from prior cross-
+        # symbol experiments: this measures CONFIRMATION strength, not consensus-of-
+        # others as a directional signal. Used as a multiplicative SIZE boost only
+        # when own symbol's signal AGREES with the cross-asset majority direction.
+        _xa_rets = []
+        for _sym in ACTIVE_SYMBOLS:
+            if _sym in bar_data and len(bar_data[_sym].history) > LONG_WINDOW:
+                _c = bar_data[_sym].history["close"].values
+                _xa_rets.append((_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW])
+        if len(_xa_rets) >= 2:
+            _xa_arr = np.array(_xa_rets)
+            _xa_agree = abs(_xa_arr.mean()) / max(np.abs(_xa_arr).mean(), 1e-10)  # [0, 1]
+            _xa_dir = 1.0 if _xa_arr.mean() > 0 else -1.0
+        else:
+            _xa_agree = 0.0
+            _xa_dir = 0.0
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -563,10 +584,14 @@ class Strategy:
                 _hour_utc = (bd.timestamp // 3600000) % 24
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_hour_utc - 16.0) / 24.0))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Cross-asset agreement size scalar: bull dir +/- via xa_dir, magnitude
+                # by xa_agree. Range [0.90, 1.10]. Smooth.
+                _xa_size_bull = 1.0 + 0.10 * _xa_agree * _xa_dir
+                _xa_size_bear = 1.0 - 0.10 * _xa_agree * _xa_dir
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _xa_size_bull
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _xa_size_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
