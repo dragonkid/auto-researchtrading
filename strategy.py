@@ -907,11 +907,12 @@ class Strategy:
                     _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(_mae_depth / 0.2)))
                     _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
                     _trend_align_tp = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))
-                    # Slope-magnitude gate: only suppress harvest when slope confirms
-                    # active trend (fast move = real breakout); flat slope = pullback
-                    # grind which still needs harvest even if MAE is shallow.
-                    _slope_mag_tp = max(0.0, min(1.0, abs(_exit_slope) / 0.0008))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.5 * _mae_clean * _trend_align_tp * _slope_mag_tp)
+                    # Deep-peak gate: suppression activates only on very high peak ratios
+                    # (>2.0x _pp_min) where the peak truly represents a confirmed trend
+                    # extension. Rally pullback peaks rarely reach this magnitude;
+                    # bull/crash trend peaks do.
+                    _deep_peak_tp = max(0.0, min(1.0, np.tanh((_tp_ratio - 2.0) / 0.5)))
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * (1.0 - 0.5 * _mae_clean * _trend_align_tp * _deep_peak_tp)
                     target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
