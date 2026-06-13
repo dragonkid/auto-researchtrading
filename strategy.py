@@ -644,7 +644,15 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                _voter_bias = -0.20 * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural refinement: chop-amplified own-side subtraction.
+                # In low-trend (chop / sideways), the with-position voters more reliably
+                # validate continued hold; amplify subtraction to preserve hold semantics
+                # (recovers sideways regression from base bilateral voter_bias). In trends,
+                # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
+                # (reversal evidence equally weighted across regimes). New cross-timescale
+                # data dependency: voter_bias asymmetry depends on long-window trend.
+                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
