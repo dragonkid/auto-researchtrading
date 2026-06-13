@@ -128,6 +128,25 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
+        # Architectural: cross-asset relative-strength ranking for entry filter.
+        # Compute 12-bar returns for each available active symbol, then rank.
+        # Long entries get a size attenuation if the symbol is NOT among the top-2
+        # performers; short entries get attenuation if NOT among the bottom-2.
+        # This adds a NEW CROSS-SYMBOL control-flow data dependency at entry
+        # (orthogonal to per-symbol voters/trend/vol). The mechanism: in trending
+        # regimes, leaders continue, laggards reverse — entering aligned with the
+        # leader cohort exploits cross-asset persistence.
+        _rs_returns = {}
+        for _sy in ACTIVE_SYMBOLS:
+            if _sy in bar_data:
+                _bd = bar_data[_sy]
+                if len(_bd.history) >= 13:
+                    _c = _bd.history["close"].values
+                    _rs_returns[_sy] = (_c[-1] - _c[-13]) / _c[-13]
+        # Rank symbols by 12-bar return (descending). High rank = strong.
+        _rs_sorted = sorted(_rs_returns.items(), key=lambda x: -x[1])
+        _rs_rank = {sy: i for i, (sy, _) in enumerate(_rs_sorted)}  # 0=top, len-1=bottom
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -391,10 +410,21 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
+                # Apply cross-asset relative-strength size adjustment.
+                # _rs_rank values: 0 (top performer), 1 (middle), 2 (bottom) for 3 symbols.
+                # For longs: top rank gets +0.03 boost, bottom gets -0.06 attenuation.
+                # For shorts: bottom rank gets +0.03 boost, top gets -0.06 attenuation.
+                # Continuous via rank-to-score mapping; if fewer symbols, defaults to neutral.
+                _my_rank = _rs_rank.get(symbol, 1)
+                _n_ranked = max(1, len(_rs_rank) - 1)
+                # rank_score in [+1 (top), -1 (bottom)]
+                _rank_score = 1.0 - 2.0 * (_my_rank / _n_ranked)
+                _rs_bull_adj = 0.03 * _rank_score if _rank_score >= 0 else 0.06 * _rank_score
+                _rs_bear_adj = -0.03 * _rank_score if _rank_score <= 0 else -0.06 * _rank_score
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj)
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj + _rs_bull_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj)
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj + _rs_bear_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
