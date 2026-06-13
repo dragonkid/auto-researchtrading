@@ -768,12 +768,27 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
-                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
-                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
-                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
-                # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
+                # Architectural: replace additive soft_sum with smoothmax (logsumexp/k).
+                # Old: simple weighted sum of 5 soft pressures — moderate concurrent
+                # pressures compound and can trigger exit even when no single source
+                # is dominant. New: smoothmax with k=4 — approximates max(weighted
+                # pressures) while preserving smooth gradient. Single dominant pressure
+                # still dominates; multiple moderate pressures don't compound.
+                # Mechanism: in trending regimes, slope+time+pp often co-fire moderately
+                # mid-trend; sum-fusion exits prematurely. Smoothmax fires only when
+                # at least one pressure crosses threshold solo. Decision-architecture
+                # change to fusion TOPOLOGY (not parameter, not new term).
+                _sm_terms = np.array([
+                    _w_slope * _sl_slope_pressure,
+                    _w_pp * _pp_pressure,
+                    _w_time * _time_pressure,
+                    _w_ve * _ve_pressure,
+                    _w_ep * _ep_pressure,
+                ])
+                _sm_k = 4.0
+                _sm_max = _sm_terms.max()
+                # Numerically stable smoothmax: max + log(sum(exp(k*(x-max))))/k
+                _soft_sum = _sm_max + np.log(np.sum(np.exp(_sm_k * (_sm_terms - _sm_max)))) / _sm_k
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
