@@ -439,27 +439,17 @@ class Strategy:
                 # high turnover (~9k+ trades). Continuous: persistence factor uses
                 # min over last 2 bars; gate fires when min >= sustain_factor *
                 # _strong_min.
-                # Architectural: TREND-aware persistence gate (new dependency).
-                # In strong trends (high abs(ret_long)), a sudden conviction spike
-                # is itself signal — relax persistence to admit fast entries.
-                # In chop (low abs(ret_long)), keep strict persistence to filter
-                # single-bar noise. Replaces vol-conditioning (which couples to
-                # market vol regardless of direction) with trend-magnitude. The
-                # vol gate kept as additive (high-vol crash gets some relaxation
-                # via trend magnitude already, but vol-relaxation preserved as
-                # protective in fast crashes). Continuous tanh on abs(ret_long).
-                # New cross-timescale data dependency: entry gate strictness on
-                # long-window trend strength.
-                _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
-                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
-                else:
-                    _min_bull_2 = _bull_strong
-                    _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural simplification: removed TREND-aware persistence gate.
+                # The gate required min(last-2-bar strong-sums) >= factor*_strong_min before
+                # admission. Per-voter persistence-mult weighting (in _voter_weights) already
+                # downweights flip-prone voters, providing per-bar noise filtering inside
+                # the strong-sum itself. The 2-bar persistence requirement was a SECOND
+                # noise filter on the aggregate; removing eliminates correlated double-
+                # filtering since the per-voter persistence_mult and the aggregate min-over-
+                # 2-bars are both filtering the same underlying noise from the same voter
+                # signals. Code-structure removal: persistence_ok no longer in entry admission.
+                _bull_persist_ok = True
+                _bear_persist_ok = True
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
