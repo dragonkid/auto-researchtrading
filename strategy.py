@@ -522,13 +522,14 @@ class Strategy:
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
-                # Architectural simplification: removed multi-window slope CONSENSUS GATE.
-                # The 8/16/32 slope-sign count was structurally redundant with _bull_ct_atten
-                # (long-window trend disagreement) AND _bull_admit (TREND_GATE_DEADZONE).
-                # Consensus across 3 slope windows mostly agrees with ret_long sign, so
-                # the factor double-counts the same trend signal enforced upstream.
-                # Removing eliminates: 3 slope computations per bar at entry, multi-
-                # plicative coupling. Code-structure removal.
+                # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
+                # Slopes at 8/16/32 bars; count sign-agreements with entry direction.
+                # Sharper map: 3/3 → 1.0x, 2/3 → 0.85x, 1/3 → 0.60x, 0/3 → 0.40x.
+                _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
+                _consensus_map = (0.40, 0.60, 0.85, 1.0)
+                _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
+                _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
                 # Architectural: cross-symbol concurrent-position attenuator.
                 # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
@@ -568,9 +569,9 @@ class Strategy:
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_quality_atten * _vol_entry_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_quality_atten * _vol_entry_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
