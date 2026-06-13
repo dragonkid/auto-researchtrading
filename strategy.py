@@ -536,27 +536,20 @@ class Strategy:
                 # vol-weighted avg) — this measures volume MAGNITUDE relative to
                 # recent baseline. Compute current bar volume / 20-bar median volume.
                 # When ratio < 0.6, recent move likely lacks participation (illiquid
-                # drift); attenuate first-bar size smoothly.
-                # Branch step 2: trend-aligned exemption. When entry direction
-                # strongly aligns with long-window trend (bull entry in uptrend or
-                # bear entry in downtrend), volume drought is more likely a normal
-                # pullback than illiquid noise — attenuate the volume-strength
-                # attenuator itself proportional to trend-alignment. Counter-trend
-                # entries face full volume-strength filter; trend-aligned entries
-                # in confirmed trends face up to 80% reduced attenuation.
+                # drift); attenuate first-bar size smoothly. Above 1.0, no
+                # attenuation (genuine volume-confirmed move). Continuous via tanh.
+                # Max attenuation 20% during deep volume drought. Orthogonal to
+                # all existing voter signals (which are price-derived). New cross-bar
+                # data dependency on volume time series at entry decision boundary.
                 _vol_now = bd.history["volume"].values[-1]
                 _vol_med20 = max(np.median(bd.history["volume"].values[-21:-1]), 1e-6)
                 _vol_str_ratio = _vol_now / _vol_med20
-                _vol_drought = max(0.0, np.tanh((0.8 - _vol_str_ratio) / 0.30))
-                # Trend-alignment factor for each direction: 1.0 if entry-aligned-with-trend, 0 otherwise.
-                _bull_trend_align = max(0.0, np.tanh(ret_long / 0.05))   # 1.0 in strong uptrend, 0 in chop/down
-                _bear_trend_align = max(0.0, np.tanh(-ret_long / 0.05))  # 1.0 in strong downtrend, 0 in chop/up
-                _bull_vol_str_atten = 1.0 - 0.20 * _vol_drought * (1.0 - 0.80 * _bull_trend_align)
-                _bear_vol_str_atten = 1.0 - 0.20 * _vol_drought * (1.0 - 0.80 * _bear_trend_align)
+                # Attenuate when ratio < 0.8: tanh activates as ratio drops below 0.8 toward 0.4.
+                _vol_str_atten = 1.0 - 0.20 * max(0.0, np.tanh((0.8 - _vol_str_ratio) / 0.30))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_vol_str_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_str_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_vol_str_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_str_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
