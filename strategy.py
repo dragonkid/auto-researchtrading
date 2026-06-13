@@ -704,27 +704,22 @@ class Strategy:
                 # Stop-loss path retains binary exit (full saturation already triggers).
                 # New control flow: exit decision is a continuous mapping from
                 # exit_pressure ratio to target multiplier, not a single threshold.
-                # Architectural: smooth-sigmoid exit mapping. Replaces the piecewise
-                # cascade (full / de-risk-ramp / zero) with a single continuous tanh
-                # sigmoid centered at _exit_thresh. position_scale = 0.5 * (1 - tanh(
-                # (exit_pressure - exit_thresh) / band)) — at pressure==thresh: scale
-                # 0.5; at pressure << thresh: scale → 1; at pressure >> thresh: scale
-                # → 0. Eliminates the two hard transitions (0.55*thresh entry to ramp
-                # and >=thresh full-exit) that previously created decision-boundary
-                # noise. SL stays as hard exit (binary safety net).
-                # Vol-conditioned band: low vol → wider band (gentler de-risk),
-                # high vol → narrower band (closer to binary).
-                _sig_band = 0.30 - 0.15 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # 0.15 in high vol, 0.30 in low vol
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
+                elif _exit_pressure >= _exit_thresh and target != 0:
+                    target = 0.0
                 elif target != 0:
-                    _pos_scale = 0.5 * (1.0 - np.tanh((_exit_pressure - _exit_thresh) / _sig_band))
-                    _pos_scale = max(0.0, min(1.0, _pos_scale))
-                    # Snap to zero at very low scale (avoid lingering tiny positions)
-                    if _pos_scale < 0.05:
-                        target = 0.0
-                    else:
-                        target = target * _pos_scale
+                    # Architectural: vol-conditioned partial-exit floor.
+                    # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
+                    # smoother small position scaling — exploits chop-friendly partial exits).
+                    # High vol (crash): floor=0.80 (narrower ramp, closer to binary —
+                    # avoids holding partial positions during fast adverse moves).
+                    # Continuous via tanh on (vol_ratio - 1.0)/0.4.
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    if _exit_pressure >= _de_floor * _exit_thresh:
+                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _de_risk = max(0.0, min(1.0, _de_risk))
+                        target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
