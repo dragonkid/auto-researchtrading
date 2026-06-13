@@ -663,27 +663,7 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: triple-confluence trend-following exit attenuator.
-                # When ALL three conditions hold — (1) position trend-aligned
-                # (ret_long * pos_dir > 0), (2) in profit (pos_pnl > 0), AND
-                # (3) exit-slope still agrees with position direction — attenuate
-                # the soft exit-pressure block (slope+pp+time+ve) up to 35%.
-                # Targets rally regime where winning trend-aligned longs are
-                # prematurely de-risked by the partial-exit ramp on transient
-                # exit-pressure spikes (slope dips, peak givebacks). All three
-                # gates use existing primitives; combination requires triple
-                # confluence so attenuation does not fire in chop or counter-
-                # trend or losing positions. Smooth via tanh on each component;
-                # multiplicative gate ensures ALL conditions matter. Stop-loss
-                # path is unaffected (sl_pressure outside the multiplied block).
-                # New cross-subsystem coupling: exit-pressure aggregate attenuation
-                # by triple confluence of trend/pnl/slope alignment.
-                _pos_dir_tf = 1.0 if current_pos > 0 else -1.0
-                _tf_trend_g = max(0.0, np.tanh(ret_long * _pos_dir_tf / 0.04))
-                _tf_pnl_g = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _tf_slope_g = 1.0 if _slope_agrees else 0.0
-                _tf_atten = 1.0 - 0.35 * _tf_trend_g * _tf_pnl_g * _tf_slope_g
-                _exit_pressure = _sl_pressure + _tf_atten * _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
