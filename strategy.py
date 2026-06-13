@@ -138,11 +138,23 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: portfolio-equity peak tracking for drawdown circuit-breaker.
+        # When portfolio equity drops X% from session-peak, attenuate fresh-entry size.
+        # Limits losses during regime-shift cascades where multiple symbols losing
+        # simultaneously (correlated noise) — single-symbol size attenuators cannot
+        # detect portfolio-level deterioration.
+        self._peak_equity = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
+        # Update peak equity; compute portfolio DD-based size attenuator.
+        # Smooth tanh: 0% DD -> 1.0; 2% DD -> ~0.88; 4% DD -> 0.70 (max attenuation).
+        if equity > self._peak_equity:
+            self._peak_equity = equity
+        _port_dd = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
+        _port_dd_atten = 1.0 - 0.30 * max(0.0, np.tanh(_port_dd / 0.025))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -539,9 +551,9 @@ class Strategy:
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
