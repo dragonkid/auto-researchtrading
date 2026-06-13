@@ -342,16 +342,17 @@ class Strategy:
                 # tanh maps deviation from 0.5 to smooth [-0.08, +0.04] adjustment.
                 _range_bull_adj = 0.04 * np.tanh((_range_pos - 0.5) / 0.20)  # in [-0.04, +0.04]
                 _range_bear_adj = 0.04 * np.tanh((0.5 - _range_pos) / 0.20)
-                # Architectural: entry-persistence gate (vol-conditioning INVERTED).
-                # Prior: high vol_ratio → strict factor (0.95). This was BACKWARDS
-                # — strict persistence in crash slowed reactive re-entries needed
-                # to catch reversal moves. Now: high vol_ratio → relaxed factor
-                # (0.65, faster entry on conviction); low vol_ratio (sideways/rally
-                # chop) → strict factor (0.95, filter noise). Same gate mechanism
-                # and bar lookback (2-bar min); only the vol-direction reversed.
-                # Matches original comment intent and the empirical finding that
-                # b9f9b40 (removing flips) cost crash -0.114 due to slow reversals.
-                _entry_persist_factor = 0.95 - 0.30 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
+                # Architectural: entry-persistence gate. Reuses the rolling _hist
+                # (3-bar strong-sum history maintained for flip sustenance) to
+                # require ENTRY-side conviction to be sustained over 2 bars before
+                # admission. Filters single-bar noise spikes that currently drive
+                # high turnover (~9k+ trades). Continuous: persistence factor uses
+                # min over last 2 bars; gate fires when min >= sustain_factor *
+                # _strong_min. Activation is gradual via vol_ratio — strict in
+                # low-vol (rally chop, where noise dominates), relaxed in high-vol
+                # (crash, where reactive entries matter). New control-flow path:
+                # entry depends on 2-bar history, not single bar.
+                _entry_persist_factor = 0.65 + 0.30 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.6))
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
