@@ -526,10 +526,27 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: smooth-min fusion of size attenuators replacing
+                # multiplicative product. Old: product of 5 attenuators (cooldown,
+                # ct_atten, concurrent, consensus, quality) compounds — at 0.85
+                # each, 5-product = 0.44, severe pessimism. New: smoothmin with
+                # k=8 — the LOWEST attenuator dominates; multiple mild attenuators
+                # don't compound. Different control flow: composition of size
+                # attenuators by smooth-min rather than product. Mechanism: if one
+                # attenuator strongly signals danger (e.g., 0.4 from consensus),
+                # that dominates; if all are mild (0.85), result is ~0.85 not 0.44.
+                # Different decision boundary for compositional first-bar sizing.
+                _k = 8.0
+                _bull_att = (_cooldown_factor, _bull_ct_atten, _concurrent_atten, _bull_consensus_atten, _bull_quality_atten)
+                _bear_att = (_cooldown_factor, _bear_ct_atten, _concurrent_atten, _bear_consensus_atten, _bear_quality_atten)
+                _bull_smin = -np.log(sum(np.exp(-_k * v) for v in _bull_att)) / _k
+                _bear_smin = -np.log(sum(np.exp(-_k * v) for v in _bear_att)) / _k
+                _bull_smin = max(0.0, min(1.0, _bull_smin))
+                _bear_smin = max(0.0, min(1.0, _bear_smin))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _bull_smin
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _bear_smin
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
