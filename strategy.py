@@ -235,8 +235,17 @@ class Strategy:
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            # Architectural: replace tanh saturation with arctan saturation (decision-
+            # architecture change to voter aggregation). arctan(s)*(2/pi) maps to [-1,+1]
+            # with same asymptotes as tanh but DIFFERENT slope profile: gentler near zero
+            # (slope 2/pi ~0.64 vs tanh slope 1.0), saturates more slowly. Effect: small
+            # voter signals contribute LESS to strong-sum (filters near-threshold noise);
+            # large voter signals saturate similarly. Multi-variable: changes _bull_confs,
+            # _bear_confs, downstream _bull_strong, _bear_strong, _bull_margin, _bear_margin,
+            # _voter_bias, persistence_mult magnitudes (since voter signal magnitudes
+            # transform). Saturation curve is the decision-boundary's own shape.
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + (2.0/np.pi) * np.arctan(s)) for s in _voter_signals_bull]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + (2.0/np.pi) * np.arctan(-s)) for s in _voter_signals_bull]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
