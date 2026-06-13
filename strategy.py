@@ -148,6 +148,19 @@ class Strategy:
         # transitions where all 3 symbols move together. New cross-symbol data
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
+        # Architectural: cross-symbol trend-sign confirmation. Pre-compute the
+        # ret_long sign for each available symbol. Net = sum of signs scaled to
+        # [-1, +1] over 3 symbols. When all 3 agree (Net=±1), macro-confirmed
+        # trend direction; mixed signs (Net=0/±0.33) means idiosyncratic. Used
+        # by entry path as size BOOST when entry direction matches cross-symbol
+        # consensus (and symbol count >= 3). Continuous via tanh.
+        _xs_signs = []
+        for _s in ACTIVE_SYMBOLS:
+            if _s in bar_data and len(bar_data[_s].history) >= LONG_WINDOW + 1:
+                _c = bar_data[_s].history["close"].values
+                _r = (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
+                _xs_signs.append(1 if _r > 0 else -1 if _r < 0 else 0)
+        _xs_net = (sum(_xs_signs) / len(_xs_signs)) if _xs_signs else 0.0  # in [-1, 1]
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -496,10 +509,16 @@ class Strategy:
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
                 _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
+                # Architectural: cross-symbol trend-sign confirmation BOOST.
+                # When entry direction aligns with majority cross-symbol trend sign
+                # (_xs_net), amplify first-bar size up to +12% at full agreement
+                # (|xs_net|=1). Mixed signs: no boost. Smooth via tanh on (xs_net * dir).
+                _xs_bull_boost = 1.0 + 0.12 * max(0.0, np.tanh(_xs_net / 0.5))
+                _xs_bear_boost = 1.0 + 0.12 * max(0.0, np.tanh(-_xs_net / 0.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _xs_bull_boost
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _xs_bear_boost
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
