@@ -972,6 +972,21 @@ class Strategy:
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
+                    # Architectural multi-variable: vol-expansion discount on opp_exit.
+                    # New cross-component data dep: opp_gate exit fraction depends on
+                    # vol_expansion (already computed at line ~807). During high-vol
+                    # bounce events (vol_6/vol_18 > 1.3), opp-side voter signals are
+                    # often noise-amplified spikes from the bounce itself, not real
+                    # reversal. Apply a tanh discount to opp_exit_frac that reduces
+                    # exit magnitude up to 0.25 in high-vol-expansion bars, ALSO
+                    # gated on trend-aligned positions (so counter-trend rally bear
+                    # spikes still binary exit; only trend-aligned crash/bull
+                    # positions get the discount). Composes with the existing
+                    # graduated branch via multiplication: trend-aligned losers in
+                    # high-vol-expansion now get partial exit instead of binary;
+                    # trend-aligned winners get even more reduction.
+                    _vol_exp_discount = 0.25 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4)) * _trend_align_og
+                    _opp_exit_frac = max(0.0, _opp_exit_frac * (1.0 - _vol_exp_discount))
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             if abs(target - current_pos) > 1.0:
