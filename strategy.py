@@ -889,14 +889,17 @@ class Strategy:
                 # active positions regardless of P&L). New: exit-side, conditioned
                 # on cross-symbol ADVERSE state. Smooth, continuous.
                 _ps_pressure = 0.0
-                # Branch step 6: soft-nudge. Drop MAE gate, soften firing conditions,
-                # halve max pressure, retain trend-attenuator so bull stays mostly
-                # immune. Mechanism: when own loses+others lose, accumulate small
-                # pressure (peak 0.15) with bull-trend immunity via attenuator.
+                # Branch step 5: combined activation. Fire on meaningful MAE+loss,
+                # attenuate (not gate) by trend-alignment so bull trend positions
+                # in coordinated drawdown get reduced pressure rather than zero.
+                # Mechanism: own MAE meaningful (real adverse path), pos_pnl
+                # currently in loss (recovery not certain), other symbol(s) also
+                # in meaningful loss. Pressure scaled by (1 - 0.7 * trend_align)
+                # so trend-aligned positions see 0.3x pressure, counter-trend 1.0x.
                 _pos_dir_ps = 1.0 if current_pos > 0 else -1.0
                 _ps_trend_align = max(0.0, np.tanh(ret_long * _pos_dir_ps / 0.04))  # [0, ~1]
-                _ps_attenuator = 1.0 - 0.85 * _ps_trend_align  # bull immune, counter-trend full
-                if pos_pnl < -0.003:
+                _ps_attenuator = 1.0 - 0.7 * _ps_trend_align
+                if pos_pnl < -0.005 and _curr_mae_e < _mae_floor:
                     _other_adverse = 0
                     for _other_sym in ACTIVE_SYMBOLS:
                         if _other_sym == symbol:
@@ -911,9 +914,9 @@ class Strategy:
                         _other_pnl = (_other_mid - _other_entry) / _other_entry
                         if _other_pos < 0:
                             _other_pnl = -_other_pnl
-                        if _other_pnl < -0.005:  # mild loss threshold
+                        if _other_pnl < -0.01:  # other symbol in meaningful loss
                             _other_adverse += 1
-                    _ps_pressure = 0.15 * max(0.0, min(1.0, np.tanh(_other_adverse / 1.0))) * _ps_attenuator
+                    _ps_pressure = 0.30 * max(0.0, min(1.0, np.tanh(_other_adverse / 1.0))) * _ps_attenuator
                 # Weight: only fire on losing positions (gated above); full weight.
                 _w_ps = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
