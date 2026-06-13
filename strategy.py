@@ -598,7 +598,18 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: counter-trend exit-pressure amplifier.
+                # New multiplicative term on the soft-pressure stack when position
+                # opposes long-window trend (ret_long). _ct_amp in [1.0, 1.30]:
+                # 1.0 when aligned (no change); up to 1.30 when strongly counter-
+                # trend. Continuous via tanh on (-pos_dir * ret_long) / 0.05.
+                # Targets rally bear-position losses (ret_long > 0, pos_dir < 0)
+                # without affecting aligned positions in any regime. Stop-loss is
+                # outside the amplifier (preserves binary protective trigger).
+                _pos_dir_ct = 1.0 if current_pos > 0 else -1.0
+                _counter_trend_strength = max(0.0, np.tanh((-_pos_dir_ct * ret_long) / 0.05))
+                _ct_amp = 1.0 + 0.30 * _counter_trend_strength
+                _exit_pressure = _sl_pressure + _ct_amp * _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
