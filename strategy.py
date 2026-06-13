@@ -129,14 +129,6 @@ class Strategy:
         # are downweighted. New time-varying voter weighting based on each
         # voter's own track record.
         self._voter_sign_history = {}
-        # Architectural: per-symbol 3-bar pos_pnl history. Used to compute
-        # pnl-deterioration rate (d_pnl/dt) as an orthogonal exit pressure.
-        # Different from slope (symbol-level price change) and giveback (peak
-        # vs current): captures the rate of recent pnl change for the active
-        # position, summing direction + entry-anchor + price into a single
-        # scalar. Fast-deteriorating positions earn fast exit pressure
-        # independent of slope or peak state.
-        self._recent_pos_pnl = {}
         # Architectural: per-symbol entry-bar history (rolling list of bar_count
         # values at which entries opened). Used by trade-frequency self-regulator
         # to raise the strong-sum admission threshold when recent entry rate is
@@ -765,37 +757,12 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: pnl-deterioration-rate exit pressure (6th source).
-                # Track 3-bar rolling pos_pnl per symbol; compute mean-of-deltas over
-                # last 2 bar transitions. Negative delta = pnl getting worse. Map to
-                # smooth pressure via tanh, gated above a magnitude threshold tied
-                # to the stop-loss scale to filter noise. Orthogonal to slope (which
-                # uses price), giveback (peak), time (bars). Captures the rate of
-                # change of REALIZED position state — direction + entry + price
-                # combined. Fires when adverse moves accumulate faster than slope
-                # alone implies (e.g., gap-down hitting an existing short profit
-                # back toward entry quickly).
-                _ppl_hist = self._recent_pos_pnl.get(symbol, [])
-                _ppl_hist.append(pos_pnl)
-                if len(_ppl_hist) > 3:
-                    _ppl_hist = _ppl_hist[-3:]
-                self._recent_pos_pnl[symbol] = _ppl_hist
-                if len(_ppl_hist) >= 3:
-                    _pnl_rate = (_ppl_hist[-1] - _ppl_hist[-3]) / 2.0
-                else:
-                    _pnl_rate = 0.0
-                # Adverse rate: negative pnl_rate means pnl getting worse.
-                # Threshold = 0.20 * |stop|; saturates at 0.60 * |stop|.
-                _adverse_rate = max(0.0, -_pnl_rate)
-                _pdr_pressure = max(0.0, min(1.0, np.tanh((_adverse_rate / abs(STOP_LOSS_PCT) - 0.20) / 0.40)))
-                # Weight: heavier in loss (cut deteriorating losers fast), neutral in profit.
-                _w_pdr = 0.5 + 0.5 * max(0.0, -_pnl_scale)  # 0.5 in profit, 1.0 at full loss
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_pdr * _pdr_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -902,7 +869,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._recent_pos_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
