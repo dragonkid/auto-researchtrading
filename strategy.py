@@ -916,8 +916,19 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Architectural: LR-slope confirmation on _opp_gate (4th binary gate).
+                # Currently opp_gate requires (vote count, strong sum, trend_avg sign).
+                # Add HL2-LR-slope confirmation: when reversing a long, _lr_slope must
+                # be < 0; when reversing a short, _lr_slope > 0. Adds slope-direction
+                # cross-validation independent from trend_avg (which is window-return
+                # based) and from voters (which are momentum-derived). New data
+                # dependency: opp_gate decision requires LR slope sign agreement.
+                # Mechanism: filters reversal-on-pullback false-flips where bear votes
+                # spike during a rally pullback but the underlying linreg slope is
+                # still positive — current opp_gate would fire (trend_avg can dip
+                # negative briefly during pullbacks), the slope check vetoes.
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _lr_slope < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _lr_slope > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
