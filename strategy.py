@@ -347,17 +347,7 @@ class Strategy:
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            # Architectural: loss-magnitude-scaled recovery window for _outcome_size_mult.
-            # Original used flat 8-bar recovery regardless of prior loss magnitude — a
-            # marginal -0.005 loss got the same 8-bar cooldown as a full -0.024 stop.
-            # New: window scales 8..14 bars proportional to loss magnitude. Larger
-            # losses get longer entry-size attenuation; small losses recover faster.
-            # New cross-bar data dep: recovery window depends on prior loss magnitude
-            # (was flat). _loss_only already encodes magnitude via tanh; reusing it
-            # here unifies magnitude-conditioning at both attenuation depth (0.45 cap)
-            # and time horizon (window scaling).
-            _recovery_window = 8.0 + 6.0 * _loss_only
-            _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / _recovery_window) * _loss_only
+            _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
