@@ -574,10 +574,27 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Architectural: wick-body ratio entry size modulator (NEW DATA SOURCE).
+                # Uses high/low/open/close — orthogonal to existing voters (close-only series).
+                # Recent 6-bar mean upper-wick fraction (high - max(open,close)) / range vs
+                # mean lower-wick fraction (min(open,close) - low) / range. Excessive upper
+                # wicks = repeated upside rejection (attenuate bull entries); excessive lower
+                # wicks = downside rejection (attenuate bear entries). Side-aware atten in
+                # [0.88, 1.0]. New data dependency on intra-bar OHLC structure.
+                _wb_n = 6
+                _wb_h = bd.history["high"].values[-_wb_n:]
+                _wb_l = bd.history["low"].values[-_wb_n:]
+                _wb_o = bd.history["open"].values[-_wb_n:]
+                _wb_c = bd.history["close"].values[-_wb_n:]
+                _wb_rng = np.maximum(_wb_h - _wb_l, 1e-10)
+                _wb_uw = (_wb_h - np.maximum(_wb_o, _wb_c)) / _wb_rng  # upper wick fraction
+                _wb_lw = (np.minimum(_wb_o, _wb_c) - _wb_l) / _wb_rng  # lower wick fraction
+                _bull_wick_atten = 1.0 - 0.12 * max(0.0, min(1.0, np.tanh((_wb_uw.mean() - 0.30) / 0.15)))
+                _bear_wick_atten = 1.0 - 0.12 * max(0.0, min(1.0, np.tanh((_wb_lw.mean() - 0.30) / 0.15)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_wick_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_wick_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
