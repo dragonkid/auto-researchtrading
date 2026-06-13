@@ -682,16 +682,9 @@ class Strategy:
                 # preserves sideways/bull tight-trailing benefit. New cross-
                 # timescale data dependency: pp amplification depends on
                 # long-window trend magnitude. Continuous via tanh.
-                # Architectural simplification: removed _pm_trend_atten (strong-trend
-                # attenuation of profit-magnitude amplification). The original attenuation
-                # contradicts the mechanism's purpose — profit-magnitude amplification is
-                # meant to lock larger gains, but strong trends are precisely when peaks
-                # grow large. Attenuating amplification in trends suppresses the lock at
-                # exactly the moment it's most relevant. Removing eliminates a self-
-                # cancelling cross-component dependency. Code-structure removal: 1 line +
-                # ret_long cross-data dep eliminated from giveback amplification path.
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * np.tanh(_profit_magnitude / 0.7))
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
+                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
