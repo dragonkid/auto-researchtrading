@@ -709,25 +709,15 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Architectural multi-variable restructure: pnl-asymmetric _max_hold.
-                # Replaces pnl-asymmetric _w_time WEIGHT (heavier in profit) with
-                # pnl-asymmetric _max_hold TIMING. Mechanism shift: instead of profit
-                # amplifying the magnitude of time-pressure (counter-intuitive — heavier
-                # exit on winners), profit EXTENDS the bars-before-time-pressure-activates
-                # window (winners get +2 bars to run, losers get -1 bar contraction). This
-                # aligns the asymmetry direction with intuition: profitable winners deserve
-                # MORE TIME to develop, losing positions deserve faster time-out to limit
-                # exposure. Multi-variable: (a) restructure _max_hold formula adding pnl
-                # term, (b) remove pnl-asymmetric _w_time amplifier (set to constant 1.0).
-                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                _hold_pnl_adj = 2.0 * max(0.0, _pnl_scale) - 1.0 * max(0.0, -_pnl_scale)  # +2 in profit, -1 in loss
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj + _hold_pnl_adj
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
                 # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
+                # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
+                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 # Architectural simplification: removed _scale_in_w slope-pressure
                 # attenuator. The 0.5..1.0 ramp dampened slope-against pressure during
                 # scale-in to "let positions reach full size." But early scale-in slope
@@ -746,13 +736,14 @@ class Strategy:
                 # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
                 _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
-                # Architectural multi-variable restructure: removed pnl-asymmetric _w_time
-                # amplifier. Replaced by pnl-asymmetric _max_hold timing (above): profit
-                # extends time-pressure-onset window (+2 bars), loss contracts it (-1 bar).
-                # Pnl asymmetry now operates on TIMING (when time-pressure activates), not
-                # MAGNITUDE (how strong it fires once active). Consistent with the intent
-                # of giving winners more development time and losers less linger time.
-                _w_time  = 1.0
+                # Architectural extension: time-pressure asymmetric weight by pnl_scale.
+                # In profit: heavier time pressure (lock in gains via time exit).
+                # In loss: lighter time pressure (give losing positions room to recover
+                # before time-killing — alignment with slope-against doing the loss-cutting).
+                # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
+                # (let slope-against do loss-cutting; avoid sideways small-loss jitter
+                # destabilizing time pressure).
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
