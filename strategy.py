@@ -136,6 +136,13 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol entry-time conviction margin (the own-side
+        # margin at the bar of entry). Used by entry-conviction-conditioned exit
+        # threshold: high-conviction entries get more rope (higher _exit_thresh);
+        # low-conviction entries get cut faster. Couples exit decision to entry
+        # quality — orthogonal to bar-by-bar voter/slope/pp signals which are
+        # all re-computed at exit time.
+        self._entry_conviction = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -850,6 +857,16 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: entry-conviction-conditioned exit threshold.
+                # High-conviction entries (margin >> 0) get more rope (raise threshold);
+                # low/marginal conviction entries (margin near 0) get cut faster (lower
+                # threshold). Smooth tanh maps margin in [-0.3, +0.3] to multiplicative
+                # adjustment in [0.92, 1.10]. Couples exit-time decision to entry-time
+                # quality — orthogonal to per-bar voter signals which are re-computed.
+                # Skipped if _sl_pressure dominant (handled below).
+                _ec = self._entry_conviction.get(symbol, 0.0)
+                _ec_factor = 1.0 + 0.10 * np.tanh(_ec / 0.30)  # in [~0.90, ~1.10]
+                _exit_thresh = _exit_thresh * _ec_factor
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -940,12 +957,15 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_conviction):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Capture entry-time own-side conviction margin (bull or bear
+                    # depending on entry direction). Used by exit-threshold modulator.
+                    self._entry_conviction[symbol] = _bull_margin if target > 0 else _bear_margin
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
