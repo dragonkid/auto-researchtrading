@@ -504,10 +504,26 @@ class Strategy:
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
                 _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
+                # Architectural: directional volume-confirmation gate on first-bar size.
+                # Recent 3-bar net close-direction × volume captures whether the most recent
+                # price action was confirmed by genuine volume in the entry direction.
+                # Sums sign(close[i]-close[i-1]) * volume[i] over last 3 bars, normalized
+                # by median volume. Positive = bull-confirming volume; negative = bear-
+                # confirming. Bull entries: +1 if confirmation matches; attenuated if
+                # contradicting. Smooth via tanh, max attenuation ~0.15. Orthogonal data
+                # dependency: directional-volume aggregate is independent of price slope,
+                # VWAP deviation, EMA, RSI, MACD (those use price magnitude, not signed
+                # bar direction × volume).
+                _vol_recent = bd.history["volume"].values[-3:]
+                _close_dir = np.sign(np.diff(closes[-4:]))  # signs of last 3 bar moves
+                _vol_med20 = max(np.median(bd.history["volume"].values[-20:]), 1e-6)
+                _dir_vol = float((_close_dir * _vol_recent).sum()) / (3.0 * _vol_med20)  # in approx [-1, 1]
+                _bull_dvol_atten = 1.0 + 0.15 * np.tanh(_dir_vol / 0.8)  # in [0.85, 1.15]
+                _bear_dvol_atten = 1.0 + 0.15 * np.tanh(-_dir_vol / 0.8)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_dvol_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_dvol_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
