@@ -744,7 +744,19 @@ class Strategy:
                 # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
-                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
+                # Architectural asymmetric denominator: profit side uses fixed
+                # STOP_LOSS_PCT (0.024) — preserves fast profit-lock saturation in
+                # bull/rally where pos_pnl rises quickly and profit-side weights
+                # (_w_pp, _w_time, _w_ve, _w_ep) need to ramp at a regime-stable
+                # anchor. Loss side uses dynamic _stop_abs (ATR-based) — gives
+                # crash losing positions vol-aware recovery room before slope
+                # pressure ramps. Different data dependency per side. Multi-
+                # variable: changes 5 weight terms' loss-side ramp without
+                # touching profit-side ramp.
+                if pos_pnl >= 0:
+                    _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [0, 1]
+                else:
+                    _pnl_scale = np.tanh(pos_pnl / _stop_abs)            # in [-1, 0]
                 # Architectural: scale-in-aware slope-pressure attenuator. During the first
                 # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
                 # to micro-noise on a position not yet at full size. Attenuate _w_slope
