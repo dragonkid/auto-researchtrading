@@ -585,14 +585,18 @@ class Strategy:
                 # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
-                # Architectural: trend-conditioned scale-in pace.
-                # Replace constant ENTRY_FULL_BARS=3 with continuous trend-magnitude
-                # function: 2 bars in strong trend (fast commitment to capture momentum),
-                # up to 4 bars in deep chop (slower commitment to reduce noise exposure).
-                # rsi_trend_str is in [0,1] from existing entry path; reuse here for
-                # consistency. New cross-component data dep: scale-in pace depends on
-                # long-window trend magnitude.
-                _entry_full_bars_dyn = 2.0 + 2.0 * (1.0 - rsi_trend_str)  # in [2, 4]
+                # Architectural: trend-conditioned scale-in pace + LIVE-CONVICTION modulator.
+                # Trend-magnitude floor (existing): 2 bars in strong trend, up to 4 in chop.
+                # NEW conviction-margin acceleration: when CURRENT bar's own-side conviction
+                # margin (over admission threshold) is high, the position is being affirmed
+                # by sustained voter agreement — accelerate scale-in to capture more signal
+                # before it dissipates. Compute current-side margin (bull or bear depending
+                # on position direction). Subtract up to 1.0 bar from the trend-derived pace
+                # via tanh on margin/0.30. Floor at 1.5 bars. New cross-bar data dependency:
+                # scale-in pace depends on live-bar voter conviction, not just entry-time.
+                _live_side_margin = _bull_margin if current_pos > 0 else _bear_margin
+                _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30))  # [0, ~1]
+                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
