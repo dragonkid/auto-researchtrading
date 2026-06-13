@@ -315,14 +315,18 @@ class Strategy:
             _vol_recent_24 = bd.history["volume"].values[-25:-1]
             _vol_recent_avg = max(_vol_recent_24.mean(), 1e-10)
             _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_recent_avg
-            # Branch step 2: trend-gate the volume amplifier. Only fire in established
-            # trends (high _trend_strength_w); in chop/transition, vol amplifier is
-            # disabled (high volume = regime-shift, not confirmation). Multiplicative
-            # composition with _trend_strength_w shrinks the amp toward 1.0 (no effect)
-            # in chop and toward full [0.85, 1.15] in strong trends.
-            _vol_voter_amp = 1.0 + 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _vol_voter_amp
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _vol_voter_amp
+            # Branch step 3: trend-aligned ONE-SIDED amplifier. Only amplify the
+            # trend-aligned voter side (bull side in uptrend, bear side in downtrend).
+            # Counter-trend side stays at base weight. In chop, neither side amplified.
+            # Mechanism: high-volume bars confirm only the prevailing trend direction,
+            # not symmetric. Eliminates the rally regression from bear-side amp in
+            # uptrend. Composes _trend_strength_w (chop neutralization) with directional
+            # gate via tanh(ret_long / 0.04) (only positive for trend-aligned side).
+            _vol_amp_raw = 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w
+            _bull_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(ret_long / 0.04))   # only in uptrend
+            _bear_amp = 1.0 + _vol_amp_raw * max(0.0, np.tanh(-ret_long / 0.04))  # only in downtrend
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _bull_amp
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _bear_amp
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
