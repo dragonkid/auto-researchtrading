@@ -432,10 +432,22 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
+                # Architectural: counter-trend SCALE-IN attenuator on cold entry path.
+                # When a fresh entry is taken AGAINST the long-window trend (bear entry
+                # in uptrend, bull entry in downtrend), attenuate first-bar position
+                # size via a smooth tanh on the trend disagreement magnitude. Unlike
+                # admission asymmetry (discarded — blocked legitimate pullback signals),
+                # this admits the entry but with reduced commitment. Gated above
+                # |ret_long|>0.03 to avoid firing in chop. Max attenuation 0.30 (counter-
+                # trend entries take 0.70x size in strong trend). New cross-timescale
+                # data dependency: cold-entry first-bar size depends on trend disagreement.
+                _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
+                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
+                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
