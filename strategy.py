@@ -796,26 +796,6 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
-                # Architectural: multi-channel exit-pressure consensus boost.
-                # New control-flow term: count how many of the 5 soft pressure
-                # channels (slope/pp/time/ve/ep) currently exceed 0.40 simultaneously.
-                # When 3+ orthogonal channels fire concurrently, this is structurally
-                # meaningful agreement — multiply _soft_sum by a smooth consensus
-                # factor (1.0 below 2 active, +20% at 3, +35% at 4+). Single-channel
-                # firings unchanged. Different control flow from straight sum: makes
-                # multi-source agreement contribute super-additively. New cross-
-                # subsystem data dep: soft_sum scaling depends on count of co-firing
-                # channels above an activation threshold. Continuous via tanh on
-                # active-count to avoid binary boundary at the count.
-                _ch_active = (
-                    max(0.0, np.tanh((_sl_slope_pressure - 0.4) / 0.15))
-                    + max(0.0, np.tanh((_pp_pressure - 0.4) / 0.15))
-                    + max(0.0, np.tanh((_time_pressure - 0.4) / 0.15))
-                    + max(0.0, np.tanh((_ve_pressure - 0.4) / 0.15))
-                    + max(0.0, np.tanh((_ep_pressure - 0.4) / 0.15))
-                )
-                _consensus_boost = 1.0 + 0.35 * max(0.0, np.tanh((_ch_active - 2.0) / 1.0))
-                _soft_sum = _soft_sum * _consensus_boost
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
