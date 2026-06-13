@@ -499,8 +499,19 @@ class Strategy:
                 # trend entries take 0.70x size in strong trend). New cross-timescale
                 # data dependency: cold-entry first-bar size depends on trend disagreement.
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
-                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
-                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural: vol-conditioned counter-trend attenuation amplification.
+                # New cross-component data dep at entry: counter-trend attenuation magnitude
+                # depends on vol_ratio. In elevated-vol regimes (crash), counter-trend
+                # entries face wider noise + cascade risk — amplify attenuation up to 1.7x
+                # (max ~51% size cut on full counter-trend + high vol). In calm regimes
+                # (bull/sideways), attenuation unchanged (max 30%). Smooth tanh on
+                # (vol_ratio - 1.0)/0.4 — continuous boundary. Targets crash MaxDD
+                # reduction (counter-trend dead-cat bounce entries that currently take
+                # full 0.70x size in crash should take 0.49x).
+                _ct_vol_amp = 1.0 + 0.7 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [1.0, ~1.7]
+                _ct_max_atten = 0.30 * _ct_vol_amp  # in [0.30, ~0.51]
+                _bull_ct_atten = 1.0 - _ct_max_atten * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
+                _bear_ct_atten = 1.0 - _ct_max_atten * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
