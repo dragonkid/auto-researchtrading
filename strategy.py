@@ -548,16 +548,7 @@ class Strategy:
                     # _bull_ct_atten (counter-trend first-bar cut), and _bull_consensus_atten. Adverse-pnl
                     # during scale-in is already attenuated by these orthogonal channels; the pnl-tanh
                     # adjuster duplicates without orthogonal info.
-                    # Architectural: trend-aligned profit-confirmed scale-in acceleration.
-                    # Boost ramp progress when BOTH: (1) pos_pnl > 5bps (confirmed direction)
-                    # AND (2) position aligned with long-window trend. Counter-trend
-                    # transient profits (rally bear pullbacks, dead-cat bounces) do NOT
-                    # accelerate. New cross-timescale dep: scale-in ramp depends on
-                    # pos_pnl AND ret_long*pos_dir alignment.
-                    _pos_dir_si = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_si = max(0.0, np.tanh(ret_long * _pos_dir_si / 0.04))  # [0,~1]
-                    _profit_accel = max(0.0, np.tanh((pos_pnl - 0.005) / 0.008)) * _trend_align_si * 0.4
-                    _eff_progress = bars_held / ENTRY_FULL_BARS + _profit_accel
+                    _eff_progress = bars_held / ENTRY_FULL_BARS
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
