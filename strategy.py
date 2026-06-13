@@ -833,17 +833,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                # Architectural: top-2 pressure pooling replacing pure additive aggregation.
-                # Pure sum allows many small noise pressures across 6 sources to accumulate
-                # toward exit_thresh; top-2 enforces that any exit decision must be backed
-                # by at least one DOMINANT pressure. Reduces noise-aggregation false exits
-                # while preserving strong signal exits. Decision-architecture change to
-                # fusion topology — NOT a parameter tweak. Top-2 sum approximates additive
-                # sum in cases where signal IS concentrated; differs when many sources
-                # contribute small marginal values.
-                _terms = [_w_slope * _sl_slope_pressure, _w_pp * _pp_pressure, _w_time * _time_pressure, _w_ve * _ve_pressure, _w_ep * _ep_pressure, _w_ar * _ar_pressure]
-                _terms_sorted = sorted(_terms, reverse=True)
-                _soft_sum = _terms_sorted[0] + _terms_sorted[1]
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
