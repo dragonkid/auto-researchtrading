@@ -246,17 +246,24 @@ class Strategy:
             if len(_sign_hist) > 8:
                 _sign_hist = _sign_hist[-8:]
             self._voter_sign_history[symbol] = _sign_hist
-            # Compute per-voter directional persistence
-            # Branch step 2: vol-conditioned amplification. In high vol (crash regime),
-            # persistence-weighting suppresses the reactive voters that protect against
-            # dead-cat bounces. Attenuate persistence range smoothly with vol_ratio.
-            # Low vol (rally/sideways): full 0.7..1.3 range. High vol (crash): collapse
-            # toward neutral 1.0 (no penalty on flip-prone voters which are protective).
-            _pers_amp_strength = 1.0 - 0.7 * max(0.0, min(1.0, (vol_ratio - 1.0) / 0.5))
+            # Compute per-voter directional persistence.
+            # Branch step 3: directionally-aware penalty. Persistence amplification
+            # should reward voters whose direction matches the long-trend (these
+            # are the consistent trend-followers). When a voter flips AGAINST the
+            # long trend, that flip is potentially protective (don't penalize it).
+            # Modulate the persistence_mult by directional agreement: voter sign
+            # agrees with sign(ret_long) → full amplification by persistence; voter
+            # sign disagrees with sign(ret_long) → muted penalty for flip-prone state.
             if len(_sign_hist) >= 4:
                 _hist_arr = np.array(_sign_hist)  # (K, 6)
                 _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
-                _persistence_mult = 1.0 + _pers_amp_strength * (-0.3 + 0.6 * _persistence)  # in [0.7..1.3] at low vol, ~1.0 at high vol
+                # Mean voter sign over history — represents each voter's directional bias
+                _voter_mean_sign = _hist_arr.mean(axis=0)  # in [-1, 1]
+                _trend_dir = 1.0 if ret_long > 0 else -1.0
+                # Agreement with long trend: 1 if mean_sign matches trend sign
+                _agreement = np.where(_voter_mean_sign * _trend_dir > 0, 1.0, 0.3)
+                # If agreement=1: full range 0.7..1.3. If agreement=0.3: muted 0.91..1.09.
+                _persistence_mult = 1.0 + _agreement * (-0.3 + 0.6 * _persistence)
             else:
                 _persistence_mult = np.ones(6)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
