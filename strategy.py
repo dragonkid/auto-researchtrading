@@ -115,11 +115,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: per-symbol entry-anchored stop-loss magnitude.
-        # Stamped at entry from current ATR; used for stop-pressure computation
-        # throughout the position lifetime. Decouples stop from current-bar vol
-        # contractions/expansions that move the stop target during a position.
-        self._entry_stop_abs = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -582,12 +577,7 @@ class Strategy:
                 _atr_pct = np.mean(_tr) / mid
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
-                # Architectural: entry-anchored stop-loss. Use stored entry-bar
-                # _entry_stop_abs (stamped at entry) so stop level is fixed at the
-                # condition under which the position was opened. Falls back to
-                # current ATR if missing (graceful degradation).
-                _stop_abs_curr = max(0.018, min(0.035, 2.5 * _atr_pct))
-                _stop_abs = self._entry_stop_abs.get(symbol, _stop_abs_curr)
+                _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
@@ -890,18 +880,11 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_stop_abs):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    # Stamp entry-bar stop_abs from current ATR (used over position lifetime).
-                    _atr_high_x = bd.history["high"].values[-14:]
-                    _atr_low_x = bd.history["low"].values[-14:]
-                    _atr_close_x = closes[-15:-1]
-                    _tr_x = np.maximum(_atr_high_x - _atr_low_x, np.maximum(np.abs(_atr_high_x - _atr_close_x), np.abs(_atr_low_x - _atr_close_x)))
-                    _atr_pct_x = np.mean(_tr_x) / mid
-                    self._entry_stop_abs[symbol] = max(0.018, min(0.035, 2.5 * _atr_pct_x))
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
