@@ -651,7 +651,23 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: bars-held convex blending of exit-pressure
+                # composition. Replaces uniform additive fusion (slope+pp+time+ve)
+                # with bar-age-dependent weighting. Mature positions (>12 bars)
+                # weight time+pp more heavily and slope less (slope-flips at age
+                # 15+ are usually mature-trend natural pauses, not real reversals).
+                # Young-mid positions (6-12 bars) get full balanced fusion (current
+                # behavior preserved). Very young positions (<6 bars) handled by
+                # existing _w_slope scale-in attenuation; this mechanism activates
+                # only past _hold_decay_start. Continuous tanh on (bars_held - 12)/4
+                # — smooth transition, no boundary noise. New cross-axis data
+                # dependency: pressure composition geometry depends on position age
+                # (not just per-pressure scalar weights).
+                _maturity = max(0.0, np.tanh((bars_held - 12.0) / 4.0))  # in [0, ~1]
+                _slope_age_w = 1.0 - 0.4 * _maturity   # mature: slope weight drops to 0.6
+                _pp_age_w    = 1.0 + 0.2 * _maturity   # mature: pp weight rises to 1.2
+                _time_age_w  = 1.0 + 0.2 * _maturity   # mature: time weight rises to 1.2
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _slope_age_w * _sl_slope_pressure + _w_pp * _pp_age_w * _pp_pressure + _w_time * _time_age_w * _time_pressure + _w_ve * _ve_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
