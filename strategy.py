@@ -839,28 +839,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: pos_pnl-velocity exit pressure (7th soft source).
-                # New cross-bar data dependency: 1-bar pos_pnl drop rate (pos_pnl - _prev_pnl).
-                # Distinct from _sl_pressure (entry-anchored loss magnitude), _slope_against
-                # (price slope, not pnl-relative), _pp_pressure (post-peak giveback ratio):
-                # measures ACCELERATION of position deterioration. Activates only in the
-                # mid-zone where existing pressures are dormant — pos_pnl in [-0.5*stop, 0.5*pp_min] —
-                # so it doesn't double-count SL territory or post-peak giveback. Bounded smooth
-                # tanh on velocity normalized by stop_abs; activation gate also smooth-tanh on
-                # mid-zone proximity. Captures fast deteriorations the slope/SL stack misses
-                # because the price slope can lag pos_pnl change for high-vol bars.
-                _pnl_vel = (pos_pnl - _prev_pnl) / max(_stop_abs, 1e-6)  # negative = dropping
-                _vel_mag = max(0.0, np.tanh(-_pnl_vel / 0.4))  # 0 if rising, ramps as drop accelerates
-                _midzone = max(0.0, min(1.0, 1.0 - max(0.0, -pos_pnl - 0.5 * _stop_abs) / max(0.5 * _stop_abs, 1e-6))) * \
-                           max(0.0, min(1.0, 1.0 - max(0.0, pos_pnl - 0.5 * _pp_min) / max(0.5 * _pp_min, 1e-6)))
-                _pv_pressure = 0.40 * _vel_mag * _midzone
-                _w_pv = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_pv * _pv_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
