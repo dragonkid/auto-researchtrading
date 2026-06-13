@@ -535,17 +535,22 @@ class Strategy:
                 # persistence, admit, quality, consensus, vol_entry) already filter noise
                 # at each symbol independently. Cross-symbol attenuator is redundant.
                 _concurrent_atten = 1.0
-                # Architectural simplification: removed _quality_atten bilateral-conviction-
-                # quality entry size attenuator. The opp/own strong-sum ratio attenuator
-                # (0..30% size cut at high bilateral noise) overlaps with _consensus_atten
-                # (multi-window slope alignment, also fires hardest when voters split) and
-                # _persist_ok 2-bar entry persistence gate (which already filters split-voter
-                # single-bar bursts). Three correlated filters of "voter splits": admission
-                # threshold (binary), persistence (sustenance), consensus (slope alignment),
-                # quality (cross-side ratio). Removing the smallest one tests redundancy.
-                # Code-structure removal: 14 lines + opp/own ratio computation.
-                _bull_quality_atten = 1.0
-                _bear_quality_atten = 1.0
+                # Architectural: bilateral-conviction-quality entry size attenuator.
+                # New cross-component data dep: own-side first-bar size depends on the
+                # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
+                # voters are decisively one-sided (high quality entry). When opp_strong is
+                # close to side_strong (bilateral noise — voters split), entry quality is
+                # low and size should be cut. Compute opp/own ratio (0..1+); attenuate via
+                # tanh: 1.0x at ratio<=0.3, ramps down to 0.7x at ratio>=0.9. Independent
+                # from entry-pass gate (entry still admitted at marginal quality, but at
+                # smaller commitment). Mechanism: filters splitting-vote false entries that
+                # the strong-sum gate alone passes when own-side just barely exceeds floor
+                # while opp-side is also nearly at floor — exactly the noise-amplified
+                # entries that lose most.
+                _bull_opp_ratio = _bear_strong / max(_bull_strong, 1e-6)
+                _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
+                _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
+                _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 # Architectural: low-volume entry size attenuator.
                 # When current bar's volume is low relative to recent 24-bar average,
                 # the entry signal is less noise-confirmed (low-volume bars carry less
