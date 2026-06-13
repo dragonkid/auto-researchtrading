@@ -831,9 +831,23 @@ class Strategy:
                 if _curr_mae_e < _mae_floor and pos_pnl < 0:
                     # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
+                    # Architectural: trend-alignment attenuation on _ar_pressure.
+                    # Counter-trend positions (rally bears, sideways bears in rises etc.)
+                    # benefit from MAE-recovery exit because the recovery is fragile and
+                    # likely to reverse — load-bearing for rally per prior session insights.
+                    # Trend-aligned positions (crash shorts during dead-cat bounces, bull
+                    # longs during pullback recoveries) should NOT exit on recovery — the
+                    # recovery is part of the trend dynamic and likely to resolve back in
+                    # the position's favor. Continuous tanh on (ret_long * pos_dir / 0.05):
+                    # counter-trend → 0 atten (full _ar_pressure), trend-aligned → up to
+                    # 0.70 atten (30% remaining). New cross-timescale data dependency:
+                    # _ar_pressure now depends on (ret_long, position direction).
+                    _pos_dir_ar = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_ar = max(0.0, np.tanh(ret_long * _pos_dir_ar / 0.05))  # [0, ~1]
+                    _ar_atten = 1.0 - 0.70 * _trend_align_ar
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
-                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4)) * _ar_atten
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
