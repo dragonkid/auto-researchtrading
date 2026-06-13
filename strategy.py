@@ -119,10 +119,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: per-symbol entry-bar voter strong-sum (own-side at entry).
-        # Used by scale-in gate to detect conviction decay during ramp; if current
-        # own-side strong-sum has fallen materially below entry-time, attenuate ramp.
-        self._entry_strong = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -481,23 +477,8 @@ class Strategy:
                     _pos_dir = 1.0 if current_pos > 0 else -1.0
                     _trend_agree = max(0.0, np.tanh(trend_avg * _pos_dir / 0.012))  # in [0,1]
                     _ramp_attn_pnl = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    # Architectural: conviction-confirmation scale-in gate.
-                    # Track own-side strong-sum at entry; during scale-in compute the
-                    # ratio of current own-side strong-sum to entry-time. When current
-                    # conviction has fallen well below entry-time (ratio < 0.7), the
-                    # signal that admitted the position is no longer present —
-                    # attenuate ramp progress. Smooth via tanh on (ratio - 0.7) / 0.20.
-                    # Confirmation factor in [0, 1]: 1 when conviction matches/exceeds
-                    # entry, 0 when conviction has fallen materially.
-                    _own_strong_now = _bull_strong if current_pos > 0 else _bear_strong
-                    _own_strong_entry = self._entry_strong.get(symbol, _own_strong_now)
-                    _conv_ratio = _own_strong_now / max(_own_strong_entry, 1e-6)
-                    _conv_confirm = 0.5 * (1.0 + np.tanh((_conv_ratio - 0.7) / 0.20))  # [0, 1]
-                    # Blend three sources: full ramp when ANY of (trend agrees, pnl positive,
-                    # conviction confirmed). The conviction factor enters as parallel
-                    # validator alongside trend & pnl — losing it doesn't override winners.
-                    _ramp_attn = max(_trend_agree, _ramp_attn_pnl, _conv_confirm * 0.85)
-                    _ramp_attn = max(0.0, min(1.0, _ramp_attn))
+                    # Blend: full ramp when trend agrees, pnl-attenuated otherwise.
+                    _ramp_attn = _trend_agree + (1.0 - _trend_agree) * _ramp_attn_pnl
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
@@ -815,11 +796,10 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_strong):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._entry_strong[symbol] = _bull_strong if target > 0 else _bear_strong
 
         return signals
