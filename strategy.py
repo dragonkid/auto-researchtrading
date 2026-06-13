@@ -479,7 +479,18 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                # Architectural: position-aligned trend-strength loosening of _pp_min.
+                # When position direction agrees with long-window trend (long in
+                # uptrend, short in downtrend), _pp_min is multiplied up to 1.40x
+                # to delay pp_activation — lets trend-aligned winners build a
+                # larger peak before trailing kicks in (rally longs / crash
+                # shorts). Counter-trend positions retain tight _pp_min (fast
+                # giveback locking on losers). Continuous via tanh on
+                # (ret_long * pos_dir) / 0.04. New cross-timescale data
+                # dependency on _pp_min activation threshold (was vol-only).
+                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
+                _pp_align_loosen = 1.0 + 0.40 * max(0.0, np.tanh((ret_long * _pos_dir_pp) / 0.04))
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * _pp_align_loosen
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
