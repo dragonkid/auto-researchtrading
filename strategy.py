@@ -707,22 +707,7 @@ class Strategy:
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
-                # Architectural: slope-confirmation gate on opp-side voter_bias addition.
-                # Old: opp-margin contributed unconditional +0.20*tanh exit pressure when
-                # opposite-side voters strong. New: scale opp-side contribution by whether
-                # the medium-window exit slope confirms the reversal evidence. When slope
-                # still agrees with current position (voters are early/false reversal),
-                # attenuate to 0.5x; when slope already turned against position (real
-                # reversal — voters + slope both confirm), full 1.0x. Smooth via tanh on
-                # the slope-aligned magnitude (-_slope_strength when agrees, +_slope_strength
-                # when disagrees), avoiding hard binary at slope sign-flip. Mechanism:
-                # decouples voter-only noise from voter+slope confirmed reversal, allowing
-                # winning trend positions to ride out voter-driven false-reversal spikes.
-                # New cross-component data dependency: voter_bias depends on _exit_slope
-                # direction. Multi-variable change to _voter_bias formula plus uses pre-
-                # existing _slope_agrees / _slope_strength values from time pressure block.
-                _opp_slope_conf = 0.5 + 0.5 * (1.0 if not _slope_agrees else 0.0) * min(1.0, _slope_strength)
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_slope_conf * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
