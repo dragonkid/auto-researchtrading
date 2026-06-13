@@ -247,14 +247,15 @@ class Strategy:
                 _sign_hist = _sign_hist[-8:]
             self._voter_sign_history[symbol] = _sign_hist
             # Compute per-voter directional persistence.
-            # Branch step 7: revert to 8-bar window; narrow amplification range
-            # from [0.7, 1.3] to [0.8, 1.2] (less aggressive penalty on flips,
-            # less aggressive boost on consistency). Soft application may
-            # preserve crash's protective flip-bias.
+            # Branch step 8: asymmetric penalty/boost. Penalty range -0.3 (flip-prone
+            # voters down to 0.7x); boost range +0.15 (consistent voters up to 1.15x).
+            # Hypothesis: rally benefit comes from suppressing flip-prone voters; over-
+            # boosting trend voters in crash hurts. Asymmetric range keeps suppression.
             if len(_sign_hist) >= 4:
                 _hist_arr = np.array(_sign_hist)  # (K, 6)
                 _persistence = np.abs(_hist_arr.sum(axis=0)) / len(_sign_hist)  # in [0, 1]
-                _persistence_mult = 0.8 + 0.4 * _persistence  # in [0.8, 1.2]
+                # Map persistence [0,1] -> mult: at 0 → 0.7, at 0.5 → 0.925, at 1.0 → 1.15
+                _persistence_mult = 0.7 + 0.45 * _persistence
             else:
                 _persistence_mult = np.ones(6)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
