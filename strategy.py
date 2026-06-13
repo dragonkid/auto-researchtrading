@@ -460,6 +460,31 @@ class Strategy:
                     _min_bear_2 = _bear_strong
                 _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
                 _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural: conviction-trajectory entry admission gate.
+                # New decision-architecture component: strong-sum SLOPE at entry,
+                # not just magnitude/persistence. Mechanism: when _hist has 3 bars,
+                # compute (latest - earliest)/2 as a 2-bar slope of own-side strong.
+                # Rising slope = voters increasingly aligning (entry is on
+                # accelerating conviction). Flat/falling slope = voters firing
+                # at peak then decaying (likely noise spike resolving). Gate fires
+                # ONLY in chop (low |ret_long| < 0.04): in chop, sudden conviction
+                # spikes are noise-prone and trajectory filtering is high-value.
+                # In trends, conviction can plateau-then-resume and trajectory
+                # filtering would block valid entries. Smooth via tanh attenuation
+                # rather than hard reject — preserves entries with small negative
+                # slope at reduced commitment. New cross-bar data dep: entry
+                # admission depends on direction of strong-sum derivative across
+                # last 3 bars (3rd-order signal — value, persistence, slope).
+                _chop_gate_traj = max(0.0, 1.0 - min(abs(ret_long) / 0.04, 1.0))  # 1 in chop, 0 in trend
+                if len(_hist) >= 3:
+                    _bull_slope_3 = (_hist[-1][0] - _hist[-3][0]) / 2.0
+                    _bear_slope_3 = (_hist[-1][1] - _hist[-3][1]) / 2.0
+                else:
+                    _bull_slope_3 = 0.0
+                    _bear_slope_3 = 0.0
+                # Attenuate: full size when slope >= 0; smooth ramp down to 0.70x at slope == -_strong_min/2 (sharp decline).
+                _bull_traj_atten = 1.0 - 0.30 * _chop_gate_traj * max(0.0, np.tanh(-_bull_slope_3 / max(_bull_strong_min * 0.3, 1e-6)))
+                _bear_traj_atten = 1.0 - 0.30 * _chop_gate_traj * max(0.0, np.tanh(-_bear_slope_3 / max(_bear_strong_min * 0.3, 1e-6)))
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -532,9 +557,9 @@ class Strategy:
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_traj_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_traj_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
