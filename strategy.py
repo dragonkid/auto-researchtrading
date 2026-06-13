@@ -969,8 +969,22 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Architectural: 2-bar opp-conviction persistence at exit decision boundary.
+                # Mirror entry-side _entry_persist_factor: require min over last 2 bars of
+                # opposite-side strong-sum to exceed strong_min. Decouples reversal from
+                # single-bar noise spikes (bull spike during crash, bear spike during rally).
+                # Asymmetry-fix: entry path filters single-bar conviction noise, exit-reversal
+                # path was binary on single bar. New control flow: opp_gate now gates on
+                # rolling-window opp-strong persistence in addition to instantaneous count
+                # + strong + trend conditions.
+                if len(_hist) >= 2:
+                    _opp_min_2 = min(_hist[-2][1], _hist[-1][1]) if current_pos > 0 else min(_hist[-2][0], _hist[-1][0])
+                    _opp_min_strong = _bear_strong_min if current_pos > 0 else _bull_strong_min
+                    _opp_persist_ok = _opp_min_2 >= 0.85 * _opp_min_strong
+                else:
+                    _opp_persist_ok = True
+                _opp_gate = ((current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)) and _opp_persist_ok
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
