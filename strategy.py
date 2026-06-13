@@ -850,7 +850,22 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                # Architectural: bilateral-conviction exit pressure (8th soft source).
+                # When BOTH _bull_strong AND _bear_strong are simultaneously high (high
+                # bilateral activity, voters internally split with strong evidence on both
+                # sides), the market is in an uncertainty regime — direction is contested.
+                # Existing voter_bias and opp_gate fire on net imbalance; bilateral-high
+                # is structurally different and orthogonal to those. Use min(side, opp)
+                # margins as the bilateral signal: when both sides simultaneously exceed
+                # their admission floors, inject exit pressure proportional to the lesser
+                # margin. Continuous via tanh, capped at 0.30 to subordinate to direct
+                # directional pressures. Genuinely novel: existing voter_bias is asymmetric
+                # bilateral (own subtracts, opp adds); this is symmetric bilateral (both-high
+                # treated as exit signal regardless of position direction).
+                _bilateral_min_margin = min(_side_margin, _opp_margin)
+                _bc_pressure = 0.30 * max(0.0, np.tanh(_bilateral_min_margin / 0.20))
+                _w_bc = 1.0
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_bc * _bc_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
