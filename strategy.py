@@ -598,26 +598,6 @@ class Strategy:
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
-                    # Architectural: MAE-progress freeze on scale-in.
-                    # When the current bar's pos_pnl is making a new MAE (low-water mark
-                    # being refreshed THIS bar), freeze scale-in growth — keep target at
-                    # current_pos rather than growing it. Different from "MAE-responsive
-                    # pace" (which adjusted ramp slope based on MAE depth) — this is a
-                    # binary-gradient on the bar where loss is actively widening: don't
-                    # add to a position that's still bleeding. Recovery bars (pos_pnl
-                    # rising back above MAE) resume normal scale-in. New control flow
-                    # at scale-in: gates target growth on instantaneous loss progress.
-                    # Continuous (no hard threshold): freeze fires only when pos_pnl <
-                    # prior MAE (which happens specifically on bars where MAE is being
-                    # refreshed) — naturally a small fraction of scale-in bars.
-                    _prior_mae_si = self._mae.get(symbol, 0.0)
-                    if pos_pnl < _prior_mae_si:
-                        # Smooth gate: freeze magnitude scales with how far below prior
-                        # MAE we are (deeper new-MAE = stronger freeze). Small one-tick
-                        # MAE refresh keeps minor scale-in; large MAE refresh fully freezes.
-                        _mae_drop = _prior_mae_si - pos_pnl  # positive
-                        _freeze_w = max(0.0, min(1.0, np.tanh(_mae_drop / 0.005)))
-                        target = current_pos + (target - current_pos) * (1.0 - _freeze_w)
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
