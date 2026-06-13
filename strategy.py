@@ -744,17 +744,7 @@ class Strategy:
                 # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
-                # Architectural: use DYNAMIC _stop_abs (ATR-based, range [0.018, 0.035])
-                # instead of fixed STOP_LOSS_PCT (-0.024). _pnl_scale drives 5 weight
-                # terms (_w_slope, _w_pp, _w_time, _w_ve, _w_ep) so this is a multi-
-                # variable architectural change at exit-fusion fabric. In crash (high vol,
-                # _stop_abs~0.033) _pnl_scale saturates more slowly so loss-weighted
-                # slope-pressure ramps up gradually (avoids over-cutting losing crash
-                # positions before they recover on dead-cat bounces). In sideways (low
-                # vol, _stop_abs~0.018) _pnl_scale saturates faster — quicker loss-
-                # cutting in chop. Fixes coupling inconsistency between fixed-constant
-                # weighting scale and dynamic stop-loss boundary.
-                _pnl_scale = np.tanh(pos_pnl / _stop_abs)   # in [-1, 1]
+                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 # Architectural: scale-in-aware slope-pressure attenuator. During the first
                 # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
                 # to micro-noise on a position not yet at full size. Attenuate _w_slope
@@ -874,8 +864,7 @@ class Strategy:
                 # loss after dip" pattern — historically a dangerous holding zone.
                 _ar_pressure = 0.0
                 _curr_mae_e = self._mae.get(symbol, 0.0)
-                # Use dynamic _stop_abs to align MAE-recovery activation with actual stop.
-                _mae_floor = -0.5 * _stop_abs
+                _mae_floor = -0.5 * abs(STOP_LOSS_PCT)
                 if _curr_mae_e < _mae_floor and pos_pnl < 0:
                     # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
@@ -987,7 +976,7 @@ class Strategy:
                     # graduated behavior to engage. Continuous via tanh blend.
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
-                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / _stop_abs))  # [0, ~1] only profit; align with dynamic stop
+                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
