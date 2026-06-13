@@ -473,16 +473,7 @@ class Strategy:
                     _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
-                    # Architectural: extend counter-trend size attenuation into scale-in bars.
-                    # The cold-entry path (97399b7 keep) only attenuates first-bar size. Scale-in
-                    # bars 2-3 currently restore full counter-trend size if pos_pnl recovered.
-                    # This extends the same attenuation through the entire scale-in window so
-                    # counter-trend positions remain underexposed during their critical
-                    # early-life period. Smooth, same magnitude/gating as cold-entry.
-                    _ct_gate_si = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))
-                    _ct_align_si = max(0.0, np.tanh(-ret_long * _pos_dir / 0.05))
-                    _ct_atten_si = 1.0 - 0.30 * _ct_gate_si * _ct_align_si
-                    full_target = (size if current_pos > 0 else -size) * _ct_atten_si
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
