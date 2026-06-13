@@ -743,7 +743,17 @@ class Strategy:
                             (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # opp_margin already computed at top of bar (relative excess).
-                    _opp_exit_frac = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    # Trend alignment: counter-trend positions need binary exit
+                    # (rally bear in uptrend can't afford to partial-hold), while
+                    # trend-aligned positions benefit from graduated partial exit
+                    # (crash short, bull long — partial de-risk on noise spikes).
+                    # Continuous via tanh on (ret_long * pos_dir / 0.04). Aligned
+                    # (>0): graduated. Counter-trend (<0): binary full exit.
+                    _pos_dir_og = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
+                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    # Blend: full exit (1.0) for counter-trend, graduated for trend-aligned.
+                    _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _trend_align_og
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             if abs(target - current_pos) > 1.0:
