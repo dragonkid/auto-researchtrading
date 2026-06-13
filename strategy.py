@@ -255,25 +255,16 @@ class Strategy:
 
             in_cooldown = (self.bar_count - self.exit_bar.get(symbol, -999)) < COOLDOWN_BARS * cooldown_trend_strength
 
-            calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
-
-            sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
-
-            vol_confirm_mult = max(VOL_CONFIRM_FLOOR, min(VOL_CONFIRM_CAP, np.mean(bd.history["volume"].values[-VOL_CONFIRM_LOOKBACK:]) / np.mean(bd.history["volume"].values[-VOL_CONFIRM_BASE:])))
+            # Architectural simplification: collapse stacked size amplifiers (calm_boost,
+            # sideways_boost, vol_confirm_mult, _xa_boost, cross-asset fixed boost) into
+            # a single coherent vol-target sizing block. The amplifiers were correlated
+            # (all activated in low-vol/sideways) producing compounding size in chop
+            # regimes — and were the dominant turnover-cost driver. New scheme: pure
+            # inverse-vol scaling with strength_scale only. Whether this improves or
+            # regresses tells us if the amplifier stack was net-positive alpha.
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
-            # Architectural simplification: removed HIGH_VOTE_BOOST_MULT (constant 1.20).
-            # Always-on positive size bias is redundant: strong-sum entry gate already
-            # filters by voter conviction, and the conviction-margin first-bar adjuster
-            # (_entry_conv_adj) provides conviction-aware sizing. The fixed 1.20x
-            # multiplier was load-bearing only as raw size scale, not as a conviction signal.
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength)) * vol_confirm_mult
-            # Architectural: ADDITIONAL chop-only post-cap boost (smaller magnitude 0.08).
-            # Original cross-asset boost stays inside combined_mult (preserves bull behavior
-            # via cap-absorption). Additional post-cap boost activates only in deep chop
-            # (trend_strength<0.3), giving sideways/rally a small additional size lift that
-            # is NOT subject to cap.
-            _xa_chop_gate = max(0.0, min(1.0, (0.3 - cooldown_trend_strength) / 0.2))
-            _xa_boost = 1.0 + 0.08 * _xa_chop_gate
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale
+            _xa_boost = 1.0
             # Architectural: smooth ONLY the upper hard ternary at vol_ratio=1.2.
             # Keep the original linear 0.6->1.2 interpolation (load-bearing for rally
             # dwell point). Replace discontinuity at vol_ratio=1.2 with smooth blend
