@@ -111,6 +111,14 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
+        # Architectural: per-symbol entry-time conviction margin. Stored at entry,
+        # used during holding to modulate stop-loss width. High-conviction entries
+        # (margin >0.4) get tighter stops (confident entries that fail are likely
+        # genuine reversals — cut fast). Low-conviction entries (margin <0.1) get
+        # widened stops (marginal entries need room to develop). Continuous
+        # tanh modulation of _stop_abs by ±10%. New per-symbol state, multi-
+        # variable: stop boundary depends on entry-time signal quality.
+        self._entry_margin = {}
         # Maximum adverse excursion (MAE): per-symbol low-water mark of pos_pnl since entry.
         # Used by adverse-recovery exit pressure (architectural): when current pos_pnl
         # has recovered from MAE but still in modest loss, position is "barely surviving"
@@ -643,6 +651,17 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: entry-conviction stop-width modulation.
+                # High-margin entries (>0.4): tighten stop up to 12% (-12%) — confident
+                # entries that move against us are likely real reversals, cut fast,
+                # protect MaxDD (target: bull where conviction is high and DD damages).
+                # Low-margin entries (<0.1): widen stop up to 8% (+8%) — marginal
+                # entries need development room. Smooth tanh on margin.
+                # New per-symbol state dependency: stop boundary depends on entry-time
+                # conviction quality. Continuous, no boundary.
+                _em = self._entry_margin.get(symbol, 0.2)
+                _stop_mult = 1.0 - 0.12 * max(0.0, np.tanh((_em - 0.25) / 0.20)) + 0.08 * max(0.0, np.tanh((0.10 - _em) / 0.15))
+                _stop_abs = max(0.016, min(0.040, _stop_abs * _stop_mult))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
@@ -986,12 +1005,14 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_margin):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Architectural: capture entry-time conviction margin for stop-width modulation.
+                    self._entry_margin[symbol] = _bull_margin if target > 0 else _bear_margin
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
                     self._portfolio_entry_history.append(self.bar_count)
