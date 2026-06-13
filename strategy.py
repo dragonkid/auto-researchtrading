@@ -977,17 +977,7 @@ class Strategy:
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                    # Architectural change: replace AND (product) with OR (max) gate.
-                    # Old: graduated only when BOTH trend-aligned AND in-profit (rare).
-                    # New: graduated when EITHER trend-aligned OR in-profit. Activates
-                    # graduated for trend-aligned LOSING positions (e.g. crash bear in
-                    # downtrend with transient opp-bull voter spike during dead-cat
-                    # bounce while position currently slightly underwater) — these
-                    # benefit from partial hold rather than full exit. Also captures
-                    # in-profit counter-trend positions (rally bear winning some) but
-                    # those scenarios are rare enough that the structural opt-in for
-                    # trend-aligned losers should dominate.
-                    _grad_gate = max(_trend_align_og, _profit_gate_og)  # OR semantics
+                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
