@@ -724,14 +724,16 @@ class Strategy:
                 # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
                 _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
-                # Architectural extension: time-pressure asymmetric weight by pnl_scale.
-                # In profit: heavier time pressure (lock in gains via time exit).
-                # In loss: lighter time pressure (give losing positions room to recover
-                # before time-killing — alignment with slope-against doing the loss-cutting).
-                # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
-                # (let slope-against do loss-cutting; avoid sideways small-loss jitter
-                # destabilizing time pressure).
-                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural simplification: removed _w_time profit-side asymmetric
+                # boost (was 1.0 + 0.20 * max(0, _pnl_scale)). The +20% time weight in
+                # profit was intended to lock gains via time exit, but composes
+                # multiplicatively with pp_pressure (also profit-fired via _w_pp gate)
+                # and _w_ep (also profit-fired, _w_ep ramps 0->1 with _pnl_scale).
+                # Three exit pressures all amplify on profit-side same _pnl_scale;
+                # removing the time-side amplifier tests whether time-amplification
+                # adds orthogonal gain-locking or merely re-emphasizes pp/ep already
+                # firing. New uniform _w_time at 1.0 (was [1.0, 1.2]).
+                _w_time  = 1.0
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
