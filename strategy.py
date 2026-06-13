@@ -119,11 +119,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: per-symbol EMA of trend-against magnitude during position hold.
-        # New state dependency: tracks how persistently trend has opposed position over
-        # hold lifetime. Reset to 0 on new entry. Used as a 6th soft-exit pressure term
-        # orthogonal to single-bar slope-against (which is instantaneous).
-        self._trend_against_ema = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -735,25 +730,6 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: sustained-adverse-trend exit pressure (orthogonal to slope-against).
-                # _sl_slope_pressure is instantaneous (single-bar slope median). This term
-                # captures PERSISTENT trend-against signal over hold lifetime via EMA on
-                # (trend_avg * pos_dir < 0) magnitude. Updates each bar with span 5; high
-                # values mean trend has been consistently adverse, signaling regime shift
-                # against the position. Smooth, stateful, orthogonal: slope-against can be
-                # transient noise but EMA persistence requires sustained adverse trend.
-                _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
-                _trend_against_inst = max(0.0, -trend_avg * _pos_dir_ta)  # positive only when adverse
-                _ta_prev = self._trend_against_ema.get(symbol, 0.0)
-                _ta_alpha = 2.0 / (5.0 + 1.0)
-                _ta_ema = _ta_alpha * _trend_against_inst + (1.0 - _ta_alpha) * _ta_prev
-                self._trend_against_ema[symbol] = _ta_ema
-                # Activate above 0.008 (about 0.8% adverse trend sustained), saturate at 0.020.
-                _ta_pressure = max(0.0, min(1.0, (_ta_ema - 0.008) / 0.012))
-                # Weight: heavier in losses (slope-against pattern), lighter in profit
-                # (don't punish winners on transient adverse trend). Continuous via _pnl_scale.
-                _w_ta = max(0.2, 1.0 - 0.5 * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))  # in [0.5, 1.0]
-
                 # Architectural: early-profit-lock exit pressure (5th soft source).
                 # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
                 # Sub-peak profitable positions that give back early gains receive NO
@@ -786,7 +762,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ta * _ta_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -893,7 +869,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._trend_against_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
