@@ -237,6 +237,18 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: volatility-expansion entry-gate tightening (NEW data
+            # dependency on entry decision, orthogonal to exit-side use).
+            # When 6-bar vol substantially exceeds 18-bar vol (regime shift in progress),
+            # voter signals reflect transient noise rather than stable conviction.
+            # Tighten _strong_min proportionally to filter whipsaw entries during
+            # vol-expansion windows. Continuous tanh activation above ratio 1.3,
+            # max +25% threshold tightening at ratio 2.0+. Uses same vol_6/vol_18
+            # primitives already computed in exit fusion (no new compute cost).
+            _vol_6_e = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+            _vol_18_e = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+            _ve_ratio_e = _vol_6_e / _vol_18_e
+            _strong_min *= 1.0 + 0.25 * max(0.0, np.tanh((_ve_ratio_e - 1.3) / 0.4))
 
             # Architectural simplification: removed isolated-spike penalty buffer.
             # Flip-recency gate now handles the same noise-rejection role at the
