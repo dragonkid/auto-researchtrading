@@ -403,25 +403,14 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                # Architectural: directional asymmetric persistence boost.
-                # In clear UP-trend (ret_long > 0), the bear entry side requires
-                # ADDITIONAL persistence (counter-trend entries face higher noise
-                # bar). Symmetric in down-trend: bull entry needs more persistence.
-                # Aligned-side (bear in down, bull in up) keeps the base relaxed
-                # persistence — those entries are the trend-following ones we WANT.
-                # Continuous via tanh on ret_long. New directional asymmetry on
-                # the entry gate: counter-trend admission is stricter than aligned.
-                _ct_persist_boost = 0.20 * np.tanh(ret_long / 0.04)  # [-0.2, +0.2]
-                _bear_persist_factor = _entry_persist_factor + max(0.0, _ct_persist_boost)   # stricter for shorts in uptrend
-                _bull_persist_factor = _entry_persist_factor + max(0.0, -_ct_persist_boost)  # stricter for longs in downtrend
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _bull_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _bear_persist_factor * _bear_strong_min
+                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
+                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
