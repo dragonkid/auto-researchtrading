@@ -578,21 +578,6 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
-                    # Architectural: pnl-confirmed scale-in pace adjustment.
-                    # New cross-bar data dependency: scale-in progress responds to
-                    # whether early bars are confirming the entry signal. Favorable
-                    # pnl since entry (price moving in our direction) accelerates
-                    # commitment toward full size — entry is being validated by price.
-                    # Adverse pnl decelerates — entry is being disconfirmed and we
-                    # should not rush to full commitment before the signal recovers.
-                    # Bounded asymmetric: max +25% acceleration in profit, max -35%
-                    # deceleration in adverse. Continuous via tanh on pos_pnl scaled
-                    # by stop magnitude. Distinct from de-risk path (which actively
-                    # SHRINKS position on exit pressure); this is a scale-in-progress
-                    # modulator that adjusts the pace, not the target.
-                    _pnl_confirm = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))  # in [-1, 1]
-                    _scale_in_amp = 1.0 + 0.25 * max(0.0, _pnl_confirm) - 0.35 * max(0.0, -_pnl_confirm)
-                    _eff_progress = max(0.0, min(1.0, _eff_progress * _scale_in_amp))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
