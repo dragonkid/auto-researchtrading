@@ -135,20 +135,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
 
-        # Architectural: cross-symbol trend sign aggregation for exit-pressure
-        # modulation. Pre-compute ret_long sign for each symbol; inside the
-        # per-symbol loop, count how many OTHER symbols share the same trend
-        # direction. When other symbols diverge (cross-asset consensus break),
-        # exit pressure is amplified (regime-shift signal). When aligned,
-        # dampened (consensus continuation). New cross-symbol data dependency
-        # in exit subsystem.
-        _all_trend_signs = {}
-        for _s in ACTIVE_SYMBOLS:
-            if _s in bar_data and len(bar_data[_s].history) >= LONG_WINDOW + 1:
-                _c = bar_data[_s].history["close"].values
-                _rl = (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
-                _all_trend_signs[_s] = _rl
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -667,26 +653,6 @@ class Strategy:
                 # data dependency: voter_bias asymmetry depends on long-window trend.
                 _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
-                # Architectural: cross-symbol trend-divergence exit modulation.
-                # Compute mean of OTHER symbols' ret_long signs aligned with this
-                # position's direction. Range [-1, +1]: +1 = all others aligned
-                # with position, -1 = all others opposite. Add small additive
-                # term: divergence (negative mean) → +exit pressure (consensus
-                # break suggests regime shift), alignment → -exit pressure
-                # (consensus supports hold). Magnitude small (max ±0.08) to
-                # avoid dominating fusion. Smooth via tanh.
-                _pos_dir_xs = 1.0 if current_pos > 0 else -1.0
-                _other_aligns = []
-                for _os, _orl in _all_trend_signs.items():
-                    if _os != symbol:
-                        # +1 if other's trend aligns with our pos direction, -1 if opposite
-                        _other_aligns.append(np.tanh(_orl * _pos_dir_xs / 0.04))
-                if _other_aligns:
-                    _xs_consensus = float(np.mean(_other_aligns))  # in [-1, 1]
-                else:
-                    _xs_consensus = 0.0
-                # Negative consensus → divergence → push exit up
-                _voter_bias += -0.08 * np.tanh(_xs_consensus / 0.5)
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
