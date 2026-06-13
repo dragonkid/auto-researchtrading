@@ -315,8 +315,12 @@ class Strategy:
             _vol_recent_24 = bd.history["volume"].values[-25:-1]
             _vol_recent_avg = max(_vol_recent_24.mean(), 1e-10)
             _vol_curr_ratio = bd.history["volume"].values[-1] / _vol_recent_avg
-            # Smooth tanh: vol_curr_ratio=0.5 -> ~0.88, =1.0 -> 1.0, =1.5 -> ~1.12
-            _vol_voter_amp = 1.0 + 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5)
+            # Branch step 2: trend-gate the volume amplifier. Only fire in established
+            # trends (high _trend_strength_w); in chop/transition, vol amplifier is
+            # disabled (high volume = regime-shift, not confirmation). Multiplicative
+            # composition with _trend_strength_w shrinks the amp toward 1.0 (no effect)
+            # in chop and toward full [0.85, 1.15] in strong trends.
+            _vol_voter_amp = 1.0 + 0.15 * np.tanh((_vol_curr_ratio - 1.0) / 0.5) * _trend_strength_w
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)) * _vol_voter_amp
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)) * _vol_voter_amp
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
