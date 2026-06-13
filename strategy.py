@@ -783,7 +783,20 @@ class Strategy:
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
-                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Architectural: volume-confirmed vol-expansion weight amplifier.
+                # vol_expansion (vol of price) gains confirmation when current bar
+                # volume is also elevated — a regime shift confirmed by both price
+                # volatility AND volume is more reliable. Boost _w_ve up to 1.5x
+                # when current bar volume > 1.5x recent 24-bar average. Smooth tanh,
+                # asymmetric (only boosts, never cuts). New cross-bar volume data
+                # dependency in exit fusion weight (orthogonal to vol_expansion
+                # itself which is price-derived). Symmetric: only fires when in
+                # profit (preserves the load-bearing _w_ve profit gate).
+                _vol_24 = bd.history["volume"].values[-25:-1]
+                _vol_24_avg = max(_vol_24.mean(), 1e-10)
+                _vol_bar_now = bd.history["volume"].values[-1] / _vol_24_avg
+                _w_ve_vol_amp = 1.0 + 0.5 * max(0.0, np.tanh((_vol_bar_now - 1.5) / 0.5))
+                _w_ve = max(0.0, _pnl_scale) * _w_ve_vol_amp  # in [0, 1.5], only positive pos_pnl
                 # Architectural: early-profit-lock exit pressure (5th soft source).
                 # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
                 # Sub-peak profitable positions that give back early gains receive NO
