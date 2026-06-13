@@ -489,15 +489,8 @@ class Strategy:
                 # trend entries take 0.70x size in strong trend). New cross-timescale
                 # data dependency: cold-entry first-bar size depends on trend disagreement.
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
-                # Architectural: conviction-margin-lifted counter-trend attenuator floor.
-                # High-conviction counter-trend entries (dead-cat-bounce in crash, fade-pullback
-                # in rally) are the exact captures we want to SIZE UP. Lift the 0.30 max
-                # attenuation by margin: at margin>=0.5, max attenuation drops to ~0.15
-                # (floor lifted from 0.70 to ~0.85). New cross-component data dep at entry.
-                _bull_ct_mag = 0.30 * (1.0 - 0.5 * max(0.0, min(1.0, np.tanh(_bull_margin / 0.30))))
-                _bear_ct_mag = 0.30 * (1.0 - 0.5 * max(0.0, min(1.0, np.tanh(_bear_margin / 0.30))))
-                _bull_ct_atten = 1.0 - _bull_ct_mag * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
-                _bear_ct_atten = 1.0 - _bear_ct_mag * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
+                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
