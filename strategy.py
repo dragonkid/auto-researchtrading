@@ -648,34 +648,20 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
-                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
-                # Architectural: smooth pp-activation ramp replacing hard binary gate.
-                # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
-                # boundary at peak == _pp_min creates noise discontinuity in stab tests.
-                # Replace with smooth tanh activation (peak_pnl/_pp_min - 1.0) scaled by 0.5,
-                # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
-                # This is a primitive change to pp_pressure activation: was binary gate,
-                # now continuous mixture between unconditional pp_pressure and zero.
-                # Trend-gated smooth activation: smooth ramp only in trending regimes
-                # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
-                # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
-                # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
-                # Narrow boundary smoothing only: linear ramp in [0.95, 1.04]*_pp_min.
-                # Slightly narrower upper bound — restores baseline pp_pressure faster
-                # at peak ratios above 1.04, recovering raw revenue while keeping the
-                # bull-boosting smoothing in the [0.95, 1.04] band.
-                # Architectural simplification: removed smooth pp-activation ramp.
-                # The 9%-wide boundary smoothing [0.95, 1.04] interpolated _pp_activation
-                # to bridge a binary on/off at peak == _pp_min. Since peak_pnl is itself a
-                # high-water mark (only updates upward, confirmed by 2 rising bars), it is
-                # already smooth — additional boundary smoothing is redundant. Replace with
-                # binary activation at _pp_ratio >= 1.0. Code-structure removal: 6 lines
-                # → 1 line; eliminates the interpolation table that duplicates smoothing
-                # already provided by peak_pnl's high-water-mark mechanic.
+                # Architectural simplification: removed _pp_lower dead-zone shifted-ramp.
+                # Was: _pp_raw = max(0, (giveback_ratio - 0.154..0.198) / band) — a 70..90%
+                # giveback dead zone before any pp_pressure fires. Replace with direct linear
+                # ramp from giveback_ratio=0: _pp_raw = min(1, giveback_ratio / GIVEBACK).
+                # Code-structure removal: eliminates _pp_lower computation and _pp_band scaling
+                # of the lower bound. The dead zone duplicated _pp_activation gate semantics
+                # (which already requires peak_pnl >= _pp_min before any pp_pressure can fire).
+                # Stacking dead-zone-on-activation-gate creates two thresholds for the same
+                # signal — removing collapses to single activation gate with linear post-activation
+                # ramp. Earlier pp_pressure response on small giveback when peak is past _pp_min;
+                # subordinate to _pp_activation binary gate so does NOT fire on sub-peak positions.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                _pp_raw = min(1.0, max(0.0, _giveback_ratio / PEAK_PROFIT_GIVEBACK))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
