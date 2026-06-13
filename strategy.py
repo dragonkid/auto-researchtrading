@@ -138,11 +138,7 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol previous-bar exit-pressure-over-threshold flag.
-        # Gates binary full-exit on 2-bar persistence (current bar AND prior bar).
-        # Prevents single-bar exit-pressure spikes (transient slope/voter noise)
-        # from firing exits. De-risk graduated path remains unchanged.
-        self._exit_armed = {}
+        self._exit_armed = {}  # prior-bar over-threshold flag for persistence-gated exit
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -900,36 +896,16 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural: persistence-gated binary exit (2-bar arm requirement).
-                # Old: single-bar _exit_pressure >= _exit_thresh fires full exit.
-                # New: full exit requires the prior bar to ALSO have _exit_pressure
-                # >= _exit_thresh (armed state). Single-bar spikes route through the
-                # graduated de-risk path (size shrinkage) instead of binary flip.
-                # Stop-loss path remains unchanged (binary exit on _sl_pressure>=0.95).
-                # New per-symbol state _exit_armed tracks prior-bar over-threshold flag.
-                # New control flow: binary-exit decision is now temporal-conjunctive
-                # (current AND prior), not single-bar threshold cross.
+                # Persistence-gated binary exit: full exit requires prior bar AND
+                # current bar both over _exit_thresh. Single-bar spikes route through
+                # graduated de-risk. SL path unchanged. _exit_armed tracks prior-bar flag.
                 _over_thresh_now = _exit_pressure >= _exit_thresh
                 _was_armed = self._exit_armed.get(symbol, False)
-                # Update arm flag for next bar's persistence check.
                 self._exit_armed[symbol] = _over_thresh_now
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
                 elif _over_thresh_now and _was_armed and target != 0:
                     target = 0.0
-                elif _over_thresh_now and not _was_armed and target != 0:
-                    # Branch step 6: trend-gated deferred-exit penalty.
-                    # Step 5 cut 50% uniformly on every deferred bar — sideways/rally
-                    # regressed because most of their deferred exits don't confirm next
-                    # bar, so the cut paid full cost without benefit. Crash improved
-                    # because crash deferred exits frequently DO confirm (real fast
-                    # reversals). Gate the penalty on |ret_long|: in strong trends,
-                    # apply full 50% cut; in chop, no cut (let persistence gate work
-                    # un-penalized — sideways/rally noise spikes get the free buy).
-                    # Continuous tanh on |ret_long|/0.04.
-                    _trend_gate_dx = max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0, ~1]
-                    _dx_cut = 1.0 - 0.5 * _trend_gate_dx  # 1.0 in chop, 0.5 in strong trend
-                    target = target * _dx_cut
                 elif target != 0 and bars_held >= 2:
                     # Architectural: vol-conditioned partial-exit floor.
                     # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
