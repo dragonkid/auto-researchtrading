@@ -313,14 +313,24 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural simplification: removed _freq_factor (per-symbol entry-rate
-            # self-regulator). The 2-bar entry persistence gate (_entry_persist_factor)
-            # + _cooldown_factor + _persistence_mult per-voter weighting already provide
-            # multi-layer churn protection. _freq_factor's 30-bar admission inflation
-            # composes redundantly with these existing filters. Removal: 30-bar bookkeeping
-            # eliminated, admission reverts to _strong_min directly. Multi-variable removal.
-            _bull_strong_min = _strong_min
-            _bear_strong_min = _strong_min
+            # Architectural: trade-frequency self-regulator. Per-symbol rolling
+            # entry-bar history over a 30-bar window. When recent entry density
+            # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
+            # Smooth via tanh; max factor 1.20.
+            _eh = self._entry_bar_history.setdefault(symbol, [])
+            while _eh and self.bar_count - _eh[0] > 30:
+                _eh.pop(0)
+            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
+            # entry frequency regulator). Per-symbol _freq_factor already captures
+            # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
+            # composes multiplicatively, double-counting since correlated regimes (crash)
+            # naturally produce multi-symbol entries in tandem. Removing eliminates the
+            # +15% admission cost during legitimate correlated entry pile-ups (e.g. multi-
+            # symbol crash legs). Per-symbol regulator alone provides sufficient churn
+            # protection. Code-structure removal: 7 lines + state tracking eliminated.
+            _bull_strong_min = _strong_min * _freq_factor
+            _bear_strong_min = _strong_min * _freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
