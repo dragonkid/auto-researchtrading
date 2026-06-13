@@ -122,14 +122,6 @@ class Strategy:
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
-        # Architectural: direction-locked re-entry cooldown after losing exits.
-        # When a position closes at a loss, record (symbol, side, lockout_until_bar)
-        # to prevent same-direction re-entry for N bars proportional to loss magnitude.
-        # Prevents "lose-then-re-enter-same-direction-then-lose-again" cycles in
-        # trending regimes (rally short losses, crash long losses). Direction-specific:
-        # opposite-side entry is unaffected. Continuous: lockout duration scales with
-        # realized loss magnitude.
-        self._dir_lockout = {}  # (symbol, side) -> bar_count_unlock
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -399,13 +391,9 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: direction-locked cooldown gate. Skip entry on a side
-                # that is currently locked out due to recent loss on that side.
-                _bull_locked = self.bar_count < self._dir_lockout.get((symbol, 'long'), 0)
-                _bear_locked = self.bar_count < self._dir_lockout.get((symbol, 'short'), 0)
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _bull_locked:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj)
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _bear_locked:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -669,17 +657,6 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    # Direction-locked cooldown: on losing close, lockout same direction
-                    # for bars proportional to loss magnitude.
-                    if symbol in self.entry_prices and current_pos != 0:
-                        _realized = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        _side = 'long' if current_pos > 0 else 'short'
-                        if _side == 'short':
-                            _realized = -_realized
-                        if _realized < -0.005:
-                            # Lockout bars: 4 bars at -0.5% loss, scale up to ~12 bars at stop (-2.4%).
-                            _lockout_bars = int(round(4 + 8 * min(1.0, abs(_realized) / 0.024)))
-                            self._dir_lockout[(symbol, _side)] = self.bar_count + _lockout_bars
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
