@@ -619,7 +619,18 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                # Architectural: profit-magnitude-scaled giveback ceiling.
+                # Replace fixed PEAK_PROFIT_GIVEBACK constant with one that scales
+                # with profit magnitude (peak/_pp_min). Big-peak positions (peak>=2x
+                # _pp_min) have more buffer to give back proportionally — preserves
+                # bigger winners in trending regimes. Small-peak positions retain
+                # the original 0.22 giveback. Continuous tanh modulation; max boost
+                # +50% (giveback up to 0.33). New cross-state data dependency: pp
+                # threshold depends on realized peak magnitude. Different from
+                # existing _giveback_ratio amplification (which modifies measurement)
+                # — this modifies the trigger threshold itself.
+                _pp_giveback_dyn = PEAK_PROFIT_GIVEBACK * (1.0 + 0.50 * max(0.0, np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.5) / 1.0)))
+                _pp_lower = _pp_giveback_dyn * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
                 # boundary at peak == _pp_min creates noise discontinuity in stab tests.
@@ -642,7 +653,7 @@ class Strategy:
                     _pp_activation = 1.0
                 else:
                     _pp_activation = (_pp_ratio - 0.95) / 0.09
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_dyn * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
