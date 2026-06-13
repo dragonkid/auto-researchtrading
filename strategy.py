@@ -791,10 +791,12 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Chop-amplified own-side subtraction with divergence taper: in pure sideways
-                # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
-                _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
-                _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
+                # Chop-amplified own-side subtraction. Architectural simplification: removed
+                # _div_taper chop-amp dampener. The taper required triple intersection: deep
+                # chop (|ret_long|<0.015) AND sharp strong-sum divergence AND trend-aligned
+                # small-ret_long hold — a narrow regime overlap that fired rarely. Removing
+                # eliminates a dead-code-adjacent triple-tanh product.
+                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
