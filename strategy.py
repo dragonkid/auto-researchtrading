@@ -534,23 +534,15 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural: low-volume entry size attenuator.
-                # When current bar's volume is low relative to recent 24-bar average,
-                # the entry signal is less noise-confirmed (low-volume bars carry less
-                # information; price moves on thin volume are more easily reversed).
-                # Attenuate first-bar entry size up to 30% on low-volume bars.
-                # Smooth tanh on (vol_bar_ratio - 0.7) / 0.3:
-                #   vol_bar_ratio <= 0.4: ~30% attenuation (very thin bar)
-                #   vol_bar_ratio == 0.7: ~15% attenuation (mild thin bar)
-                #   vol_bar_ratio >= 1.0: 0% attenuation
-                # New cross-bar data dependency at entry (volume relative magnitude),
-                # symmetric across bull/bear. Different from removed vol_confirm_mult
-                # which was bounded [0.98, 1.10] (near-constant); this one has real
-                # range and only fires meaningfully on low-volume bars.
-                _vol_bar_24 = bd.history["volume"].values[-25:-1]
-                _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
-                _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
-                _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
+                # Architectural simplification: removed _vol_entry_atten (low-volume entry
+                # attenuator). Per-bar volume signal at entry is dominated by session-quality
+                # cyclic features (TOD/DOW/MOM/QUARTER stack via _tod_atten) which capture
+                # the same low-volume-hours-are-noisier pattern at the structural cycle level
+                # rather than per-bar. Per-bar volume volatility is too noisy to add
+                # orthogonal signal beyond what the cyclic activity stack provides; bidirectional
+                # volume-spike boost was discarded for amplifying marginal-quality entries.
+                # Code-structure removal: 18 lines + cross-bar volume read at entry.
+                _vol_entry_atten = 1.0
                 # Architectural: time-of-day session-quality entry size modulator.
                 # Continuous cyclical feature: cos-cycle peaking at UTC 16 (US session
                 # peak overlap), trough at UTC 04 (low Asia hour). _activity in [0, 1].
