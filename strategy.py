@@ -144,6 +144,13 @@ class Strategy:
         # transitions where all 3 symbols move together. New cross-symbol data
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
+        # Architectural: direction-aware concurrent-position counts.
+        # Splits _n_active into long/short. Used downstream to weight concurrent_atten
+        # by direction-match: when entering long while other longs exist (correlated risk),
+        # apply full attenuation; when entering long while shorts exist (diversified),
+        # apply weakened attenuation. New cross-symbol data dependency on position SIGN.
+        _n_long = sum(1 for _s in ACTIVE_SYMBOLS if portfolio.positions.get(_s, 0.0) > 1.0)
+        _n_short = sum(1 for _s in ACTIVE_SYMBOLS if portfolio.positions.get(_s, 0.0) < -1.0)
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -502,7 +509,14 @@ class Strategy:
                 # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
-                _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
+                # Direction-aware concurrent attenuation: full attenuation per same-direction
+                # position, weakened (0.4x) per opposite-direction position. Diversified
+                # exposure (long + short pile-ups) is structurally less stressed than aligned
+                # exposure (multiple longs entering crash, or shorts entering rally).
+                _bull_corr_count = _n_long + 0.4 * _n_short  # for new long entry
+                _bear_corr_count = _n_short + 0.4 * _n_long  # for new short entry
+                _bull_concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_bull_corr_count / 1.5))
+                _bear_concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_bear_corr_count / 1.5))
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
@@ -520,9 +534,9 @@ class Strategy:
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_concurrent_atten * _bull_consensus_atten * _bull_quality_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_concurrent_atten * _bear_consensus_atten * _bear_quality_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
