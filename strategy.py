@@ -294,7 +294,21 @@ class Strategy:
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
                 _persistence_mult = np.ones(7)
-            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
+            # Architectural: persistence-weight TOTAL-SCALE NORMALIZATION (new control flow).
+            # Original: _voter_weights = bw * pm where pm in [0.7, 1.3] → sum varies in
+            # [0.7, 1.3] × sum(_base_weights). This couples persistence to AMPLITUDE of
+            # strong-sum, interacting with static STRONG_WEIGHT_MIN threshold: in deep
+            # chop (low persistence), strong-sum is scaled down by ~0.7 making the threshold
+            # effectively HARDER, double-counting chop signal (admission already tightened
+            # via _strong_min += 0.20 * (1 - rsi_trend_str)). New: normalize so that
+            # sum(_voter_weights) == sum(_base_weights) regardless of persistence.
+            # Persistence then ONLY affects RELATIVE voter contributions, decoupled from
+            # total scale. Effect: chop entries pass admission at same effective threshold;
+            # within-bar persistence still amplifies high-consistency voters over flip-prone.
+            _raw_weights = np.array([bw * pm for bw, pm in zip(_base_weights, _persistence_mult)])
+            _base_sum = sum(_base_weights)
+            _raw_sum = max(_raw_weights.sum(), 1e-10)
+            _voter_weights = tuple(_raw_weights * (_base_sum / _raw_sum))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
             # amplifier composed three multiplicative gates (chop neutralization
