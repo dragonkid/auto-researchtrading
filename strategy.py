@@ -548,7 +548,16 @@ class Strategy:
                     # _bull_ct_atten (counter-trend first-bar cut), and _bull_consensus_atten. Adverse-pnl
                     # during scale-in is already attenuated by these orthogonal channels; the pnl-tanh
                     # adjuster duplicates without orthogonal info.
-                    _eff_progress = bars_held / ENTRY_FULL_BARS
+                    # Architectural: profit-confirmed scale-in acceleration. When the
+                    # scale-in is in profit (pos_pnl > 0.005, ~20bps above entry+fees),
+                    # accelerate the ramp progress by adding a smooth tanh boost. The
+                    # mechanism rewards confirmed-direction entries with faster size
+                    # commitment (capturing strong-trend entry alpha sooner) while
+                    # adverse scale-in remains on the standard linear ramp (existing
+                    # noise protection preserved). New cross-bar data dep: scale-in
+                    # progress now depends on pos_pnl as well as bars_held.
+                    _profit_accel = max(0.0, np.tanh((pos_pnl - 0.005) / 0.008)) * 0.4  # in [0, 0.4]
+                    _eff_progress = bars_held / ENTRY_FULL_BARS + _profit_accel
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
