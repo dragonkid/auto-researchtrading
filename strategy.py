@@ -762,22 +762,12 @@ class Strategy:
                 # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
                 _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
                 _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
-                # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
-                # In strong long-window trends WHERE position is trend-aligned, attenuate
-                # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
-                # positions (bull in uptrend, bear in downtrend) face opposite-side voter
-                # spikes (rally pullback bull voters firing on bear positions; crash dead-
-                # cat bounce bull voters firing on bear shorts), the additive opp bias
-                # currently fires the same as in chop. In confirmed trends, opp-voter
-                # signals during pullbacks are more often noise than reversal. Attenuate
-                # opp_bias by tanh(ret_long * pos_dir / 0.05) so trend-aligned positions
-                # see softer opp-bias contribution to _exit_pressure. Counter-trend
-                # positions and chop: unchanged. New cross-timescale data dep: opp-side
-                # voter_bias depends on (ret_long, position direction).
-                _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
-                _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
-                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural simplification: removed _opp_atten trend-aligned attenuator
+                # on opp_bias ADDITION. The opp_gate at the bottom of the elif block ALREADY
+                # gates exit-on-reversal by trend-alignment + profit (line ~960-975: _grad_gate
+                # blends partial vs full exit). Adding _opp_atten on top of that gating
+                # creates double-counting of the same "let winners run" intent.
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
