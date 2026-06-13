@@ -602,7 +602,19 @@ class Strategy:
                 # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
                 _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
                 _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
+                # Architectural: vol-trend (recent vs earlier 30-bar realized vol) as
+                # scale-in pace modulator. NEW data source: second-derivative of price
+                # (vol-of-vol direction), structurally distinct from vol_ratio (level),
+                # _vol_expansion (6/18 ratio), or _baseline_vol (long-window level).
+                # When vol is INCREASING (regime destabilizing), slow scale-in (more
+                # bars before full commitment) — wait for vol to settle. When vol is
+                # DECREASING (regime stabilizing), faster scale-in. Range ±0.5 bars
+                # via tanh. New cross-bar data dependency at scale-in: pace depends on
+                # vol-trajectory orthogonal to existing trend-magnitude pace.
+                _vol_recent_st = max(np.std(np.diff(np.log(closes[-31:-1]))), 1e-6)
+                _vol_earlier_st = max(np.std(np.diff(np.log(closes[-61:-31]))), 1e-6)
+                _vol_trend_st = np.tanh((_vol_recent_st - _vol_earlier_st) / _vol_earlier_st / 0.30)  # [-1, +1]
+                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel + 0.5 * _vol_trend_st)  # [1.0, 4.5]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
