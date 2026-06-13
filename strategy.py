@@ -777,19 +777,7 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                # Architectural: counter-trend opp_bias AMPLIFIER (asymmetric extension).
-                # Existing _opp_atten only DAMPENS opp_bias on trend-aligned holds.
-                # Counter-trend holds (rally bear, crash bull) currently get flat opp_bias
-                # regardless of how clearly the trend is reversing on them. Add an
-                # amplifier that fires when held position is counter-trend AND opp-side
-                # margin is strong: in that case, the position is in a hostile trend
-                # AND voters confirm exit direction — accelerate exit. Continuous via
-                # tanh on counter-trend strength × opp_margin. New cross-component data
-                # dep: opp_bias amplification combines (ret_long sign vs position) with
-                # (opp_margin level). Asymmetric to _opp_atten which only damped one side.
-                _ct_opp_strength = max(0.0, np.tanh(-ret_long * _pos_dir_vb / 0.05))  # [0, ~1] only counter-trend
-                _opp_amp = 1.0 + 0.40 * _ct_opp_strength * max(0.0, np.tanh(_opp_margin / 0.30))
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
