@@ -586,7 +586,19 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure)
+                # Architectural: trend-conflict exit pressure (6th source).
+                # When position direction conflicts with long-window trend (ret_long)
+                # AND the trend magnitude is meaningful, add exit pressure to cut
+                # positions that are fighting the dominant trend. Targets rally
+                # underperformance: shorts held during uptrend bleed equity.
+                # Continuous via tanh on (-pos_dir * ret_long) / 0.025. Activates
+                # only when conflict is significant; near-zero in chop. New cross-
+                # timescale data dependency: exit decision on long-window trend.
+                _pos_dir_e = 1.0 if current_pos > 0 else -1.0
+                _trend_conflict = max(0.0, np.tanh((-_pos_dir_e * ret_long) / 0.025))
+                _tc_pressure = 0.5 * _trend_conflict
+                _w_tc = 1.0  # unconditional weight — trend-conflict is regime-agnostic protective signal
+                _exit_pressure = _sl_pressure + _voter_attn * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_tc * _tc_pressure)
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
