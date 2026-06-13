@@ -286,7 +286,20 @@ class Strategy:
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
-                _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
+                # Architectural: trend-magnitude muted persistence DEVIATION.
+                # In strong trends, voters are inherently consistent — persistence
+                # saturates near 1.0 for all voters, multiplier converges to 1.3x
+                # uniformly (removing per-voter differentiation, but uniformly
+                # boosting size). In chop, persistence is genuine differentiation
+                # signal — flip-prone voters drag, sustained voters lead.
+                # Center the multiplier on the population MEAN persistence (so the
+                # uniform-trend size remains preserved at ~1.3x in trends), but
+                # mute deviation around that mean by (1 - trend_strength).
+                # In chop: full deviation [0.7, 1.3]. In trends: tight around mean.
+                _pm_mean = float(_persistence.mean())
+                _pm_center = 0.7 + 0.6 * _pm_mean
+                _pm_dev_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1]
+                _persistence_mult = _pm_center + 0.6 * (_persistence - _pm_mean) * _pm_dev_mute
             else:
                 _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
