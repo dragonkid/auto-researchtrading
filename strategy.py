@@ -931,16 +931,21 @@ class Strategy:
                     # tries to grow it. Defer de-risk consideration until bars_held>=2
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
-                    # Branch step 3: narrow chop-amp band to sideways-only.
-                    # Step 2 (band: |ret_long| < 0.03) over-fired in rally (rally has
-                    # long stretches at |ret_long| ~ 0.02-0.025 between pulses).
-                    # Tighten to |ret_long| < 0.015 to exclude rally chop while still
-                    # catching sideways (sideways |ret_long| typically << 0.01).
-                    _chop_amp_dr = max(0.0, min(1.0, (0.015 - abs(ret_long)) / 0.012))
-                    _de_floor = 0.55 - 0.15 * _chop_amp_dr + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
+                        # Branch step 4: deferred-exit penalty. When the persistence
+                        # gate JUST deferred a would-be binary exit this bar (_over_thresh_now
+                        # AND NOT _was_armed), apply an additional 50% size cut on top of
+                        # the standard de-risk. The persistence gate buys 1 bar of evidence;
+                        # the penalty ensures the position isn't held at full size during
+                        # that confirmation bar. If the next bar confirms (still over),
+                        # full exit fires; if it doesn't, the position resumes scaling
+                        # but at the reduced size — a real cost for noise spikes that
+                        # rewards true reversals more than transient ones.
+                        if _over_thresh_now and not _was_armed:
+                            _de_risk = _de_risk * 0.5
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
