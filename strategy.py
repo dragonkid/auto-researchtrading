@@ -548,14 +548,11 @@ class Strategy:
                 _vol_med20 = max(np.median(bd.history["volume"].values[-21:-1]), 1e-6)
                 _vol_str_ratio = _vol_now / _vol_med20
                 _vol_drought = max(0.0, np.tanh((0.8 - _vol_str_ratio) / 0.30))
-                # Branch step 3: lower trend threshold (0.05 -> 0.02) — bull pullback
-                # entries are in mild trend, not strong. Reduced attenuation magnitude
-                # 0.20 -> 0.12 for milder discrimination (still helps crash where vol
-                # drought is also milder).
-                _bull_trend_align = max(0.0, np.tanh(ret_long / 0.02))   # 1.0 in mild uptrend
-                _bear_trend_align = max(0.0, np.tanh(-ret_long / 0.02))  # 1.0 in mild downtrend
-                _bull_vol_str_atten = 1.0 - 0.12 * _vol_drought * (1.0 - 0.80 * _bull_trend_align)
-                _bear_vol_str_atten = 1.0 - 0.12 * _vol_drought * (1.0 - 0.80 * _bear_trend_align)
+                # Trend-alignment factor for each direction: 1.0 if entry-aligned-with-trend, 0 otherwise.
+                _bull_trend_align = max(0.0, np.tanh(ret_long / 0.05))   # 1.0 in strong uptrend, 0 in chop/down
+                _bear_trend_align = max(0.0, np.tanh(-ret_long / 0.05))  # 1.0 in strong downtrend, 0 in chop/up
+                _bull_vol_str_atten = 1.0 - 0.20 * _vol_drought * (1.0 - 0.80 * _bull_trend_align)
+                _bear_vol_str_atten = 1.0 - 0.20 * _vol_drought * (1.0 - 0.80 * _bear_trend_align)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_vol_str_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
