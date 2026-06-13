@@ -531,10 +531,35 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Architectural: volume-strength entry size attenuator.
+                # Distinct from VWAP voter (which measures PRICE deviation from
+                # vol-weighted avg) — this measures volume MAGNITUDE relative to
+                # recent baseline. Compute current bar volume / 20-bar median volume.
+                # When ratio < 0.6, recent move likely lacks participation (illiquid
+                # drift); attenuate first-bar size smoothly.
+                # Branch step 2: trend-aligned exemption. When entry direction
+                # strongly aligns with long-window trend (bull entry in uptrend or
+                # bear entry in downtrend), volume drought is more likely a normal
+                # pullback than illiquid noise — attenuate the volume-strength
+                # attenuator itself proportional to trend-alignment. Counter-trend
+                # entries face full volume-strength filter; trend-aligned entries
+                # in confirmed trends face up to 80% reduced attenuation.
+                _vol_now = bd.history["volume"].values[-1]
+                _vol_med20 = max(np.median(bd.history["volume"].values[-21:-1]), 1e-6)
+                _vol_str_ratio = _vol_now / _vol_med20
+                _vol_drought = max(0.0, np.tanh((0.8 - _vol_str_ratio) / 0.30))
+                # Branch step 3: lower trend threshold (0.05 -> 0.02) — bull pullback
+                # entries are in mild trend, not strong. Reduced attenuation magnitude
+                # 0.20 -> 0.12 for milder discrimination (still helps crash where vol
+                # drought is also milder).
+                _bull_trend_align = max(0.0, np.tanh(ret_long / 0.02))   # 1.0 in mild uptrend
+                _bear_trend_align = max(0.0, np.tanh(-ret_long / 0.02))  # 1.0 in mild downtrend
+                _bull_vol_str_atten = 1.0 - 0.12 * _vol_drought * (1.0 - 0.80 * _bull_trend_align)
+                _bear_vol_str_atten = 1.0 - 0.12 * _vol_drought * (1.0 - 0.80 * _bear_trend_align)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _bull_vol_str_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _bear_vol_str_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -833,19 +858,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                # Architectural (branch step 4): volume-spike adverse exit pressure (7th soft source).
-                # When current bar volume spikes >1.5x median20 AND position is losing,
-                # this typically signals institutional re-pricing against position.
-                # Soft pressure fires proportional to spike magnitude, capped at 0.40.
-                # Volume-magnitude orthogonal to all price-derived sources. Only fires
-                # on losing positions (gated via _w_vs); winners on volume spikes are
-                # typically continuation not reversal.
-                _vol_now_e = bd.history["volume"].values[-1]
-                _vol_med20_e = max(np.median(bd.history["volume"].values[-21:-1]), 1e-6)
-                _vol_spike = _vol_now_e / _vol_med20_e
-                _vs_pressure = 0.40 * max(0.0, np.tanh((_vol_spike - 1.5) / 0.7))
-                _w_vs = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0,1] only losing positions
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_vs * _vs_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
