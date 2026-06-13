@@ -875,16 +875,17 @@ class Strategy:
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure_raw = max(_sl_pressure, _soft_sum) + _voter_bias
-                # Branch step 4: vol-conditioned exit-pressure smoothing.
-                # High vol (crash): smooth exit_pressure across 2 bars to filter dead-cat
-                # bounce voter / slope spikes that previously fired at adverse local lows.
-                # Low vol (bull/sideways/rally): no smoothing — preserve fast exits on
-                # legitimate pullback signals.
-                # Smooth tanh on (vol_ratio - 1.0)/0.4: ~0 at vol_ratio<=0.7, ~1 at vol_ratio>=1.3.
-                # alpha = 0.40 * vol_gate, ranges from 0 (no smoothing in calm) to 0.40 (full).
+                # Branch step 5: pos_pnl-conditioned exit-pressure smoothing.
+                # Only smooth when position is in DRAWDOWN (pos_pnl < 0). Bull/rally
+                # winning pullbacks typically have pos_pnl >= 0 (just declining from
+                # peak) — no smoothing, fast exits preserved. Crash short shorts during
+                # dead-cat bounces transit through pos_pnl < 0 — smoothing applies,
+                # filters voter/slope spikes during bounce. Sideways pos_pnl swings
+                # both signs — partial smoothing during loss legs.
+                # Saturation: sl_pressure >= 0.95 bypasses (structural exits not delayed).
                 _prior_ep = self._prev_exit_pressure.get(symbol, _exit_pressure_raw)
-                _vol_smooth_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 1.0) / 0.4)))
-                _smooth_alpha_dyn = 0.40 * _vol_smooth_gate
+                _loss_gate = max(0.0, min(1.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT))))  # 0 in profit, ~1 at stop
+                _smooth_alpha_dyn = 0.40 * _loss_gate
                 if _sl_pressure >= 0.95:
                     _exit_pressure = _exit_pressure_raw
                 else:
