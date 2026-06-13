@@ -87,6 +87,8 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
+MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -242,6 +244,8 @@ class Strategy:
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
             _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
             _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            bull_votes = sum(_bull_confs)
+            bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
             # Voter ordering: [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope].
             # Weights inverse to estimated noise sensitivity (sum=6.0, preserves scale).
@@ -836,15 +840,8 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                # Architectural simplification: removed redundant bull_votes/bear_votes>=FLIP_MIN_VOTES
-                # count gate from _opp_gate. The strong-sum gate (_bear_strong >= _bear_strong_min)
-                # is highly correlated with the count gate since both derive from the same _bull_confs/
-                # _bear_confs. Strong-sum uses quintic ramp + per-voter weights (richer discrimination);
-                # count is a coarser parallel. Removing the count gate eliminates correlated-noise
-                # amplification at the reversal decision boundary (mirroring same simplification
-                # successfully applied to entry path).
-                _opp_gate = (current_pos > 0 and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
