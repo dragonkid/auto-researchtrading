@@ -889,10 +889,14 @@ class Strategy:
                 # active positions regardless of P&L). New: exit-side, conditioned
                 # on cross-symbol ADVERSE state. Smooth, continuous.
                 _ps_pressure = 0.0
-                # Branch step 3: loosen activation slightly to make mechanism fire
-                # in crash without overfiring in bull. pos_pnl<-0.005 own,
-                # _other_pnl<-0.01 other; drop MAE gate (was too restrictive in step 2).
-                if pos_pnl < -0.005:
+                # Branch step 4: trend-direction gate. Only fire pressure when own
+                # position is COUNTER-TREND (own direction opposite long-window ret_long).
+                # Trend-aligned positions in coordinated drawdown ride trend; only
+                # counter-trend positions in coordinated drawdown have broken thesis.
+                # _ps_ct_gate: 1 if counter-trend with strong ret_long, 0 otherwise.
+                _pos_dir_ps = 1.0 if current_pos > 0 else -1.0
+                _ps_ct_gate = max(0.0, np.tanh(-ret_long * _pos_dir_ps / 0.04))  # [0, ~1]
+                if pos_pnl < -0.005 and _ps_ct_gate > 0.05:
                     _other_adverse = 0
                     for _other_sym in ACTIVE_SYMBOLS:
                         if _other_sym == symbol:
@@ -909,7 +913,7 @@ class Strategy:
                             _other_pnl = -_other_pnl
                         if _other_pnl < -0.01:  # other symbol in meaningful loss
                             _other_adverse += 1
-                    _ps_pressure = 0.30 * max(0.0, min(1.0, np.tanh(_other_adverse / 1.0)))
+                    _ps_pressure = 0.30 * max(0.0, min(1.0, np.tanh(_other_adverse / 1.0))) * _ps_ct_gate
                 # Weight: only fire on losing positions (gated above); full weight.
                 _w_ps = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
