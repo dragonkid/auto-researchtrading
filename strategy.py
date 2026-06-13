@@ -817,12 +817,31 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: pos_pnl gradient-velocity exit pressure (7th soft source).
+                # New cross-bar derivative state: pos_pnl - prev_pos_pnl (stored via _smoothed_pnl
+                # which is updated AFTER pos_pnl reading earlier this bar — reread before update).
+                # Sharp adverse gradient (pos_pnl dropping fast bar-over-bar) is distinct from
+                # absolute pos_pnl level: a position giving back 0.5% in one bar signals momentum
+                # reversal more decisively than giving back 0.5% over 5 bars (already captured
+                # by slope/pp). Use the previous bar's stored pnl (_prev_pnl) — adverse gradient
+                # = max(0, _prev_pnl - pos_pnl) for either direction. Threshold scaled by
+                # 0.4*|STOP_LOSS_PCT| (~1bp): gradient above 1% of stop activates, saturates
+                # at 0.6*|STOP_LOSS_PCT| (~1.5bp). Pressure capped at 0.4. Gated to fire only
+                # on losing or near-breakeven positions (max activation when pos_pnl<0.3*|STOP|);
+                # winning positions handled by pp_pressure.
+                _adv_grad = max(0.0, _prev_pnl - pos_pnl)  # bar-over-bar drop in pos_pnl
+                _grad_thresh = 0.4 * abs(STOP_LOSS_PCT)
+                _grad_band = 0.6 * abs(STOP_LOSS_PCT)
+                _grad_pressure = 0.4 * max(0.0, min(1.0, (_adv_grad - _grad_thresh) / _grad_band))
+                # Weight: only fire when not strongly profitable (avoid double-counting with pp).
+                # 1.0 at pos_pnl <= 0.3*|STOP|, ramp to 0 at pos_pnl >= 1.0*|STOP|.
+                _w_grad = max(0.0, min(1.0, (1.0 - pos_pnl / abs(STOP_LOSS_PCT)) / 0.7))
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_grad * _grad_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
