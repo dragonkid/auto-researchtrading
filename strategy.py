@@ -392,11 +392,9 @@ class Strategy:
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bull_margin) / 0.30)
-                    target = size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _range_bull_adj)
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj)
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    _entry_conv_adj = 0.06 * np.tanh(max(0.0, _bear_margin) / 0.30)
-                    target = -size * min(0.55, _entry_frac_dyn + _entry_conv_adj + _range_bear_adj)
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj)
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
