@@ -817,6 +817,22 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    # Architectural: trend-continuation de-risk deferral. When position
+                    # is profitable AND slope agrees with position direction AND giveback
+                    # ratio is small (peak not yet meaningfully retraced), raise the de-risk
+                    # floor to defer partial-exit decision. New cross-subsystem dependency:
+                    # de-risk floor depends on profit state, slope-agreement, and giveback
+                    # magnitude — orthogonal protection for winning trend runners against
+                    # transient chop-driven exit pressure. Continuous via tanh.
+                    # All three conditions multiplied — only fires when ALL hold; gated
+                    # smoothly so single-condition noise does not flip the floor.
+                    _trend_cont_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0,1] in profit
+                    _trend_cont_slope = max(0.0, np.tanh(_exit_slope * (1.0 if current_pos > 0 else -1.0) / 0.0006))  # [0,1] aligned
+                    # Giveback ratio: peak gives back at most 0.30 of peak before gate disengages
+                    _trend_cont_giveback = max(0.0, 1.0 - (_giveback / max(self.peak_pnl[symbol], _pp_min)) / 0.30)
+                    _trend_cont_gate = _trend_cont_profit * _trend_cont_slope * _trend_cont_giveback  # [0,1]
+                    _de_floor = _de_floor + 0.20 * _trend_cont_gate  # raise floor up to +0.20 when trend-continuation
+                    _de_floor = min(0.95, _de_floor)
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
