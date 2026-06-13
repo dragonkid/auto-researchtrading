@@ -116,6 +116,12 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Architectural: entry-bar conviction quality (signed by side).
+        # Stored at entry, used to modulate scale-in pace AND scale-in slope-pressure.
+        # High-quality entries (high own-side margin, low opp-ratio) reach full size
+        # faster (effective ramp 2 bars); low-quality entries take longer (4 bars).
+        # Creates persistent post-entry state driven by entry-time conviction.
+        self._entry_quality = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -531,10 +537,16 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                # Entry quality: combines own-side margin and (1 - quality_atten) into [0, 1].
+                # Used by post-entry scale-in pace modulator.
+                _entry_q_bull = max(0.0, min(1.0, 0.5 * max(0.0, min(1.0, _bull_margin / 0.5)) + 0.5 * _bull_quality_atten))
+                _entry_q_bear = max(0.0, min(1.0, 0.5 * max(0.0, min(1.0, _bear_margin / 0.5)) + 0.5 * _bear_quality_atten))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    self._entry_quality[symbol] = _entry_q_bull
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    self._entry_quality[symbol] = _entry_q_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -547,13 +559,19 @@ class Strategy:
                 # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
-                if bars_held <= ENTRY_FULL_BARS:
-                    # Architectural simplification: removed _ramp_attn pnl-attenuator on scale-in.
-                    # Mechanism overlapped with: _w_slope scale_in_w (slope-pressure ramps with bars_held),
-                    # _bull_ct_atten (counter-trend first-bar cut), and _bull_consensus_atten. Adverse-pnl
-                    # during scale-in is already attenuated by these orthogonal channels; the pnl-tanh
-                    # adjuster duplicates without orthogonal info.
-                    _eff_progress = bars_held / ENTRY_FULL_BARS
+                if bars_held <= ENTRY_FULL_BARS + 1:
+                    # Architectural: conviction-quality conditioned scale-in pace.
+                    # High-quality entries (saved at entry time as _entry_quality in
+                    # [0, 1]) reach full size in ~2 bars (effective denominator 2.0);
+                    # low-quality entries take ~4 bars (effective denominator 4.0).
+                    # Continuous between extremes. New cross-bar persistent state:
+                    # the conviction state at entry-time modulates scale-in pace
+                    # throughout the position life (until full). Decouples
+                    # commitment speed from a fixed schedule.
+                    _eq_val = self._entry_quality.get(symbol, 0.5)  # default mid if missing
+                    # Effective full-bars: 2.0 at high quality, 4.0 at low quality
+                    _eff_full_bars = 4.0 - 2.0 * _eq_val
+                    _eff_progress = bars_held / _eff_full_bars
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
@@ -937,7 +955,7 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_quality):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
