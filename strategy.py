@@ -563,17 +563,22 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural: position-side voter-conviction as exit-pressure attenuator.
-                # When the voters still strongly support position direction (bull_strong
-                # if long, bear_strong if short), the entry signal hasn't reversed —
-                # transient slope/peak/time pressures may be premature. Compute conviction
-                # margin on position side (same metric used at entry) and smoothly attenuate
-                # NON-STOP exit pressures via tanh on max(0, side_margin / 0.30).
-                # Stop-loss is unchanged (protective hard floor, doesn't get gated by signal).
-                # Up to -0.30 attenuation when side_margin >> threshold. New cross-subsystem
-                # coupling: exit pressure depends on continuously-evaluated entry voter sum.
+                # Architectural: NET-margin voter-conviction exit attenuator.
+                # Previous: one-sided _side_margin only. Limitation: during a
+                # legitimate trend reversal, opposite-side conviction rises while
+                # position-side still appears strong (slow voters lag) — attenuation
+                # fires inappropriately, suppressing valid exits.
+                # New: net = side_margin - opp_margin. When BOTH sides are strong
+                # (regime indecision/reversal signal), net is small and attenuation
+                # is correspondingly weak — exit pressures pass through. When only
+                # the position side is strong (true trend continuation), net is large
+                # and full attenuation applies (preserves sideways gain from voter_attn).
+                # Cross-subsystem coupling unchanged in form; coupling strength now
+                # responds to bilateral voter conviction state, not just one side.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
-                _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _side_margin) / 0.30))
+                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
+                _net_margin = _side_margin - _opp_margin
+                _voter_attn = 1.0 - 0.30 * max(0.0, np.tanh(max(0.0, _net_margin) / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
