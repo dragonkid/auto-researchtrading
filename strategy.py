@@ -607,15 +607,12 @@ class Strategy:
                     # component data dep: scale-in pace depends on pos_pnl progress.
                     # Distinct from MAE-freeze (which BLOCKED scale-in on MAE depth);
                     # this MODULATES the ramp rate continuously by current pnl.
-                    # Branch step 3: one-sided pnl_pace_mult (positive only).
-                    # Earlier step 1 (bidirectional) regressed rally because counter-trend
-                    # bear positions have transient pos_pnl dips that shrank scale-in.
-                    # Step 2 (trend-align gate) helped rally a touch but lost crash gain.
-                    # Step 3: drop the negative-pnl side entirely — winning entries
-                    # accelerate (max +0.3x boost on _eff_progress), losing entries
-                    # use standard bar-progress (no shrinking). Preserves the winner-
-                    # acceleration mechanism without penalizing transient pnl dips.
-                    _pnl_pace_mult = 1.0 + 0.3 * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                    # Branch step 4: amplify one-sided pnl_pace_mult magnitude.
+                    # Step 3 (0.3x positive-only boost) yielded near-flat composite.
+                    # Try 0.5x amplitude to test if magnitude is the constraint —
+                    # if larger boost captures more winner upside before bar_progress
+                    # cap. Still positive-only (no shrinking on losers).
+                    _pnl_pace_mult = 1.0 + 0.5 * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
                     _eff_progress = max(0.0, min(1.0, _eff_progress * _pnl_pace_mult))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
