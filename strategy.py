@@ -729,15 +729,7 @@ class Strategy:
                 # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
-                # Architectural: ATR-relative pos_pnl normalization. _stop_abs is already
-                # ATR-derived per-symbol/per-regime [0.018, 0.035]; using fixed STOP_LOSS_PCT
-                # constant created per-symbol asymmetry where high-ATR symbols (SOL) saturated
-                # _pnl_scale earlier in real terms vs low-ATR symbols. Using _stop_abs makes
-                # _pnl_scale saturate at the actual stop distance, harmonizing exit-weight
-                # behavior across symbols. New cross-component data dep: 6 downstream weight
-                # computations (_w_slope, _w_pp, _w_time, _w_ve, _w_ep, _de_floor) now scale
-                # consistently against per-symbol stop distance rather than a constant.
-                _pnl_scale = np.tanh(pos_pnl / _stop_abs)   # in [-1, 1]
+                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 # Architectural simplification: removed _scale_in_w slope-pressure
                 # attenuator. The 0.5..1.0 ramp dampened slope-against pressure during
                 # scale-in to "let positions reach full size." But early scale-in slope
