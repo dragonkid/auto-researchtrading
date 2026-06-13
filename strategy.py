@@ -891,13 +891,15 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                # Architectural simplification: removed _tp_scale profit-target partial harvest.
-                # The mechanism activated only above 1.6*_pp_min AND in trends, scaling down
-                # position by up to 30%. Hypothesis: redundant with _pp_pressure (which already
-                # triggers giveback exit at peak >= _pp_min) and _ep_pressure (sub-peak giveback);
-                # _tp_scale is a third profit-locking mechanism that fires AFTER _pp_pressure
-                # activation gate, where pp_pressure already protects via giveback ratio.
-                # Code-structure removal: 9 lines + trend gate dep + ratio dep.
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
+                    _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                    # Trend-gated activation: in chop (low |ret_long|), peaks are
+                    # rare AND likely mean-reverting — disable harvest to let small
+                    # sideways wins run. In trending regimes (high |ret_long|), peaks
+                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
+                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
+                    target = target * (1.0 - _tp_scale)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
