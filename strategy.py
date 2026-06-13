@@ -436,11 +436,20 @@ class Strategy:
                 # protective in fast crashes). Continuous tanh on abs(ret_long).
                 # New cross-timescale data dependency: entry gate strictness on
                 # long-window trend strength.
+                # Architectural multi-variable change: replaced 2-bar min-aggregation
+                # with mean-aggregation, AND raised persist_factor floor 0.65->0.75
+                # in strong trend (compensating for less strict aggregation). Min
+                # is noise-sensitive — a single-bar dip below threshold blocks
+                # admission even if both bars are otherwise above; mean spreads
+                # the contribution. Coordinated change: aggregation shape
+                # (min->mean) + threshold recalibration to keep effective bar
+                # required strength approximately equal under typical 2-bar
+                # consistent conviction signals.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
-                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
+                _entry_persist_factor = 0.95 - 0.20 * _trend_str_persist  # 0.95 in chop, 0.75 in strong trend
                 if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                    _min_bull_2 = (_hist[-2][0] + _hist[-1][0]) / 2.0
+                    _min_bear_2 = (_hist[-2][1] + _hist[-1][1]) / 2.0
                 else:
                     _min_bull_2 = _bull_strong
                     _min_bear_2 = _bear_strong
