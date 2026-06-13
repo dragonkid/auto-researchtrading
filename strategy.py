@@ -131,6 +131,14 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol recent-position-outcome history (last 5 outcomes).
+        # Each outcome = sign of realized pnl at exit (+1 win, -1 loss). When losses
+        # dominate recent history (mean < -0.2), admission threshold lifts proportionally
+        # — self-correcting feedback against hostile micro-regimes. New control-flow:
+        # entry decision depends on past trade outcome rate, not just current voter state.
+        self._recent_outcomes = {}
+        # Track entry price for outcome computation.
+        self._entry_price_for_outcome = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -311,8 +319,19 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: outcome-feedback admission lift. Recent loss-rate
+            # in last 5 closed positions raises admission threshold smoothly.
+            # Mean outcome in [-1, 1]; if < -0.2 (more losses than wins), lift
+            # _strong_min by up to +15%. Self-correcting feedback against
+            # hostile micro-regimes. Smooth tanh, no boundary discontinuity.
+            _ro_list = self._recent_outcomes.get(symbol, [])
+            if len(_ro_list) >= 3:
+                _outcome_mean = sum(_ro_list) / len(_ro_list)
+                _outcome_factor = 1.0 + 0.15 * max(0.0, np.tanh((-0.2 - _outcome_mean) / 0.4))
+            else:
+                _outcome_factor = 1.0
+            _bull_strong_min = _strong_min * _freq_factor * _outcome_factor
+            _bear_strong_min = _strong_min * _freq_factor * _outcome_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -902,6 +921,17 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
+                    # Record outcome (+1 win, -1 loss) based on realized pnl at exit.
+                    _ep = self.entry_prices.get(symbol)
+                    if _ep is not None and _ep > 0:
+                        _outcome_pnl = (mid - _ep) / _ep
+                        if current_pos < 0:
+                            _outcome_pnl = -_outcome_pnl
+                        _outcome = 1 if _outcome_pnl > 0 else -1
+                        _ro = self._recent_outcomes.setdefault(symbol, [])
+                        _ro.append(_outcome)
+                        if len(_ro) > 5:
+                            _ro.pop(0)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
