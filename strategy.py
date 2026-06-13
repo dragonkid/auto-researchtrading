@@ -375,8 +375,21 @@ class Strategy:
                 # softens proportionally: very strong conviction can override small-magnitude
                 # wrong-sign trend. Smooth replacement for the binary deadzone clause —
                 # gates on conviction magnitude rather than on absolute |_trend_biased|.
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * min(1.0, _bull_margin / 0.3) and _trend_biased > -TREND_GATE_DEADZONE
-                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * min(1.0, _bear_margin / 0.3) and _trend_biased < TREND_GATE_DEADZONE
+                # Architectural: long-window trend-strength asymmetric admit gate.
+                # In strong long-window uptrends (rally), counter-trend bear
+                # entries need MORE NEGATIVE _trend_biased to admit (bear gate
+                # tightens — _bear_dz shrinks). Symmetric for downtrends:
+                # bull gate tightens. Trend-aligned side stays unchanged.
+                # New cross-timescale dependency: gate threshold depends on
+                # ret_long magnitude+sign. Continuous via tanh, smooth.
+                # _ret_long_te2 > 0 in uptrend → _bear_dz shrinks (harder for
+                # bears) and _bull_dz unchanged or slightly relaxed.
+                _ret_long_te2 = np.tanh(ret_long / 0.06)  # in [-1, 1]
+                # Saturating at 50% reduction in counter-trend admit window.
+                _bear_dz = TREND_GATE_DEADZONE * (1.0 - 0.5 * max(0.0, _ret_long_te2))   # tighter in uptrend
+                _bull_dz = TREND_GATE_DEADZONE * (1.0 - 0.5 * max(0.0, -_ret_long_te2))  # tighter in downtrend
+                _bull_admit = _trend_biased > -_bull_dz * min(1.0, _bull_margin / 0.3) and _trend_biased > -_bull_dz
+                _bear_admit = _trend_biased < _bear_dz * min(1.0, _bear_margin / 0.3) and _trend_biased < _bear_dz
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
                 # count gate since both derive from the same _bull_confs values. Removing the count
