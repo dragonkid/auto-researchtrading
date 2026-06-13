@@ -931,13 +931,7 @@ class Strategy:
                     # tries to grow it. Defer de-risk consideration until bars_held>=2
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
-                    # Branch step 2: chop-amplified de-risk floor (lower floor in chop
-                    # = wider ramp = steeper bar-1 de-risk on low-vol/chop spikes that
-                    # the persistence gate now defers as binary exits). Trend regimes
-                    # keep base floor 0.55 so legitimate trend pullback spikes don't
-                    # over-de-risk. Continuous tanh on (0.03 - |ret_long|)/0.025 in [0,1].
-                    _chop_amp_dr = max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))
-                    _de_floor = 0.55 - 0.15 * _chop_amp_dr + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
