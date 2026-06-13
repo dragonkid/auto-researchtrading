@@ -693,25 +693,14 @@ class Strategy:
                 # OR small loss <0.4*stop). New cross-bar data dependency on early-
                 # peak giveback. New control flow: separate exit term for sub-peak
                 # giveback decoupled from _pp_pressure activation gate.
-                _ep_peak_floor = 0.30 * _pp_min
+                _ep_peak_floor = 0.15 * _pp_min  # widened from 0.30 to capture earlier peaks
                 if self.peak_pnl[symbol] > _ep_peak_floor and _pp_ratio < 0.95:
                     # Activation: 0 at peak_pnl == _ep_peak_floor, 1 at peak_pnl == _pp_min*0.95
                     _ep_activation = max(0.0, min(1.0, (self.peak_pnl[symbol] - _ep_peak_floor) / max(0.95 * _pp_min - _ep_peak_floor, 1e-6)))
-                    # Giveback ratio against realized peak (not _pp_min — early peak may be small)
                     _ep_giveback_ratio = _giveback / max(self.peak_pnl[symbol], 1e-6)
-                    # Branch step 2: trend-alignment gate. Only fire for trend-aligned
-                    # positions (with-trend) where the giveback is meaningful exit signal.
-                    # Counter-trend positions (rally bear in uptrend) often give back early
-                    # profits during pullback-resumption noise and recover; locking them
-                    # prematurely cuts winners. Smooth tanh on trend alignment, gated above
-                    # |ret_long|>0.025 to keep chop unaffected. Multiplies _ep_pressure by
-                    # _ep_align_gate in [0,1].
-                    _pos_dir_ep = 1.0 if current_pos > 0 else -1.0
-                    _ep_align_gate = max(0.0, np.tanh(ret_long * _pos_dir_ep / 0.05)) * max(0.0, np.tanh((abs(ret_long) - 0.025) / 0.04))
-                    _ep_align_gate = _ep_align_gate + (1.0 - max(0.0, np.tanh((abs(ret_long) - 0.025) / 0.04)))  # full in chop, alignment-gated in trend
-                    _ep_align_gate = max(0.0, min(1.0, _ep_align_gate))
-                    # Fire above 0.40 giveback ratio (40% of realized small peak gone), saturate at 0.80
-                    _ep_pressure = 0.5 * max(0.0, min(1.0, (_ep_giveback_ratio - 0.40) / 0.40)) * _ep_activation * _ep_align_gate
+                    # Branch step 3: lowered giveback fire threshold from 0.40 to 0.30
+                    # to catch earlier small-peak giveback signals across regimes.
+                    _ep_pressure = 0.5 * max(0.0, min(1.0, (_ep_giveback_ratio - 0.30) / 0.40)) * _ep_activation
                 else:
                     _ep_pressure = 0.0
                 # Weight: only fire on currently-profitable / minor-loss positions
