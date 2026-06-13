@@ -521,8 +521,12 @@ class Strategy:
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
                 if bars_held <= ENTRY_FULL_BARS:
-                    _ramp_attn = 0.5 * (1.0 + np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # in [0,1]
-                    _eff_progress = (bars_held - 1) / ENTRY_FULL_BARS + (1.0 / ENTRY_FULL_BARS) * _ramp_attn
+                    # Architectural simplification: removed _ramp_attn pnl-attenuator on scale-in.
+                    # Mechanism overlapped with: _w_slope scale_in_w (slope-pressure ramps with bars_held),
+                    # _bull_ct_atten (counter-trend first-bar cut), and _bull_consensus_atten. Adverse-pnl
+                    # during scale-in is already attenuated by these orthogonal channels; the pnl-tanh
+                    # adjuster duplicates without orthogonal info.
+                    _eff_progress = bars_held / ENTRY_FULL_BARS
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
