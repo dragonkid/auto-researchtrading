@@ -560,8 +560,13 @@ class Strategy:
                 # within-bar/within-window primitives currently saturated. Smooth via
                 # cos (no boundary). Applied only to first-bar entry size (does not
                 # touch voters, exits, or scale-in).
-                _hour_utc = (bd.timestamp // 3600000) % 24
-                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_hour_utc - 16.0) / 24.0))
+                # NEW DATA SOURCE: timestamp-derived TOD+DOW compound activity.
+                # TOD: cos cycle 24h peaking UTC 16. DOW: cos cycle 7d peaking Wed/Thu.
+                # Compounded multiplicatively so weekday-midday entries get max size
+                # and weekend-low-hour entries get minimum size. Single _tod_atten var
+                # absorbs both — adds DOW signal at +1 line LOC cost.
+                _ts_h = bd.timestamp // 3600000
+                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
