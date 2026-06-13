@@ -757,22 +757,7 @@ class Strategy:
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
                 _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                # Architectural: price-confirmation gate on opp-side voter_bias.
-                # New cross-component data dep: opp-side voter_bias contribution depends on
-                # short-window price action confirming the reversal. Voters can fire on
-                # transient indicator spikes (e.g., RSI mean-reversion, MACD cross) that
-                # are not yet reflected in price. Require recent 4-bar price action to move
-                # against the position (confirming the reversal evidence) for full opp_bias.
-                # Without price confirmation, attenuate opp_bias to 50%. Smooth tanh ramp
-                # on price_against magnitude. Distinct from slope-pressure (which gates
-                # via _exit_slope) — this gates voter_bias specifically, decoupling voter
-                # influence from price-derived signals while requiring weak co-confirmation.
-                _ret_4 = (closes[-1] - closes[-5]) / closes[-5]
-                _price_against = -_ret_4 if current_pos > 0 else _ret_4
-                # Full activation at 0.005 (~0.5%) against; ramp from 0 confirmation.
-                _price_confirm = max(0.0, min(1.0, np.tanh(_price_against / 0.005)))
-                _opp_confirm_factor = 0.5 + 0.5 * _price_confirm  # in [0.5, 1.0]
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_confirm_factor * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
