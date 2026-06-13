@@ -566,15 +566,8 @@ class Strategy:
                 # Mid-month captures monthly options expiry + futures rollover concentration;
                 # month-end carries window-dressing rebalance noise. All three compound
                 # multiplicatively into _activity. Single _tod_atten var absorbs all three.
-                # Architectural simplification: replaced TOD (24h) * DOW (7d) two-cos product
-                # with single HOW (hour-of-week, 168h) cos cycle. Peak shifted to Wed UTC 16
-                # (HOW=88, the strongest TOD*DOW product point); trough at Sun UTC 04 (HOW=148).
-                # Single-cycle HOW captures the same weekly seasonal at half the LOC of the
-                # 2-cycle product, with one less independent phase parameter. MOM + QUARTER
-                # cycles preserved as separate longer-period components.
                 _ts_h = bd.timestamp // 3600000
-                _how = ((_ts_h // 24 + 4) % 7) * 24 + (_ts_h % 24)  # 0..167, peak should be Wed UTC 16 = 3*24+16=88
-                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_how - 88.0) / 168.0)) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0)))
+                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
