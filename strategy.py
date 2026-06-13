@@ -965,18 +965,8 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                # Architectural: slope-confirmation requirement on _opp_gate.
-                # Add a slope-direction gate to opp_gate so single-bar trend_avg dips
-                # don't trigger reversal exits when the multi-window slope still confirms
-                # the original trend direction. _exit_slope (computed earlier as 3-window
-                # slope mean over 12/16/22 bars) is robust against single-bar noise.
-                # New decision-architecture change: opp_gate now requires BOTH trend_avg
-                # AND slope direction to disagree with position. Adds noise-filter on
-                # the reverse-exit decision boundary; protects rally counter-trend bears
-                # from premature flip on transient bull-voter spikes when slope still
-                # confirms uptrend (their original entry condition).
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0 and _exit_slope < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0 and _exit_slope > 0)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
