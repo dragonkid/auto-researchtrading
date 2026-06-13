@@ -288,8 +288,23 @@ class Strategy:
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
                 _arr = np.array(_sig_hist)  # (K, 7)
-                _num = np.abs(_arr.sum(axis=0))
-                _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
+                # Architectural: exponentially-decayed persistence aggregation.
+                # Old: uniform-weighted sum over last 8 bars (equal weight).
+                # New: EMA-style weights w_k = 0.5^((K-1-k)/4) — most recent bar
+                # weight 1.0, half-weight at 4 bars back, ~0.25 at 8 bars back.
+                # Makes persistence responsive to recent direction changes while
+                # still incorporating prior history. A voter that just flipped
+                # sees persistence drop faster (legitimately less reliable now);
+                # a voter with sustained recent direction sees higher persistence.
+                # Different from asymmetric directional weighting (which biased
+                # toward whichever direction dominated): this preserves direction-
+                # blind magnitude semantics, only changes time weighting.
+                # New control flow in aggregation; no new state.
+                _K = _arr.shape[0]
+                _w_decay = 0.5 ** ((_K - 1 - np.arange(_K)) / 4.0)  # (K,)
+                _w_decay = _w_decay[:, None]  # (K, 1) broadcast across voters
+                _num = np.abs((_arr * _w_decay).sum(axis=0))
+                _den = np.maximum((np.abs(_arr) * _w_decay).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
