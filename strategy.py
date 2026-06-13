@@ -684,16 +684,22 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                # Architectural simplification: removed pnl-scale amplification from _w_slope
-                # and vol-conditioned profit-amp from _w_pp. Both are small (0.15/0.20 max)
-                # additions on top of _scale_in_w. The underlying pressure terms already encode
-                # pnl direction: _sl_slope_pressure activation depends on slope (which correlates
-                # with loss direction); _pp_pressure activation depends on peak_pnl (which only
-                # exists in profit). Doubling pnl-conditioning through weights adds correlated
-                # noise without orthogonal information. Both weights now = _scale_in_w only.
+                # Architectural: scale-in-aware slope-pressure attenuator. During the first
+                # ENTRY_FULL_BARS bars, slope can transiently oppose position direction due
+                # to micro-noise on a position not yet at full size. Attenuate _w_slope
+                # smoothly with bars_held so slope-against pressure ramps up with position
+                # commitment. Linear ramp from 0.5x at bar 0 to 1.0x at bar ENTRY_FULL_BARS
+                # and onward. New data dependency: slope-pressure weight on bars_held.
                 _scale_in_w = 0.5 + 0.5 * min(1.0, bars_held / ENTRY_FULL_BARS)
-                _w_slope = _scale_in_w
-                _w_pp    = _scale_in_w
+                _w_slope = (1.0 + 0.15 * max(0.0, -_pnl_scale)) * _scale_in_w  # heavier in loss, lighter during scale-in
+                # Architectural: vol-conditioned profit-side _w_pp.
+                # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
+                #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
+                # High vol (crash): restore profit-side amplification — crash recovery profits
+                #   are short-lived and need fast giveback locking.
+                # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
+                _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
                 # Architectural extension: time-pressure asymmetric weight by pnl_scale.
                 # In profit: heavier time pressure (lock in gains via time exit).
                 # In loss: lighter time pressure (give losing positions room to recover
