@@ -862,9 +862,16 @@ class Strategy:
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                # Weight: only fire on currently-losing positions (definitionally — gated above);
-                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
-                _w_ar = 1.0
+                # Architectural: bars-held conditioning on _w_ar (MAE-recovery pressure).
+                # Old: _w_ar = 1.0 constant. New: ramp _w_ar from 0.4 (bars_held<=2, recent
+                # entry — MAE then recovery within 1-2 bars is too noisy to act on) up to
+                # 1.0 (bars_held>=6, mature position whose MAE was hit and recovered over
+                # multiple bars — this is genuine rebound, more reliable signal). Smooth via
+                # tanh on (bars_held - 4)/2 around 4-bar midpoint. New cross-bar data dep:
+                # MAE-recovery exit weight depends on position age. Filters single-bar noise
+                # spike recoveries; preserves the rally MAE-recovery alpha which typically
+                # plays out over 3-6 bars (full weight by then).
+                _w_ar = 0.4 + 0.6 * max(0.0, min(1.0, 0.5 + 0.5 * np.tanh((bars_held - 4.0) / 2.0)))
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
