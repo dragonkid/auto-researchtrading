@@ -569,9 +569,8 @@ class Strategy:
                     # throughout the position life (until full). Decouples
                     # commitment speed from a fixed schedule.
                     _eq_val = self._entry_quality.get(symbol, 0.5)  # default mid if missing
-                    # Effective full-bars: 2.0 at high quality, 3.0 at low quality
-                    # (narrower range than 2-4 to reduce bull regression from over-slow ramp)
-                    _eff_full_bars = 3.0 - 1.0 * _eq_val
+                    # Effective full-bars: 2.0 at high quality, 4.0 at low quality
+                    _eff_full_bars = 4.0 - 2.0 * _eq_val
                     _eff_progress = bars_held / _eff_full_bars
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
