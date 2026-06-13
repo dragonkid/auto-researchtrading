@@ -894,19 +894,7 @@ class Strategy:
                 # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
-                # Architectural: live-conviction exit-threshold bonus.
-                # Existing scale-in-winning bonus only fires bars_held<=3 + profit. Add
-                # an orthogonal bonus that fires whenever own-side voter conviction
-                # remains strong (margin > 0.30) AND position is in profit. Strong
-                # sustained voter agreement = legitimate signal-driven hold; raise
-                # exit threshold up to +0.15 to let it survive transient pressure
-                # spikes. Caps via min — does not stack additively with scale-in bonus
-                # to avoid over-protection. New cross-bar data dep: exit_thresh on
-                # live voter margin.
-                _live_exit_margin = _bull_margin if current_pos > 0 else _bear_margin
-                _conv_exit_bonus = 0.15 * max(0.0, np.tanh(_live_exit_margin / 0.30)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _scale_in_bonus = 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 0.0
-                _exit_thresh = 1.0 + max(_scale_in_bonus, _conv_exit_bonus)
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
