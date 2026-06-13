@@ -504,9 +504,29 @@ class Strategy:
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
                 _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Architectural: counter-trend relative-conviction gate. When
+                # entering AGAINST the long-window trend (bull entry in downtrend
+                # or bear entry in uptrend), require entry-side strong-sum to
+                # materially exceed opposite-side strong-sum. Existing _bull_admit
+                # / _bear_admit gates use trend_avg sign only — they pass during
+                # any pullback. New gate compares the two voter conviction
+                # measures directly: counter-trend entry must show the dominant
+                # side's strong-sum is at least 1.5x the opposing side's. This
+                # is a new dependency: entry decision boundary couples to the
+                # ratio of opposing voter conviction, not just the absolute. In
+                # trend-aligned entries, the gate is bypassed (no extra filter).
+                # Continuous tanh on |ret_long| as counter-trend strength gate.
+                _ct_strength = max(0.0, np.tanh((abs(ret_long) - 0.025) / 0.05))  # 0..1
+                _bull_ct = max(0.0, np.tanh(-ret_long / 0.05)) * _ct_strength  # bull counter-trend (in downtrend)
+                _bear_ct = max(0.0, np.tanh(ret_long / 0.05)) * _ct_strength   # bear counter-trend (in uptrend)
+                # Required ratio: 1.0 (no requirement) for trend-aligned, up to 1.5 for strong counter-trend
+                _bull_min_ratio = 1.0 + 0.5 * _bull_ct
+                _bear_min_ratio = 1.0 + 0.5 * _bear_ct
+                _bull_rel_ok = _bull_strong >= _bull_min_ratio * _bear_strong
+                _bear_rel_ok = _bear_strong >= _bear_min_ratio * _bull_strong
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_rel_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_rel_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
