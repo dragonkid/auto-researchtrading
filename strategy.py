@@ -316,8 +316,24 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: voter-disagreement penalty on admission threshold.
+            # New cross-voter data dependency at the entry decision boundary.
+            # Compute coefficient-of-variation-style disagreement on the 7
+            # voter signal MAGNITUDES: if voters all agree (low variance of |signal|
+            # relative to mean |signal|), entries are high-quality; if voters split
+            # in confidence levels (some near zero, others far), the aggregated
+            # strong-sum is dominated by 1-2 voters and the entry is fragile.
+            # Distinct from _bull_quality_atten (which compares opp/own strong-sums
+            # at the SIZE level): this operates on per-voter magnitude variance and
+            # raises the ADMISSION threshold itself, filtering fragile entries before
+            # they pass the gate. Continuous via tanh; max +20% admission tightening.
+            _voter_mags = np.abs(_voter_signals_bull)
+            _vm_mean = max(_voter_mags.mean(), 1e-6)
+            _vm_std = _voter_mags.std()
+            _disagree = _vm_std / _vm_mean  # ~0 when uniform, ~1+ when split
+            _disagree_factor = 1.0 + 0.20 * max(0.0, np.tanh((_disagree - 0.7) / 0.4))
+            _bull_strong_min = _strong_min * _freq_factor * _disagree_factor
+            _bear_strong_min = _strong_min * _freq_factor * _disagree_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
