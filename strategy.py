@@ -130,12 +130,6 @@ class Strategy:
         # are downweighted. New time-varying voter weighting based on each
         # voter's own track record.
         self._voter_sign_history = {}
-        # Architectural: per-symbol entry-bar history (rolling list of bar_count
-        # values at which entries opened). Used by trade-frequency self-regulator
-        # to raise the strong-sum admission threshold when recent entry rate is
-        # high — addresses turnover as a cost driver via direct feedback on the
-        # entry decision boundary.
-        self._entry_bar_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -308,16 +302,13 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural: trade-frequency self-regulator. Per-symbol rolling
-            # entry-bar history over a 30-bar window. When recent entry density
-            # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
-            # Smooth via tanh; max factor 1.20.
-            _eh = self._entry_bar_history.setdefault(symbol, [])
-            while _eh and self.bar_count - _eh[0] > 30:
-                _eh.pop(0)
-            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural simplification: removed _freq_factor trade-frequency self-regulator.
+            # Mechanism gated entry rate via 30-bar entry-bar history; max 1.20x admission
+            # threshold raise. Capped strongly: tanh((len-1.5)/2.0) only activates for >=2
+            # entries in 30 bars, which is rare per-symbol. Effect was structurally tiny.
+            # Removing eliminates dormant state (_entry_bar_history) and direct LOC overhead.
+            _bull_strong_min = _strong_min
+            _bear_strong_min = _strong_min
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -943,7 +934,5 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    _h = self._entry_bar_history.setdefault(symbol, [])
-                    _h.append(self.bar_count)
 
         return signals
