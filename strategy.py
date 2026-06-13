@@ -595,25 +595,6 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
-                    # Architectural: reactive opp-side scale-in attenuator. During scale-in
-                    # (bars 1..N), monitor CURRENT-BAR opp-side strong-sum margin. If opp
-                    # margin rises while own margin weakens, the entry signal is degrading —
-                    # cap scale-in progress at the smaller of time-progress and conviction-
-                    # progress. Reactive (uses current-bar data, not entry-frozen state),
-                    # so distinct from prior entry-time _entry_quality experiments. Smooth
-                    # via tanh on (own_margin - opp_margin)/0.4. New cross-component data
-                    # dep at scale-in path: scale fraction depends on current-bar voter
-                    # margin balance rather than purely time. Multi-variable structural
-                    # change: introduces a new gating dimension to existing scale-in path.
-                    _own_margin_si = _bull_margin if current_pos > 0 else _bear_margin
-                    _opp_margin_si = _bear_margin if current_pos > 0 else _bull_margin
-                    _conv_balance = _own_margin_si - _opp_margin_si  # >0 own dominant, <0 opp dominant
-                    # Map balance to a [0.6, 1.0] scale-in attenuator. Strong own dominance
-                    # => 1.0 (full scale-in). Balanced or opp-leaning => floor at 0.6 (cap
-                    # scale at 60% of time-progress). Smooth tanh; never fully halts (avoids
-                    # binary boundary).
-                    _si_atten = 0.6 + 0.4 * max(0.0, min(1.0, 0.5 + 0.5 * np.tanh(_conv_balance / 0.4)))
-                    _eff_progress = _eff_progress * _si_atten
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
