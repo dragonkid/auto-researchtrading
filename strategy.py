@@ -149,6 +149,18 @@ class Strategy:
         # transitions where all 3 symbols move together. New cross-symbol data
         # dependency on portfolio state; symmetric across symbols.
         _n_active = sum(1 for _s in ACTIVE_SYMBOLS if abs(portfolio.positions.get(_s, 0.0)) > 1.0)
+        # Architectural: per-symbol realized correlation map.
+        # Compute 24-bar log-return correlations between all pairs of active symbols.
+        # Used in entry path: when opening a same-direction position into an active
+        # position with HIGH realized correlation, the portfolio is concentrating
+        # — attenuate size more than in low-correlation environments. Distinct from
+        # _n_active (count-based, correlation-blind). Adds real portfolio-level
+        # diversification info to entry sizing.
+        _ret_map = {}
+        for _s in ACTIVE_SYMBOLS:
+            if _s in bar_data and len(bar_data[_s].history) >= 25:
+                _cl = bar_data[_s].history["close"].values[-25:]
+                _ret_map[_s] = np.diff(np.log(_cl))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -504,6 +516,27 @@ class Strategy:
                 # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
                 # Reduces correlated risk during multi-symbol entry pile-ups.
                 _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
+                # Architectural: realized-correlation-aware diversification attenuator.
+                # When opening into SAME-DIRECTION active positions with HIGH 24-bar log-return
+                # correlation (rho > 0.85), portfolio is concentrating into correlated risk.
+                # Compute max same-side correlation across active positions; attenuator scales
+                # smoothly from 1.0 at rho<=0.6 down to 0.82 at rho>=0.95 (max 18% size cut).
+                # Distinct from _concurrent_atten (count-based, correlation-blind). New data dep
+                # on cross-symbol return correlation + portfolio direction.
+                _max_same_dir_corr = 0.0
+                if symbol in _ret_map:
+                    for _other in ACTIVE_SYMBOLS:
+                        if _other == symbol or _other not in _ret_map:
+                            continue
+                        _other_pos = portfolio.positions.get(_other, 0.0)
+                        if abs(_other_pos) <= 1.0:
+                            continue
+                        _r_self = _ret_map[symbol]
+                        _r_other = _ret_map[_other]
+                        _denom = (max(np.std(_r_self), 1e-10) * max(np.std(_r_other), 1e-10) * len(_r_self))
+                        _rho = float(((_r_self - _r_self.mean()) * (_r_other - _r_other.mean())).sum() / _denom)
+                        _max_same_dir_corr = max(_max_same_dir_corr, _rho)
+                _corr_atten = 1.0 - 0.18 * max(0.0, min(1.0, (_max_same_dir_corr - 0.6) / 0.35))
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
@@ -521,9 +554,9 @@ class Strategy:
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _corr_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _corr_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
