@@ -131,6 +131,10 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol entry-bar slope strength snapshot. Captured
+        # at entry; used in exit subsystem to widen partial-exit ramp for
+        # positions opened on strong-slope trends (preserve through pullbacks).
+        self._entry_slope_strength = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -820,6 +824,17 @@ class Strategy:
                     # avoids holding partial positions during fast adverse moves).
                     # Continuous via tanh on (vol_ratio - 1.0)/0.4.
                     _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+                    # Architectural: entry-slope-strength gating on _de_floor.
+                    # Positions entered on strong-aligned slope get a LOWERED floor (down to
+                    # -0.10 from the base) — wider partial-exit ramp preserves them through
+                    # pullbacks. Positions entered on weak/misaligned slope keep base floor.
+                    # Continuous via tanh on captured entry slope strength normalized by
+                    # 0.0008 (typical strong-trend slope). New cross-time data dependency:
+                    # current-bar exit floor depends on entry-bar slope state.
+                    _ess = self._entry_slope_strength.get(symbol, 0.0)
+                    _ess_amp = max(0.0, np.tanh(_ess / 0.0008))  # [0, ~1]
+                    _de_floor = _de_floor - 0.10 * _ess_amp
+                    _de_floor = max(0.40, min(0.85, _de_floor))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
@@ -864,12 +879,16 @@ class Strategy:
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._entry_slope_strength):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
+                    # Architectural: capture entry-bar slope strength (signed, position-aligned).
+                    # Used at exit time to gate partial-exit ramp width.
+                    _ess_dir = 1.0 if target > 0 else -1.0
+                    self._entry_slope_strength[symbol] = abs(_lr_slope) * (1.0 if _lr_slope * _ess_dir > 0 else 0.0)
 
         return signals
