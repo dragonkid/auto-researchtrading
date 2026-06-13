@@ -576,15 +576,8 @@ class Strategy:
                 # noise spikes don't anchor the peak. Sideways sharpness preserved (peaks
                 # confirmed within 1 extra bar). Different from EMA smoothing: this is a
                 # gating rule on the high-water mark, not a low-pass filter.
-                # Architectural: extend _smoothed_pnl from single-prior-bar to 3-bar trajectory.
-                # Used (1) for confirmed-peak gate (legacy), (2) for new pos_pnl trajectory slope
-                # which gates _de_floor (recovery vs deterioration trajectory).
-                _pnl_hist = self._smoothed_pnl.get(symbol, [pos_pnl])
-                if not isinstance(_pnl_hist, list):
-                    _pnl_hist = [_pnl_hist]
-                _prev_pnl = _pnl_hist[-1]
-                _pnl_hist = (_pnl_hist + [pos_pnl])[-3:]
-                self._smoothed_pnl[symbol] = _pnl_hist
+                _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
+                self._smoothed_pnl[symbol] = pos_pnl
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
                 # pos_pnl >= prev_pos_pnl (rising bar).
@@ -921,19 +914,7 @@ class Strategy:
                     # active in mid-pressure, profit-side mid-life situations where
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
-                    # Architectural: pos_pnl trajectory slope gating de_floor.
-                    # Compute 3-bar pos_pnl slope (positive = recovering, negative = deteriorating).
-                    # When trajectory is upward (recovery), RAISE de_floor (less de-risk — let recovery
-                    # develop). When trajectory is downward (deterioration), LOWER de_floor (more
-                    # aggressive de-risk — preempt further losses). New cross-bar data dep on pos_pnl
-                    # trajectory at exit graduation. Continuous tanh on trajectory slope.
-                    if len(_pnl_hist) >= 3:
-                        _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
-                    else:
-                        _pnl_traj_slope = 0.0
-                    # Saturate at +/- 0.005 pos_pnl/bar; max +/- 0.10 floor adjustment.
-                    _traj_adj = 0.10 * np.tanh(_pnl_traj_slope / 0.005)
-                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
+                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
