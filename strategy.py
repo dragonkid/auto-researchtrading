@@ -768,29 +768,12 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: volume-confirmation multiplier on soft_sum.
-                # New cross-bar data dependency on current-bar volume vs 20-bar median.
-                # When current-bar volume is below median, soft exit pressures are
-                # likely noise-driven (low conviction reversal); attenuate down to
-                # 0.75x. When current-bar volume is at or above median, full 1.0x.
-                # Continuous tanh on log(vol_ratio_bar) where vol_ratio_bar = vol/median.
-                # Orthogonal to slope (path direction), pp (peak), time, ve (vol-of-vol),
-                # ep (sub-peak giveback). Does NOT modulate sl_pressure (structural).
-                # Mechanism: filters single-bar exit pressure spikes that arrive on
-                # thin volume — reduces flip whipsaws in chop and protects winning
-                # trend positions during low-volume pullbacks. Cap range [0.75, 1.0].
-                _vc_vol_arr = bd.history["volume"].values[-21:-1]
-                _vc_med = np.median(_vc_vol_arr) if len(_vc_vol_arr) > 0 else bd.volume
-                _vc_curr = bd.history["volume"].values[-1] if len(bd.history["volume"].values) > 0 else bd.volume
-                _vc_log_ratio = np.log(max(_vc_curr, 1e-10) / max(_vc_med, 1e-10))
-                # tanh: 0.75 deep below median, 1.0 at/above median
-                _vc_factor = 0.875 + 0.125 * np.tanh(_vc_log_ratio / 0.5)  # in [0.75, 1.0]
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _vc_factor * (_w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure)
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
