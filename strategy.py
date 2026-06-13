@@ -776,16 +776,7 @@ class Strategy:
                 # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
-                # Architectural multi-variable: trend-magnitude mute on profit-side _w_time amp.
-                # In strong trends (high abs(ret_long)), the profit-side time-pressure amp
-                # encourages premature time-exit of winning trend positions still riding the
-                # trend. Mute the amp by (1 - tanh(abs(ret_long)/0.05)) in [0, 1]: full amp
-                # in chop (lock chop wins fast), reduced amp in strong trends (let trend wins
-                # run longer through time pressure). Symmetric pattern to fb49c7b keep
-                # (trend-magnitude amp on opp_bias) applied at fusion-weight location.
-                # New cross-timescale data dep at _w_time weight.
-                _w_time_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0, 1], 0 in strong trend
-                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * _w_time_trend_mute   # [1.0, 1.2]
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
