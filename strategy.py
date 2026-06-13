@@ -530,18 +530,11 @@ class Strategy:
                 _consensus_map = (0.40, 0.60, 0.85, 1.0)
                 _bull_consensus_atten = _consensus_map[sum(1 for s in _slps if s > 0)]
                 _bear_consensus_atten = _consensus_map[sum(1 for s in _slps if s < 0)]
-                # Architectural simplification: removed _concurrent_atten cross-symbol
-                # entry-size attenuator. Aligns with recent keep de5ca08 insight
-                # (removed _portfolio_freq_factor) — correlated multi-symbol entries
-                # are STRUCTURAL signal in trending regimes, not noise. A second cross-
-                # symbol attenuator on first-bar size composed with portfolio-level
-                # admission cost was double-counting the correlation-as-risk hypothesis.
-                # With portfolio_freq_factor already removed, _concurrent_atten alone
-                # attenuates correlated entries that contributed to the rally/crash
-                # gain from the prior simplification. Per-symbol _freq_factor +
-                # bilateral-conviction quality_atten provide sufficient localized
-                # filtering without cross-symbol penalization.
-                _concurrent_atten = 1.0
+                # Architectural: cross-symbol concurrent-position attenuator.
+                # 0 other positions: full size. 1 other: 0.92x. 2 others: 0.82x.
+                # Smooth via tanh on _n_active (excludes self since this branch is current_pos==0).
+                # Reduces correlated risk during multi-symbol entry pile-ups.
+                _concurrent_atten = 1.0 - 0.18 * max(0.0, np.tanh(_n_active / 1.5))
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
