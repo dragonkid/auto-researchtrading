@@ -544,17 +544,7 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Architectural: trend-alignment-conditioned max_hold reduction.
-                # When position direction opposes long-window trend (ret_long), the position is
-                # counter-trend — historically these are the dominant losers in rally regime
-                # where bearish entries fight strong uptrend. Smoothly shorten _max_hold via
-                # tanh on (-ret_long * pos_dir / 0.04) — strongly counter-trend gives up to
-                # -2.5 bars; trend-aligned no change. Continuous, no boundary at zero crossing.
-                # New cross-timescale data dependency: _max_hold depends on long-window trend
-                # alignment with position direction.
-                _pos_dir_t = 1.0 if current_pos > 0 else -1.0
-                _counter_trend = max(0.0, np.tanh(-ret_long * _pos_dir_t / 0.04))  # in [0, ~1]
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.5 * _counter_trend
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
