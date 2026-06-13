@@ -872,7 +872,20 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                # Architectural fusion change: max-plus-half-residual soft aggregation.
+                # OLD: literal sum of 6 weighted pressures — 3 mild pressures (0.4 each)
+                # produce soft_sum=1.2 exceeding threshold from MILD-BUT-MULTI-SOURCE
+                # signals. This over-fires when secondary pressures correlate (e.g. crash
+                # dead-cat: time+slope+ar all correlate adversely during the bounce).
+                # NEW: max captures the DOMINANT exit signal, remaining sources contribute
+                # at HALF weight. Single strong signal still triggers full exit; multiple
+                # weak signals contribute proportionally but with reduced double-counting.
+                # Code-structure change to fusion (new function shape, not parameter tweak).
+                _pressures = (_w_slope * _sl_slope_pressure, _w_pp * _pp_pressure,
+                              _w_time * _time_pressure, _w_ve * _ve_pressure,
+                              _w_ep * _ep_pressure, _w_ar * _ar_pressure)
+                _max_p = max(_pressures)
+                _soft_sum = _max_p + 0.5 * (sum(_pressures) - _max_p)
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
