@@ -595,6 +595,20 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
+                    # Architectural: pnl-conditioned scale-in pace.
+                    # New control flow at scale-in: pos_pnl modulates the bar-progress
+                    # ramp. Winning entries (pos_pnl > 0) accelerate scale-up via a
+                    # tanh boost on _eff_progress (capped at 1.0); losing entries
+                    # (pos_pnl < 0) decelerate (smaller scale-up rate). Mechanism:
+                    # correct entries grow position faster (capture more upside per
+                    # winner), incorrect entries stay smaller (hurt less if SL hits).
+                    # Scale factor in [0.7, 1.3] applied to _eff_progress. Smooth
+                    # via tanh on pos_pnl normalized by stop magnitude. New cross-
+                    # component data dep: scale-in pace depends on pos_pnl progress.
+                    # Distinct from MAE-freeze (which BLOCKED scale-in on MAE depth);
+                    # this MODULATES the ramp rate continuously by current pnl.
+                    _pnl_pace_mult = 1.0 + 0.3 * np.tanh(pos_pnl / abs(STOP_LOSS_PCT))
+                    _eff_progress = max(0.0, min(1.0, _eff_progress * _pnl_pace_mult))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
