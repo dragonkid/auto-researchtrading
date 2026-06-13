@@ -676,23 +676,6 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure
-                # Architectural: concurrency-amplified soft-pressure fusion. When
-                # multiple soft pressures are simultaneously elevated, this is a
-                # stronger signal than any single pressure being high. Compute
-                # active-pressure count via continuous tanh sigmoids (each
-                # pressure contributes its activation level above threshold 0.30
-                # to a stickiness sum), then amplify _soft_sum proportionally.
-                # Maximum amplification +25% when all 4 pressures are well above
-                # 0.30. Continuous (no boundary noise). New nonlinear fusion
-                # term capturing convergent-evidence intuition.
-                _activations = (
-                    max(0.0, np.tanh((_sl_slope_pressure - 0.30) / 0.20)),
-                    max(0.0, np.tanh((_pp_pressure - 0.30) / 0.20)),
-                    max(0.0, np.tanh((_time_pressure - 0.30) / 0.20)),
-                    max(0.0, np.tanh((_ve_pressure - 0.30) / 0.20)),
-                )
-                _concur_amp = 1.0 + 0.25 * (sum(_activations) / 4.0)
-                _soft_sum = _soft_sum * _concur_amp
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
