@@ -783,7 +783,19 @@ class Strategy:
                 # keep base 0.20 subtraction. Opposite-side ADDITION remains constant
                 # (reversal evidence equally weighted across regimes). New cross-timescale
                 # data dependency: voter_bias asymmetry depends on long-window trend.
-                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 in trend, 1.7 in chop
+                # Architectural: pos-direction-sign-aware chop amplification.
+                # Decomposes _chop_amp by whether position direction matches sign(ret_long).
+                # Trend-aligned in chop: full amp 1.7 (preserve crash/rally chop-interlude
+                # benefit where trend-aligned positions need stronger own-side subtraction
+                # to ride pullbacks). Counter-trend or pure sideways (ret_long ≈ 0):
+                # _pos_align_chop ≈ 0 → no amp (1.0), eliminating over-amplification of
+                # own-side subtraction that hurts sideways. Saturates at 0.005 magnitude
+                # so chop interludes with mild trend (|ret_long|>0.005) are fully resolved.
+                # New cross-component data dep: voter_bias own-side amp depends on
+                # (position direction, sign of long-window return).
+                _pos_dir_chop = 1.0 if current_pos > 0 else -1.0
+                _pos_align_chop = max(0.0, np.tanh(ret_long * _pos_dir_chop / 0.005))  # near-binary on sign-alignment
+                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025)) * _pos_align_chop  # 1.0 baseline, up to 1.7 only when trend-aligned in chop
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
