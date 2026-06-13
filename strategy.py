@@ -238,11 +238,19 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural simplification: removed isolated-spike penalty buffer.
-            # Flip-recency gate now handles the same noise-rejection role at the
-            # flip-entry decision; entry-side penalty was redundant.
-            _bull_strong_min = _strong_min
-            _bear_strong_min = _strong_min
+            # Architectural: long-window trend-asymmetric strong-sum admission thresholds.
+            # Counter-trend entries (bear in uptrend, bull in downtrend) are taxed by
+            # raising the strong-sum admission threshold up to +50% in strong sustained
+            # trends (|ret_long| > 0.04). Same-direction entries keep the base threshold.
+            # Continuous via tanh on (ret_long / 0.04). Distinct from prior dyn_threshold
+            # asymmetry (row 38, discarded): that modulated entry-magnitude threshold;
+            # this modulates the voter-conviction admission gate (different decision
+            # boundary, uses all 6 voters' quintic-weighted contribution). Targets rally
+            # bear-entry losses (currently rally -0.58) by demanding stronger bear
+            # conviction in sustained uptrends.
+            _trend_dir = np.tanh(ret_long / 0.04)  # in [-1, +1]
+            _bull_strong_min = _strong_min * (1.0 + 0.50 * max(0.0, -_trend_dir))  # tax bull in downtrend
+            _bear_strong_min = _strong_min * (1.0 + 0.50 * max(0.0, _trend_dir))   # tax bear in uptrend
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
