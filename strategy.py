@@ -237,6 +237,19 @@ class Strategy:
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            # Architectural: cross-voter side-agreement diversity gate (multi-variable).
+            # Counts how many of the 6 voters are on the "majority side" using continuous
+            # measure: sum_majority = sum(max(c, 1-c) for c in _bull_confs).
+            # When all 6 voters confidently agree (sum_majority near 6.0), confidence is high
+            # — pass through. When voters split (sum_majority near 3.0), confidence is low —
+            # the strong-sum is fake (one side accidentally crossed by uncorrelated signals).
+            # Continuous tanh tightens _strong_min on low agreement.
+            # New cross-voter aggregate, separate axis from strong-sum (which measures conviction
+            # magnitude on each side independently). Adds [0, +30%] to _strong_min for low agreement.
+            _vote_agreement = sum(max(c, 1.0 - c) for c in _bull_confs) / 6.0  # in [0.5, 0.9]
+            # Normalize: 0.5 = full disagreement, 0.9 = full agreement (since confs in [0.1,0.9])
+            _agreement_norm = max(0.0, min(1.0, (_vote_agreement - 0.55) / 0.25))
+            _strong_min *= 1.0 + 0.30 * (1.0 - _agreement_norm)
 
             # Architectural simplification: removed isolated-spike penalty buffer.
             # Flip-recency gate now handles the same noise-rejection role at the
