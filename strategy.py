@@ -662,13 +662,16 @@ class Strategy:
                 # Slightly narrower upper bound — restores baseline pp_pressure faster
                 # at peak ratios above 1.04, recovering raw revenue while keeping the
                 # bull-boosting smoothing in the [0.95, 1.04] band.
+                # Architectural simplification: removed smooth pp-activation ramp.
+                # The 9%-wide boundary smoothing [0.95, 1.04] interpolated _pp_activation
+                # to bridge a binary on/off at peak == _pp_min. Since peak_pnl is itself a
+                # high-water mark (only updates upward, confirmed by 2 rising bars), it is
+                # already smooth — additional boundary smoothing is redundant. Replace with
+                # binary activation at _pp_ratio >= 1.0. Code-structure removal: 6 lines
+                # → 1 line; eliminates the interpolation table that duplicates smoothing
+                # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                if _pp_ratio <= 0.95:
-                    _pp_activation = 0.0
-                elif _pp_ratio >= 1.04:
-                    _pp_activation = 1.0
-                else:
-                    _pp_activation = (_pp_ratio - 0.95) / 0.09
+                _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
