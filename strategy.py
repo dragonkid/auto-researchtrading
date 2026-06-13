@@ -626,19 +626,13 @@ class Strategy:
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0:
-                    # Architectural: vol-conditioned partial-exit floor with
-                    # trend-alignment narrowing. When position is aligned with
-                    # long-window trend (rally longs, crash shorts), the partial-
-                    # exit ramp narrows toward binary exit — pullback-driven
-                    # exit_pressure no longer prematurely de-risks legitimate
-                    # trend continuation. When counter-trend or chop, ramp stays
-                    # wide for chop-friendly partial exits. New data dependency:
-                    # de_floor depends on (trend_avg × pos_dir) trend alignment.
-                    # Continuous via tanh, one-sided positive (only narrows when
-                    # ALIGNED, doesn't widen on counter-trend).
-                    _pos_dir_de = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_de = max(0.0, np.tanh(trend_avg * _pos_dir_de / 0.012))
-                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4)) + 0.15 * _trend_align_de
+                    # Architectural: vol-conditioned partial-exit floor.
+                    # Low vol (sideways/rally chop): floor=0.55 (wider de-risk ramp,
+                    # smoother small position scaling — exploits chop-friendly partial exits).
+                    # High vol (crash): floor=0.80 (narrower ramp, closer to binary —
+                    # avoids holding partial positions during fast adverse moves).
+                    # Continuous via tanh on (vol_ratio - 1.0)/0.4.
+                    _de_floor = 0.55 + 0.25 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
