@@ -241,16 +241,8 @@ class Strategy:
             # Architectural simplification: removed isolated-spike penalty buffer.
             # Flip-recency gate now handles the same noise-rejection role at the
             # flip-entry decision; entry-side penalty was redundant.
-            # Architectural: trend-asymmetric entry threshold. In strong uptrends
-            # (ret_long >> 0), require higher bear_strong_min for short entries
-            # (counter-trend shorts must be more convicted). Symmetric for bull
-            # entries in strong downtrends. Continuous via tanh on ret_long/0.04.
-            # Adds [0, 0.40] to the counter-trend strong-min. Helps rally (suppress
-            # weak bear entries during uptrend) and crash (suppress weak bull entries
-            # during downtrend) without affecting sideways (tanh near zero).
-            _trend_skew = np.tanh(ret_long / 0.04)  # in [-1, 1]
-            _bull_strong_min = _strong_min + 0.40 * max(0.0, -_trend_skew)  # tighten bull in downtrend
-            _bear_strong_min = _strong_min + 0.40 * max(0.0, _trend_skew)   # tighten bear in uptrend
+            _bull_strong_min = _strong_min
+            _bear_strong_min = _strong_min
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
