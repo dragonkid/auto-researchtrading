@@ -616,12 +616,14 @@ class Strategy:
                 # peak/_pp_min - 0.7. New cross-bar dep: SL band depends on peak history.
                 # _pp_min computed inline here (also referenced later for soft pressures).
                 _pp_min_anchor = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                # Branch step 4: amplify magnitude 0.30 -> 0.60 to verify mechanism leverage.
-                # Step1/2/3 all produced near-identical per-regime scores despite different
-                # activation thresholds — testing whether the mechanism has any leverage
-                # at all on the strategy. Doubled magnitude with original 0.7 threshold.
-                _stop_tighten_t = max(0.0, min(1.0, np.tanh((self.peak_pnl.get(symbol, 0.0) / max(_pp_min_anchor, 1e-6) - 0.7) / 0.6)))
-                _stop_eff = _stop_abs * (1.0 - 0.60 * _stop_tighten_t)
+                # Branch step 3: raise activation threshold to peak > 1.2 * _pp_min.
+                # Sideways/rally regressions in step1 came from small-peak positions
+                # being stopped on giveback — those small peaks reverse normally in
+                # chop. Raising activation to peak >> _pp_min limits tightening to
+                # serious winners only, where giveback-to-entry genuinely signals
+                # failed thesis.
+                _stop_tighten_t = max(0.0, min(1.0, np.tanh((self.peak_pnl.get(symbol, 0.0) / max(_pp_min_anchor, 1e-6) - 1.2) / 0.6)))
+                _stop_eff = _stop_abs * (1.0 - 0.30 * _stop_tighten_t)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_eff
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_eff - _band_half)) / (2.0 * _band_half)))
