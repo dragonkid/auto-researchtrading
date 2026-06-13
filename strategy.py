@@ -774,12 +774,15 @@ class Strategy:
                 # the divergent winner: only attenuate _chop_amp when the divergent side
                 # IS the held side. This filters out the counter-trend-noise case where
                 # opposite-side voter spikes drive divergence without held-side conviction.
+                # Branch step 3: narrow taper to PURE sideways only (|ret_long| < 0.015).
+                # Crash/rally chop interludes have |ret_long| in [0.015, 0.030] where
+                # _chop_amp_chop is still elevated and load-bearing; taper must NOT fire
+                # there. Pure-sideways gate via tanh on (0.015 - |ret_long|) / 0.010 — fires
+                # only below 1.5% trend magnitude, ramps off by 0.005.
                 _ss_div = abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6)
-                _div_winner = 1.0 if _bull_strong > _bear_strong else -1.0
-                _pos_dir_ca = 1.0 if current_pos > 0 else -1.0
-                _alignment = max(0.0, _div_winner * _pos_dir_ca)  # 1 if div-winner == pos_dir, else 0
+                _pure_sideways_gate = max(0.0, min(1.0, np.tanh((0.015 - abs(ret_long)) / 0.010)))
                 _chop_amp_chop = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))  # 1.0 trend, 1.7 chop
-                _div_taper = max(0.0, min(1.0, np.tanh(_ss_div / 0.30))) * _alignment  # gated by pos-alignment
+                _div_taper = max(0.0, min(1.0, np.tanh(_ss_div / 0.30))) * _pure_sideways_gate
                 _chop_amp = _chop_amp_chop * (1.0 - _div_taper) + 1.0 * _div_taper  # blend toward 1.0 with divergence
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
