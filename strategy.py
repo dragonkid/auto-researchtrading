@@ -880,21 +880,9 @@ class Strategy:
                 if _curr_mae_e < _mae_floor and pos_pnl < 0:
                     # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
-                    # Architectural: trend-magnitude amp on _ar_pressure (NEW cross-timescale
-                    # data dep at exit-pressure fusion). In strong trends a counter-trend
-                    # loser recovering from MAE is genuinely fragile — counter-pressure resumes
-                    # and pushes back into deeper loss; amplify the recovery exit signal. In
-                    # chop, MAE recovery is normal mean-reversion bouncing without a clean
-                    # exit signal — mute. Continuous tanh on abs(ret_long)/0.04. Maps to
-                    # _ar_pressure cap [0.20, 0.50]. Symmetric architecture to chop_amp own-side
-                    # subtraction but REVERSE direction (chop_amp amplifies in chop; _ar_amp
-                    # amplifies in trend). Multi-variable: changes both activation threshold
-                    # and cap via single trend-magnitude factor.
-                    _ar_trend_amp = max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0, ~1]
-                    _ar_cap = 0.20 + 0.30 * _ar_trend_amp  # [0.20, 0.50]
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
-                    # ramp smoothly to _ar_cap at full breakeven recovery.
-                    _ar_pressure = _ar_cap * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                    # ramp smoothly to 0.40 cap at full breakeven recovery.
+                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
