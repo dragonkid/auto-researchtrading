@@ -409,6 +409,33 @@ class Strategy:
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
+            # Architectural: strong-sum build-trajectory entry-frac modulator.
+            # New cross-bar data dependency on TRAJECTORY of side-strong-sums over
+            # the rolling 3-bar _hist. Distinct from _persistence_mult (per-voter
+            # 8-bar sign aggregation, weight redistribution) and _persist_ok (binary
+            # 2-bar minimum gate on admission). This modulates first-bar SIZE based
+            # on whether the strong-sum is BUILDING (monotonic rise t-2->t-1->t) vs
+            # OSCILLATING (chop noise crossing threshold). Build = sustained
+            # conviction crescendo = larger first-bar commit; oscillation = noise
+            # crossing = smaller commit. Side-conditional: bull build modulates
+            # bull_frac, bear build modulates bear_frac. Continuous via normalized
+            # build score in [-1, +1]: (s_t - s_t-2) / max(s_t, 1e-6), saturated by
+            # tanh and capped at ±0.04 frac adjustment. New control flow: entry
+            # fraction depends on side-specific strong-sum trajectory, not just
+            # current value (persistence is current-bar-rolled, build is delta).
+            _bull_build_adj = 0.0
+            _bear_build_adj = 0.0
+            if len(_hist) >= 3:
+                _bull_t2, _bull_t1, _bull_t0 = _hist[-3][0], _hist[-2][0], _hist[-1][0]
+                _bear_t2, _bear_t1, _bear_t0 = _hist[-3][1], _hist[-2][1], _hist[-1][1]
+                # Build score: net rise normalized by current level, mono-bonus when
+                # both intermediate transitions agree in direction (rising).
+                _bull_net = (_bull_t0 - _bull_t2) / max(_bull_t0, 1e-6)
+                _bear_net = (_bear_t0 - _bear_t2) / max(_bear_t0, 1e-6)
+                _bull_mono = 1.0 if (_bull_t1 >= _bull_t2 and _bull_t0 >= _bull_t1) else 0.5
+                _bear_mono = 1.0 if (_bear_t1 >= _bear_t2 and _bear_t0 >= _bear_t1) else 0.5
+                _bull_build_adj = 0.04 * _bull_mono * np.tanh(_bull_net / 0.5)
+                _bear_build_adj = 0.04 * _bear_mono * np.tanh(_bear_net / 0.5)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
@@ -541,9 +568,9 @@ class Strategy:
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj + _bull_build_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj + _bear_build_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:

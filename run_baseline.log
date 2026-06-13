@@ -1,57 +1,57 @@
 Running 4 regimes in parallel...
 
-  bull_2021: Sharpe=2.32  AnnReturn=+6.4%  MaxDD=0.85%  Score=1.16
+  bull_2021: Sharpe=2.30  AnnReturn=+6.3%  MaxDD=0.85%  Score=1.16
   crash_bear: Sharpe=1.02  AnnReturn=+4.6%  MaxDD=3.84%  Score=0.64
-  sideways: Sharpe=1.25  AnnReturn=+2.9%  MaxDD=0.45%  Score=0.78
-  rally_2024: Sharpe=1.67  AnnReturn=+9.7%  MaxDD=3.56%  Score=0.85
+  sideways: Sharpe=1.28  AnnReturn=+2.5%  MaxDD=0.44%  Score=0.80
+  rally_2024: Sharpe=1.66  AnnReturn=+9.6%  MaxDD=3.59%  Score=0.84
 
-Total wall time: 12.2s
+Total wall time: 11.8s
 
 ========================================================================================================================
 Regime          Period                      Sharpe    AnnRet%   MaxDD%  Trades    Win%     PF    Score
 ------------------------------------------------------------------------------------------------------------------------
-bull_2021       2021-01-01~2021-10-31      2.32       +6.4%     0.85%      68    42.9%    0.0      1.16
+bull_2021       2021-01-01~2021-10-31      2.30       +6.3%     0.85%      68    42.9%    0.0      1.16
 crash_bear      2021-11-01~2022-12-31      1.02       +4.6%     3.84%     220    36.4%    0.6      0.64
-sideways        2023-01-01~2023-12-31      1.25       +2.9%     0.45%     107    37.5%    0.1      0.78
-rally_2024      2024-01-01~2024-12-31      1.67       +9.7%     3.56%     436    34.6%    0.4      0.85
+sideways        2023-01-01~2023-12-31      1.28       +2.5%     0.44%     107    37.5%    0.1      0.80
+rally_2024      2024-01-01~2024-12-31      1.66       +9.6%     3.59%     436    34.6%    0.4      0.84
 ========================================================================================================================
 ---
-composite_score:    0.946165
-raw_composite:      0.946165
-mean_score:         0.858377
-std_score:          0.190423
+composite_score:    0.954128
+raw_composite:      0.954128
+mean_score:         0.860364
+std_score:          0.186471
 num_regimes:        4
-regime_bull_2021_score: 1.162395
-regime_bull_2021_sharpe: 2.315583
-regime_bull_2021_annual_return_pct: 6.392588
-regime_bull_2021_max_dd: 0.850214
+regime_bull_2021_score: 1.157070
+regime_bull_2021_sharpe: 2.297394
+regime_bull_2021_annual_return_pct: 6.338071
+regime_bull_2021_max_dd: 0.849403
 regime_bull_2021_stability: 1.000000
 regime_bull_2021_flip_count: 0
 regime_bull_2021_flip_wr: 0.00
 regime_bull_2021_flip_pnl: 0.00
 regime_bull_2021_flip_streak_drag: 0.00
-regime_crash_bear_score: 0.642323
-regime_crash_bear_sharpe: 1.016750
-regime_crash_bear_annual_return_pct: 4.617085
-regime_crash_bear_max_dd: 3.835999
+regime_crash_bear_score: 0.644453
+regime_crash_bear_sharpe: 1.021537
+regime_crash_bear_annual_return_pct: 4.642535
+regime_crash_bear_max_dd: 3.842560
 regime_crash_bear_stability: 1.000000
 regime_crash_bear_flip_count: 0
 regime_crash_bear_flip_wr: 0.00
 regime_crash_bear_flip_pnl: 0.00
 regime_crash_bear_flip_streak_drag: 0.00
-regime_sideways_score: 0.782233
-regime_sideways_sharpe: 1.245314
-regime_sideways_annual_return_pct: 2.863163
-regime_sideways_max_dd: 0.449008
+regime_sideways_score: 0.795788
+regime_sideways_sharpe: 1.276898
+regime_sideways_annual_return_pct: 2.510430
+regime_sideways_max_dd: 0.443255
 regime_sideways_stability: 1.000000
 regime_sideways_flip_count: 0
 regime_sideways_flip_wr: 0.00
 regime_sideways_flip_pnl: 0.00
 regime_sideways_flip_streak_drag: 0.00
-regime_rally_2024_score: 0.846557
-regime_rally_2024_sharpe: 1.668326
-regime_rally_2024_annual_return_pct: 9.665398
-regime_rally_2024_max_dd: 3.563547
+regime_rally_2024_score: 0.844144
+regime_rally_2024_sharpe: 1.661417
+regime_rally_2024_annual_return_pct: 9.625921
+regime_rally_2024_max_dd: 3.585289
 regime_rally_2024_stability: 1.000000
 regime_rally_2024_flip_count: 0
 regime_rally_2024_flip_wr: 0.00
