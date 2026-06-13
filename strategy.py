@@ -687,7 +687,23 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Architectural: range-extreme hold extension on winning trend-aligned positions.
+                # New cross-component data dep at exit: max_hold depends on price's position
+                # within recent 20-bar high/low range. When a winning long is near range high
+                # (range_pos > 0.7) or a winning short near range low (range_pos < 0.3), price
+                # is at a level where breakout/continuation has more structural room — time
+                # pressure should attenuate. Distinct from slope-pressure (linear trajectory)
+                # and pp_pressure (peak giveback) — this captures structural range-extension
+                # opportunity. Only fires on currently-profitable positions (pos_pnl > 0) so
+                # losing positions still time-exit normally. Smooth tanh on range deviation
+                # from neutral 0.5; max +1.0 bar extension.
+                _range_n_x = 20
+                _range_hi_x = bd.history["high"].values[-_range_n_x:].max()
+                _range_lo_x = bd.history["low"].values[-_range_n_x:].min()
+                _range_pos_x = (mid - _range_lo_x) / max(_range_hi_x - _range_lo_x, 1e-6)
+                _range_aligned = (_range_pos_x - 0.5) if current_pos > 0 else (0.5 - _range_pos_x)
+                _range_hold_bonus = 1.0 * max(0.0, np.tanh((_range_aligned - 0.2) / 0.15)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj + _range_hold_bonus
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
