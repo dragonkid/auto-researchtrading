@@ -867,27 +867,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: stale-position exit pressure (7th soft source).
-                # When position has been held >= 10 bars AND pos_pnl is near zero
-                # (|pos_pnl| <= 0.3 * |STOP_LOSS_PCT|), the trade is structurally stale —
-                # neither slope/pp protective pressure (no big peak) nor sl pressure
-                # (not deep enough loss) fires. Stale positions tie up capital,
-                # generating opportunity-cost while exposing to surprise reversals.
-                # Smooth activation: ramps from 0 at bars_held=10 to 0.4 at bars_held>=18,
-                # AND ramps from 0 at |pos_pnl|=0.4*stop to 0.4 at |pos_pnl|=0.05*stop.
-                # New cross-component data dep: dual conditioning on bars_held AND pos_pnl
-                # magnitude. Distinct from time_pressure (which fires post _max_hold) — this
-                # fires earlier on stalled trades regardless of slope agreement.
-                _stale_bars_act = max(0.0, min(1.0, (bars_held - 10.0) / 8.0))
-                _stale_pnl_near = max(0.0, min(1.0, (0.4 - abs(pos_pnl) / abs(STOP_LOSS_PCT)) / 0.35))
-                _stale_pressure = 0.40 * _stale_bars_act * _stale_pnl_near
-                _w_stale = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_stale * _stale_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
