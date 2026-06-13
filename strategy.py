@@ -904,7 +904,7 @@ class Strategy:
                     # positions (rally bears) get full harvest regardless of MAE because
                     # their peaks are structurally mean-reverting.
                     _mae_depth = -self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT)
-                    _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(_mae_depth / 0.2)))
+                    _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(_mae_depth / 0.15)))
                     _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
                     _trend_align_tp = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))
                     # Deep-peak gate: suppression activates only on very high peak ratios
