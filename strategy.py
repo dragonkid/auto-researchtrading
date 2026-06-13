@@ -832,10 +832,24 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Architectural: long-timescale vol-TRAJECTORY exit pressure (NEW data
+                # transformation, orthogonal to _ve_pressure). _ve_pressure detects
+                # SPIKING vol (sudden 6-bar jump vs 18-bar baseline) but a position
+                # in a regime where vol is structurally RISING over a longer horizon
+                # gets no warning. Compute long-recent (24-bar) vs long-distant
+                # (24-bar ending 24 bars ago) realized vol. Ratio > 1.0 = vol has
+                # structurally risen across ~48-bar horizon. Smooth tanh on ratio - 1.2
+                # saturating at 1.6x. Caps at 0.30 (subordinate to _ve_pressure on
+                # short-horizon spikes). NEW EXIT TERM in fusion sum (8th soft source).
+                _vol_24r = max(np.std(np.diff(np.log(closes[-25:-1]))), 1e-6)
+                _vol_24d = max(np.std(np.diff(np.log(closes[-49:-25]))), 1e-6)
+                _vol_trajectory = _vol_24r / _vol_24d
+                _vt_pressure = 0.30 * max(0.0, np.tanh((_vol_trajectory - 1.2) / 0.4))
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                _w_vt = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Architectural: early-profit-lock exit pressure (5th soft source).
                 # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
                 # Sub-peak profitable positions that give back early gains receive NO
@@ -891,7 +905,7 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_vt * _vt_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
