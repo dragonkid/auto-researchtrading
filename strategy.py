@@ -804,10 +804,11 @@ class Strategy:
                     _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
                     # Tier-1 harvest: up to 30% scale-down at peak >= 1.6*_pp_min
                     _tp_scale_1 = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate
-                    # Tier-2 harvest: very-high-peak only — threshold 3.5x _pp_min
-                    # with squared trend gate. Targets only the rare large peaks
-                    # where progressive harvest is unambiguously beneficial. Cap 25%.
-                    _tp_scale_2 = 0.25 * max(0.0, min(1.0, np.tanh((_tp_ratio - 3.5) / 0.8))) * _tp_trend_gate * _tp_trend_gate
+                    # Tier-2 harvest: tighter — raised threshold to 3.0x _pp_min and
+                    # squared trend-gate so tier-2 only fires in genuinely strong
+                    # trends (avoids over-harvesting bull's mid-strength peaks).
+                    # Cap attenuation at 25% to limit regression risk.
+                    _tp_scale_2 = 0.25 * max(0.0, min(1.0, np.tanh((_tp_ratio - 3.0) / 0.8))) * _tp_trend_gate * _tp_trend_gate
                     target = target * (1.0 - _tp_scale_1) * (1.0 - _tp_scale_2)
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
