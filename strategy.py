@@ -889,13 +889,10 @@ class Strategy:
                 # active positions regardless of P&L). New: exit-side, conditioned
                 # on cross-symbol ADVERSE state. Smooth, continuous.
                 _ps_pressure = 0.0
-                # Branch step 2: tightened activation. Require own position to be in
-                # MEANINGFUL loss (pos_pnl < -0.01) AND own MAE to be meaningful
-                # (mae < _mae_floor). Other-symbol threshold raised from -0.005 to
-                # -0.015 (deeper coordinated drawdown). Filters bull-regime transient
-                # ETH/SOL minor dips that previously fired pressure on still-winning
-                # bull BTC positions.
-                if pos_pnl < -0.01 and _curr_mae_e < _mae_floor:
+                # Branch step 3: loosen activation slightly to make mechanism fire
+                # in crash without overfiring in bull. pos_pnl<-0.005 own,
+                # _other_pnl<-0.01 other; drop MAE gate (was too restrictive in step 2).
+                if pos_pnl < -0.005:
                     _other_adverse = 0
                     for _other_sym in ACTIVE_SYMBOLS:
                         if _other_sym == symbol:
@@ -910,7 +907,7 @@ class Strategy:
                         _other_pnl = (_other_mid - _other_entry) / _other_entry
                         if _other_pos < 0:
                             _other_pnl = -_other_pnl
-                        if _other_pnl < -0.015:  # other symbol in deeper loss
+                        if _other_pnl < -0.01:  # other symbol in meaningful loss
                             _other_adverse += 1
                     _ps_pressure = 0.30 * max(0.0, min(1.0, np.tanh(_other_adverse / 1.0)))
                 # Weight: only fire on losing positions (gated above); full weight.
