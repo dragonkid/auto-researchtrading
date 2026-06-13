@@ -243,8 +243,14 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # Base weights for 7 voters; VWAP voter weight 0.90 (between RSI 1.10 and slope 0.85).
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, 0.90)
+            # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
+            # is dominated by recent action which oscillates with chop noise; in
+            # trends, VWAP captures genuine directional pressure. Scale VWAP voter
+            # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
+            # via _trend_strength_w. Preserves the rally/crash gain while reducing
+            # the sideways regression introduced by full VWAP weight.
+            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
