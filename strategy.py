@@ -931,11 +931,9 @@ class Strategy:
                         _pnl_traj_slope = (_pnl_hist[-1] - _pnl_hist[-3]) / 2.0
                     else:
                         _pnl_traj_slope = 0.0
-                    # Branch step 7: revert to step-5 asymmetric form (one-sided positive
-                    # trajectory adj) with INCREASED magnitude 0.15 (was 0.10). Step 5 produced
-                    # mean +0.001 and crash/rally +0.006; amplifying the magnitude could deepen
-                    # the gains.
-                    _traj_adj = 0.15 * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
+                    # Branch step 8: magnitude 0.20 (was 0.15) — push further toward keep
+                    # criterion. Step 7 showed +0.005 progress over step 6.
+                    _traj_adj = 0.20 * max(0.0, np.tanh(_pnl_traj_slope / 0.005))
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale) + _traj_adj
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
