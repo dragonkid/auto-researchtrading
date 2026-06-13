@@ -568,9 +568,26 @@ class Strategy:
                 _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
                 _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
                 _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Architectural: voter-breadth admission gate (new decision-architecture path).
+                # The strong-sum gate _bull_strong >= _bull_strong_min can pass with a
+                # concentrated set: e.g., 3 voters saturated near 0.9 (quintic ramp dominates)
+                # while 4 voters sit near 0.5 (zero contribution). That admits "deep but
+                # narrow" entries where most voters are indifferent. Add a parallel
+                # BREADTH requirement: count voters with conf >= 0.55 (a soft lean,
+                # not full saturation) and require >= 4 of 7 to agree. New decision
+                # boundary on conviction WIDTH, orthogonal to strong-sum which measures
+                # conviction DEPTH. Continuous via tanh-smoothed contribution count
+                # rather than hard count — sums tanh((conf-0.55)/0.05) over voters
+                # (~step at 0.55, smooth band). Threshold 3.5 represents the soft
+                # equivalent of "at least 4 voters above 0.55".
+                _bull_breadth = sum(0.5 * (1.0 + np.tanh((c - 0.55) / 0.05)) for c in _bull_confs)
+                _bear_breadth = sum(0.5 * (1.0 + np.tanh((c - 0.55) / 0.05)) for c in _bear_confs)
+                _breadth_min = 3.5
+                _bull_breadth_ok = _bull_breadth >= _breadth_min
+                _bear_breadth_ok = _bear_breadth >= _breadth_min
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_breadth_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _concurrent_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_breadth_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _concurrent_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
