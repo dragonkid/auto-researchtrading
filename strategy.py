@@ -625,15 +625,17 @@ class Strategy:
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
-                # Architectural simplification: removed profit-magnitude giveback
-                # amplification (was 0..+18% giveback_ratio boost gated on chop).
-                # Mechanism overlapped with _pp_activation smooth ramp (already
-                # activates pp_pressure at peak_pnl above 0.95*_pp_min) and the
-                # _pp_band vol-conditioning (already widens band at high vol).
-                # The chop-only amplification was a third tightening channel on
-                # the same giveback signal — load could be carried by existing
-                # _pp_activation + _pp_band. Removal eliminates correlated
-                # tightening on the giveback channel.
+                # Architectural: profit-magnitude-aware giveback amplification
+                # with trend-strength attenuation. In strong long-window trends
+                # (|ret_long| > 0.06), amplification attenuates toward 0 to let
+                # winning trend positions run longer (prevents premature trailing
+                # in rally/crash). In chop/moderate trend, full amplification
+                # preserves sideways/bull tight-trailing benefit. New cross-
+                # timescale data dependency: pp amplification depends on
+                # long-window trend magnitude. Continuous via tanh.
+                _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
+                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
