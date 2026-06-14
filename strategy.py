@@ -215,31 +215,26 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: 7th voter — VWAP deviation z-score.
-            # Replace raw VWAP deviation (persistently positive in uptrends → constant
-            # bull bias that destroys rally Sharpe) with z-score of vwap_dev relative
-            # to its own 20-bar rolling mean/std. In steady trends, current dev ≈ mean
-            # → z≈0 (VWAP voter neutral — no constant bias). At trend reversals, the
-            # divergence from recent mean provides genuine directional signal. Volume
-            # data remains orthogonal to all 6 price-derived voters. New data dependency:
-            # 20-bar rolling distribution of vwap_dev (architectural change to VWAP
-            # signal computation). Vectorized via cumsum for O(1) per bar.
+            # Architectural: 7th voter — VWAP deviation z-score with EMA normalization.
+            # Raw VWAP deviation is persistently positive in uptrends → constant bull bias
+            # that destroys rally Sharpe. Z-score normalizes to zero-mean across regimes.
+            # EMA-based mean/std (span=40, ~63% weight on last 40 bars) replaces simple
+            # rolling window to eliminate window-boundary discontinuities. The 40-bar span
+            # is slower to adapt than 20-bar, reducing distribution-shift noise in rally.
+            # Volume data remains orthogonal to all 6 price-derived voters.
             _vwap_n = 12
-            _zscore_n = 20
-            _tp = (bd.history["high"].values + bd.history["low"].values + closes) / 3.0
+            _tp_vol = (bd.history["high"].values + bd.history["low"].values + closes) / 3.0 * bd.history["volume"].values
             _vol = bd.history["volume"].values
-            _tp_vol = _tp * _vol
             _tp_vol_cum = np.cumsum(np.concatenate([[0.0], _tp_vol]))
             _vol_cum = np.cumsum(np.concatenate([[0.0], _vol]))
-            _vwap_devs = np.empty(_zscore_n + 1)
-            _start = len(closes) - _zscore_n - 1
-            for _j in range(_start, len(closes)):
-                _idx = _j - _start
-                _v_sum = _tp_vol_cum[_j + 1] - _tp_vol_cum[max(0, _j - _vwap_n + 1)]
-                _w_sum = _vol_cum[_j + 1] - _vol_cum[max(0, _j - _vwap_n + 1)]
-                _vw = _v_sum / max(_w_sum, 1e-10)
-                _vwap_devs[_idx] = (closes[_j] - _vw) / closes[_j]
-            _vwap_z = (_vwap_devs[-1] - _vwap_devs.mean()) / max(_vwap_devs.std(), 1e-6)
+            _vw = (_tp_vol_cum[-1] - _tp_vol_cum[max(0, len(closes) - _vwap_n)]) / max(_vol_cum[-1] - _vol_cum[max(0, len(closes) - _vwap_n)], 1e-10)
+            _vwap_dev = (closes[-1] - _vw) / closes[-1]
+            _ema_alpha = 2.0 / (40.0 + 1)  # span=40
+            _vwap_mean = _vwap_dev * _ema_alpha + (1.0 - _ema_alpha) * getattr(self, '_vwap_mean', _vwap_dev)
+            _vwap_var = (_vwap_dev ** 2) * _ema_alpha + (1.0 - _ema_alpha) * getattr(self, '_vwap_var', _vwap_dev ** 2)
+            self._vwap_mean = _vwap_mean
+            self._vwap_var = _vwap_var
+            _vwap_z = (_vwap_dev - _vwap_mean) / max(np.sqrt(_vwap_var - _vwap_mean ** 2), 1e-6)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
