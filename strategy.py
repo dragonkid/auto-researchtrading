@@ -427,34 +427,20 @@ class Strategy:
                 # dependency and 5 lines.
                 _range_bull_adj = 0.0
                 _range_bear_adj = 0.0
-                # Architectural: entry-persistence gate. Reuses the rolling _hist
-                # (3-bar strong-sum history maintained for flip sustenance) to
-                # require ENTRY-side conviction to be sustained over 2 bars before
-                # admission. Filters single-bar noise spikes that currently drive
-                # high turnover (~9k+ trades). Continuous: persistence factor uses
-                # min over last 2 bars; gate fires when min >= sustain_factor *
-                # _strong_min.
-                # Architectural: TREND-aware persistence gate (new dependency).
-                # In strong trends (high abs(ret_long)), a sudden conviction spike
-                # is itself signal — relax persistence to admit fast entries.
-                # In chop (low abs(ret_long)), keep strict persistence to filter
-                # single-bar noise. Replaces vol-conditioning (which couples to
-                # market vol regardless of direction) with trend-magnitude. The
-                # vol gate kept as additive (high-vol crash gets some relaxation
-                # via trend magnitude already, but vol-relaxation preserved as
-                # protective in fast crashes). Continuous tanh on abs(ret_long).
-                # New cross-timescale data dependency: entry gate strictness on
-                # long-window trend strength.
-                _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
-                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
-                else:
-                    _min_bull_2 = _bull_strong
-                    _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural: strong-sum volatility admission gate. Replaces binary 2-bar
+                # persistence check (_bull_persist_ok) with continuous strong-sum
+                # coefficient-of-variation over the 3-bar _hist. When strong-sum is
+                # volatile (high CV), raise admission threshold — the signal is noisy.
+                # When strong-sum is stable (low CV, genuine conviction), relax
+                # threshold. Multi-variable: changes admission gate structure from
+                # binary AND to continuous threshold modifier, eliminates _trend_str_persist
+                # cross-timescale coupling, preserves _hist state but changes data use.
+                _bull_ss_vals = [_h[0] for _h in _hist]
+                _bear_ss_vals = [_h[1] for _h in _hist]
+                _bull_ss_cv = np.std(_bull_ss_vals) / max(np.mean(_bull_ss_vals), 1e-6)
+                _bear_ss_cv = np.std(_bear_ss_vals) / max(np.mean(_bear_ss_vals), 1e-6)
+                _bull_ss_vol_factor = 1.0 + 0.20 * max(0.0, np.tanh((_bull_ss_cv - 0.12) / 0.10))
+                _bear_ss_vol_factor = 1.0 + 0.20 * max(0.0, np.tanh((_bear_ss_cv - 0.12) / 0.10))
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -572,9 +558,9 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                if _bull_strong >= _bull_strong_min * _bull_ss_vol_factor and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min * _bear_ss_vol_factor and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
