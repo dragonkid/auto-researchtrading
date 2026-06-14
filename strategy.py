@@ -118,6 +118,12 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Architectural: per-symbol loss-streak circuit breaker.
+        # Tracks consecutive losing exits and blocks re-entries after streak>=2.
+        # Directly targets enter→exit-lose→re-enter churn cycle in rally/bull.
+        # New state (exit_streak, cb_until) + new control flow (entry gate).
+        self._exit_streak = {}
+        self._cb_until = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -417,7 +423,11 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
-            if current_pos == 0 and not in_cooldown:
+            # Architectural: loss-streak circuit breaker gate — block entries
+            # when the loss streak has triggered the cooldown bar deadline.
+            _in_cb = self.bar_count < self._cb_until.get(symbol, 0)
+
+            if current_pos == 0 and not in_cooldown and not _in_cb:
                 # Architectural simplification: removed Donchian range-position entry adj.
                 # The 20-bar high/low range-position adjustment in [-0.04, +0.04] was a
                 # small entry-side bias correlated with trend direction (price near 20-bar
@@ -1027,7 +1037,14 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
+                        _exit_pnl = -_ep if current_pos < 0 else _ep
+                        self._last_exit_pnl[symbol] = _exit_pnl
+                        # Loss-streak circuit breaker: count consecutive losing exits.
+                        _streak = self._exit_streak.get(symbol, 0)
+                        _streak = _streak + 1 if _exit_pnl <= 0 else 0
+                        self._exit_streak[symbol] = _streak
+                        if _streak >= 2:
+                            self._cb_until[symbol] = self.bar_count + 8
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
