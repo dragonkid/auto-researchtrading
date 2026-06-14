@@ -955,35 +955,13 @@ class Strategy:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                elif target != 0 and bars_held >= 2:
-                    # Architectural: PnL-conditioned partial-exit floor (replaces
-                    # vol-conditioning). New cross-subsystem data dep at exit
-                    # graduation: floor depends on whether position is currently
-                    # winning vs losing. Profit (pos_pnl > 0): wider ramp (floor=0.55,
-                    # gradual de-risk to lock partial gains while letting upside run
-                    # if pressure dissipates). Loss (pos_pnl < 0): narrower ramp
-                    # (floor=0.85, near-binary fast exit — losers should not linger
-                    # at half-size while soft pressures continue to mount). Smooth
-                    # transition via tanh of pos_pnl / abs(STOP_LOSS_PCT) (same
-                    # _pnl_scale used in pressure weights). Continuous, no boundary.
-                    # Mechanism rationale: existing fast-exit semantics in losers
-                    # are achieved by full _exit_pressure crossing _exit_thresh
-                    # (binary path); the de-risk path gradient is currently MOST
-                    # active in mid-pressure, profit-side mid-life situations where
-                    # graduation makes most sense. Tightening loser graduation
-                    # routes more loser exits through the _exit_thresh binary path.
-                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
-                    # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
-                    # of an entry get binary-exit-only behavior (exit on full pressure
-                    # or no exit). Partial exits during scale-in conflict with the
-                    # scale-in pace itself — de-risk shrinks position while scale-in
-                    # tries to grow it. Defer de-risk consideration until bars_held>=2
-                    # so the position has cleared the initial commit-noise window.
-                    # New control flow: bars_held condition gates the de-risk branch.
-                    if _exit_pressure >= _de_floor * _exit_thresh:
-                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
-                        _de_risk = max(0.0, min(1.0, _de_risk))
-                        target = target * _de_risk
+                # Architectural simplification: removed graduated de-risk exit path.
+                # The de-risk partial-exit mechanism created intermediate scale-down/
+                # re-accumulation cycles during pullbacks — the dominant turnover
+                # amplifier in rally where pullbacks are frequent and shallow. Binary
+                # exit (hold or exit fully) eliminates these intermediate trades.
+                # Code-structure removal: -22 LOC, -1 control flow branch, -1
+                # cross-subsystem data dependency (_pnl_scale at exit graduation).
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
