@@ -1,7 +1,7 @@
 # autotrader — multi-step experiment session
 
 Autonomous trading strategy research on Hyperliquid perpetual futures.
-You will run **independent experiments + 1 exploration branch** per session. The outer shell script invokes you once per "round" — each round is a coherent research arc. The session has two phases: independent exploration (find a promising direction) and branch deepening (iterate on it without reverting).
+You will run **up to 5 independent experiments + 1 exploration branch (no fixed depth, terminates on stagnation)** per session. The outer shell script invokes you once per "round" — each round is a coherent research arc. The session has two phases: independent exploration (find a promising direction) and branch deepening (iterate on it without reverting).
 
 ## Context
 
@@ -25,7 +25,7 @@ Focus on maximizing composite_score (= mean regime scores - 0.5*std). Stability 
 
 ## Session protocol
 
-You run **independent experiments (exit after 5 consecutive architectural discards) + one exploration branch (no fixed depth, terminates on stagnation)** per session. Independent and branch budgets do not share slots.
+You run **up to 5 independent experiments** in the exploration phase, plus **one exploration branch with no fixed depth** (independent budget; terminates when 7 consecutive steps show no progress). Independent and branch budgets do not share slots.
 
 Each experiment may be a **single-variable change OR a multi-variable structural change** — whichever is appropriate for the hypothesis. Multi-variable changes are especially encouraged for stability improvements, where architectural modifications (voter weighting, signal fusion, ensemble method changes) inherently require coordinated edits. You can **use insights from earlier experiments in this session to choose your next direction**, and after step 2 you may attempt **combination experiments** that merge two independently-validated improvements. **Exploration branches** (see below) let you iterate on a promising direction without reverting — use them when a regime-level signal is strong.
 
@@ -33,7 +33,12 @@ Each experiment may be a **single-variable change OR a multi-variable structural
 
 1. Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30`.
 2. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep `results.tsv` descriptions for directions you're considering. If a direction has 10+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
-3. **Incremental viability check**: count the most recent non-architectural experiments (descriptions without "architectural") and their keep rate. If the last 10+ non-architectural experiments are ALL discards, incremental changes are exhausted at this baseline — all experiments this session MUST be architectural (new code structure, new control flow, new data dependencies). If non-architectural keeps exist in recent history, you may attempt incremental experiments freely.
+
+### ESCALATION RULE (multi-variable architectural change)
+
+If the last 3+ experiments in `results.tsv` all achieved negligible raw_composite improvement, single-parameter threshold tuning is **exhausted**. Your next experiment MUST be a **multi-variable architectural change** — e.g., add new signal sources, restructure exit logic, change signal fusion method, add new voters, or redesign position sizing. Do NOT repeat incremental threshold/parameter tweaks that have been proven to plateau.
+
+**This rule is enforced by the exit rule below:** you cannot exit a session without having attempted at least 2 architectural changes. The escalation rule checks BOTH the current session's discards AND the tail of `results.tsv` from prior sessions — if the last 3+ results across sessions are sub-threshold discards, escalation is already active from experiment 1.
 
 ### PARAMETER-SPACE SATURATION RULE
 
@@ -45,10 +50,10 @@ If the last 5 branches (from results.tsv BRANCH SUMMARY lines) all operate withi
 
 For each experiment:
 
-**Exit rule:**
-- 5 consecutive discards, all architectural → stop session.
-- 5 consecutive discards, not all architectural → continue with architectural experiments until you've attempted at least 5 architectural, then stop.
-- A `keep` resets the consecutive discard count.
+**Exit rule (escalation-gated):**
+- 3 consecutive discards → your next experiment MUST be a **multi-variable architectural change** (new signal sources, exit logic restructuring, voter architecture changes, etc.). Single-parameter tweaks are forbidden after 3 discards.
+- 5 consecutive discards → stop session ONLY IF at least 2 of those 5 were architectural changes (multi-variable, touching decision boundaries or signal fusion). If fewer than 2 were architectural, you MUST continue with architectural experiments until you've attempted at least 2, up to the independent-exploration cap of 5 experiments.
+- A `keep` resets everything.
 
 1. **Propose one change**: Pick one specific, testable idea. After your first experiment in this session, you may base your next idea on the regime-level insights you just observed (e.g., "Exp A showed sideways +0.24 but crash -1.44 — try a different condition that protects crash").
 2. **Implement**: Edit `strategy.py` with your change.
@@ -70,7 +75,13 @@ For each experiment:
    - `mean_score` improved vs baseline (average per-regime score must go up).
    - No regime's `max_dd_pct` exceeds 95% (hard safety net only).
 
-   See the Scoring formula section below for the full `compute_score` formula.
+   **Scoring formula** (in `compute_score`):
+   ```
+   score = tanh(sharpe) × dd_gate × turnover_gate
+   dd_gate = 1 / (1 + MaxDD% / 100)
+   turnover_gate = 1 / (1 + annual_turnover_ratio / 200)
+   ```
+   Negative Sharpe → negative score (smooth gradient). Turnover gate directly penalizes excessive trading.
 
    **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, per-regime `score` / `raw_score` / `stability_factor` / `flip_streak_gate`, and other metrics directly.
 
@@ -89,7 +100,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 
 **Rules:**
 - **Justification required**: State explicitly (1) what the new architecture does differently, (2) which regime regressed and why, (3) your hypothesis for fixing it in the next step.
-- **No fixed max depth**: the branch continues as long as you're making progress. Branch budget is INDEPENDENT of independent exploration — they don't share slots. If 7 consecutive branch steps show no improvement (raw_composite delta ≤ 0 vs the previous branch step), terminate the branch early. There is no other depth ceiling — a branch that keeps improving can iterate as many steps as needed.
+- **No fixed max depth**: the branch continues as long as you're making progress. Branch budget is INDEPENDENT of the 5-experiment exploration cap — they don't share slots. If 7 consecutive branch steps show no improvement (raw_composite delta ≤ 0 vs the previous branch step), terminate the branch early. There is no other depth ceiling — a branch that keeps improving can iterate as many steps as needed.
 - **Each iteration**: commit normally, run regime_test, record in results.tsv with prefix `branch:` (e.g., `branch: fix rally regression from linreg slope gate`). Each branch step may freely modify strategy.py — you're iterating on the new architecture, not just tweaking one parameter.
 - **Success (keep the branch)**: if at any point during the branch the FULL keep criteria are met vs the **current baseline** (the most recent `keep` row in results.tsv), it's a real `keep`. Record as `keep` and update baseline. All subsequent experiments compare against this new keep.
 - **Failure (revert the branch)**: if the branch terminates without meeting keep criteria (either via 7 consecutive no-progress steps or because you decided to stop), revert ALL branch commits back to the most recent `keep` in results.tsv. **CRITICAL: You MUST only revert your own experiment commits. Run `git log --oneline` and count ONLY commits with messages starting with "exp:" or "branch step". Use `git revert --no-edit HEAD~N..HEAD` where N = that count. NEVER revert commits with "feat:", "fix:", or "doc:" prefixes — those are infrastructure changes by the project owner. If such commits are interleaved, revert your commits individually instead of using a range. NEVER modify or delete existing `keep` rows in results.tsv — they are permanent records.** Record ONE summary `discard` line explaining the branch attempt and why it failed.
@@ -98,7 +109,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 - **Intermediate regression is OK**: within a branch, stability may temporarily drop further as you restructure. Only the FINAL state of the branch is judged against keep criteria vs original baseline. Don't abandon a branch just because step 2 made things worse — you have as many steps as needed to recover, until the 7-step stagnation guard triggers.
 
 **Typical session shape:**
-- Independent exploration: normal discard/revert cycle while searching for a promising direction
+- Independent exploration (cap = 5): normal discard/revert cycle while searching for a promising direction
 - Once a direction shows promise → open exploration branch (separate budget, no fixed depth)
 - Branch concludes (keep or revert) → session ends
 
@@ -118,7 +129,7 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 7. **Decide next step**:
    - If you have a clear follow-up insight from the regime breakdown → continue to next experiment.
    - If you've found a keep and want to try combining it with another idea → continue.
-   - If you've exhausted your ideas or hit the exit rule (5 consecutive architectural discards) without opening a branch → exit. If a branch concluded → exit.
+   - If you've exhausted your ideas or hit the independent-exploration cap (5 experiments) without opening a branch → exit. If a branch concluded → exit.
 
 ### Phase 3: Combination experiments (optional)
 
