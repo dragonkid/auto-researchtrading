@@ -138,13 +138,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol EMA-smoothed exit pressure.
-        # Raw _exit_pressure sums 6 soft terms + voter_bias — each with its own
-        # band/threshold, creating single-bar noise spikes at the exit decision
-        # boundary. Smoothing with 2-bar EMA (alpha=0.5) reduces single-bar flip
-        # sensitivity while preserving sustained-pressure exits. Stop-loss path
-        # retains raw instantaneous pressure. New state variable + control flow.
-        self._smoothed_ep = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -904,16 +897,7 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure_raw = max(_sl_pressure, _soft_sum) + _voter_bias
-                # Architectural: EMA-smoothed exit pressure for noise-robust decision.
-                # Single-bar noise spikes from 6 soft terms + voter_bias create false
-                # exits in rally (stability 0.24) and sideways (0.67). 2-bar EMA
-                # (alpha=0.5) requires sustained pressure to cross threshold, reducing
-                # single-bar flip sensitivity. Stop-loss path retains raw instantaneous.
-                # New state variable + new control flow at exit decision boundary.
-                _prev_ep = self._smoothed_ep.get(symbol, _exit_pressure_raw)
-                _exit_pressure = 0.5 * _exit_pressure_raw + 0.5 * _prev_ep
-                self._smoothed_ep[symbol] = _exit_pressure
+                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -1055,7 +1039,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._smoothed_ep):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
