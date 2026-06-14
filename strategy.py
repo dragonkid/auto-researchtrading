@@ -912,15 +912,15 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Architectural: vol-conditioned MAX+sum blend (replaces trend-blend).
-                # Low vol (bull/rally/sideways): high blend → more sum (multiple moderate
-                # pressures need to accumulate for exit in slow grinds). High vol (crash):
-                # low blend → pure MAX (noise amplification elimination is load-bearing).
-                # Continuous tanh on (1.0 - vol_ratio)/0.4: vol_ratio ~0.5 → blend ~0.78,
-                # vol_ratio ~1.5 → blend ~0.12. Old trend-blend was symmetric in |ret_long|
-                # (both bull uptrend and crash downtrend activated) → crash regression.
-                _vol_blend = max(0.0, np.tanh((1.0 - vol_ratio) / 0.4))  # [0, ~1], high in low vol
-                _soft_fused = _soft_max + _vol_blend * 0.5 * (_soft_sum - _soft_max)
+                # Architectural: sharp vol-gated MAX+sum blend (branch step 3).
+                # Only blend when vol_ratio < 0.70 (very calm — bull/rally low-vol bars).
+                # Sharp tanh on (0.70 - vol_ratio)/0.08: vol<0.62 → full 0.25 blend,
+                # vol>0.78 → zero blend. Crash (vol>1.0) stays pure MAX. Smaller
+                # coefficient (0.25 vs 0.50) reduces noise boundary impact.
+                # Narrower activation zone avoids the sideways regime-switch instability
+                # from step 2 where vol_ratio ~0.5-0.8 activated blend on 50% of bars.
+                _vol_blend = max(0.0, np.tanh((0.70 - vol_ratio) / 0.08))  # sharp, only vol<0.78
+                _soft_fused = _soft_max + _vol_blend * 0.25 * (_soft_sum - _soft_max)
                 _exit_pressure = max(_sl_pressure, _soft_fused) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
