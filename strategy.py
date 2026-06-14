@@ -706,13 +706,18 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
-                # Architectural: vol-adaptive giveback threshold. In low vol (rally,
-                # sideways), small pullbacks are routine noise that should not trigger
-                # pp exit — raise giveback threshold to let positions ride through.
-                # In high vol (crash), keep tight giveback to lock gains fast.
+                # Architectural: vol-adaptive giveback threshold, GATED by trend-aligned+profitable.
+                # In low vol (rally), small pullbacks are routine noise that should not
+                # trigger pp exit — raise giveback threshold to let positions ride through.
+                # BUT only when position is trend-aligned AND profitable. This targets rally
+                # bull longs during uptrend pullbacks while leaving counter-trend and losing
+                # positions at baseline 0.22. In high vol (crash), trend-aligned profitable
+                # gating also applies but vol_ratio nullifies the relaxation (stays near 0.22).
                 # Continuous via tanh: 0.22 at vol_ratio>=1.0, up to 0.30 at vol_ratio=0.4.
-                # New cross-component data dep: pp band lower bound depends on vol_ratio.
-                _pp_giveback_dyn = PEAK_PROFIT_GIVEBACK_BASE + PEAK_PROFIT_GIVEBACK_RANGE * max(0.0, np.tanh((1.0 - vol_ratio) / 0.6))
+                # Local ta_gate: trend-aligned AND profitable (same math as _trend_align_vb × pnl_scale).
+                _pp_ta_gate = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.05)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _pp_gb_relax = PEAK_PROFIT_GIVEBACK_RANGE * max(0.0, np.tanh((1.0 - vol_ratio) / 0.6))
+                _pp_giveback_dyn = PEAK_PROFIT_GIVEBACK_BASE + _pp_gb_relax * _pp_ta_gate
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = _pp_giveback_dyn * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
