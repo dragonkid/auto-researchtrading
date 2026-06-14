@@ -321,6 +321,18 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            # Architectural: ONE-SIDED trend-aligned freq_factor relaxation.
+            # Split _freq_factor into bull/bear variants. In uptrends (ret_long > 0),
+            # bull entries get -0.15*tanh(ret_long/0.04) relaxation on freq_factor —
+            # trend-aligned entry clusters during pullbacks are signal, not churn.
+            # Bear entries keep full _freq_factor (maintain crash protection).
+            # In downtrends (ret_long < 0), bear entries get relaxation, bull entries
+            # keep full. One-sided asymmetric pattern at admission boundary,
+            # same structural formula as afa6281 strong_min relaxation.
+            # NEW ARCHITECTURAL: splits bidirectional freq_factor into two
+            # direction-gated variants, new cross-timescale data dependency.
+            _freq_bull = _freq_factor * (1.0 - 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _freq_bear = _freq_factor * (1.0 - 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -335,8 +347,8 @@ class Strategy:
             # for trend, smooth tanh, -0.10 max relaxation on bull strong_min in
             # uptrend only. New cross-timescale data dep at admission boundary,
             # one-sided multi-variable structural change.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor
+            _bull_strong_min = _strong_min * _freq_bull * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_bear
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
