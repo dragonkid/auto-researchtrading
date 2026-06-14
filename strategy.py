@@ -898,7 +898,17 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural: soft-sum deadband exit fusion (decision-architecture
+                # change to exit subsystem). Old: max(sl, soft_sum) + voter_bias —
+                # any three mild pressures summing to >1.0 triggers exit even when no
+                # single signal is strong. New: soft_sum passes through a 0.5 deadband
+                # before contributing. Below 0.5, soft_sum is noise (mild slope, small
+                # giveback, etc.) and only sl_pressure + voter_bias drive exits. Above
+                # 0.5, soft_sum ramps linearly. This prevents the accumulation of
+                # multiple weak exit signals from triggering exits in trending regimes
+                # while preserving strong-single-signal exits. Multi-variable: changes
+                # the fusion topology from additive-sum to deadband-filtered sum.
+                _exit_pressure = max(_sl_pressure, max(0.0, _soft_sum - 0.50)) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
