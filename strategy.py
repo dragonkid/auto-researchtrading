@@ -398,24 +398,15 @@ class Strategy:
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
-            # Architectural: Kaufman efficiency ratio gate on initial commitment.
-            # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
-            # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
-            # Low ER (<0.2) = path was choppy relative to net move (noise-rich, even if
-            # net direction matches voters). Orthogonal to all current primitives:
-            # vol_ratio measures magnitude, trend_avg measures net direction, slope measures
-            # linear trajectory — ER measures path efficiency. Continuous tanh modulation
-            # of _entry_frac_dyn: low ER attenuates, high ER amplifies (range -0.04..+0.04).
-            # 12-bar window over smoothed_closes (already noise-attenuated for input parity).
-            _er_window = 12
-            _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
-            _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
-            _er = _er_net / max(_er_path, 1e-10)
-            # One-sided deep-chop suppression: only fire on very low ER (<0.15),
-            # smaller magnitude to avoid uniform size-attenuation across regimes.
-            # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
-            _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
+            # Architectural simplification: removed Kaufman efficiency ratio gate on
+            # initial commit fraction. ER measured path efficiency over 12-bar
+            # window on smoothed_closes, attenuating _entry_frac_dyn by up to 0.025
+            # only when ER < 0.15 (deep-chop bars). Max effect 2.5% on first-bar
+            # size, conditional on rare deep-chop condition. Dead-code-adjacent:
+            # the 2.5% max attenuation on a fraction already capped at 0.55 is
+            # negligible relative to the 10+ multiplicative attenuators in the
+            # cold-entry target expression. Code-structure removal: -13 lines,
+            # -2 cross-bar smoothed_closes reads.
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
