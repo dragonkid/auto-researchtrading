@@ -260,7 +260,7 @@ class Strategy:
             # Volume-concentration voter: stationary around 0.5 in all regimes
             # (no trend bias). Fixed weight 0.85 — no trend-dependent chop-dampener
             # needed since the signal is already stationary by construction.
-            _vol_conc_wt = 0.85
+            _vol_conc_wt = 0.35
             _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vol_conc_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
