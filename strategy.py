@@ -891,13 +891,22 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
-                # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
-                # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
-                # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
-                # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
-                _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
+                # Architectural fusion change: element-wise MAX replaces weighted sum.
+                # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
+                # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
+                # noise in any shared input propagates to all 6, which then SUMS. Take
+                # only the most-pressing term (MAX with weights): eliminates correlated
+                # noise addition. Weights preserved so profit-side terms dominate when
+                # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
+                _soft_max = max(
+                    _w_slope * _sl_slope_pressure,
+                    _w_pp * _pp_pressure,
+                    _w_time * _time_pressure,
+                    _w_ve * _ve_pressure,
+                    _w_ep * _ep_pressure,
+                    _w_ar * _ar_pressure
+                )
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
