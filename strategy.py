@@ -823,17 +823,7 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # Architectural: trend-aligned amplifier on own-side voter_bias subtraction.
-                # _chop_amp weakens own-side hold protection in trends (designed for chop).
-                # But trend-aligned positions during pullbacks NEED strong conviction-based
-                # hold protection — voter agreement during trend pullbacks is the best
-                # signal that the trend is intact. Add _ta_own_amp (trend-aligned × profitable)
-                # that boosts own-side subtraction from 0.20 up to 0.35 when position is
-                # trend-aligned AND profitable. Multi-variable: new cross-component data dep
-                # at voter_bias fusion (pos_dir, ret_long, pos_pnl).
-                _ta_own_amp = _trend_align_vb * max(0.0, _pnl_scale)  # [0, ~1], trend-aligned+profitable
-                _own_side_coef = 0.20 + 0.15 * _ta_own_amp  # 0.20 baseline, up to 0.35 for trend-aligned profitable
-                _voter_bias = -_own_side_coef * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
