@@ -259,7 +259,11 @@ class Strategy:
             # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
-            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
+            # Architectural: vol-ratio blend on VWAP weight. In low-vol trends
+            # (rally), VWAP deviation is a constant bias (price consistently above
+            # VWAP in uptrend) — not a directional signal. Blend with vol_ratio
+            # gate: 0.55 + 0.50 * _trend_strength_w * max(0, tanh((vol_ratio-0.8)/0.4)).
+            _vwap_wt = 0.55 + 0.50 * _trend_strength_w * max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))
             _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
