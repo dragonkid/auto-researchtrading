@@ -362,16 +362,8 @@ class Strategy:
                 _neg_signs = sum(1 for v in _x_ret.values() if v < -0.003)
                 _total = _pos_signs + _neg_signs
                 _x_consensus = abs(_pos_signs - _neg_signs) / max(_total, 1)  # 0 if split, 1 if all aligned
-                # Net direction sign: +1 when more symbols rising, -1 when more falling
-                _x_dir = (_pos_signs - _neg_signs) / max(_total, 1)  # in [-1, 1]
-                # Relaxation only fires with net-positive direction AND high consensus.
-                # In macro-down (crash), consensus relaxation is muted — even though
-                # all symbols agree, they're agreeing on DOWNSIDE, which is anti-bull.
-                # The net direction pre-multiplies consensus so negative-direction
-                # consensus maps to TIGHTEN not relax. Branch step 2 fix for
-                # crash regression from step 1 direction-agnostic consensus.
-                _x_signed = max(0.0, _x_dir) * _x_consensus  # [0, 1], only positive direction
-                _x_mod = np.tanh((_x_signed - 0.5) / 0.3)  # in [-1, 1]
+                _x_mod = np.tanh((_x_consensus - 0.5) / 0.3)  # in [-1, 1]
+                # Bull-only: relax when macro-positive, tighten when macro-negative
                 _x_bull_mod = 1.0 - 0.06 * _x_mod
             else:
                 _x_bull_mod = 1.0
