@@ -672,6 +672,22 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Architectural: trend-aligned profitable slope attenuation.
+                # When position is trend-aligned AND profitable, slope-against
+                # signals are more likely pullbacks within a trend, not reversals.
+                # Attenuate slope pressure to reduce whipsaw exits in rally/crash.
+                # Loss positions: full slope (genuine reversal signal). Profit
+                # positions counter-trend: full slope. Smooth via product of
+                # trend-alignment tanh and profit gate. Max attenuation 0.35
+                # (0.65x slope pressure for trend-aligned profitable positions).
+                # Re-introduces trend-aligned slope attenuation with a profit gate
+                # that prior removal (a44612e) lacked — the gate was removed because
+                # it attenuated ALL trend-aligned positions including losers.
+                _pos_dir_sa = 1.0 if current_pos > 0 else -1.0
+                _trend_align_sa = max(0.0, np.tanh(ret_long * _pos_dir_sa / 0.05))
+                _profit_gate_sa = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT) * 2.0))
+                _sl_atten = 1.0 - 0.35 * _trend_align_sa * _profit_gate_sa
+                _sl_slope_pressure *= _sl_atten
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
