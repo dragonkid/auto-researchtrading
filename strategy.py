@@ -495,16 +495,18 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural simplification: removed counter-trend scale-in attenuator (_ct_atten).
-                # Rationale: entries against the long-window trend already survive three gates
-                # (strong_sum, trend, persistence) — if they pass all three, the counter-trend
-                # entry is likely legitimate. Attenuating first-bar size by up to 30% is a
-                # fourth correlated penalty on the same signal. In rally, bull_ct_atten=1.0
-                # anyway (ret_long>0 zeros bull penalty), so removal has zero bull-entry impact.
-                # Bear entries in rally/uptrend that pass all gates are probably good pullback
-                # shorts. -7 LOC, -1 cross-timescale data dependency.
-                _bull_ct_atten = 1.0
-                _bear_ct_atten = 1.0
+                # Architectural: counter-trend SCALE-IN attenuator on cold entry path.
+                # When a fresh entry is taken AGAINST the long-window trend (bear entry
+                # in uptrend, bull entry in downtrend), attenuate first-bar position
+                # size via a smooth tanh on the trend disagreement magnitude. Unlike
+                # admission asymmetry (discarded — blocked legitimate pullback signals),
+                # this admits the entry but with reduced commitment. Gated above
+                # |ret_long|>0.03 to avoid firing in chop. Max attenuation 0.30 (counter-
+                # trend entries take 0.70x size in strong trend). New cross-timescale
+                # data dependency: cold-entry first-bar size depends on trend disagreement.
+                _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
+                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
+                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural simplification: removed 3-slope consensus attenuator on
                 # first-bar entry size. The 8/16/32-bar HL2 slope consensus [-0.40, 1.00]
                 # multiplicative gate measures the same directional agreement that the 7-voter
