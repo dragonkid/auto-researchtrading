@@ -538,20 +538,8 @@ class Strategy:
                 # entries that lose most.
                 _bull_opp_ratio = _bear_strong / max(_bull_strong, 1e-6)
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
-                # Architectural: trend-aligned quality-atten reduction.
-                # When entry direction matches long-window trend, bilateral voter
-                # conviction IS structural (both trend and counter-trend voters active
-                # in strong directional moves), not noise. Counter-trend entries keep
-                # full 0.30 attenuation (bilateral split = genuine uncertainty).
-                # Trend-aligned entries reduce max attenuation to 0.15 via continuous
-                # blend: 0.30 - 0.15*tanh(ret_long*pos_dir/0.04). Following afa6281
-                # and 0f7f188 asymmetric pattern. One-sided at entry size.
-                _ta_qa = max(0.0, np.tanh(ret_long / 0.04))  # [0,1], bull-long trend
-                _bull_quality_max = 0.30 - 0.15 * _ta_qa  # 0.30 counter-trend, 0.15 trend-aligned
-                _ta_qa_bear = max(0.0, np.tanh(-ret_long / 0.04))  # [0,1], bear-short trend
-                _bear_quality_max = 0.30 - 0.15 * _ta_qa_bear
-                _bull_quality_atten = 1.0 - _bull_quality_max * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
-                _bear_quality_atten = 1.0 - _bear_quality_max * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
+                _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
+                _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 # Architectural simplification: removed _vol_entry_atten (low-volume entry
                 # size attenuator). The mechanism cut first-bar size by up to 30% on
                 # low-volume bars. Redundant with: (a) persistence gate filtering weak
