@@ -337,6 +337,19 @@ class Strategy:
             # one-sided multi-variable structural change.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: bilateral-quality admission tightening.
+            # The existing _bull_opp_ratio (bear_strong / bull_strong) quantifies
+            # voter split — high ratio means voters are divided, entry quality is low.
+            # Currently only used as size attenuator. New: use it at ADMISSION level
+            # to raise strong_min when voters are split [0.7, 1.0] at ratio >= 0.7.
+            # Smooth tanh on (opp_ratio - 0.7)/0.2: ratio=0.7->1.0x, ratio=0.9->1.08x.
+            # One-sided: bull-only via ret_long gate (admission tightening in downtrend
+            # would hurt crash bear entries). Applied multiplicatively to strong_min.
+            # NEW ARCHITECTURAL USE of existing data at admission boundary.
+            _bull_opp_ratio = _bear_strong / max(_bull_strong, 1e-6)
+            _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
+            _bull_strong_min *= 1.0 + 0.08 * max(0.0, np.tanh((_bull_opp_ratio - 0.7) / 0.2))
+            _bear_strong_min *= 1.0 + 0.08 * max(0.0, np.tanh((_bear_opp_ratio - 0.7) / 0.2))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
