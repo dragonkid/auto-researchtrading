@@ -816,15 +816,9 @@ class Strategy:
                 # see softer opp-bias contribution to _exit_pressure. Counter-trend
                 # positions and chop: unchanged. New cross-timescale data dep: opp-side
                 # voter_bias depends on (ret_long, position direction).
-                # Architectural: trend-magnitude opp-bias attenuation (replaces position-direction).
-                # Old: _opp_atten = 1 - 0.50 * tanh(ret_long * pos_dir / 0.05) — only attenuated
-                # opp-bias for trend-ALIGNED positions. Counter-trend positions (bear in rally
-                # uptrend, bull in crash downtrend) got full opp-bias, prematurely exiting
-                # profitable pullback entries. New: _opp_atten = 1 - 0.50 * tanh(abs(ret_long)/0.05)
-                # — attenuates opp-bias for ALL positions when the overall trend is strong.
-                # In strong trends, opp-side voter spikes are noise regardless of whether the
-                # position is trend-aligned or counter-trend. Continuous, no boundary.
-                _opp_atten = 1.0 - 0.50 * max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0.5, 1.0]
+                _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
+                _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
+                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
                 # directional backing) — mute opp_bias contribution. In trends, opp-voter
