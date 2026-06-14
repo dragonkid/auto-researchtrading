@@ -658,7 +658,14 @@ def compute_score(result: BacktestResult) -> float:
     # 5 tpd → 0.67, 10 tpd → 0.50, 20 tpd → 0.33, 40 tpd → 0.20
     turnover_gate = 1.0 / (1.0 + trades_per_day / 10.0)
 
-    score = signal_quality * sample_factor * dd_gate * turnover_gate
+    # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
+    vol_gate = 1.0 / (1.0 + result.return_volatility)
+
+    # Consecutive loss gate: exp(-streak/30) — smooth exponential decay
+    # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
+    streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
+
+    score = signal_quality * sample_factor * dd_gate * turnover_gate * vol_gate * streak_gate
     return score
 
 # ---------------------------------------------------------------------------

@@ -892,36 +892,12 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: return-rate stagnation exit pressure (7th soft source).
-                # New cross-bar data dep: PnL change rate over recent 6 bars. When the
-                # position's |pos_pnl - pos_pnl_6_bars_ago| is small relative to recent
-                # bar-vol, the position is "burning time" without progress. Distinct from
-                # _time_pressure (pure age) and _pp_pressure (peak giveback) — measures
-                # PnL progress velocity, not level. Activates only when bars_held >= 6.
-                # Smooth tanh on (vol-normalized progress) — pressure rises as progress
-                # falls below noise floor. Cap 0.35 (subordinate to direction/peak signals).
-                # Profit-side and loss-side both fire (stagnant winners give back to noise;
-                # stagnant losers approach time-stop). Symmetric — no _pnl_scale weighting.
-                _stag_pressure = 0.0
-                if bars_held >= 6 and len(closes) >= 7:
-                    _entry_p = self.entry_prices[symbol]
-                    _pnl_now = (mid - _entry_p) / _entry_p
-                    _pnl_6 = (closes[-7] - _entry_p) / _entry_p
-                    if current_pos < 0:
-                        _pnl_now, _pnl_6 = -_pnl_now, -_pnl_6
-                    _pnl_progress = abs(_pnl_now - _pnl_6)
-                    # Normalize by bar-realized vol (typical bar move).
-                    _bar_vol_6 = max(np.std(np.diff(np.log(closes[-7:]))), 1e-6)
-                    _progress_norm = _pnl_progress / max(_bar_vol_6 * 2.5, 1e-6)
-                    # Pressure rises as normalized progress falls below 1.0 (less than ~2.5x bar-vol over 6 bars).
-                    _stag_pressure = 0.35 * max(0.0, min(1.0, np.tanh((1.0 - _progress_norm) / 0.4)))
-                _w_stag = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_stag * _stag_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
