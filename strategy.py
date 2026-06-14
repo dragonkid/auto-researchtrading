@@ -300,22 +300,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            # Architectural: vol-adaptive strong-sum nonlinearity.
-            # Quintic ramp (x-0.5)^5 creates a hard effective threshold near conf=0.7
-            # where contribution jumps from near-zero to significant. In low-vol
-            # regimes (rally, sideways), this binary transition amplifies single-bar
-            # noise around the 0.7 conf boundary — each perturbed bar's conf crossing
-            # the threshold creates a large strong-sum swing. Replace fixed exp=5
-            # with vol-trend-adaptive exponent: 3 + 3*_trend_strength_w gives ~3 in
-            # chop (softer nonlinearity, smoother gradient near 0.5) and ~6 in strong
-            # trends (sharper discrimination, existing behavior preserved). Norm
-            # factor = 2^exp so (1-0.5)^exp * norm = 1.0 at conf=1. New
-            # cross-timescale data dependency: strong-sum nonlinearity depends on
-            # long-window trend strength. Multi-variable structural change.
-            _ss_exp = 3.0 + 3.0 * _trend_strength_w  # [~3, ~6]
-            _ss_norm = 2.0 ** _ss_exp
-            _bull_strong = sum(max(0.0, (c - 0.5) ** _ss_exp * _ss_norm) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** _ss_exp * _ss_norm) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
