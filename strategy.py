@@ -986,18 +986,18 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
-                    # Architectural: one-sided trend-aligned de-risk floor TIGHTENING.
+                    # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
-                    # profitable, RAISE the de-risk floor to narrow the graduated-exit
-                    # ramp — trend-aligned winners de-risk less through pullback noise.
-                    # Counter-trend and losing positions keep original floor.
+                    # profitable, lower the de-risk floor to widen the graduated-exit
+                    # ramp — trend-aligned winners de-risk more gradually through pullback
+                    # noise. Counter-trend and losing positions keep original floor.
                     # Continuous tanh product, no boundary. Pattern: asymmetric exit-side
-                    # tightening, following afa6281 admission-side bull-only pattern.
+                    # relaxation, following afa6281 admission-side bull-only pattern.
                     # Only applies in profit (_pnl_scale > 0), trend-aligned via
-                    # tanh(ret_long * pos_dir / 0.04), max tightening 0.10.
+                    # tanh(ret_long * pos_dir / 0.04), max relaxation 0.10.
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
-                    _de_floor += 0.10 * _ta_de_align * _ta_de_profit
+                    _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
