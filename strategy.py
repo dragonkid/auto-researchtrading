@@ -872,14 +872,29 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural simplification: removed adverse-recovery exit pressure (6th soft source).
-                # The MAE-based recovery-to-loss mechanism was designed for crash-bear dips
-                # (fast recovery then re-crash) but in rally/sideways, small dips followed by
-                # grinding recovery are the normal low-vol trend pattern — exiting on recovery
-                # from mild dips destroys small compound wins. Leaving a 5-source MAX fusion
-                # (slope + pp + time + ve + ep) with voter_bias + sl_pressure.
-                # Code-structure removal: 17 LOC (ar_pressure computation + activation). _mae dict retained for tp suppression.
-
+                # Architectural: adverse-recovery exit pressure (6th soft source).
+                # New per-symbol state (MAE low-water mark) drives a new control flow:
+                # when current pos_pnl has substantially recovered from MAE but is still
+                # in modest loss, the position is "barely surviving" — recovery is at
+                # risk of reversing into another adverse leg. Exit pressure rises
+                # proportional to recovery fraction. Activates only when:
+                #   - MAE is meaningful (< -0.5 * |STOP_LOSS_PCT|)
+                #   - current pos_pnl is in modest loss territory (between MAE and 0)
+                # Distinct from pp_pressure (which measures peak giveback for winners)
+                # and from sl_pressure (binary stop). Targets the "recovered to small
+                # loss after dip" pattern — historically a dangerous holding zone.
+                _ar_pressure = 0.0
+                _curr_mae_e = self._mae.get(symbol, 0.0)
+                _mae_floor = -0.5 * abs(STOP_LOSS_PCT)
+                if _curr_mae_e < _mae_floor and pos_pnl < 0:
+                    # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
+                    _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
+                    # Activate above 0.5 recovery (mild dip recoveries don't trigger);
+                    # ramp smoothly to 0.40 cap at full breakeven recovery.
+                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                # Weight: only fire on currently-losing positions (definitionally — gated above);
+                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
+                _w_ar = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -893,6 +908,7 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
+                    _w_ar * _ar_pressure
                 )
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
