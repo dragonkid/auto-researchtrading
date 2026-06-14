@@ -861,35 +861,12 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
-                # Architectural: adverse-recovery exit pressure (6th soft source).
-                # New per-symbol state (MAE low-water mark) drives a new control flow:
-                # when current pos_pnl has substantially recovered from MAE but is still
-                # in modest loss, the position is "barely surviving" — recovery is at
-                # risk of reversing into another adverse leg. Exit pressure rises
-                # proportional to recovery fraction. Activates only when:
-                #   - MAE is meaningful (< -0.5 * |STOP_LOSS_PCT|)
-                #   - current pos_pnl is in modest loss territory (between MAE and 0)
-                # Distinct from pp_pressure (which measures peak giveback for winners)
-                # and from sl_pressure (binary stop). Targets the "recovered to small
-                # loss after dip" pattern — historically a dangerous holding zone.
-                _ar_pressure = 0.0
-                _curr_mae_e = self._mae.get(symbol, 0.0)
-                _mae_floor = -0.5 * abs(STOP_LOSS_PCT)
-                if _curr_mae_e < _mae_floor and pos_pnl < 0:
-                    # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
-                    _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
-                    # Activate above 0.5 recovery (mild dip recoveries don't trigger);
-                    # ramp smoothly to 0.40 cap at full breakeven recovery.
-                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                # Weight: only fire on currently-losing positions (definitionally — gated above);
-                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
-                _w_ar = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
