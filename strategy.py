@@ -580,10 +580,29 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Architectural: range-position entry quality filter (NEW DATA SOURCE).
+                # 20-bar HL2 range position: 0 at 20-bar low, 1 at 20-bar high.
+                # Bull entries in lower half (buying weakness) are riskier in moderate
+                # trends (rally) where pullbacks may be real reversals, not BTFD dips.
+                # Bear entries in upper half (shorting strength) similarly riskier.
+                # Attenuate size via smooth tanh: 0.85x at range edge, 1.00x at midpoint+.
+                # Only fires when trend-aligned (moderate trend), not in strong trend
+                # (bull where BTFD works) or in chop (sideways, range position noisy).
+                _hl2_rp = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _rp_20_lo = _hl2_rp[-20:].min()
+                _rp_20_hi = _hl2_rp[-20:].max()
+                _rp_pos = (mid - _rp_20_lo) / max(_rp_20_hi - _rp_20_lo, 1e-6)
+                # Trend gate: only fire in moderate trends (|ret_long| in [0.03, 0.12]).
+                # Zero in chop (<0.03) and zero in super-strong bull trends (>0.12).
+                _rp_trend_lo = max(0.0, np.tanh(abs(ret_long) / 0.03))
+                _rp_trend_hi = max(0.0, np.tanh((0.15 - abs(ret_long)) / 0.04))
+                _rp_trend_gate = _rp_trend_lo * _rp_trend_hi  # [0, 1], active [0.03, 0.12]
+                _bull_rp_atten = 1.0 - 0.15 * _rp_trend_gate * max(0.0, np.tanh((0.55 - _rp_pos) / 0.30))
+                _bear_rp_atten = 1.0 - 0.15 * _rp_trend_gate * max(0.0, np.tanh((_rp_pos - 0.45) / 0.30))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_rp_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_rp_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
