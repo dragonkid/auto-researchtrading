@@ -889,9 +889,13 @@ class Strategy:
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                # Weight: only fire on currently-losing positions (definitionally — gated above);
-                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
-                _w_ar = 1.0
+                # Architectural: trend-direction-gated _w_ar weight (new cross-timescale dep).
+                # Exp 3 showed full ar removal gave bull +0.314 (uptrend MAE dips recover) but
+                # crash -0.173 (downtrend MAE recoveries reverse). Gate ar contribution by trend
+                # direction: full weight in downtrend (crash, where recovery→reversal is real),
+                # muted in uptrend (bull, where MAE dips are transient pullbacks). Continuous
+                # tanh on -ret_long: 1.0 at ret_long << 0 (downtrend), ~0 at ret_long >> 0.
+                _w_ar = 0.0 + 1.0 * max(0.0, min(1.0, np.tanh(-ret_long / 0.04)))
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
