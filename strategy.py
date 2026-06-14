@@ -732,7 +732,15 @@ class Strategy:
                 # → 1 line; eliminates the interpolation table that duplicates smoothing
                 # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
+                # Architectural: bars-held ramp on pp_activation. New control flow:
+                # pp_pressure can only fire at full strength after the position has
+                # been held for 3+ bars. Before that, activation scales linearly with
+                # bars_held/3.0. This prevents the "enter → small peak → pp exit"
+                # cycle that drives turnover in rally, without blocking pp on
+                # substantial peaks (which still get partial activation). New
+                # cross-component dependency: pp_activation depends on bars_held.
+                _pp_held_ramp = min(1.0, bars_held / 3.0)
+                _pp_activation = _pp_held_ramp if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
