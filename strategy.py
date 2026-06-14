@@ -84,6 +84,7 @@ TREND_GATE_DEADZONE = 0.018
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
 MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -1014,18 +1015,8 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                # Architectural: remove FLIP_MIN_VOTES vote-count gate from opp_gate,
-                # aligning reversal gate with entry path (which already removed MIN_VOTES).
-                # The strong-sum gate (_bear_strong_min / _bull_strong_min) includes
-                # per-voter weights, persistence tracking, and counter-trend tightening
-                # (exp 1: +15% for counter-trend entries) — it is already more
-                # discriminative than a flat vote count. Vote count was a coarser
-                # version of strong-sum; removing it eliminates correlated-noise
-                # amplification at the reversal boundary (one less hard gate on the
-                # same underlying voter signals). Code-structure removal: 2 hard gates
-                # in total removed, 2 LOC per branch removed, 0 net LOC change.
-                _opp_gate = (current_pos > 0 and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
