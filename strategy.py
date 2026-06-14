@@ -702,9 +702,14 @@ class Strategy:
                 # preserves sideways/bull tight-trailing benefit. New cross-
                 # timescale data dependency: pp amplification depends on
                 # long-window trend magnitude. Continuous via tanh.
+                # Architectural: vol-gated amplification. In low-vol trends
+                # (rally), amplification is noise — shallow givebacks are pullback
+                # not reversal, amplification prematurely cuts positions. Gate
+                # amplification by vol_ratio: only active in elevated vol (crash/bull).
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
-                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))
+                _pm_vol_gate = max(0.0, np.tanh((vol_ratio - 0.85) / 0.3))
+                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * _pm_vol_gate * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
