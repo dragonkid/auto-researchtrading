@@ -1031,19 +1031,18 @@ class Strategy:
                 _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
                             (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
-                    # Architectural: profit-only opp-gate graduation (removes trend-alignment gate).
-                    # Old: _grad_gate = _trend_align_og * _profit_gate_og required BOTH trend-aligned
-                    # AND in-profit for graduated partial exit. Counter-trend + profitable positions
-                    # (bear entries during rally pullbacks) got full binary exit on opp-gate,
-                    # prematurely closing profitable mean-reverting positions. New: _grad_gate =
-                    # _profit_gate_og only — profitable positions get graduated exit regardless
-                    # of trend alignment. In rally, bear pullback entries that are in-profit
-                    # will now survive noise-spike opp-gate triggers, letting pullback entries
-                    # capture full reversion. Losing positions retain binary full exit.
-                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1]
-                    _grad_gate = _profit_gate_og  # profit-only: no trend-alignment requirement
+                    # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
+                    # Counter-trend (rally bear) OR losing positions: binary full
+                    # exit (cut risk fast). Trend-aligned + in-profit (crash short
+                    # winning): graduated partial exit (preserves winning trend
+                    # position through noise spikes). Both gates must hold for
+                    # graduated behavior to engage. Continuous via tanh blend.
+                    _pos_dir_og = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
+                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
+                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Blend: full exit (1.0) by default, graduated only when profitable.
+                    # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
