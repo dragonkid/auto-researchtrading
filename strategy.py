@@ -215,17 +215,24 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Branch step 7: VWAP at 0.20 weight, original level signal (not derivative).
-            # Step 6 derivative (rate-of-change) was too noisy for bull stability.
-            # Step 1 (0 weight) gave rally 0.108 but bull 0.613. Step 4 (0.55)
-            # gave rally 0.013. At 0.20, VWAP provides minimal structural diversity
-            # with negligible constant-bias impact — the constant bias scales with
-            # weight, and 0.20 is below the 0.70-1.35 range of other voters.
+            # Branch step 6: VWAP at 0.35 weight, but as a RATE-OF-CHANGE signal.
+            # Old: (mid - VWAP)/mid → always positive in uptrend, always negative
+            # in downtrend → constant directional bias. New: compute VWAP deviation
+            # change over the last bar: _vwap_dev - prev_vwap_dev. The derivative
+            # oscillates around zero regardless of trend direction — even in a
+            # persistent uptrend, VWAP deviation expands and contracts. Eliminates
+            # the undifferentiated constant bias while preserving volume-weighted
+            # structural diversity.
             _vwap_n = 12
             _vol_arr = bd.history["volume"].values[-_vwap_n:]
+            _vol_arr_prev = bd.history["volume"].values[-_vwap_n - 1:-1]
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
+            _tp_arr_prev = (bd.history["high"].values[-_vwap_n - 1:-1] + bd.history["low"].values[-_vwap_n - 1:-1] + closes[-_vwap_n - 1:-1]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
+            _vwap_prev = (_tp_arr_prev * _vol_arr_prev).sum() / max(_vol_arr_prev.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid
+            _vwap_dev_prev = (closes[-2] - _vwap_prev) / closes[-2]
+            _vwap_dev = _vwap_dev - _vwap_dev_prev  # rate-of-change, oscillates around zero
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -253,7 +260,7 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            _vwap_wt = 0.20  # fixed, minimal structural diversity, negligible constant bias
+            _vwap_wt = 0.35  # fixed, no trend amplification
             _base_weights = (0.55, 1.35 + _wt_shift, 1.00 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.25 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
