@@ -253,7 +253,7 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            _vwap_wt = 0.20  # fixed, minimal structural diversity, negligible constant bias
+            _vwap_wt = 0.30  # fixed, between 0.20 (best rally) and 0.55 (best bull)
             _base_weights = (0.55, 1.35 + _wt_shift, 1.00 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.25 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
