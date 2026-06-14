@@ -898,12 +898,6 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Branch step: trend-blended MAX+sum. Pure MAX is too conservative in
-                # slow-trending grinds (bull, rally) where multiple moderate pressures
-                # need to accumulate for exit. In strong trends (|ret_long| > 0.04),
-                # blend 0.5*MAX + 0.5*sum; non-trending keeps pure MAX (crash/sideways
-                # gain preserved). Continuous tanh on |ret_long|/0.04.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _soft_max = max(
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
@@ -912,9 +906,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                _trend_blend = max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0, ~1] in strong trends
-                _soft_fused = _soft_max + _trend_blend * 0.5 * (_soft_sum - _soft_max)
-                _exit_pressure = max(_sl_pressure, _soft_fused) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
