@@ -350,18 +350,8 @@ class Strategy:
             # Smooth cooldown_factor (tanh decay over trend-scaled window) +
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _last_pnl_outcome = self._last_exit_pnl.get(symbol, 0.0)
-            _loss_only = max(0.0, -np.tanh(_last_pnl_outcome / abs(STOP_LOSS_PCT)))
-            # Architectural: profit-side cooldown stretch. After profitable exits,
-            # extend cooldown to prevent immediate re-entry during the same market
-            # move (the signal was completed, wait for next setup). Smooth tanh
-            # on profit magnitude scaled by stop — small profit (~0.5*stop) gets
-            # ~+50% stretch, large profit (~1.5*stop) gets ~+100%. This directly
-            # reduces turnover — exits followed by immediate re-entry double the
-            # trade count. New cross-subsystem data dep: cooldown window depends
-            # on last exit profit magnitude.
-            _profit_extend = 1.0 + 0.80 * max(0.0, np.tanh(_last_pnl_outcome / (0.6 * abs(STOP_LOSS_PCT))))
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only) * _profit_extend
+            _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
@@ -908,21 +898,20 @@ class Strategy:
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
-                # Architectural: pos_pnl-gated scale-in exit threshold ramp.
-                # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
-                # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
-                # (1.2 at bar 0, 1.0 at bar ENTRY_FULL_BARS). Protects winning scale-in
-                # from noise-driven premature exits while letting losing scale-in exit
-                # normally (no protection — losing positions are noise-vulnerable too).
-                # Stop-loss is exempt (full _sl_pressure forces exit regardless).
-                _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
-                # Architectural simplification: removed _vt_factor 2D vol-time exit_thresh
-                # modulator. The factor activated only in narrow 2D band (low-vol AND mid-life),
-                # contributing at most +10%. With the underlying soft-pressure stack already
-                # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
-                # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
-                # unchanged (load-bearing for early winning protection).
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: universal hold-time exit threshold ramp.
+                # Replaces PnL-gated scale-in winning bonus with a universal smooth
+                # decay from bar 0 to bar 6. All positions (winning, losing, scale-in,
+                # mature) get elevated exit_thresh early — early-bar noise reversals
+                # (the dominant turnover driver in rally) are less likely to be genuine
+                # and require more exit pressure to trigger. Mature positions revert
+                # to standard threshold. Smaller peak (1.12 vs 1.20) but longer tail
+                # (6 bars vs 3). Stop-loss is exempt (sl_pressure >= 0.95 → 1.0).
+                # Architectural restructure: exit_thresh is now a function of hold-time,
+                # not PnL. New control flow: universal smooth decay replaces PnL-gated
+                # binary bonus. Multi-variable: removes _scale_in_winning conditional,
+                # changes threshold formula, adds new hold-time decay parameter.
+                _hold_time_thresh = 1.0 + 0.12 * max(0.0, 1.0 - bars_held / 6.0)
+                _exit_thresh = _hold_time_thresh
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
