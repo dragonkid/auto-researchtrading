@@ -337,13 +337,13 @@ class Strategy:
             # one-sided multi-variable structural change.
             # Architectural: counter-trend admission tightening. Bull-only relaxation
             # (afa6281) already reduces bull strong_min in uptrend. This adds the
-            # Architectural: bear-only counter-trend admission tightening removed.
-            # Old: bull admission tightened in downtrend (crash dead-cat), bear admission
-            # tightened in uptrend (rally pullback). Crash dead-cat tightening was load-
-            # bearing. Rally bear-pullback tightening was counterproductive — rally pullback
-            # bear entries are mean-reverting winners, not noise. Drop bear tightening only.
+            # SYMMETRIC COUNTERPART: tighten bull admission in downtrends (crash dead-cat
+            # bounce noise), tighten bear admission in uptrends (rally pullback bear noise).
+            # Continuous tanh on long-window trend direction, max 15% threshold increase.
+            # New cross-component data dep: admission threshold depends on trend direction
+            # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
