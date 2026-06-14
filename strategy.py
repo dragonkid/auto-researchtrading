@@ -250,13 +250,7 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # Branch step 2: scale base weights by 1.08x to compensate for the
-            # removed VWAP voter's contribution (which was 0.55-1.05 depending on
-            # trend). The constant-bias noise is gone; the scale compensation
-            # preserves the effective strong-sum magnitude so bull/sideways
-            # entries that relied on the net sum (not the constant direction)
-            # continue to pass the admission gate.
-            _base_weights = tuple(1.08 * w for w in (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift))
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
