@@ -898,10 +898,15 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
+                # Architectural simplification: removed time pressure from MAX
+                # exit fusion. Time pressure is a structural hold-duration cap that
+                # exits positions regardless of market conditions. In rally, positions
+                # need to hold through pullbacks to compound; time pressure systematically
+                # caps hold duration at ~10-12 bars. Removing it lets positions extend
+                # hold duration when other pressures (slope, pp, ve, ep, ar) are quiet.
                 _soft_max = max(
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
