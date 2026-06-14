@@ -898,6 +898,17 @@ class Strategy:
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                # Architectural: trend-aligned exit attenuation. When long-window trend
+                # is strong AND position is trend-aligned, attenuate soft exit pressures
+                # by up to 10%. Reduces exit-reentry turnover in trending regimes (rally
+                # bull positions in uptrend, crash bear positions in downtrend) where
+                # minor pullback exits followed by immediate trend re-entries dominate
+                # trading costs. Mild (10% max) to avoid over-holding. Smooth tanh on
+                # ret_long * pos_dir / 0.04. New cross-timescale data dep at exit fusion.
+                _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
+                _trend_align_ta = max(0.0, np.tanh(ret_long * _pos_dir_ta / 0.04))
+                _trend_exit_atten = 1.0 - 0.10 * _trend_align_ta
+                _soft_sum *= _trend_exit_atten
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
