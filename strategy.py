@@ -579,22 +579,10 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Architectural: continuous admission gate replacing binary strong-sum threshold.
-                # Old: if _bull_strong >= _bull_strong_min, full entry. Creates noise cliff at
-                # boundary where small price perturbations flip strong-sum across threshold.
-                # New: tanh ramp over 8% band around threshold, maps to [0, 1] admission strength.
-                # Strong entries (well above threshold) get full size; marginal entries get
-                # proportionally smaller; sub-threshold entries get near-zero. Eliminates the
-                # binary noise boundary that is the dominant stability destroyer in rally (where
-                # strong-sum hovers near threshold during pullbacks). New decision boundary:
-                # entry size = continuous admission strength × standard size, not binary on/off.
-                _admit_band = _bull_strong_min * 0.08
-                _bull_admit_s = max(0.0, min(1.0, 0.5 * (1.0 + np.tanh((_bull_strong - _bull_strong_min) / _admit_band))))
-                _bear_admit_s = max(0.0, min(1.0, 0.5 * (1.0 + np.tanh((_bear_strong - _bear_strong_min) / _admit_band))))
-                if _bull_admit_s > 0.05 and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_admit_s
-                elif _bear_admit_s > 0.05 and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_admit_s
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
