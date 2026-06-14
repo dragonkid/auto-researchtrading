@@ -215,26 +215,21 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: 7th voter — VWAP deviation z-score with EMA normalization.
-            # Raw VWAP deviation is persistently positive in uptrends → constant bull bias
-            # that destroys rally Sharpe. Z-score normalizes to zero-mean across regimes.
-            # EMA-based mean/std (span=40, ~63% weight on last 40 bars) replaces simple
-            # rolling window to eliminate window-boundary discontinuities. The 40-bar span
-            # is slower to adapt than 20-bar, reducing distribution-shift noise in rally.
-            # Volume data remains orthogonal to all 6 price-derived voters.
-            _vwap_n = 12
-            _tp_vol = (bd.history["high"].values + bd.history["low"].values + closes) / 3.0 * bd.history["volume"].values
-            _vol = bd.history["volume"].values
-            _tp_vol_cum = np.cumsum(np.concatenate([[0.0], _tp_vol]))
-            _vol_cum = np.cumsum(np.concatenate([[0.0], _vol]))
-            _vw = (_tp_vol_cum[-1] - _tp_vol_cum[max(0, len(closes) - _vwap_n)]) / max(_vol_cum[-1] - _vol_cum[max(0, len(closes) - _vwap_n)], 1e-10)
-            _vwap_dev = (closes[-1] - _vw) / closes[-1]
-            _ema_alpha = 2.0 / (40.0 + 1)  # span=40
-            _vwap_mean = _vwap_dev * _ema_alpha + (1.0 - _ema_alpha) * getattr(self, '_vwap_mean', _vwap_dev)
-            _vwap_var = (_vwap_dev ** 2) * _ema_alpha + (1.0 - _ema_alpha) * getattr(self, '_vwap_var', _vwap_dev ** 2)
-            self._vwap_mean = _vwap_mean
-            self._vwap_var = _vwap_var
-            _vwap_z = (_vwap_dev - _vwap_mean) / max(np.sqrt(_vwap_var - _vwap_mean ** 2), 1e-6)
+            # Architectural: 7th voter — volume-direction concentration.
+            # Replaces VWAP voter (persistent trend bias from price-vs-anchor level).
+            # New signal: fraction of bullish-volume bars among last 16 bars, where
+            # a bar's volume is assigned to bull side if close>open, bear side if
+            # close<open. Volume-weighted to emphasize bars with genuine participation.
+            # Ratio oscillates around 0.5 in all regimes (stationary, no trend bias)
+            # — captures which side DOMINATES volume flow. Orthogonal to all 6 price-
+            # derived voters and independent of price level.
+            _vol_n = 16
+            _open_slice = bd.history["open"].values[-_vol_n:]
+            _close_slice = closes[-_vol_n:]
+            _vol_slice = bd.history["volume"].values[-_vol_n:]
+            _bull_vol = np.sum(np.where(_close_slice > _open_slice, _vol_slice, 0.0))
+            _bear_vol = np.sum(np.where(_close_slice < _open_slice, _vol_slice, 0.0))
+            _vol_conc = (_bull_vol - _bear_vol) / max(_bull_vol + _bear_vol, 1e-10)  # in [-1, +1]
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -242,7 +237,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
-                _vwap_z,  # 7th voter: VWAP deviation z-score, mean-reverting around 0 in all regimes
+                _vol_conc / 0.06,  # 7th voter: volume-direction concentration, [-1,+1] range, scale for binary-ish
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -262,14 +257,11 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
-            # is dominated by recent action which oscillates with chop noise; in
-            # trends, VWAP captures genuine directional pressure. Scale VWAP voter
-            # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
-            # via _trend_strength_w. Preserves the rally/crash gain while reducing
-            # the sideways regression introduced by full VWAP weight.
-            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
+            # Volume-concentration voter: stationary around 0.5 in all regimes
+            # (no trend bias). Fixed weight 0.85 — no trend-dependent chop-dampener
+            # needed since the signal is already stationary by construction.
+            _vol_conc_wt = 0.85
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vol_conc_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
