@@ -147,6 +147,18 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
+        # Architectural: cross-symbol return consensus. Compute 10-bar returns
+        # for all active symbols, then measure dispersion. When all symbols move
+        # in the same direction (macro-driven), the signal has cross-asset
+        # confirmation — orthogonal to all per-symbol price-only primitives.
+        # New data source: cross-symbol return correlation, NEW ARCHITECTURAL
+        # DIMENSION at admission boundary.
+        _x_ret = {}
+        for _sym in ACTIVE_SYMBOLS:
+            if _sym in bar_data and len(bar_data[_sym].history) >= 12:
+                _xc = bar_data[_sym].history["close"].values
+                _x_ret[_sym] = (_xc[-1] - _xc[-10]) / _xc[-10]
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -335,7 +347,27 @@ class Strategy:
             # for trend, smooth tanh, -0.10 max relaxation on bull strong_min in
             # uptrend only. New cross-timescale data dep at admission boundary,
             # one-sided multi-variable structural change.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Architectural: cross-symbol return consensus admission modifier.
+            # When all symbols move together (macro-driven), the signal is confirmed
+            # across assets — relax bull admission proportionally. When symbols
+            # diverge (idiosyncratic noise), tighten admission. One-sided: bull-only,
+            # bear admission unchanged (crash sensitivity preserved). Continuous
+            # tanh on (consensus - 0.5)/0.3: consensus=1.0 (3/3 aligned) -> relax -0.06
+            # on bull strong_min; consensus=0.33 (1/3) -> tighten +0.06. Crash
+            # bear negative-consensus during downtrend would relax bear admission
+            # → preserve bear-side baseline. NEW ARCHITECTURAL DIMENSION at
+            # admission boundary: cross-symbol data, orthogonal to per-symbol primitives.
+            if len(_x_ret) >= 2:
+                _pos_signs = sum(1 for v in _x_ret.values() if v > 0.003)  # >0.3% filter for near-zero noise
+                _neg_signs = sum(1 for v in _x_ret.values() if v < -0.003)
+                _total = _pos_signs + _neg_signs
+                _x_consensus = abs(_pos_signs - _neg_signs) / max(_total, 1)  # 0 if split, 1 if all aligned
+                _x_mod = np.tanh((_x_consensus - 0.5) / 0.3)  # in [-1, 1]
+                # Bull-only: relax when macro-positive, tighten when macro-negative
+                _x_bull_mod = 1.0 - 0.06 * _x_mod
+            else:
+                _x_bull_mod = 1.0
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * _x_bull_mod
             _bear_strong_min = _strong_min * _freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
