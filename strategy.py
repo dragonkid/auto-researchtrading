@@ -868,6 +868,16 @@ class Strategy:
                 # Weight: only fire on currently-profitable / minor-loss positions
                 # (avoid double-counting with slope-against on big losers)
                 _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
+                # Architectural: trend-aligned ep_pressure attenuation (new cross-component
+                # data dep at exit fusion). When position is trend-aligned AND profitable,
+                # reduce _w_ep by up to 0.50 — trend-aligned pullback givebacks are expected
+                # noise, not reversal signal. Counter-trend and chop positions keep full
+                # ep_pressure (they need the early-profit-lock protection). Follows asymmetric
+                # pattern from afa6281 (admission) and 0f7f188 (de-risk floor). Continuous
+                # via tanh(ret_long * pos_dir / 0.04) * max(0, _pnl_scale).
+                # Multi-variable: NEW cross-component data dep on _w_ep from ret_long+pos_dir.
+                _ep_ta_atten = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.04)) * max(0.0, _pnl_scale)
+                _w_ep *= 1.0 - 0.50 * _ep_ta_atten
                 # Architectural: adverse-recovery exit pressure (6th soft source).
                 # New per-symbol state (MAE low-water mark) drives a new control flow:
                 # when current pos_pnl has substantially recovered from MAE but is still
