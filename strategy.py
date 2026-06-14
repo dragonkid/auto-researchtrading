@@ -859,7 +859,7 @@ class Strategy:
                 # OR small loss <0.4*stop). New cross-bar data dependency on early-
                 # peak giveback. New control flow: separate exit term for sub-peak
                 # giveback decoupled from _pp_pressure activation gate.
-                _ep_peak_floor = 0.15 * _pp_min  # widened from 0.30 to capture earlier peaks
+                _ep_peak_floor = 0.30 * _pp_min  # restore original floor — narrower activation reduces exit noise in low-vol grind (rally)
                 if self.peak_pnl[symbol] > _ep_peak_floor and _pp_ratio < 0.95:
                     # Activation: 0 at peak_pnl == _ep_peak_floor, 1 at peak_pnl == _pp_min*0.95
                     _ep_activation = max(0.0, min(1.0, (self.peak_pnl[symbol] - _ep_peak_floor) / max(0.95 * _pp_min - _ep_peak_floor, 1e-6)))
