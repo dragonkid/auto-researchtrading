@@ -889,17 +889,6 @@ class Strategy:
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                    # Architectural: vol-gated _ar_pressure activation.
-                    # Experiment 3 removal showed bull +0.314 (fewer false MAE exits in
-                    # low-vol uptrend pullbacks) but crash -0.173 (lost real MAE reversal
-                    # exits in high-vol). Gate: mute _ar_pressure in low vol (bull, where
-                    # MAE dips are transient), full in high vol (crash, where MAE recoveries
-                    # threaten reversal). Smooth tanh on (vol_ratio-0.9)/0.3:
-                    #   vol_ratio=0.7 = 0.10, vol_ratio=1.0 = 0.50, vol_ratio=1.2 = 0.85.
-                    # New cross-component data dependency: _ar_pressure magnitude depends on
-                    # vol_ratio (realized vol / target vol). Smooth, no boundary.
-                    _ar_vol_gate = 0.10 + 0.80 * max(0.0, min(1.0, np.tanh((vol_ratio - 0.9) / 0.3)))
-                    _ar_pressure *= _ar_vol_gate
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
