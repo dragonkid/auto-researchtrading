@@ -82,9 +82,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
-MIN_VOTES = 2.92  # scaled for 7 voters
-FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
+STRONG_WEIGHT_MIN = 1.50  # required sum of margin-above-0.5 voter contributions (scaled for 6 voters)
+MIN_VOTES = 2.50  # scaled for 6 voters
+FLIP_MIN_VOTES = 2.40  # scaled for 6 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -208,24 +208,13 @@ class Strategy:
             _ml = ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_FAST) - ema(closes[-(MACD_SLOW + MACD_SIGNAL + 5):], MACD_SLOW)
             _ea = ema(closes[-(EMA_SLOPE_PERIOD + EMA_SLOPE_LOOKBACK + 5):], EMA_SLOPE_PERIOD)
 
-            # 7 voters with smooth tanh contribution: hard binary except at threshold boundary.
+            # 6 voters with smooth tanh contribution: hard binary except at threshold boundary.
             # Each voter contribution = 0.5 * (1 + tanh((signal - thresh) * sharpness)) so it behaves like a binary
             # 0/1 except in a narrow band around the threshold where it transitions smoothly. Keeps original
             # vote-count semantics while reducing flip-rate near boundaries.
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: 7th voter — volume-weighted price deviation.
-            # Volume data is orthogonal to all 6 existing voters (which use price-derived
-            # series only). Compute 12-bar VWAP using (high+low+close)/3 typical price
-            # weighted by volume; voter signals when current close deviates upward (bull)
-            # from VWAP. Captures genuine volume-confirmed directional pressure independent
-            # of moving averages, RSI, MACD, slope. New data dependency on volume * price.
-            _vwap_n = 12
-            _vol_arr = bd.history["volume"].values[-_vwap_n:]
-            _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
-            _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
-            _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -233,7 +222,6 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
-                _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -253,14 +241,7 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
-            # is dominated by recent action which oscillates with chop noise; in
-            # trends, VWAP captures genuine directional pressure. Scale VWAP voter
-            # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
-            # via _trend_strength_w. Preserves the rally/crash gain while reducing
-            # the sideways regression introduced by full VWAP weight.
-            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -282,7 +263,7 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 7)
+                _arr = np.array(_sig_hist)  # (K, 6)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
@@ -509,7 +490,7 @@ class Strategy:
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
                 # Architectural simplification: removed 3-slope consensus attenuator on
                 # first-bar entry size. The 8/16/32-bar HL2 slope consensus [-0.40, 1.00]
-                # multiplicative gate measures the same directional agreement that the 7-voter
+                # multiplicative gate measures the same directional agreement that the 6-voter
                 # strong-sum already encodes. In rally, 8-bar slope is often negative during
                 # pullbacks while 16/32 slopes stay positive, creating mixed consensus that
                 # cuts entry size on precisely the BTFD entries rally needs. In bull, all 3
