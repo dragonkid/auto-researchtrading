@@ -82,9 +82,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 2.00  # required sum of margin-above-0.5 voter contributions (scaled for 8 voters)
-MIN_VOTES = 3.34  # scaled for 8 voters
-FLIP_MIN_VOTES = 3.20  # scaled for 8 voters
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
+MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -226,17 +226,6 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Architectural: 8th voter — within-bar close position.
-            # Close's position within the bar's high-low range captures intra-bar
-            # directional pressure: close near high = buying dominated the bar,
-            # close near low = selling dominated. Orthogonal to ALL 7 existing
-            # voters (which use bar-to-bar changes, not within-bar structure).
-            # NEW DATA SOURCE: high-low range (within-bar, not cross-bar).
-            _bar_high = bd.history["high"].values[-1]
-            _bar_low = bd.history["low"].values[-1]
-            _bar_range = _bar_high - _bar_low
-            _close_pos = (mid - _bar_low) / max(_bar_range, 1e-10)  # in [0, 1]
-            _close_pos_signal = (_close_pos - 0.48) / 0.04  # centered at 0.48 (mid), scale 0.04
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -245,7 +234,6 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
-                _close_pos_signal,  # 8th voter: intra-bar close position, ~4% scale
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -272,12 +260,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # 8th voter (intra-bar close position): modest fixed weight 0.80,
-            # not redistributed with trend — within-bar signal is structurally
-            # valid both in trends (confirms direction) and in chop (mean-reverting
-            # from extremes), unlike VWAP which needs trend for directional signal.
-            _close_pos_wt = 0.80
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, _close_pos_wt)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -299,13 +282,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 8)
+                _arr = np.array(_sig_hist)  # (K, 7)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
