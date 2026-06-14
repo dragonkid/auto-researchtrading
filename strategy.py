@@ -898,18 +898,12 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Architectural simplification: removed ep_pressure (early-profit-lock)
-                # from MAX exit fusion. ep_pressure fires on sub-_pp_min profitable
-                # positions giving back early gains. In rally, bull positions accumulate
-                # small gains, give back during pullbacks, and ep_pressure creates exit
-                # pressure on these positions — preventing them from compounding through
-                # pullback noise. Removing it lets small-peak profitable positions survive
-                # through pullback dips when no other pressure source is elevated.
                 _soft_max = max(
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
+                    _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
