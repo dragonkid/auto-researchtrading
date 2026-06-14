@@ -782,48 +782,14 @@ class Strategy:
                 # (let slope-against do loss-cutting; avoid sideways small-loss jitter
                 # destabilizing time pressure).
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
-                # Architectural multi-variable restructure: replaced voter-attn
-                # multiplicative cross-coupling with bilateral additive voter_bias.
-                # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
-                # heterogeneous pressure terms (slope/pp/time/ve), creating cross-
-                # subsystem correlated coupling — a single voter-state value scaled
-                # all four terms simultaneously. Replace with:
-                #   1) voter_bias subtracts from exit when own-side conviction strong
-                #      (lets winners run when voters still validate position).
-                #   2) voter_bias ADDS to exit when opposite-side conviction strong
-                #      (bilateral — explicit reversal evidence raises exit).
-                # Bilateral-additive fusion decouples voter influence from individual
-                # pressure terms while preserving net effect on exit decision.
-                _side_margin = _bull_margin if current_pos > 0 else _bear_margin
-                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Chop-amplified own-side subtraction with divergence taper: in pure sideways
-                # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
-                _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
-                _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
-                # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
-                # In strong long-window trends WHERE position is trend-aligned, attenuate
-                # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
-                # positions (bull in uptrend, bear in downtrend) face opposite-side voter
-                # spikes (rally pullback bull voters firing on bear positions; crash dead-
-                # cat bounce bull voters firing on bear shorts), the additive opp bias
-                # currently fires the same as in chop. In confirmed trends, opp-voter
-                # signals during pullbacks are more often noise than reversal. Attenuate
-                # opp_bias by tanh(ret_long * pos_dir / 0.05) so trend-aligned positions
-                # see softer opp-bias contribution to _exit_pressure. Counter-trend
-                # positions and chop: unchanged. New cross-timescale data dep: opp-side
-                # voter_bias depends on (ret_long, position direction).
-                _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
-                _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
-                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
-                # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
-                # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
-                # directional backing) — mute opp_bias contribution. In trends, opp-voter
-                # spikes carry reversal signal — full activation. Continuous tanh on
-                # abs(ret_long)/0.04. Symmetric counterpart to _chop_amp on own-side
-                # subtraction (chop amplifies own-side hold; chop also mutes opp-side
-                # exit-spike). Multi-variable: adds new factor to opp-side fusion.
-                _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Architectural simplification: removed voter_bias from exit
+                # pressure (-25 LOC, removes 4 nested tanh gates, 3 cross-component
+                # data dependencies). voter_bias coupled the voter subsystem (strong-sum
+                # margins) to the exit subsystem, creating correlated noise: voter
+                # oscillation in rally pullbacks directly drives exit oscillation.
+                # Exit decisions now depend only on direct market-observable pressures
+                # (slope, pp, time, ve, ep, ar, sl) — decoupled from voter opinion.
+                _voter_bias = 0.0
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
