@@ -146,11 +146,7 @@ def compute_composite_score(results: list[dict]) -> float:
     variance = sum((s - mean_score) ** 2 for s in scores) / len(scores)
     std_score = math.sqrt(variance)
 
-    # Simplicity bonus: reward shorter strategies (less overfitting surface)
-    loc = _count_effective_loc()
-    simplicity_bonus = max(0.0, (SIMPLICITY_BASELINE_LOC - loc)) * SIMPLICITY_BONUS_PER_LINE
-
-    return mean_score - CONSISTENCY_K * std_score + simplicity_bonus
+    return mean_score - CONSISTENCY_K * std_score
 
 
 if __name__ == "__main__":
@@ -234,9 +230,7 @@ if __name__ == "__main__":
             raw_mean = sum(raw_scores) / len(raw_scores)
             raw_var = sum((s - raw_mean) ** 2 for s in raw_scores) / len(raw_scores)
             raw_std = math.sqrt(raw_var)
-            loc = _count_effective_loc()
-            simplicity_bonus = max(0.0, (SIMPLICITY_BASELINE_LOC - loc)) * SIMPLICITY_BONUS_PER_LINE
-            raw_composite = raw_mean - CONSISTENCY_K * raw_std + simplicity_bonus
+            raw_composite = raw_mean - CONSISTENCY_K * raw_std
         else:
             raw_composite = -999.0
 
