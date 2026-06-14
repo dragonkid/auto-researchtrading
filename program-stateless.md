@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-Focus on maximizing composite_score (= mean regime scores - 0.5*std + simplicity bonus). Stability test is currently DISABLED — do not consider it.
+Focus on maximizing composite_score (= mean regime scores - 0.5*std). Stability test is ENABLED — applies to regimes with positive score.
 
 ## Session protocol
 
@@ -197,7 +197,7 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 - stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
 - stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
 
-Signal stability test is currently DISABLED. It will be re-enabled when strategies reach positive Sharpe across all regimes. Do not consider stability in keep/discard decisions.
+Signal stability test is ENABLED. Applies only to regimes with positive score (score > 0). Penalties: stability < 0.70 → ×0.50; 0.70–0.79 → ×0.75; ≥ 0.80 → no penalty.
 
 **Stability scoring**: ENABLED. Applies when regime score > 0. See penalty tiers above.
 
