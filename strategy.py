@@ -837,33 +837,17 @@ class Strategy:
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
                 _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
-                # Architectural: early-profit-lock exit pressure (5th soft source).
-                # _pp_pressure only fires after _pp_ratio >= 0.95 (peak past _pp_min).
-                # Sub-peak profitable positions that give back early gains receive NO
-                # pp protection — slope/time only. New term fires when:
-                #   - position has been profitable (peak_pnl > 0.30 * _pp_min)
-                #   - currently giving back (peak - pos_pnl > 0)
-                #   - peak below _pp_min (so _pp_pressure inactive)
-                # Activation ramps as peak_pnl approaches _pp_min from below; giveback
-                # ratio against the realized peak provides exit pressure. Caps at 0.5
-                # (subordinate to fully-armed _pp_pressure once peak crosses _pp_min).
-                # Weighted by _pnl_scale (only fires when currently still in profit
-                # OR small loss <0.4*stop). New cross-bar data dependency on early-
-                # peak giveback. New control flow: separate exit term for sub-peak
-                # giveback decoupled from _pp_pressure activation gate.
-                _ep_peak_floor = 0.15 * _pp_min  # widened from 0.30 to capture earlier peaks
-                if self.peak_pnl[symbol] > _ep_peak_floor and _pp_ratio < 0.95:
-                    # Activation: 0 at peak_pnl == _ep_peak_floor, 1 at peak_pnl == _pp_min*0.95
-                    _ep_activation = max(0.0, min(1.0, (self.peak_pnl[symbol] - _ep_peak_floor) / max(0.95 * _pp_min - _ep_peak_floor, 1e-6)))
-                    _ep_giveback_ratio = _giveback / max(self.peak_pnl[symbol], 1e-6)
-                    # Branch step 3: lowered giveback fire threshold from 0.40 to 0.30
-                    # to catch earlier small-peak giveback signals across regimes.
-                    _ep_pressure = 0.5 * max(0.0, min(1.0, (_ep_giveback_ratio - 0.30) / 0.40)) * _ep_activation
-                else:
-                    _ep_pressure = 0.0
-                # Weight: only fire on currently-profitable / minor-loss positions
-                # (avoid double-counting with slope-against on big losers)
-                _w_ep = max(0.0, min(1.0, 0.5 + 0.5 * _pnl_scale))  # 1.0 in profit, 0.0 at full stop
+                # Architectural simplification: removed early-profit-lock exit pressure (_ep_pressure).
+                # _ep_pressure fired on sub-peak giveback (peak between 0.15*_pp_min and _pp_min)
+                # — positions that barely built a small peak and then gave back. In rally, these
+                # are often trend-building positions that need 2-3 more bars to reach full-size
+                # before the trend matures. _ep_pressure exits them prematurely, creating the
+                # enter→small_peak→exit→re-enter cycle. _pp_pressure already handles giveback
+                # on confirmed peaks (>= _pp_min). Slope-against catches genuine reversals.
+                # Removing _ep_pressure reduces soft exit source count 6→5, removes a control
+                # flow branch, and prevents premature profit-locking on sub-pp_min peaks.
+                _ep_pressure = 0.0
+                _w_ep = 0.0
                 # Architectural: adverse-recovery exit pressure (6th soft source).
                 # New per-symbol state (MAE low-water mark) drives a new control flow:
                 # when current pos_pnl has substantially recovered from MAE but is still
