@@ -321,22 +321,25 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
-            # entry frequency regulator). Per-symbol _freq_factor already captures
-            # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
-            # composes multiplicatively, double-counting since correlated regimes (crash)
-            # naturally produce multi-symbol entries in tandem. Removing eliminates the
-            # +15% admission cost during legitimate correlated entry pile-ups (e.g. multi-
-            # symbol crash legs). Per-symbol regulator alone provides sufficient churn
-            # protection. Code-structure removal: 7 lines + state tracking eliminated.
+            # Architectural: ONE-SIDED trend-aligned freq_factor relaxation for bull.
+            # In uptrends, frequent bull entries are correct (riding trend waves) —
+            # penalizing them with higher _strong_min via _freq_factor is counterproductive.
+            # Relax the frequency penalty on bull entries in uptrend by up to 25%
+            # (tanh on ret_long/0.04). Bear side unchanged — crash bear admission
+            # is precisely calibrated against dead-cat bounces; relaxing freq gate
+            # there admits lower-quality bears during bounce-driven entry piles.
+            # Multi-variable: splits _freq_factor into bull/bear variants with new
+            # cross-timescale data dependency (frequency regulator × trend alignment).
+            _bull_freq_factor = _freq_factor * (1.0 - 0.25 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bear_freq_factor = _freq_factor
             # Architectural: bull-only trend-aligned admission relaxation. Bear
             # admission unchanged (crash bear admission is sensitive to dead-cat
             # bounce low-quality entries regardless of magnitude). 20-bar ret_long
             # for trend, smooth tanh, -0.10 max relaxation on bull strong_min in
             # uptrend only. New cross-timescale data dep at admission boundary,
             # one-sided multi-variable structural change.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor
+            _bull_strong_min = _strong_min * _bull_freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _bear_freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
