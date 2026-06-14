@@ -66,9 +66,10 @@ For each experiment:
    **Keep/discard rules:**
 
    An experiment qualifies as `keep` if ALL of the following are met:
-   - `composite_score` improved vs baseline (any positive delta counts — strategy is currently net-negative, every improvement matters).
+   - `composite_score` improved vs baseline (any positive delta counts).
    - `mean_score` improved vs baseline (average per-regime score must go up).
-   - No regime's `max_dd_pct` exceeds 95% (hard safety net only).
+   - No regime score dropped more than 50% vs baseline (e.g., baseline 1.023 → floor is 0.512). If any regime breaches this gate, the experiment cannot be a direct KEEP — open an exploration branch to recover the regressed regime first.
+   - No regime's `max_dd_pct` exceeds 10% (hard safety net).
 
    See the Scoring formula section below for the full `compute_score` formula.
 
