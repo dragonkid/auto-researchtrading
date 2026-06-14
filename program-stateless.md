@@ -65,6 +65,7 @@ For each experiment:
    ```
 4. **Backtest**: `uv run regime_test.py > run.log 2>&1`
 5. **Parse results**: `grep "^composite_score:\|^raw_composite:\|^mean_score:\|^std_score:\|^regime_\|^min_stability:" run.log`
+   - Key fields per regime: `regime_X_score` (final), `regime_X_raw_score` (before penalties), `regime_X_stability_factor`, `regime_X_flip_streak_gate`
 6. **Record** (mandatory — do NOT skip): Append one row to `results.tsv` for EVERY experiment. This is not optional.
 
    **Keep/discard rules:**
@@ -81,9 +82,8 @@ For each experiment:
    turnover_gate = 1 / (1 + annual_turnover_ratio / 200)
    ```
    Negative Sharpe → negative score (smooth gradient). Turnover gate directly penalizes excessive trading.
-   Current baseline is deeply negative (mean_score = -0.019).
 
-   **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, and per-regime scores directly.
+   **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, per-regime `score` / `raw_score` / `stability_factor` / `flip_streak_gate`, and other metrics directly.
 
    If keep: append a `keep` line with all per-regime scores. The new baseline for ALL subsequent experiments is now this keep. **CRITICAL: after a keep, you MUST compare the next experiment against this new keep's scores, not the session-start baseline.** Read the last `keep` row in results.tsv to get the current baseline values.
    If discard: **check exploration branch eligibility** (see below). If not eligible, run `git revert --no-edit HEAD`, append a `discard` line. NEVER use `git reset --hard`.
@@ -165,17 +165,18 @@ Legacy rows (6 columns) may remain in the file for historical reference but are 
 Each regime is scored via `compute_score()`, then combined:
 
 ```
-score = signal_quality × sample_factor × dd_gate × turnover_gate
+score = signal_quality × sample_factor × dd_gate × turnover_gate × vol_gate × streak_gate
 
 signal_quality = log(1 + max(sharpe, 0))
 sample_factor = sqrt(min(num_trades / 50, 1))
 dd_gate = 1/(1 + DD%) × exp(-max(0, DD%-5)/10)
 turnover_gate = 1 / (1 + trades_per_day / 10)
+vol_gate = 1 / (1 + return_volatility)
+streak_gate = exp(-max_consecutive_losses / 30)
 
 Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
 
-Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
-Simplicity bonus = max(0, (575 - effective_LOC)) * 0.001   # reward shorter strategy.py
+Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
@@ -191,15 +192,11 @@ Search regimes (4 non-overlapping periods):
 
 ## Primary Objective: Maximize composite_score
 
-The noise test uses AR(1) correlated perturbation matching real cross-exchange differences. Penalty tiers:
+Stability penalty (applied per-regime when score > 0, uses AR(1) correlated noise test):
 
-- stability < 0.70 → 50% penalty: factor = (stab/0.80) × 0.50
-- stability 0.70–0.79 → 25% penalty: factor = (stab/0.80) × 0.75
-- stability ≥ 0.80 → no penalty: factor = stab/0.80, capped at 1.0
-
-Signal stability test is ENABLED. Applies only to regimes with positive score (score > 0). Penalties: stability < 0.70 → ×0.50; 0.70–0.79 → ×0.75; ≥ 0.80 → no penalty.
-
-**Stability scoring**: ENABLED. Applies when regime score > 0. See penalty tiers above.
+- stability < 0.70 → factor = (stab/0.80) × 0.50
+- stability 0.70–0.79 → factor = (stab/0.80) × 0.75
+- stability ≥ 0.80 → factor = stab/0.80, capped at 1.0
 
 ### Diagnostic-first approach (optional, recommended for new sessions)
 
@@ -212,13 +209,21 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate experiments
 - Check `composite_score` and `mean_score` — both must improve vs baseline
-- Check per-regime scores — ideally all should move toward positive (currently only bull_2021 is positive at +0.013)
+- Check per-regime scores — check both `raw_score` and final `score` to understand penalty impact
 - Check `regime_X_flip_count` and `regime_X_flip_pnl` — these are significant cost contributors
 - The ONLY hard constraint is: no regime MaxDD > 95%
 
+**Score decomposition fields** (output by `regime_test.py` for each regime):
+- `regime_X_raw_score` — score BEFORE stability and flip_streak penalties
+- `regime_X_stability_factor` — multiplier applied by stability penalty (1.0 = no penalty, <1.0 = penalized)
+- `regime_X_flip_streak_gate` — multiplier applied by flip streak penalty (1.0 = no penalty)
+- Final score = raw_score × stability_factor × flip_streak_gate
+
+**Use raw_score to diagnose WHERE the problem is.** If a regime has high raw_score but low final score, the problem is noise sensitivity (low stability), not strategy quality. Focus on making signals more robust (smooth thresholds, wider margins from decision boundaries) rather than changing the signal logic itself. If raw_score is low, the strategy genuinely underperforms in that regime.
+
 ## Stability constraints (guard rails, not objectives)
 
-Stability is ENABLED. Penalizes regimes with positive score that are noise-sensitive (see tiers above). Design strategies with smooth thresholds to avoid penalty.
+Design strategies with smooth thresholds to minimize stability penalty.
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
 **HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
@@ -232,7 +237,7 @@ Stability is ENABLED. Penalizes regimes with positive score that are noise-sensi
 Run this once per session if you need to identify the noisiest voter. Adapt the skeleton to instrument your actual voters:
 
 ```python
-# diagnostic: per-voter flip rate under ±5bps noise
+# diagnostic: per-voter flip rate under AR(1) correlated noise
 # Instrument vote computation to extract individual voter booleans
 # Compare: voter_clean[i] != voter_perturbed[i] → flip
 # Report table: Voter | Flip rate | Bars affected
@@ -243,8 +248,6 @@ Do NOT hardcode "proven ineffective" conclusions here — read results.tsv each 
 
 **funding_rate data is all zeros in the current dataset.** The Binance spot OHLCV data used for backtesting does not include funding rates (funding_rate column = 0.0 for all bars). Any strategy component that reads `bd.history["funding_rate"]` will receive constant zeros — it cannot provide a real signal. A "voter" based on funding_rate=0 will produce a fixed constant bias (not a data-responsive signal). Do not use funding_rate as a signal source until real per-exchange funding data is integrated.
 
-**Trading frequency is a dominant cost driver.** At 5bps taker fee, each round-trip costs 10bps. The strategy's signals have positive alpha at zero cost (Sharpe 1.1-2.6 across 3/4 regimes), but with ~40 trades/day the cumulative cost exceeds the alpha. `compute_score` includes a `turnover_gate` that activates when Sharpe turns positive — reducing trades-per-day directly improves the gate and thus the score.
-
 ## Data available
 
 - BTC, ETH, SOL hourly OHLCV + funding rates
@@ -253,7 +256,7 @@ Do NOT hardcode "proven ineffective" conclusions here — read results.tsv each 
 
 ## Overfitting hygiene
 
-These rules exist because this branch has accumulated 190+ experiments. At that scale, selection bias dominates — any single +0.01 improvement is statistically fragile, and the search regimes themselves are effectively in-sample. Violating these rules causes meta-overfit that the regime-regression gate cannot catch.
+These rules exist because this branch has accumulated hundreds of experiments. At that scale, selection bias dominates — any single +0.01 improvement is statistically fragile, and the search regimes themselves are effectively in-sample. Violating these rules causes meta-overfit that the regime-regression gate cannot catch.
 
 - **Do NOT read commit bodies of prior experiments.** Use only `git log main..HEAD --oneline` (subjects only) and `results.tsv`. Commit bodies hold past hypotheses — reading them narrows your proposal space to "slight variants of what was tried," amplifying selection bias.
 - **Do NOT base your idea on holdout findings.** The holdout (2025-01+) is never read by you. But also: if you notice phrasing in this prompt or in code comments that references specific holdout events (e.g., "the single-hour DD on 2025-03-02"), treat those as off-limits — do NOT design a rule targeting them. Any insight derived from holdout data is information leakage, regardless of who performed the analysis.
@@ -262,10 +265,10 @@ These rules exist because this branch has accumulated 190+ experiments. At that 
 
 ## Guidelines
 
-- **One variable per experiment** (within a session you run multiple experiments, but each tests one idea in isolation). The exception is Phase 3 combination experiments, which explicitly merge two independently-validated ideas.
+- **One idea per experiment** (each experiment tests one hypothesis in isolation — but that hypothesis may require coordinated multi-variable edits if it's architectural). The exception is Phase 3 combination experiments, which explicitly merge two independently-validated improvements.
 - If you have no ideas, re-read `strategy.py` carefully and look for parameters to tune or signals to add/remove.
 - All else equal, simpler is better. A 0.001 improvement that adds 20 lines of hacky code is not worth it.
 - **Simplification experiments are as valuable as additions.** Try removing a voter, disabling a sizing multiplier, or deleting dead code. If the score holds or improves, keep the simpler version. Complexity has a hidden cost: it hurts out-of-sample generalization.
-- **Do NOT inline constants or compress code for LOC bonus.** Named constants improve readability. The simplicity bonus rewards removing dead logic, not cosmetic code compression. Inlining a named constant into its usage site is NOT a valid simplification.
+- **Do NOT inline constants or compress code cosmetically.** Named constants improve readability. Inlining a named constant into its usage site is NOT a valid simplification.
 - **Use your session context wisely.** Your advantage over single-experiment mode is that you can observe patterns across experiments within this session. If experiment 1 shows sideways +0.24 but crash -1.44, experiment 2 should try to preserve the sideways gain while protecting crash — not start from scratch on an unrelated direction.
 - Do NOT ask for confirmation. You are fully autonomous for this session.

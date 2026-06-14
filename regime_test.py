@@ -114,25 +114,8 @@ def _run_regime_worker(args: tuple) -> dict:
     }
 
 
-def _count_effective_loc(filepath: str = "strategy.py") -> int:
-    """Count non-empty, non-comment lines in strategy.py."""
-    try:
-        with open(filepath) as f:
-            return sum(
-                1 for line in f
-                if line.strip() and not line.strip().startswith("#")
-            )
-    except FileNotFoundError:
-        return 500  # neutral default
-
-
-# Baseline LOC for simplicity bonus (lines above this get no penalty, lines below get bonus)
-SIMPLICITY_BASELINE_LOC = 575
-SIMPLICITY_BONUS_PER_LINE = 0.001
-
-
 def compute_composite_score(results: list[dict]) -> float:
-    """Composite = mean(scores) - k * std(scores) + simplicity_bonus. Returns -999 if any regime failed."""
+    """Composite = mean(scores) - k*std(scores). Returns -999 if any regime failed."""
     scores = []
     for r in results:
         if "error" in r or r.get("score", -999) <= -999:
@@ -243,15 +226,22 @@ if __name__ == "__main__":
         print(f"num_regimes:        {len(scores)}")
         for r in results:
             if "error" not in r:
-                print(f"regime_{r['name']}_score: {r['score']:.6f}")
-                print(f"regime_{r['name']}_sharpe: {r['sharpe']:.6f}")
-                print(f"regime_{r['name']}_annual_return_pct: {r['annual_return_pct']:.6f}")
-                print(f"regime_{r['name']}_max_dd: {r['max_dd_pct']:.6f}")
-                print(f"regime_{r['name']}_stability: {r.get('stability', 1.0):.6f}")
-                print(f"regime_{r['name']}_flip_count: {r.get('flip_count', 0)}")
-                print(f"regime_{r['name']}_flip_wr: {r.get('flip_win_rate', 0.0):.2f}")
-                print(f"regime_{r['name']}_flip_pnl: {r.get('flip_pnl_pct', 0.0):.2f}")
-                print(f"regime_{r['name']}_flip_streak_drag: {r.get('flip_streak_drag', 0.0):.2f}")
+                n = r['name']
+                sf = r.get('stability_factor', 1.0)
+                fsg = r.get('flip_streak_gate', 1.0)
+                raw = r['score'] / (sf * fsg) if (sf * fsg) > 0 else r['score']
+                print(f"regime_{n}_score: {r['score']:.6f}")
+                print(f"regime_{n}_raw_score: {raw:.6f}")
+                print(f"regime_{n}_stability_factor: {sf:.6f}")
+                print(f"regime_{n}_flip_streak_gate: {fsg:.6f}")
+                print(f"regime_{n}_sharpe: {r['sharpe']:.6f}")
+                print(f"regime_{n}_annual_return_pct: {r['annual_return_pct']:.6f}")
+                print(f"regime_{n}_max_dd: {r['max_dd_pct']:.6f}")
+                print(f"regime_{n}_stability: {r.get('stability', 1.0):.6f}")
+                print(f"regime_{n}_flip_count: {r.get('flip_count', 0)}")
+                print(f"regime_{n}_flip_wr: {r.get('flip_win_rate', 0.0):.2f}")
+                print(f"regime_{n}_flip_pnl: {r.get('flip_pnl_pct', 0.0):.2f}")
+                print(f"regime_{n}_flip_streak_drag: {r.get('flip_streak_drag', 0.0):.2f}")
 
         stabilities = [r.get("stability", 1.0) for r in results if "error" not in r]
         if stabilities:
