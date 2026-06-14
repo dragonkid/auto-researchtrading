@@ -896,34 +896,12 @@ class Strategy:
                 # muted in uptrend (bull, where MAE dips are transient pullbacks). Continuous
                 # tanh on -ret_long: 1.0 at ret_long << 0 (downtrend), ~0 at ret_long >> 0.
                 _w_ar = 0.0 + 1.0 * max(0.0, min(1.0, np.tanh(-ret_long / 0.04)))
-                # Architectural: range-breakdown exit pressure (7th soft source, NEW DATA SOURCE).
-                # Measures bar close position within its range (HL2 range-fraction) AND bar range
-                # expansion relative to 20-bar average. Fires when BOTH: (a) bar range > 1.2x avg
-                # (volatile bar), AND (b) close is near the unfavorable end (close near LOW for
-                # long positions, near HIGH for short positions). Expanding bar + adverse close
-                # = strong directional move against position. Orthogonal to all 6 existing sources:
-                # independent of slope (direction of move), pp (giveback), time, ve (vol-of-vol,
-                # which doesn't use close position), ep (sub-peak giveback), ar (MAE recovery).
-                # Weighted by pnl_scale: fires harder when in loss (cut losers fast on range
-                # breakdown) — this is the flip side of _ve_pressure which only fires in profit.
-                _bar_range_cur = bd.history["high"].values[-1] - bd.history["low"].values[-1]
-                _bar_range_avg = np.mean(np.abs(bd.history["high"].values[-21:-1] - bd.history["low"].values[-21:-1]))
-                _range_expand = _bar_range_cur / max(_bar_range_avg, 1e-10)
-                _close_range_pos = (mid - bd.history["low"].values[-1]) / max(_bar_range_cur, 1e-10)  # 0=low, 1=high
-                _rd_expand_gate = max(0.0, np.tanh((_range_expand - 1.2) / 0.4))  # [0,1], active >1.2x
-                _rd_long_adverse = max(0.0, np.tanh((0.30 - _close_range_pos) / 0.20))  # close near low
-                _rd_short_adverse = max(0.0, np.tanh((_close_range_pos - 0.70) / 0.20))  # close near high
-                _rd_adverse = _rd_long_adverse if current_pos > 0 else _rd_short_adverse
-                _rd_pressure = 0.55 * _rd_expand_gate * _rd_adverse
-                # Loss-side weight: fires in loss (cut losing positions on range breakdown),
-                # suppressed in profit (let winners run through). Complement to _ve_pressure.
-                _w_rd = 1.0 + 0.20 * max(0.0, -_pnl_scale)  # [1.0, 1.2], heavier in loss
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _w_rd * _rd_pressure
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
