@@ -335,13 +335,14 @@ class Strategy:
             # for trend, smooth tanh, -0.10 max relaxation on bull strong_min in
             # uptrend only. New cross-timescale data dep at admission boundary,
             # one-sided multi-variable structural change.
-            # Architectural: removed bull-only admission relaxation.
-            # The -0.10 * tanh(ret_long/0.04) factor on _bull_strong_min permanently
-            # lowered bull entry bar in rally (consistent uptrend), admitting noise.
-            # Rally problem is excess noise entries during weak pullback signals.
-            # Counter-trend admission tightening (+0.15*tanh) retained — load-bearing
-            # (bb366076 discard: removing it regressed all regimes).
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            # Architectural: counter-trend admission tightening. Bull-only relaxation
+            # (afa6281) already reduces bull strong_min in uptrend. This adds the
+            # SYMMETRIC COUNTERPART: tighten bull admission in downtrends (crash dead-cat
+            # bounce noise), tighten bear admission in uptrends (rally pullback bear noise).
+            # Continuous tanh on long-window trend direction, max 15% threshold increase.
+            # New cross-component data dep: admission threshold depends on trend direction
+            # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
