@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-Focus on maximizing composite_score (= mean regime scores - 0.5*std + simplicity bonus). Stability test is currently DISABLED — do not consider it.
+Focus on maximizing composite_score (= mean regime scores - 0.5*std). Stability test is currently DISABLED — do not consider it.
 
 ## Session protocol
 
@@ -81,7 +81,7 @@ For each experiment:
    turnover_gate = 1 / (1 + annual_turnover_ratio / 200)
    ```
    Negative Sharpe → negative score (smooth gradient). Turnover gate directly penalizes excessive trading.
-   Current baseline is deeply negative (mean_score = -0.019).
+   Current baseline: b0e4443 (composite 0.2834, mean 0.4572, bull 1.023, crash 0.419, sideways 0.302, rally 0.085).
 
    **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, and per-regime scores directly.
 
@@ -173,10 +173,11 @@ dd_gate = 1/(1 + DD%) × exp(-max(0, DD%-5)/10)
 turnover_gate = 1 / (1 + trades_per_day / 10)
 
 Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
-
-Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
-Simplicity bonus = max(0, (575 - effective_LOC)) * 0.001   # reward shorter strategy.py
 ```
+Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
+```
+
+No simplicity bonus — LOC reduction is not directly rewarded.
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
 The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.74x, 10%→0.55x.
