@@ -529,22 +529,8 @@ class Strategy:
                 _cons_scales = (0.0010, 0.0007, 0.0005)  # window-specific saturation
                 _bull_align = sum(np.tanh(s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
                 _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
-                # Architectural: trend-aligned consensus floor relaxation.
-                # Multi-scale slope disagreement during trend-aligned pullbacks is
-                # the ENTRY signal (near-term slope negative, far-term positive),
-                # not noise. Raise the floor from 0.40 to 0.55 for trend-aligned
-                # entries, following the afa6281+0f7f188 asymmetric pattern.
-                # floor = 0.40 + 0.15*ta, range = 0.60 - 0.15*ta.
-                # New cross-component data dep: consensus attenuator floor depends
-                # on (ret_long, entry direction) for trend alignment.
-                _ta_ca_bull = max(0.0, np.tanh(ret_long / 0.04))  # [0,~1]
-                _ta_ca_bear = max(0.0, np.tanh(-ret_long / 0.04))
-                _ca_floor_bull = 0.40 + 0.15 * _ta_ca_bull
-                _ca_floor_bear = 0.40 + 0.15 * _ta_ca_bear
-                _ca_range_bull = 0.60 - 0.15 * _ta_ca_bull
-                _ca_range_bear = 0.60 - 0.15 * _ta_ca_bear
-                _bull_consensus_atten = _ca_floor_bull + _ca_range_bull * (_bull_align + 1.0) / 2.0
-                _bear_consensus_atten = _ca_floor_bear + _ca_range_bear * (_bear_align + 1.0) / 2.0
+                _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
+                _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
