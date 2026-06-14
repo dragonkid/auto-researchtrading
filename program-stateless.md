@@ -70,7 +70,7 @@ For each experiment:
    **Keep/discard rules:**
 
    An experiment qualifies as `keep` if ALL of the following are met:
-   - `composite_score` improved vs baseline (any positive delta counts).
+   - `composite_score` improved vs baseline (any positive delta counts — strategy is currently net-negative, every improvement matters).
    - `mean_score` improved vs baseline (average per-regime score must go up).
    - No regime's `max_dd_pct` exceeds 95% (hard safety net only).
 
@@ -81,7 +81,7 @@ For each experiment:
    turnover_gate = 1 / (1 + annual_turnover_ratio / 200)
    ```
    Negative Sharpe → negative score (smooth gradient). Turnover gate directly penalizes excessive trading.
-   Current baseline: 54e2ec9 (composite 0.2856, mean 0.4590, bull 1.023, crash 0.416, sideways 0.314, rally 0.084).
+   Current baseline is deeply negative (mean_score = -0.019).
 
    **Computing scores:** `regime_test.py` outputs `composite_score:`, `raw_composite:`, `mean_score:`, and per-regime scores directly.
 
@@ -174,7 +174,8 @@ turnover_gate = 1 / (1 + trades_per_day / 10)
 
 Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
 
-Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
+Composite score = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
+Simplicity bonus = max(0, (575 - effective_LOC)) * 0.001   # reward shorter strategy.py
 ```
 
 Multiplicative structure: any dimension being terrible collapses the entire score.
@@ -211,7 +212,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ### How to evaluate experiments
 - Check `composite_score` and `mean_score` — both must improve vs baseline
-- Check per-regime scores — all 4 regimes are now positive; avoid regressions in any regime
+- Check per-regime scores — ideally all should move toward positive (currently only bull_2021 is positive at +0.013)
 - Check `regime_X_flip_count` and `regime_X_flip_pnl` — these are significant cost contributors
 - The ONLY hard constraint is: no regime MaxDD > 95%
 
@@ -265,6 +266,6 @@ These rules exist because this branch has accumulated 190+ experiments. At that 
 - If you have no ideas, re-read `strategy.py` carefully and look for parameters to tune or signals to add/remove.
 - All else equal, simpler is better. A 0.001 improvement that adds 20 lines of hacky code is not worth it.
 - **Simplification experiments are as valuable as additions.** Try removing a voter, disabling a sizing multiplier, or deleting dead code. If the score holds or improves, keep the simpler version. Complexity has a hidden cost: it hurts out-of-sample generalization.
-- **Do NOT inline constants or compress code.** Named constants improve readability. Inlining a named constant into its usage site is NOT a valid simplification.
+- **Do NOT inline constants or compress code for LOC bonus.** Named constants improve readability. The simplicity bonus rewards removing dead logic, not cosmetic code compression. Inlining a named constant into its usage site is NOT a valid simplification.
 - **Use your session context wisely.** Your advantage over single-experiment mode is that you can observe patterns across experiments within this session. If experiment 1 shows sideways +0.24 but crash -1.44, experiment 2 should try to preserve the sideways gain while protecting crash — not start from scratch on an unrelated direction.
 - Do NOT ask for confirmation. You are fully autonomous for this session.
