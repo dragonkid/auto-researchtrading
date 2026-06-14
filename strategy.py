@@ -82,7 +82,7 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.50  # required sum of margin-above-0.5 voter contributions (scaled for 6 voters)
+STRONG_WEIGHT_MIN = 1.60  # required sum of margin-above-0.5 voter contributions (scaled for 6 voters)
 MIN_VOTES = 2.50  # scaled for 6 voters
 FLIP_MIN_VOTES = 2.40  # scaled for 6 voters
 COOLDOWN_BARS = 1
@@ -304,17 +304,13 @@ class Strategy:
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # measures volume-supported price quality, not direction. Scale first-bar
-            # entry size by VWAP alignment: when price is above VWAP (bull) or below
-            # (bear), volume-confirmed directional pressure supports larger commitment.
-            # In chop, VWAP oscillates near price — narrow band [0.92, 1.08] to minimize
-            # noise from VWAP oscillation. In trend, VWAP lags persistently — full band
-            # [0.82, 1.18] amplifies trend-aligned entries. Continuous tanh, trend-
-            # conditioned via _trend_strength_w. New cross-component data dep:
-            # entry size now depends on VWAP deviation × strong-sum direction × trend strength.
-            _vwap_amp = 0.08 + 0.10 * _trend_strength_w  # [0.08 chop, ~0.18 strong trend]
-            _vwap_base = 1.0 - _vwap_amp
-            _vwap_range = 2.0 * _vwap_amp
-            _vwap_sz = _vwap_base + _vwap_range * max(0.0, np.tanh((_vwap_dev * (1.0 if _bull_strong > _bear_strong else -1.0)) / 0.002))
+            # entry size by VWAP alignment. TREND-ONLY activation: in chop (_trend_strength_w
+            # near 0), VWAP oscillates near price — multiplier stays at 1.0 (no modulation).
+            # In trend, VWAP lags persistently — full range [0.82, 1.18] amplifies trend-
+            # aligned entries. Continuous blend via _trend_strength_w. New cross-component
+            # data dep: entry size depends on VWAP deviation × strong-sum direction × trend.
+            _vwap_sz_raw = 0.82 + 0.36 * max(0.0, np.tanh((_vwap_dev * (1.0 if _bull_strong > _bear_strong else -1.0)) / 0.002))
+            _vwap_sz = 1.0 + (_vwap_sz_raw - 1.0) * _trend_strength_w  # blend to 1.0 in chop
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
