@@ -350,8 +350,18 @@ class Strategy:
             # Smooth cooldown_factor (tanh decay over trend-scaled window) +
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
-            _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
+            _last_pnl_outcome = self._last_exit_pnl.get(symbol, 0.0)
+            _loss_only = max(0.0, -np.tanh(_last_pnl_outcome / abs(STOP_LOSS_PCT)))
+            # Architectural: profit-side cooldown stretch. After profitable exits,
+            # extend cooldown to prevent immediate re-entry during the same market
+            # move (the signal was completed, wait for next setup). Smooth tanh
+            # on profit magnitude scaled by stop — small profit (~0.5*stop) gets
+            # ~+50% stretch, large profit (~1.5*stop) gets ~+100%. This directly
+            # reduces turnover — exits followed by immediate re-entry double the
+            # trade count. New cross-subsystem data dep: cooldown window depends
+            # on last exit profit magnitude.
+            _profit_extend = 1.0 + 0.80 * max(0.0, np.tanh(_last_pnl_outcome / (0.6 * abs(STOP_LOSS_PCT))))
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only) * _profit_extend
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
