@@ -774,14 +774,18 @@ class Strategy:
                 # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
                 _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
                 _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
-                # Architectural extension: time-pressure asymmetric weight by pnl_scale.
-                # In profit: heavier time pressure (lock in gains via time exit).
-                # In loss: lighter time pressure (give losing positions room to recover
-                # before time-killing — alignment with slope-against doing the loss-cutting).
-                # Asymmetric one-sided: heavier in profit (lock gains), neutral in loss
-                # (let slope-against do loss-cutting; avoid sideways small-loss jitter
-                # destabilizing time pressure).
-                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale)         # [-1,1] -> [1.0, 1.2]
+                # Architectural: trend-magnitude-attenuated time-pressure weight.
+                # In strong trends (high |ret_long|), trend-aligned winning
+                # positions should hold longer — time pressure is noise in trend
+                # following. In chop (low |ret_long|), time pressure is critical
+                # anti-overstay for sideways/rally stability.
+                # Mute the profit-side amp by _trend_strength_w:
+                # chop: _w_time = 1.0 + 0.20*max(0,_pnl_scale) (full, anti-overstay)
+                # trend: _w_time = 1.0 (base, trend provides directional persistence)
+                # New cross-timescale data dep: time weight depends on long-window trend.
+                # Following the regime-asymmetric insight from 5648b3a8: time pressure
+                # removal helped bull/crash but destroyed sideways/rally.
+                _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
