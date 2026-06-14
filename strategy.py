@@ -215,17 +215,31 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Architectural: 7th voter — volume-weighted price deviation.
-            # Volume data is orthogonal to all 6 existing voters (which use price-derived
-            # series only). Compute 12-bar VWAP using (high+low+close)/3 typical price
-            # weighted by volume; voter signals when current close deviates upward (bull)
-            # from VWAP. Captures genuine volume-confirmed directional pressure independent
-            # of moving averages, RSI, MACD, slope. New data dependency on volume * price.
+            # Architectural: 7th voter — VWAP deviation z-score.
+            # Replace raw VWAP deviation (persistently positive in uptrends → constant
+            # bull bias that destroys rally Sharpe) with z-score of vwap_dev relative
+            # to its own 20-bar rolling mean/std. In steady trends, current dev ≈ mean
+            # → z≈0 (VWAP voter neutral — no constant bias). At trend reversals, the
+            # divergence from recent mean provides genuine directional signal. Volume
+            # data remains orthogonal to all 6 price-derived voters. New data dependency:
+            # 20-bar rolling distribution of vwap_dev (architectural change to VWAP
+            # signal computation). Vectorized via cumsum for O(1) per bar.
             _vwap_n = 12
-            _vol_arr = bd.history["volume"].values[-_vwap_n:]
-            _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
-            _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
-            _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            _zscore_n = 20
+            _tp = (bd.history["high"].values + bd.history["low"].values + closes) / 3.0
+            _vol = bd.history["volume"].values
+            _tp_vol = _tp * _vol
+            _tp_vol_cum = np.cumsum(np.concatenate([[0.0], _tp_vol]))
+            _vol_cum = np.cumsum(np.concatenate([[0.0], _vol]))
+            _vwap_devs = np.empty(_zscore_n + 1)
+            _start = len(closes) - _zscore_n - 1
+            for _j in range(_start, len(closes)):
+                _idx = _j - _start
+                _v_sum = _tp_vol_cum[_j + 1] - _tp_vol_cum[max(0, _j - _vwap_n + 1)]
+                _w_sum = _vol_cum[_j + 1] - _vol_cum[max(0, _j - _vwap_n + 1)]
+                _vw = _v_sum / max(_w_sum, 1e-10)
+                _vwap_devs[_idx] = (closes[_j] - _vw) / closes[_j]
+            _vwap_z = (_vwap_devs[-1] - _vwap_devs.mean()) / max(_vwap_devs.std(), 1e-6)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -233,7 +247,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
-                _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
+                _vwap_z,  # 7th voter: VWAP deviation z-score, mean-reverting around 0 in all regimes
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
