@@ -57,8 +57,7 @@ HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
-PEAK_PROFIT_GIVEBACK_BASE = 0.22
-PEAK_PROFIT_GIVEBACK_RANGE = 0.10  # vol-adaptive range
+PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -706,15 +705,8 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
-                # Architectural: vol-adaptive giveback threshold. In low vol (rally,
-                # sideways), small pullbacks are routine noise that should not trigger
-                # pp exit — raise giveback threshold to let positions ride through.
-                # In high vol (crash), keep tight giveback to lock gains fast.
-                # Continuous via tanh: 0.22 at vol_ratio>=1.0, up to 0.30 at vol_ratio=0.4.
-                # New cross-component data dep: pp band lower bound depends on vol_ratio.
-                _pp_giveback_dyn = PEAK_PROFIT_GIVEBACK_BASE + PEAK_PROFIT_GIVEBACK_RANGE * max(0.0, np.tanh((1.0 - vol_ratio) / 0.6))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                _pp_lower = _pp_giveback_dyn * (1.0 - _pp_band)
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
                 # boundary at peak == _pp_min creates noise discontinuity in stab tests.
@@ -740,7 +732,7 @@ class Strategy:
                 # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_dyn * _pp_band)))
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
