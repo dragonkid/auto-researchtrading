@@ -251,16 +251,8 @@ class Strategy:
             # EMA_slope=idx5). In chop, weights stay near base. Continuous via
             # tanh on abs(ret_long)/0.04. New cross-timescale data dependency:
             # voter aggregation function depends on long-window return.
-            # Architectural: vol-conditional shift magnitude. Rally (low-vol
-            # trend) benefits from mean-reverting voters (RSI/MACD catch shallow
-            # pullback reversals). Crash (high-vol trend) benefits from trend-
-            # confirming voters (don't trust mean-reversion in deep crashes).
-            # Gate the weight shift by vol_ratio: full shift in high vol, muted
-            # in low vol. New cross-component data dep: wt_shift depends on
-            # vol_ratio AND abs(ret_long).
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-            _vol_shift_gate = max(0.0, np.tanh((vol_ratio - 0.8) / 0.4))  # [0, ~1], 0 below 0.8
-            _wt_shift = 0.20 * _trend_strength_w * _vol_shift_gate
+            _wt_shift = 0.20 * _trend_strength_w
             # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
             # is dominated by recent action which oscillates with chop noise; in
             # trends, VWAP captures genuine directional pressure. Scale VWAP voter
