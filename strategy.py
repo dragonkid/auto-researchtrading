@@ -342,8 +342,14 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Architectural: removed counter-trend admission tightening (1.15 * tanh)
+            # from both _bull_strong_min and _bear_strong_min. Replaced by trend-
+            # directional _bull_path_wt / _bear_path_wt at the entry path boundary
+            # which gates SIZE directly (0.10 floor, 1.0 max) rather than adding
+            # +15% to the admission threshold — same mechanism but stronger and
+            # at the correct decision boundary (sizing, not admission).
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -511,9 +517,11 @@ class Strategy:
                 # |ret_long|>0.03 to avoid firing in chop. Max attenuation 0.30 (counter-
                 # trend entries take 0.70x size in strong trend). New cross-timescale
                 # data dependency: cold-entry first-bar size depends on trend disagreement.
-                _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
-                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
-                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural: removed counter-trend scale-in attenuator (_ct_atten).
+                # Replaced by _bull_path_wt / _bear_path_wt at entry path boundary
+                # which applies stronger continuous sizing gate (0.10-1.00 range
+                # vs old 0.70-1.00). Net effect: trend-directional commitment
+                # replaces counter-trend-only attenuation. -3 LOC.
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -579,10 +587,22 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Architectural: trend-directional entry path weighting. Replaces the
+                # existing weak counter-trend admission (15%) + sizing (30%) penalties
+                # with a single strong trend-aligned path weight at maximum amplitude.
+                # Bull entries weighted by tanh(ret_long/0.05) — near 0 in strong
+                # downtrends, near 1.0 in strong uptrends. Bear entries weighted by
+                # tanh(-ret_long/0.05) — symmetric opposite. Floor 0.10 preserves
+                # minimal counter-trend sampling. New control flow at entry path:
+                # replaces per-side _ct_atten (sizing) + counter-trend admission
+                # tightening (gate) with single path weight on final target.
+                # Multi-variable: modifies both bull and bear entry paths simultaneously.
+                _bull_path_wt = 0.10 + 0.90 * 0.5 * (1.0 + np.tanh(ret_long / 0.05))
+                _bear_path_wt = 0.10 + 0.90 * 0.5 * (1.0 + np.tanh(-ret_long / 0.05))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_path_wt
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_path_wt
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
