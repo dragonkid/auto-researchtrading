@@ -533,14 +533,7 @@ class Strategy:
                 # entries that lose most.
                 _bull_opp_ratio = _bear_strong / max(_bull_strong, 1e-6)
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
-                # Architectural: trend-aligned quality_atten relaxation (one-sided, bull only).
-                # In uptrends (ret_long > 0), pullback bear-voter spikes create high opp/own
-                # ratios that cut bull entry size — suppressing BTFD entries rally needs.
-                # Reduce max quality_atten magnitude from 0.30 to 0.20 in strong uptrends
-                # via same tanh(ret_long/0.04) gate proven in afa6281 admission relaxation.
-                # Bear-side unchanged (crash dead-cat bounce bear entries must stay penalized).
-                _bull_qual_mag = 0.30 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))
-                _bull_quality_atten = 1.0 - _bull_qual_mag * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
+                _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 # Architectural: low-volume entry size attenuator.
                 # When current bar's volume is low relative to recent 24-bar average,
