@@ -896,7 +896,17 @@ class Strategy:
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
                 # also fire), plus bilateral voter_bias. Cleaner decoupling: sl is structural and
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
-                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
+                # Architectural: continuous opp_pressure replaces binary opp_gate (7th soft source).
+                # Opposite-side conviction margin (via _opp_margin) drives a smooth exit pressure
+                # term in [0, 0.45] via tanh. PnL-conditioned: profit-magnitude-attenuated
+                # (trend-aligned winning positions don't exit on opp noise; counter-trend losing
+                # positions get full opp_pressure). Trend-magnitude-gated: stronger trends
+                # amplify opp_pressure (opp-voter spikes in trends are more likely reversal signal).
+                # Weighted by opp_trend_amp (existing, [0.5, ~1]) and _pnl_scale inversion
+                # (full weight when losing, mild when winning). New control flow: opp_pressure
+                # is a continuous partial-exit driver, not a binary gate. Binary opp_gate removed.
+                _opp_pressure = 0.45 * max(0.0, np.tanh(_opp_margin / 0.30)) * _opp_trend_amp * (1.0 - 0.5 * max(0.0, _pnl_scale))
+                _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure + _opp_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -997,41 +1007,16 @@ class Strategy:
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
-                # Architectural simplification: removed in-place flip mechanism.
-                # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
-                # the dominant cost driver (flip_pnl -560 to -960 per regime).
-                # Replace single-bar reversal with exit-then-cooldown: when opposite-side
-                # conviction passes the flip gate, set target=0. The standard cold-entry
-                # path (with its 2-bar persistence gate) will re-enter in the opposite
-                # direction on a subsequent bar IF conviction sustains. This decouples
-                # reversal from a single-bar decision and routes it through the same
-                # noise-filtering gate that protects fresh entries.
-                # Architectural: graduated opp-gate replacing binary exit-on-reversal.
-                # Old: when opp gate fires (bear votes pass + strong sum + trend),
-                # set target=0 (full exit). New: scale exit by opp-side conviction
-                # margin. Weak reversal evidence partially de-risks; strong reversal
-                # fully exits. Smooth tanh on opposite-side margin maps to
-                # exit-fraction in [0.4, 1.0]. Mechanism: avoids whipsaw full-exits
-                # in crash where bull-side voter spikes are common during dead-cat
-                # bounces but trend genuinely down. New decision-boundary mechanism:
-                # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
-                if not in_cooldown and _opp_gate:
-                    # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
-                    # Counter-trend (rally bear) OR losing positions: binary full
-                    # exit (cut risk fast). Trend-aligned + in-profit (crash short
-                    # winning): graduated partial exit (preserves winning trend
-                    # position through noise spikes). Both gates must hold for
-                    # graduated behavior to engage. Continuous via tanh blend.
-                    _pos_dir_og = 1.0 if current_pos > 0 else -1.0
-                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
-                    _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Blend: full exit (1.0) by default, graduated only when both gates hold.
-                    _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    target = current_pos * (1.0 - _opp_exit_frac)
+                # Architectural simplification: removed binary opp_gate (replaced by
+                # continuous _opp_pressure in exit fusion). _opp_pressure is a smooth
+                # 7th soft exit source that fires continuously based on opposite-side
+                # conviction margin — no binary threshold, no FLIP_MIN_VOTES dependency.
+                # PnL-conditioned: losing positions get full opp_pressure (cut risk fast);
+                # winning positions get attenuated (trend-aligned pullback opp-spikes
+                # are more noise than reversal). Trend-magnitude-gated by _opp_trend_amp.
+                # Code-structure removal: -18 lines (-1 binary gate, -1 FLIP_MIN_VOTES
+                # dead constant, -1 trend_avg exit-path dependency). FLIP_MIN_VOTES
+                # remains for entry flip path only.
 
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
