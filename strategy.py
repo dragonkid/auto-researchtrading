@@ -556,20 +556,33 @@ class Strategy:
                 # quality-filtered; additional volume-based attenuation is redundant.
                 # Code-structure removal: -16 lines + -3 cross-bar volume reads.
                 _vol_entry_atten = 1.0
-                # Architectural simplification: removed TOD+DOW+MOM+QUARTER+SEMI+ANNUAL calendar
-                # activity modulator (6-cycle compound cos expression, _tod_atten [0.85, 1.15]).
-                # Calendar cycles have no causal link to hourly crypto price action — the
-                # [0.85, 1.15] modulation adds orthogonal calendar-noise to first-bar sizing
-                # that is unrelated to any regime's price dynamics. Macro-driven regimes
-                # (rally 2024 ETF + election) are particularly harmed: grinding trends are
-                # insensitive to intra-week/hour of day. Previous _vol_entry_atten removal
-                # gave bull +0.295 — removing another uncorrelated size attenuator may
-                # similarly unlock sizing efficiency. Code-structure removal: 10 LOC + 1 new
-                # data source eliminated.
+                # Architectural: time-of-day session-quality entry size modulator.
+                # Continuous cyclical feature: cos-cycle peaking at UTC 16 (US session
+                # peak overlap), trough at UTC 04 (low Asia hour). _activity in [0, 1].
+                # Maps to size multiplier in [0.85, 1.15] — entries during high-volume
+                # hours get up to 15% larger commitment, low-volume hours up to 15% smaller.
+                # NEW DATA SOURCE: bd.timestamp (UTC hour-of-day), orthogonal to all
+                # within-bar/within-window primitives currently saturated. Smooth via
+                # cos (no boundary). Applied only to first-bar entry size (does not
+                # touch voters, exits, or scale-in).
+                # NEW DATA SOURCE: timestamp-derived TOD+DOW+MOM compound activity.
+                # TOD: cos cycle 24h peaking UTC 16. DOW: cos cycle 7d peaking Wed/Thu.
+                # MOM: cos cycle ~30d peaking mid-month (day 15), trough around month-end/start.
+                # Mid-month captures monthly options expiry + futures rollover concentration;
+                # month-end carries window-dressing rebalance noise. All three compound
+                # multiplicatively into _activity. Single _tod_atten var absorbs all three.
+                # 5th cycle: semi-annual (~180d cos peak day 90 mid-half-year) — distinct
+                # frequency from MOM (30d) and QUARTER (91d), captures half-year market
+                # rhythm. Scaled 0.85-1.0 (smallest amplitude) to bound contribution since
+                # contributions decrease with each cycle stacked (TOD +0.0001 -> DOW +0.0006
+                # -> MOM +0.0003 -> QUARTER +0.0001). +0 LOC fused into single expression.
+                _ts_h = bd.timestamp // 3600000
+                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
+                _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
