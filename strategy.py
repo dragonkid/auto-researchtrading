@@ -898,20 +898,21 @@ class Strategy:
                 # always-honored; soft pressures combine; voter contribution is a separate additive term.
                 _soft_sum = _w_slope * _sl_slope_pressure + _w_pp * _pp_pressure + _w_time * _time_pressure + _w_ve * _ve_pressure + _w_ep * _ep_pressure + _w_ar * _ar_pressure
                 _exit_pressure = max(_sl_pressure, _soft_sum) + _voter_bias
-                # Architectural: universal hold-time exit threshold ramp.
-                # Replaces PnL-gated scale-in winning bonus with a universal smooth
-                # decay from bar 0 to bar 6. All positions (winning, losing, scale-in,
-                # mature) get elevated exit_thresh early — early-bar noise reversals
-                # (the dominant turnover driver in rally) are less likely to be genuine
-                # and require more exit pressure to trigger. Mature positions revert
-                # to standard threshold. Smaller peak (1.12 vs 1.20) but longer tail
-                # (6 bars vs 3). Stop-loss is exempt (sl_pressure >= 0.95 → 1.0).
-                # Architectural restructure: exit_thresh is now a function of hold-time,
-                # not PnL. New control flow: universal smooth decay replaces PnL-gated
-                # binary bonus. Multi-variable: removes _scale_in_winning conditional,
-                # changes threshold formula, adds new hold-time decay parameter.
-                _hold_time_thresh = 1.0 + 0.12 * max(0.0, 1.0 - bars_held / 6.0)
-                _exit_thresh = _hold_time_thresh
+                # Architectural: pos_pnl-gated scale-in exit threshold ramp.
+                # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
+                # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
+                # (1.2 at bar 0, 1.0 at bar ENTRY_FULL_BARS). Protects winning scale-in
+                # from noise-driven premature exits while letting losing scale-in exit
+                # normally (no protection — losing positions are noise-vulnerable too).
+                # Stop-loss is exempt (full _sl_pressure forces exit regardless).
+                _scale_in_winning = bars_held <= ENTRY_FULL_BARS and pos_pnl > 0
+                # Architectural simplification: removed _vt_factor 2D vol-time exit_thresh
+                # modulator. The factor activated only in narrow 2D band (low-vol AND mid-life),
+                # contributing at most +10%. With the underlying soft-pressure stack already
+                # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
+                # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
+                # unchanged (load-bearing for early winning protection).
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -924,43 +925,49 @@ class Strategy:
                 # Stop-loss path retains binary exit (full saturation already triggers).
                 # New control flow: exit decision is a continuous mapping from
                 # exit_pressure ratio to target multiplier, not a single threshold.
-                # Architectural: profit-target partial harvest (decision-architecture
-                # change to exit subsystem). When peak_pnl crosses into profit-target
-                # territory (peak >= 1.6*_pp_min), apply a smooth size scale-down of
-                # up to 30% — independent from giveback-based _pp_pressure trailing.
-                # This harvests realized peak gains proactively when profit target is
-                # hit, even if pos_pnl is currently still near peak (no giveback yet).
-                # Ramps smoothly over [1.6*_pp_min, 2.2*_pp_min] via tanh. Subtractive
-                # from current target, applied BEFORE exit-threshold logic so it
-                # composes correctly with both binary and de-risk exit paths. Skipped
-                # if _sl_pressure dominant (full exit will follow). New control flow:
-                # exit subsystem now has THREE size-decision paths: full exit, de-risk
-                # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
-                    _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    # Trend-gated activation: in chop (low |ret_long|), peaks are
-                    # rare AND likely mean-reverting — disable harvest to let small
-                    # sideways wins run. In trending regimes (high |ret_long|), peaks
-                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
-                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
-                    # when peak is a confirmed trend extension. Counter-trend or rally
-                    # pullback peaks get full harvest (mean-reverting by structure).
-                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    target = target * (1.0 - _tp_scale)
+                # Architectural simplification: removed profit-target partial harvest.
+                # The take-profit scale-down (peak >= 1.6*_pp_min, up to 30% size
+                # reduction) was a third exit-decision path that created intermediate
+                # partial exits during trend extensions. The pp_pressure/giveback
+                # trailing mechanism already handles peak-profit protection — the
+                # harvest was additive and redundant. Rally positions routinely hit
+                # profit targets on pullback cycles, and the harvest-then-reaccumulate
+                # pattern amplifies turnover. Code-structure removal: -13 LOC, -1
+                # control flow branch, -1 exit-decision path (3→2).
 
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
                 elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
-                # Architectural simplification: removed graduated de-risk exit path.
-                # The de-risk partial-exit mechanism created intermediate scale-down/
-                # re-accumulation cycles during pullbacks — the dominant turnover
-                # amplifier in rally where pullbacks are frequent and shallow. Binary
-                # exit (hold or exit fully) eliminates these intermediate trades.
-                # Code-structure removal: -22 LOC, -1 control flow branch, -1
-                # cross-subsystem data dependency (_pnl_scale at exit graduation).
+                elif target != 0 and bars_held >= 2:
+                    # Architectural: PnL-conditioned partial-exit floor (replaces
+                    # vol-conditioning). New cross-subsystem data dep at exit
+                    # graduation: floor depends on whether position is currently
+                    # winning vs losing. Profit (pos_pnl > 0): wider ramp (floor=0.55,
+                    # gradual de-risk to lock partial gains while letting upside run
+                    # if pressure dissipates). Loss (pos_pnl < 0): narrower ramp
+                    # (floor=0.85, near-binary fast exit — losers should not linger
+                    # at half-size while soft pressures continue to mount). Smooth
+                    # transition via tanh of pos_pnl / abs(STOP_LOSS_PCT) (same
+                    # _pnl_scale used in pressure weights). Continuous, no boundary.
+                    # Mechanism rationale: existing fast-exit semantics in losers
+                    # are achieved by full _exit_pressure crossing _exit_thresh
+                    # (binary path); the de-risk path gradient is currently MOST
+                    # active in mid-pressure, profit-side mid-life situations where
+                    # graduation makes most sense. Tightening loser graduation
+                    # routes more loser exits through the _exit_thresh binary path.
+                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
+                    # of an entry get binary-exit-only behavior (exit on full pressure
+                    # or no exit). Partial exits during scale-in conflict with the
+                    # scale-in pace itself — de-risk shrinks position while scale-in
+                    # tries to grow it. Defer de-risk consideration until bars_held>=2
+                    # so the position has cleared the initial commit-noise window.
+                    # New control flow: bars_held condition gates the de-risk branch.
+                    if _exit_pressure >= _de_floor * _exit_thresh:
+                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _de_risk = max(0.0, min(1.0, _de_risk))
+                        target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
