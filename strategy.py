@@ -912,15 +912,17 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Architectural: sharp vol-gated MAX+sum blend (branch step 3).
-                # Only blend when vol_ratio < 0.70 (very calm — bull/rally low-vol bars).
-                # Sharp tanh on (0.70 - vol_ratio)/0.08: vol<0.62 → full 0.25 blend,
-                # vol>0.78 → zero blend. Crash (vol>1.0) stays pure MAX. Smaller
-                # coefficient (0.25 vs 0.50) reduces noise boundary impact.
-                # Narrower activation zone avoids the sideways regime-switch instability
-                # from step 2 where vol_ratio ~0.5-0.8 activated blend on 50% of bars.
-                _vol_blend = max(0.0, np.tanh((0.70 - vol_ratio) / 0.08))  # sharp, only vol<0.78
-                _soft_fused = _soft_max + _vol_blend * 0.25 * (_soft_sum - _soft_max)
+                # Architectural: one-sided trend-direction MAX+sum blend (branch step 4).
+                # Only blend in positive long-window trends (bull, rally). Zero blend
+                # in negative trends (crash) and chop (sideways). This is the
+                # asymmetric pattern: bull+rally need sum (slow grind, multiple moderate
+                # pressures accumulate), crash needs pure MAX (sharp reversals fire
+                # single strong terms, sum amplifies noise). Sideways stays pure MAX.
+                # Continuous tanh on ret_long/0.04: positive trend → blend active,
+                # negative/zero → blend zero. Coefficient 0.40 (slightly below the
+                # 0.50 that regressed crash in step 1).
+                _trend_blend = max(0.0, np.tanh(ret_long / 0.04))  # [0, ~1], only positive trend
+                _soft_fused = _soft_max + _trend_blend * 0.40 * (_soft_sum - _soft_max)
                 _exit_pressure = max(_sl_pressure, _soft_fused) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
