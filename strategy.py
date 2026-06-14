@@ -175,6 +175,13 @@ class Strategy:
             smoothed_closes[0] = closes[0]
             for _si in range(1, len(closes)):
                 smoothed_closes[_si] = _smooth_alpha * closes[_si] + (1 - _smooth_alpha) * smoothed_closes[_si - 1]
+            # Architectural: Kaufman efficiency ratio (12-bar, computed early for admission gate).
+            # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
+            # High ER = efficient move (signal-rich), low ER = choppy (noise-rich).
+            _er_window = 12
+            _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
+            _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
+            _er = _er_net / max(_er_path, 1e-10)
             # Architectural: ATR-anchored base threshold. Replaces global BASE_THRESHOLD
             # (constant 0.005) with per-symbol ATR-derived threshold. SOL (higher ATR)
             # needs larger move to trigger entry, BTC (lower ATR) smaller — structural
@@ -335,8 +342,16 @@ class Strategy:
             # for trend, smooth tanh, -0.10 max relaxation on bull strong_min in
             # uptrend only. New cross-timescale data dep at admission boundary,
             # one-sided multi-variable structural change.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor
+            # Architectural: KER admission gate. Use existing _er (Kaufman Efficiency Ratio,
+            # 12-bar, already computed for _er_adj) to raise the admission threshold in choppy
+            # (low-efficiency) price action. Low KER = noisy path relative to net move — entries
+            # are noise-driven. Raising admission filters these, reducing turnover in rally/sideways
+            # while preserving entries in efficient-trend regimes (bull/crash). Smooth tanh mapping:
+            # KER >= 0.4: no effect; KER=0.2: 1.07x; KER=0: 1.15x. New cross-component data dep
+            # at admission boundary: _er (path efficiency) gates strong_min.
+            _ker_admit = 1.0 + 0.15 * max(0.0, 1.0 - min(1.0, _er / 0.40))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * _ker_admit
+            _bear_strong_min = _strong_min * _freq_factor * _ker_admit
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -400,17 +415,6 @@ class Strategy:
             _entry_frac_dyn = ENTRY_INITIAL_FRAC_BASE - ENTRY_INITIAL_FRAC_VOL_AMP * np.tanh((vol_ratio - 1.0) / 0.4)
             # Architectural: Kaufman efficiency ratio gate on initial commitment.
             # ER = |close[-1] - close[-N]| / sum(|close[i] - close[i-1]|), range [0,1].
-            # High ER (>0.4) = price moved efficiently in one direction (signal-rich bars).
-            # Low ER (<0.2) = path was choppy relative to net move (noise-rich, even if
-            # net direction matches voters). Orthogonal to all current primitives:
-            # vol_ratio measures magnitude, trend_avg measures net direction, slope measures
-            # linear trajectory — ER measures path efficiency. Continuous tanh modulation
-            # of _entry_frac_dyn: low ER attenuates, high ER amplifies (range -0.04..+0.04).
-            # 12-bar window over smoothed_closes (already noise-attenuated for input parity).
-            _er_window = 12
-            _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
-            _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
-            _er = _er_net / max(_er_path, 1e-10)
             # One-sided deep-chop suppression: only fire on very low ER (<0.15),
             # smaller magnitude to avoid uniform size-attenuation across regimes.
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
