@@ -441,6 +441,14 @@ class Strategy:
                 _bear_ss_cv = np.std(_bear_ss_vals) / max(np.mean(_bear_ss_vals), 1e-6)
                 _bull_ss_vol_factor = 1.0 + 0.20 * max(0.0, np.tanh((_bull_ss_cv - 0.12) / 0.10))
                 _bear_ss_vol_factor = 1.0 + 0.20 * max(0.0, np.tanh((_bear_ss_cv - 0.12) / 0.10))
+                # Architectural: trend-aligned CV factor relaxation (one-sided asymmetric
+                # from afa6281). In uptrend, bull strong-sum CV volatility reflects genuine
+                # conviction shifts during pullbacks, not noise. Relax the CV penalty by
+                # up to 0.10 for trend-aligned sides. Counter-trend sides keep full CV gate.
+                _bull_ss_vol_factor -= 0.10 * max(0.0, np.tanh(ret_long / 0.04))
+                _bear_ss_vol_factor -= 0.10 * max(0.0, np.tanh(-ret_long / 0.04))
+                _bull_ss_vol_factor = max(1.0, _bull_ss_vol_factor)
+                _bear_ss_vol_factor = max(1.0, _bear_ss_vol_factor)
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
