@@ -139,12 +139,6 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: per-symbol trend_avg at entry time.
-        # Used by trend-reversal exit bias — replaces per-bar voter_bias chain
-        # (20+ lines, 4 nested tanh gates on per-bar strong-sum margins) with
-        # a slow trend-direction test. trend_avg blends 10-bar and 20-bar returns
-        # (~5% per-bar noise contribution vs ~100% for per-bar voter signals).
-        self._entry_trend_avg = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -800,20 +794,36 @@ class Strategy:
                 #      (bilateral — explicit reversal evidence raises exit).
                 # Bilateral-additive fusion decouples voter influence from individual
                 # pressure terms while preserving net effect on exit decision.
-                # Architectural: trend-reversal exit bias replaces per-bar voter_bias
-                # chain (20+ lines, 4 nested tanh gates on per-bar strong-sum margins).
-                # Voter_bias used per-bar 7-voter strong-sum margins — each bar's voter
-                # signals are ~100% noise in stability tests. Replaced with trend_avg
-                # (10+20-bar blend, ~5% per-bar noise contribution) compared against
-                # its value at entry time. When trend_avg reverts from entry direction,
-                # add exit pressure; when trend strengthens in position direction, hold.
-                # New cross-bar state dependency: trend_avg at entry time.
-                _entry_ta = self._entry_trend_avg.get(symbol, trend_avg)
-                _ta_delta = trend_avg - _entry_ta
-                _pos_dir_tr = 1.0 if current_pos > 0 else -1.0
-                # Trend has reversed against position: add exit pressure
-                _tr_reversal = -_ta_delta * _pos_dir_tr  # positive = reversal against position
-                _voter_bias = 0.15 * max(0.0, np.tanh(_tr_reversal / 0.01)) - 0.10 * max(0.0, np.tanh(-_tr_reversal / 0.01))
+                _side_margin = _bull_margin if current_pos > 0 else _bear_margin
+                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
+                # Chop-amplified own-side subtraction with divergence taper: in pure sideways
+                # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
+                _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
+                _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
+                # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
+                # In strong long-window trends WHERE position is trend-aligned, attenuate
+                # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
+                # positions (bull in uptrend, bear in downtrend) face opposite-side voter
+                # spikes (rally pullback bull voters firing on bear positions; crash dead-
+                # cat bounce bull voters firing on bear shorts), the additive opp bias
+                # currently fires the same as in chop. In confirmed trends, opp-voter
+                # signals during pullbacks are more often noise than reversal. Attenuate
+                # opp_bias by tanh(ret_long * pos_dir / 0.05) so trend-aligned positions
+                # see softer opp-bias contribution to _exit_pressure. Counter-trend
+                # positions and chop: unchanged. New cross-timescale data dep: opp-side
+                # voter_bias depends on (ret_long, position direction).
+                _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
+                _trend_align_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))  # [0, ~1]
+                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
+                # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
+                # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
+                # directional backing) — mute opp_bias contribution. In trends, opp-voter
+                # spikes carry reversal signal — full activation. Continuous tanh on
+                # abs(ret_long)/0.04. Symmetric counterpart to _chop_amp on own-side
+                # subtraction (chop amplifies own-side hold; chop also mutes opp-side
+                # exit-spike). Multi-variable: adds new factor to opp-side fusion.
+                _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
@@ -1014,7 +1024,6 @@ class Strategy:
                     # winning): graduated partial exit (preserves winning trend
                     # position through noise spikes). Both gates must hold for
                     # graduated behavior to engage. Continuous via tanh blend.
-                    _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
@@ -1030,12 +1039,11 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_trend_avg):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._entry_trend_avg[symbol] = trend_avg
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
