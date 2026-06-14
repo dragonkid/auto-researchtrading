@@ -335,18 +335,7 @@ class Strategy:
             # for trend, smooth tanh, -0.10 max relaxation on bull strong_min in
             # uptrend only. New cross-timescale data dep at admission boundary,
             # one-sided multi-variable structural change.
-            # Architectural: rally-band bell-shaped additional admission relaxation.
-            # ret_long in [0.04, 0.12] fires an EXTRA -0.07 relaxation on bull
-            # strong_min ONLY in the rally-typical moderate-trend band. Both low
-            # gate (ret_long > 0.04 via tanh) and high gate (ret_long < 0.12 via
-            # tanh) must fire — produces near-zero activation in bull (ret_long>>
-            # 0.12), sideways (ret_long~0), and crash (ret_long<0). Rally-specific
-            # targeting avoids the "trend-aligned relaxation fires in bull too"
-            # failure mode from prior _quality_atten experiments. New bell-shaped
-            # control flow: multiplicative pair of directional tanh gates creating
-            # a smooth pass-band at the rally ret_long range.
-            _rally_band = max(0.0, np.tanh((ret_long - 0.04) / 0.015)) * max(0.0, np.tanh((0.12 - ret_long) / 0.02))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)) - 0.07 * _rally_band)
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
