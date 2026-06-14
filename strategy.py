@@ -540,15 +540,23 @@ class Strategy:
                 _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
                 _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
                 _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
-                # Architectural simplification: removed _vol_entry_atten (low-volume
-                # entry size attenuator, up to -30%). In rally's low-vol grind, low-volume
-                # bars are normal operating conditions, not signal-quality warnings. The
-                # attenuator fires most in rally/sideways where volume is structurally
-                # lower, cutting entry size uniformly. In bull/crash, volume is consistently
-                # high so the attenuator rarely fires. Removing it increases position size
-                # on rally entries without affecting bull/crash. Code-structure removal:
-                # 7 lines + cross-bar volume dependency eliminated.
-                #
+                # Architectural: low-volume entry size attenuator.
+                # When current bar's volume is low relative to recent 24-bar average,
+                # the entry signal is less noise-confirmed (low-volume bars carry less
+                # information; price moves on thin volume are more easily reversed).
+                # Attenuate first-bar entry size up to 30% on low-volume bars.
+                # Smooth tanh on (vol_bar_ratio - 0.7) / 0.3:
+                #   vol_bar_ratio <= 0.4: ~30% attenuation (very thin bar)
+                #   vol_bar_ratio == 0.7: ~15% attenuation (mild thin bar)
+                #   vol_bar_ratio >= 1.0: 0% attenuation
+                # New cross-bar data dependency at entry (volume relative magnitude),
+                # symmetric across bull/bear. Different from removed vol_confirm_mult
+                # which was bounded [0.98, 1.10] (near-constant); this one has real
+                # range and only fires meaningfully on low-volume bars.
+                _vol_bar_24 = bd.history["volume"].values[-25:-1]
+                _vol_bar_avg = max(_vol_bar_24.mean(), 1e-10)
+                _vol_bar_ratio = bd.history["volume"].values[-1] / _vol_bar_avg
+                _vol_entry_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((1.0 - _vol_bar_ratio) / 0.3)))
                 # Architectural: time-of-day session-quality entry size modulator.
                 # Continuous cyclical feature: cos-cycle peaking at UTC 16 (US session
                 # peak overlap), trough at UTC 04 (low Asia hour). _activity in [0, 1].
@@ -573,9 +581,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
