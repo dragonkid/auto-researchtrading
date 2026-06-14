@@ -913,6 +913,16 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: trend-aligned exit threshold raise. When position direction
+                # matches long-window trend, raise exit threshold to reduce whipsaw exits.
+                # Rally: bull entries in uptrend hold through small pullbacks instead of exiting
+                # and immediately re-entering on trend resumption (current turnover driver).
+                # Counter-trend positions (crash dead-cat bounces, rally bears) exit normally.
+                # Smooth via tanh on ret_long * pos_dir; up to +0.15 threshold raise.
+                # New cross-component data dep: exit_thresh depends on (ret_long, pos_dir).
+                _pos_dir_eth = 1.0 if current_pos > 0 else -1.0
+                _trend_align_eth = max(0.0, np.tanh(ret_long * _pos_dir_eth / 0.05))
+                _exit_thresh += 0.15 * _trend_align_eth
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
