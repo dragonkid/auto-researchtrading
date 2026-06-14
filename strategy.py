@@ -507,17 +507,23 @@ class Strategy:
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
-                # Architectural simplification: removed multi-window slope consensus
-                # attenuator on first-bar SIZE. The 3-window (8/16/32) slope alignment
-                # computed via tanh-average mapped to [0.40, 1.00] — up to 60% size
-                # attenuation on slope-disagreeing entries. Redundant with: (a) 2-bar
-                # persistence gate (filters single-bar noise entries at admission level),
-                # (b) quality attenuator (bilateral voter split on same entry signal),
-                # (c) trend gate DEADZONE (trend_avg against position direction already
-                # filters counter-slope entries). Three slope computations + 3 cross-bar
-                # HL2 reads removed. Code-structure removal: -17 lines + -3 slope OLS.
-                _bull_consensus_atten = 1.0
-                _bear_consensus_atten = 1.0
+                # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
+                # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
+                # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
+                # weighted alignment. Old map ignored slope MAGNITUDE — a barely-positive
+                # 8-bar slope counted identically to a strongly-positive one, creating
+                # boundary noise when small slopes near zero flip sign. New: alignment_w =
+                # tanh(slope_w * pos_dir / scale_w) ∈ [-1, +1] per window, then average
+                # the three. Attenuation = 0.40 + 0.60 * (avg_align + 1)/2, continuous in
+                # [0.40, 1.00]. Boundary at slope=0 is smooth (tanh), not stepped. Scales
+                # picked per-window to give similar saturation thresholds.
+                _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
+                _cons_scales = (0.0010, 0.0007, 0.0005)  # window-specific saturation
+                _bull_align = sum(np.tanh(s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
+                _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
+                _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
+                _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
