@@ -487,14 +487,16 @@ class Strategy:
                 # gate eliminates correlated-noise amplification at the entry decision boundary
                 # (one less hard gate on the same underlying signal). Strong-sum is the primary
                 # discriminator (uses voter weights and quintic ramp); count is a coarser version.
-                # Architectural: conviction-margin SIZE modulation on cold entry path.
-                # Symmetric to flip-path _flip_conv_adj. When the strong-sum is well above
-                # its admission threshold (high conviction entry), first-bar commitment
-                # is larger; marginal entries (low or negative margin) get standard size.
-                # One-sided positive: only positive margin amplifies, negative is treated
-                # as zero (avoids cutting size on legitimate but marginal entries near
-                # the gate boundary). New data dependency: first-bar size depends on
-                # conviction margin for cold entries (was independent before).
+                # Architectural: conviction-margin entry size amplifier (one-sided positive).
+                # High-conviction entries (strong_sum well above admission threshold) get
+                # up to +12% larger first-bar commitment via tanh(margin/0.30). Marginal
+                # entries (margin near zero or negative) get standard size (no amplification).
+                # One-sided: only positive margins amplify via max(0, tanh) — avoids
+                # amplifying near-threshold noise entries that pass via trend_relax gate.
+                # New cross-component data dependency: cold-entry first-bar size depends
+                # on conviction margin (was independent before, margin only used at exit).
+                _bull_conv_amp = 1.0 + 0.12 * max(0.0, np.tanh(_bull_margin / 0.30))
+                _bear_conv_amp = 1.0 + 0.12 * max(0.0, np.tanh(_bear_margin / 0.30))
                 # Architectural: counter-trend SCALE-IN attenuator on cold entry path.
                 # When a fresh entry is taken AGAINST the long-window trend (bear entry
                 # in uptrend, bull entry in downtrend), attenuate first-bar position
@@ -576,9 +578,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_amp
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_amp
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
