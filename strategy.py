@@ -978,6 +978,18 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # Architectural: one-sided trend-aligned de-risk floor relaxation.
+                    # Trend-aligned profitable positions (bull in uptrend, bear in
+                    # downtrend, pos_pnl > 0) ride through mild soft-pressure without
+                    # partial de-risking — the trend supports continuation. Counter-trend
+                    # profitable positions (pullback wins) keep tight floor for fast lock.
+                    # Losing positions unchanged. Continuous via tanh on ret_long*pos_dir
+                    # (trend alignment) gated by pnl_scale (profit only). Max relaxation
+                    # -0.15 (0.55→0.40 floor). New cross-timescale data dep at de-risk
+                    # graduation: floor depends on (ret_long, pos_dir, pos_pnl).
+                    _de_dir = 1.0 if current_pos > 0 else -1.0
+                    _de_trend_align = max(0.0, np.tanh(ret_long * _de_dir / 0.04))
+                    _de_floor = max(0.40, _de_floor - 0.15 * max(0.0, _pnl_scale) * _de_trend_align)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
