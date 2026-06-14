@@ -82,9 +82,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.50  # scaled for 6 voters
-MIN_VOTES = 2.50  # scaled for 6 voters
-FLIP_MIN_VOTES = 2.40  # scaled for 6 voters
+STRONG_WEIGHT_MIN = 1.75  # scaled for 7 voters
+MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -215,13 +215,24 @@ class Strategy:
             _rsi_thresh = 50 + RSI_TREND_BIAS * rsi_trend_str * (-1.0 if ret_long > 0 else 1.0)
             _macd_diff = (_ml[-1] - ema(_ml, MACD_SIGNAL)[-1]) / mid
             _ea_slope = (_ea[-1] - _ea[-EMA_SLOPE_LOOKBACK]) / _ea[-EMA_SLOPE_LOOKBACK]
-            # Branch step 5: return to 6 voters (no VWAP), redistribute base weights
-            # away from noise-sensitive voters (ret_short: 0.70→0.55, RSI:
-            # 1.10→1.00) toward trend-confirming voters (EMA_cross: 1.25→1.35,
-            # EMA_slope: 1.10→1.25). VWAP constant-bias elimination from step 1
-            # is preserved. The weight redistribution gives more influence to
-            # structurally smoother signals (EMA) and less to noise-sensitive
-            # thresholds (ret_short, RSI). Sum preserved at 6.0.
+            # Branch step 6: VWAP at 0.35 weight, but as a RATE-OF-CHANGE signal.
+            # Old: (mid - VWAP)/mid → always positive in uptrend, always negative
+            # in downtrend → constant directional bias. New: compute VWAP deviation
+            # change over the last bar: _vwap_dev - prev_vwap_dev. The derivative
+            # oscillates around zero regardless of trend direction — even in a
+            # persistent uptrend, VWAP deviation expands and contracts. Eliminates
+            # the undifferentiated constant bias while preserving volume-weighted
+            # structural diversity.
+            _vwap_n = 12
+            _vol_arr = bd.history["volume"].values[-_vwap_n:]
+            _vol_arr_prev = bd.history["volume"].values[-_vwap_n - 1:-1]
+            _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
+            _tp_arr_prev = (bd.history["high"].values[-_vwap_n - 1:-1] + bd.history["low"].values[-_vwap_n - 1:-1] + closes[-_vwap_n - 1:-1]) / 3.0
+            _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
+            _vwap_prev = (_tp_arr_prev * _vol_arr_prev).sum() / max(_vol_arr_prev.sum(), 1e-10)
+            _vwap_dev = (mid - _vwap) / mid
+            _vwap_dev_prev = (closes[-2] - _vwap_prev) / closes[-2]
+            _vwap_dev = _vwap_dev - _vwap_dev_prev  # rate-of-change, oscillates around zero
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -229,6 +240,7 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                _vwap_dev / 0.0015,  # VWAP at 0.35, minimal structural anchor
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -248,9 +260,8 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # Branch step 5: redistributed base weights. Less weight on noise-sensitive
-            # voters (ret_short, RSI), more on trend-confirming (EMA, slope).
-            _base_weights = (0.55, 1.35 + _wt_shift, 1.00 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.25 + _wt_shift)
+            _vwap_wt = 0.35  # fixed, no trend amplification
+            _base_weights = (0.55, 1.35 + _wt_shift, 1.00 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.25 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -278,7 +289,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(6)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
