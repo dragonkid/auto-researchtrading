@@ -52,8 +52,7 @@ RSI_TREND_BIAS = 2.0
 RSI_TREND_BIAS_DECAY = 0.10
 
 # Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
-HOLD_DECAY_START_BASE = 5.5   # base onset in chop (tighter)
-HOLD_DECAY_START_TREND = 3.5   # extra bars in strong trends (continuous ramp via _trend_strength_w)
+HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
@@ -747,14 +746,8 @@ class Strategy:
                 # rally would otherwise create noise-driven early time exits.
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
-                # Architectural: trend-adaptive decay start. In strong trends
-                # (high |ret_long|), delay time-pressure onset by up to
-                # HOLD_DECAY_START_TREND extra bars. In chop, baseline onset.
-                # Continuous via _trend_strength_w (same tanh on abs(ret_long)/0.04).
-                # New cross-timescale data dep: decay start depends on long-window trend.
-                _decay_start = HOLD_DECAY_START_BASE + HOLD_DECAY_START_TREND * _trend_strength_w
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = _decay_start + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
