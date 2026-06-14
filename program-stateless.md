@@ -199,7 +199,7 @@ The noise test uses AR(1) correlated perturbation matching real cross-exchange d
 
 Signal stability test is currently DISABLED. It will be re-enabled when strategies reach positive Sharpe across all regimes. Do not consider stability in keep/discard decisions.
 
-**Stability scoring**: DISABLED. Stability test will be re-enabled when strategies reach positive Sharpe across all regimes.
+**Stability scoring**: ENABLED. Applies when regime score > 0. See penalty tiers above.
 
 ### Diagnostic-first approach (optional, recommended for new sessions)
 
@@ -218,7 +218,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 
 ## Stability constraints (guard rails, not objectives)
 
-Stability is DISABLED for the current phase. It will be re-enabled when all regime scores are positive.
+Stability is ENABLED. Penalizes regimes with positive score that are noise-sensitive (see tiers above). Design strategies with smooth thresholds to avoid penalty.
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
 **HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
