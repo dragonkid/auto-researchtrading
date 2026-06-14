@@ -113,7 +113,7 @@ while true; do
 
 echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
-ANTHROPIC_AUTH_TOKEN=sk-OZ7H_GmEFV3nOlf2PFZBBA ANTHROPIC_MODEL=deepseek-v4-pro MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
+ANTHROPIC_BASE_URL=https://litellm.qa1fdg.net ANTHROPIC_AUTH_TOKEN=sk-OZ7H_GmEFV3nOlf2PFZBBA ANTHROPIC_MODEL=deepseek-v4-pro MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
     --dangerously-skip-permissions \
     --model deepseek-v4-pro \
