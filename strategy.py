@@ -507,18 +507,23 @@ class Strategy:
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
-                # Architectural simplification: removed 3-slope consensus attenuator on
-                # first-bar entry size. The 8/16/32-bar HL2 slope consensus [-0.40, 1.00]
-                # multiplicative gate measures the same directional agreement that the 7-voter
-                # strong-sum already encodes. In rally, 8-bar slope is often negative during
-                # pullbacks while 16/32 slopes stay positive, creating mixed consensus that
-                # cuts entry size on precisely the BTFD entries rally needs. In bull, all 3
-                # slopes are strongly positive (consensus ≈ 1.0, no attenuation) so removal
-                # has no effect. In crash bear entries, all 3 slopes are negative (consensus
-                # ≈ 1.0 bear-aligned, no attenuation) so removal has no effect. Code-structure
-                # removal: 13 lines + 3-slope cross-bar dependency eliminated.
-                _bull_consensus_atten = 1.0
-                _bear_consensus_atten = 1.0
+                # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
+                # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
+                # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
+                # weighted alignment. Old map ignored slope MAGNITUDE — a barely-positive
+                # 8-bar slope counted identically to a strongly-positive one, creating
+                # boundary noise when small slopes near zero flip sign. New: alignment_w =
+                # tanh(slope_w * pos_dir / scale_w) ∈ [-1, +1] per window, then average
+                # the three. Attenuation = 0.40 + 0.60 * (avg_align + 1)/2, continuous in
+                # [0.40, 1.00]. Boundary at slope=0 is smooth (tanh), not stepped. Scales
+                # picked per-window to give similar saturation thresholds.
+                _hl2_e = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slps = [_fast_slope(np.log(_hl2_e[-_w_e:])) for _w_e in (8, 16, 32)]
+                _cons_scales = (0.0010, 0.0007, 0.0005)  # window-specific saturation
+                _bull_align = sum(np.tanh(s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
+                _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
+                _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
+                _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
                 # Architectural: bilateral-conviction-quality entry size attenuator.
                 # New cross-component data dep: own-side first-bar size depends on the
                 # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
@@ -884,13 +889,9 @@ class Strategy:
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
-                # Architectural: trend-direction-gated _w_ar weight (new cross-timescale dep).
-                # Exp 3 showed full ar removal gave bull +0.314 (uptrend MAE dips recover) but
-                # crash -0.173 (downtrend MAE recoveries reverse). Gate ar contribution by trend
-                # direction: full weight in downtrend (crash, where recovery→reversal is real),
-                # muted in uptrend (bull, where MAE dips are transient pullbacks). Continuous
-                # tanh on -ret_long: 1.0 at ret_long << 0 (downtrend), ~0 at ret_long >> 0.
-                _w_ar = 0.0 + 1.0 * max(0.0, min(1.0, np.tanh(-ret_long / 0.04)))
+                # Weight: only fire on currently-losing positions (definitionally — gated above);
+                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
+                _w_ar = 1.0
                 # Multi-variable architectural fusion change: max(sl, soft_sum) + voter_bias.
                 # Old: sl + voter_attn*(slope+pp+time+ve) — sl always added, voter_attn dampens softs.
                 # New: max-blend of sl vs soft sum (avoids double-counting when sl saturates and softs
