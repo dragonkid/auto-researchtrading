@@ -121,6 +121,12 @@ class Strategy:
         # Per-symbol last-exit position sign (+1 long, -1 short) for reversal-only
         # re-entry refractory (branch step 3).
         self._last_exit_sign = {}
+        # Per-symbol rolling history of REALIZED entry signs (branch step 4).
+        # Used to compute directional persistence: a regime whose recent entries
+        # were all one-directional (bull uptrend = all long) vs bidirectional
+        # (rally = mixed long/short). Separates anomalous reversal noise (bull)
+        # from genuine bidirectional alpha (rally) where churn cannot.
+        self._entry_sign_history = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -405,7 +411,31 @@ class Strategy:
             # freely. _last_exit_sign is recorded at exit (deterministic realized
             # history, noise-immune). Per-direction booleans applied at each entry
             # branch below.
-            _base_refractory = (_bars_since_exit <= COOLDOWN_BARS) and (len(_eh) >= 3) and _prior_loss
+            # Branch step 4: gate reversal-refractory on REALIZED DIRECTIONAL
+            # PERSISTENCE, not churn. Step 3 (churn-gated) confirmed bull reversals
+            # ARE noise (blocking them held bull at 0.724 with FEWER trades) and
+            # rally reversals ARE alpha — but churn fires in BOTH (rally is high-churn,
+            # bull moderate). The session-c265424d summary named the separator:
+            # "per-symbol realized DIRECTIONAL PERSISTENCE, not churn/macro which
+            # both fire in rally." Persistence = |mean(recent entry signs)|: ~1.0
+            # when recent entries were all one direction (bull 2021 sustained uptrend
+            # = nearly all longs → a fresh SHORT reversal is anomalous noise), ~0.0
+            # when mixed (rally 2024 bidirectional = longs and shorts interleaved →
+            # reversals are the regime's normal alpha). DETERMINISTIC: built from
+            # realized entry signs (fixed history, noise-immune — the AR(1) price
+            # perturbation cannot change which trades already happened). Block a
+            # reversal re-entry only when persistence is HIGH (one-directional book);
+            # spare it when persistence is LOW (bidirectional book = rally) BY
+            # CONSTRUCTION. Drops the churn gate (len(_eh)>=3) entirely — persistence
+            # is the cleaner separator. Smooth ramp via the continuous persistence
+            # magnitude; refractory engages above 0.6 persistence (≥80pct one-side).
+            _sh = self._entry_sign_history.get(symbol, [])
+            if len(_sh) >= 4:
+                _dir_persist = abs(sum(_sh) / len(_sh))  # [0,1]; 1=one-directional, 0=balanced
+            else:
+                _dir_persist = 0.0  # too few samples → spare (don't block on thin history)
+            _persist_block = _dir_persist >= 0.6  # ≥80pct one-side recent entries
+            _base_refractory = (_bars_since_exit <= COOLDOWN_BARS) and _prior_loss and _persist_block
             _exit_sign = self._last_exit_sign.get(symbol, 0)
             _bull_refractory = _base_refractory and _exit_sign == -1  # re-long after short-exit = reversal
             _bear_refractory = _base_refractory and _exit_sign == 1   # re-short after long-exit = reversal
@@ -1175,5 +1205,10 @@ class Strategy:
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
+                    # Branch step 4: record realized entry sign (rolling, last 8).
+                    _sh = self._entry_sign_history.setdefault(symbol, [])
+                    _sh.append(1 if target > 0 else -1)
+                    if len(_sh) > 8:
+                        del _sh[0]
 
         return signals
