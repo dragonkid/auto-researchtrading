@@ -897,27 +897,6 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural: 7th soft exit term — VOLUME-DECAY exit pressure.
-                # NEW DATA DEPENDENCY at exit (volume): all 6 existing soft terms
-                # operate on price/pnl/time only. Volume is orthogonal.
-                # Mechanism: when position is in profit AND recent (6-bar) volume has
-                # decayed substantially below medium (24-bar) volume, the move that
-                # delivered the profit is losing fuel — momentum without follow-through
-                # volume is more likely to mean-revert. Raise exit pressure to lock
-                # gains while still possible. Continuous tanh on (vol_med/vol_recent - 1).
-                # Activates only when in profit (winning positions) — losing positions
-                # use slope/ar/sl, not volume-decay (volume on losers can simply mean
-                # capitulation with rebound). Weight gated by _pnl_scale (profit-only).
-                # Smooth (no boundary), bounded [0, 0.4].
-                _vol_short_n = 6
-                _vol_med_n = 24
-                _vol_recent = float(np.mean(bd.history["volume"].values[-_vol_short_n:]))
-                _vol_med_v = float(np.mean(bd.history["volume"].values[-_vol_med_n:]))
-                _vol_decay_ratio = _vol_med_v / max(_vol_recent, 1e-10)  # >1 when recent < medium
-                # Activate above 1.2x decay, saturate near 2.0x. Cap at 0.40.
-                _vd_pressure = 0.40 * max(0.0, np.tanh((_vol_decay_ratio - 1.2) / 0.4))
-                # Weight: profit-side only (winning positions need fuel).
-                _w_vd = max(0.0, _pnl_scale)  # in [0, 1]
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -925,15 +904,13 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Now 7 terms (added volume-decay).
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure,
-                    _w_vd * _vd_pressure
+                    _w_ar * _ar_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
