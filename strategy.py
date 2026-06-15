@@ -911,6 +911,20 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Architectural: one-sided trend-aligned exit_thresh raise for
+                # profitable positions (mirrors afa6281 admission-side and 0f7f188
+                # de-risk floor patterns at the binary full-exit boundary).
+                # Trend-aligned (pos_dir matches ret_long sign) AND profitable
+                # positions get up to +10% threshold raise — requires stronger
+                # pressure to fully exit, preserving trend follow-through against
+                # transient pullback pressure spikes (target rally stab 0.447).
+                # Counter-trend or losing positions: unchanged (exit fast as before).
+                # Sideways ret_long~0 zeros the factor. New cross-component data dep
+                # at the binary exit boundary: exit_thresh depends on (ret_long,
+                # pos_dir, pos_pnl).
+                _ta_et_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _ta_et_profit = max(0.0, _pnl_scale)
+                _exit_thresh = _exit_thresh + 0.10 * _ta_et_align * _ta_et_profit
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
