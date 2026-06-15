@@ -88,13 +88,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Churn-gated reversal cooldown (see on_bar). Max bars to block a fast direction
-# REVERSAL (long->short / short->long) after an exit, scaled by per-symbol churn.
-# Same-direction re-entries are never blocked. Suppresses the noise-flippable
-# long<->short churn that the diagnostic identified as the source of rally instability.
-REVERSAL_COOLDOWN_BARS = 6
-REVERSAL_CONV_RELEASE = 0.20  # new-side margin scale at which the reversal block releases
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -125,9 +118,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Per-symbol sign of the most recently closed position (+1 long, -1 short).
-        # Drives the churn-gated reversal cooldown (block fast direction reversals).
-        self._last_pos_sign = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -590,42 +580,9 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Architectural: churn-gated REVERSAL cooldown (subtractive entry filter).
-                # Noise-test diagnostic: in rally the position is in-market ~99pct of bars and
-                # noise flips the whole regime's DIRECTION (long<->short for ~8690/8760 bars
-                # in the worst trials) — the strategy exits then RE-ENTERS on the opposite
-                # side within a few bars when bull/bear strong-sums are near-tied during
-                # pullbacks. Each such reversal is a knife-edge directional decision that a
-                # noise realization can tip, and the new direction then persists -> huge
-                # sustained equity divergence. This is SUBTRACTIVE (it BLOCKS the reversal
-                # entry rather than adding a price-derived tie-breaker term — the four
-                # additive attempts this session all amplified noise) and uses only
-                # noise-ROBUST discrete state: the sign of the last closed position and an
-                # integer bar count, NOT a new price threshold. Same-direction re-entries
-                # (rally continuation) are NEVER blocked; only a fast flip to the opposite
-                # side is suppressed for _rev_cd bars. Churn-gated on the symbol's OWN recent
-                # entry density (len(_eh), the same signal the execution deadband uses) so it
-                # engages in high-churn rally (~2x churn) and stays ~0 in low-churn
-                # crash/sideways — sparing them by construction (self-measured behavioral
-                # feedback, NOT a regime classifier). Crash protective flips (rare, low churn)
-                # pass through, avoiding the prior flip-suppression failures.
-                # Branch step 7: return to the step-2 conviction-release mechanism (the only
-                # variant that preserved BOTH bull (0.777) and rally raw (0.408 > baseline
-                # 0.393); steps 3-6 each destroyed one or the other). Block only LOW-
-                # conviction near-tied reversals (the noise-flippable knife-edges), releasing
-                # the block as the NEW-side margin grows. Tighten the release to 0.20 (from
-                # step-2's 0.30) so a few more of the lowest-conviction reversals are blocked,
-                # aiming to lift rally stability above step-2's 0.487 while keeping the raw.
-                _rev_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 high churn
-                _rev_cd = REVERSAL_COOLDOWN_BARS * _rev_churn
-                _last_sign = self._last_pos_sign.get(symbol, 0)
-                _bull_lowconv = 1.0 - max(0.0, min(1.0, np.tanh(max(0.0, _bull_margin) / REVERSAL_CONV_RELEASE)))
-                _bear_lowconv = 1.0 - max(0.0, min(1.0, np.tanh(max(0.0, _bear_margin) / REVERSAL_CONV_RELEASE)))
-                _rev_block_bull = _last_sign < 0 and _bars_since_exit < _rev_cd * _bull_lowconv
-                _rev_block_bear = _last_sign > 0 and _bars_since_exit < _rev_cd * _bear_lowconv
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _rev_block_bull:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _rev_block_bear:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -1163,9 +1120,6 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                        # Record sign of the closed position (noise-robust discrete state)
-                        # for the churn-gated reversal cooldown.
-                        self._last_pos_sign[symbol] = 1 if current_pos > 0 else -1
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
