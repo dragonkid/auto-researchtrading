@@ -82,9 +82,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.65  # required sum of margin-above-0.5 voter contributions (scaled for 6 voters, VWAP removed)
-MIN_VOTES = 2.50  # scaled for 6 voters
-FLIP_MIN_VOTES = 2.40  # scaled for 6 voters
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
+MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -233,12 +233,8 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
+                _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
             ]
-            # Architectural: VWAP removed from voter, kept as trend-only size multiplier.
-            # The rally raw-score gain (0.096->0.424, step1) comes from VWAP removal from
-            # voter ensemble — removing volume-weighted noise from admission gate. Size
-            # multiplier is additive on top. STRONG_WEIGHT_MIN tightened to 1.65 balances
-            # the lost admission contribution of VWAP voter.
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
@@ -257,8 +253,14 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # VWAP voter removed from ensemble — trend-only size multiplier on entry.
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
+            # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
+            # is dominated by recent action which oscillates with chop noise; in
+            # trends, VWAP captures genuine directional pressure. Scale VWAP voter
+            # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
+            # via _trend_strength_w. Preserves the rally/crash gain while reducing
+            # the sideways regression introduced by full VWAP weight.
+            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -280,13 +282,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 6)
+                _arr = np.array(_sig_hist)  # (K, 7)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(6)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
@@ -301,14 +303,6 @@ class Strategy:
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
-            # measures volume-supported price quality, not direction. Scale first-bar
-            # entry size by VWAP alignment. TREND-ONLY activation: in chop (_trend_strength_w
-            # near 0), VWAP oscillates near price — multiplier stays at 1.0 (no modulation).
-            # In trend, VWAP lags persistently — full range [0.82, 1.18] amplifies trend-
-            # aligned entries. Continuous blend via _trend_strength_w. New cross-component
-            # data dep: entry size depends on VWAP deviation × strong-sum direction × trend.
-            _vwap_sz_raw = 0.82 + 0.36 * max(0.0, np.tanh((_vwap_dev * (1.0 if _bull_strong > _bear_strong else -1.0)) / 0.002))
-            _vwap_sz = 1.0 + (_vwap_sz_raw - 1.0) * _trend_strength_w  # blend to 1.0 in chop
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
             _hist = self._recent_strongs.get(symbol, [])
@@ -587,9 +581,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _vwap_sz
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _vwap_sz
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
