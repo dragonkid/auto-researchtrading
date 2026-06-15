@@ -88,6 +88,13 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Path-efficiency contribution to the voter-weight-shift trend-strength driver.
+# Magnitude-based abs(ret_long) under-detects low-vol grinds (rally); Kaufman ER
+# (path-normalized cleanliness) detects them. Only ER above ER_LONG_TREND_FLOOR
+# (cleaner than chop) adds to the trend-voter overweighting.
+ER_LONG_TREND_GAIN = 0.60
+ER_LONG_TREND_FLOOR = 0.45
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -252,7 +259,26 @@ class Strategy:
             # tanh on abs(ret_long)/0.04. New cross-timescale data dependency:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-            _wt_shift = 0.20 * _trend_strength_w
+            # Architectural: path-efficiency trend-strength for voter-weight shift.
+            # The magnitude driver abs(ret_long) under-detects low-vol grinds (rally:
+            # small net return over 20 bars even when the path is clean), so _wt_shift
+            # stays low and mean-reverting voters (RSI/MACD) keep firing against the
+            # grind, degrading directional Sharpe. Kaufman efficiency ratio over the
+            # long window measures path cleanliness independent of magnitude: a clean
+            # grind has ER near 1 even with small net move; chop has low ER. Blend via
+            # max() so clean grinds engage trend-voter overweighting that magnitude
+            # alone misses, while strong trends (already high _trend_strength_w) and
+            # chop (low ER, low magnitude) are unchanged. New cross-component data dep:
+            # voter aggregation weights depend on realized long-window path efficiency.
+            # Sum-preserving (+shift idx1,5 / -shift idx2,3), so only the trend-vs-
+            # mean-revert balance moves, not total weight. Isolation: in bull/crash/
+            # sideways voters are saturated (quintic dominates, weights ~inert); rally
+            # voters are near-tied (weights bite) -> effect concentrates on rally.
+            _er_long_path = np.sum(np.abs(np.diff(smoothed_closes[-LONG_WINDOW - 1:])))
+            _er_long_net = abs(smoothed_closes[-1] - smoothed_closes[-LONG_WINDOW - 1])
+            _er_long = _er_long_net / max(_er_long_path, 1e-10)
+            _er_trend_w = ER_LONG_TREND_GAIN * max(0.0, np.tanh((_er_long - ER_LONG_TREND_FLOOR) / 0.20))
+            _wt_shift = 0.20 * max(_trend_strength_w, _er_trend_w)
             # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
             # is dominated by recent action which oscillates with chop noise; in
             # trends, VWAP captures genuine directional pressure. Scale VWAP voter
