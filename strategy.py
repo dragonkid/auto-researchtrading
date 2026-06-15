@@ -412,7 +412,8 @@ class Strategy:
             # >1). Bounded [0.85, 1.25], gentle 0.5 exponent. New data dependency
             # (semivariance decomposition); applied at ENTRY size only — does NOT
             # touch the walled exit-timing subsystem.
-            _semi_rets = np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))
+            _semi_n = min(96, len(closes) - 1)
+            _semi_rets = np.diff(np.log(closes[-_semi_n - 1:-1]))
             _down_semivar = np.mean(np.minimum(_semi_rets, 0.0) ** 2)
             _up_semivar = np.mean(np.maximum(_semi_rets, 0.0) ** 2)
             _mean_square = _down_semivar + _up_semivar
