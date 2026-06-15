@@ -55,6 +55,8 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
+PEAK_FRESH_HOLD_BONUS = 3.0  # max extra bars while position is AT/near its peak (still-climbing winner, pre-giveback)
+PEAK_FRESH_DECAY = 0.25      # giveback fraction at which the peak-freshness bonus decays by 1/e
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
@@ -764,6 +766,29 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
+                # Architectural: peak-freshness time-hold extension (pure raw lever).
+                # The time-pressure backstop (_max_hold ~10 bars) can force-exit a position
+                # that is STILL CLIMBING (making fresh peaks) in a sustained trend, leaving
+                # trend money on the table. Exp1 this session showed crash GAINED from longer
+                # holds (sustained shorts ride the bear) but bull/rally COLLAPSED because the
+                # slope-persistence trigger was noisy and extended holds THROUGH the top-of-
+                # trend giveback. Fix the failure mode: gate the extension on PEAK FRESHNESS
+                # measured from peak_pnl — a monotone high-water mark prior sessions confirm
+                # is NOISE-IMMUNE (only updates upward, confirmed by 2 rising bars; does not
+                # oscillate under the AR(1) test). freshness=1 when pos_pnl is at/near peak
+                # (still winning, pre-giveback), decays smoothly as giveback grows. By
+                # construction the bonus vanishes the moment giveback begins, so it CANNOT
+                # ride through tops (exp1's failure) and does NOT delay reversals (giveback
+                # kills it -> rally's reversal alpha untouched). Only fires for winners with
+                # an established peak. One-sided (never shortens). New data dependency:
+                # time-hold backstop depends on giveback freshness of the high-water mark.
+                _peak_for_hold = self.peak_pnl.get(symbol, 0.0)
+                if _peak_for_hold > _pp_min:
+                    _giveback_for_hold = max(0.0, _peak_for_hold - pos_pnl) / max(_peak_for_hold, 1e-9)
+                    _peak_fresh = np.exp(-_giveback_for_hold / PEAK_FRESH_DECAY)
+                else:
+                    _peak_fresh = 0.0
+                _hold_adj = _hold_adj + PEAK_FRESH_HOLD_BONUS * _peak_fresh
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
