@@ -1095,26 +1095,29 @@ class Strategy:
             # exits (target==0), and flips (sign change) are ALWAYS exempt: risk
             # transitions must never be held. Only same-sign resizes pass through the
             # deadband. New control flow + new cross-component data dep at the gate.
-            # Branch step 2: SMOOTH churn-gated resize damping (replaces the hard
-            # deadband threshold from step 1). Step 1 used a hard emit/no-emit test at
-            # abs(target-current_pos) > _min_move; that boundary is itself noise-
-            # sensitive (resizes near it flip under perturbation), which crushed bull
-            # stability and failed to lift rally. Replace with a continuous saturating
-            # damping factor f = r/(r + dz) where r is the relative move size and dz is
-            # the churn-gated half-damp scale. NO hard boundary: tiny moves are damped
-            # toward zero smoothly, large moves pass through (f→1). Symmetric on growth
-            # and shrink (prior insight: one-sided ratchets amplify path divergence).
-            # Churn-gated via the symbol's own 30-bar entry density (len(_eh)): low
-            # churn → dz≈0 → f≈1 → no damping (crash/sideways spared); high churn →
-            # dz up to 0.16 → micro-resizes damped (rally trajectory smoothed). Entries
-            # (current_pos==0), exits (target==0), and flips (sign change) are exempt.
+            # Branch step 3: efficiency-gated snap-to-hold resize deadband. Step 1
+            # (hard snap-to-hold) was Zeno-free and SPARED crash/sideways (the gate
+            # fires only in the two uptrends, where pullback-reentries cluster) but
+            # hurt bull — because bull's churn is CLEAN-TREND signal (the position
+            # rebuilds after new highs) while rally's churn is WHIPSAW noise (rebuild
+            # after deep pullbacks). Step 2 (smooth damping) recovered bull stab but
+            # created a residual-gap Zeno loop that doubled bull trades. Synthesis:
+            # snap-to-hold (Zeno-free) gated on LOW PATH-EFFICIENCY × churn. The
+            # efficiency-ratio _er (12-bar net/path on smoothed_closes, already
+            # computed for entry-frac) is HIGH in clean trends (bull) and LOW in
+            # choppy pullback-heavy action (rally). Deadband width =
+            # base × churn_gate × chop_gate, so it opens ONLY on choppy + high-churn
+            # resizes (rally's noise churn), stays ~0 for clean trends (bull spared)
+            # and low-churn regimes (crash/sideways spared). When a resize is held,
+            # the target snaps to current_pos (no residual gap → no re-trigger churn).
+            # Symmetric growth/shrink (one-sided ratchets amplify path divergence).
+            # Entries (current_pos==0), exits (target==0), flips (sign change) exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))  # [0,1], same shape as _freq_factor
+            _chop_dz = max(0.0, np.tanh((0.30 - _er) / 0.15))      # [0,1], high when path is choppy (low ER)
+            _deadband_frac = 0.22 * _churn_dz * _chop_dz           # 0 unless BOTH choppy AND high-churn
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
-            if _is_resize and _churn_dz > 0.0:
-                _dz = 0.16 * _churn_dz  # half-damp point in fraction-of-position units
-                _r = abs(target - current_pos) / max(abs(current_pos), 1e-9)
-                _damp = _r / (_r + _dz)  # smooth saturating, in [0,1)
-                target = current_pos + (target - current_pos) * _damp
+            if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
+                target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
