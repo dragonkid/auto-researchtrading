@@ -94,7 +94,10 @@ def test_open_hold_unrealized_loss():
     expected_ret = (hand_equity - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100
 
     assert r.total_return_pct == pytest.approx(expected_ret, abs=TOL)
-    assert r.num_trades == 1
+    # num_trades counts COMPLETED (realizing) trades; this position is opened and
+    # held to the end without closing, so there are zero realized trades. The open
+    # leg itself must NOT count.
+    assert r.num_trades == 0
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +199,20 @@ def test_open_is_not_realizing():
     # open row carries realized=False
     open_rows = [t for t in r.trade_log if t[0] == "open"]
     assert open_rows[0][5] is False
+
+
+# ---------------------------------------------------------------------------
+# num_trades counts COMPLETED (realizing) trades, not raw order legs. An open
+# followed by a close is ONE trade, not two. Guards against reverting to
+# len(trade_log) (which would inflate the count and loosen sample_factor and
+# the <10-trade hard cutoff).
+# ---------------------------------------------------------------------------
+def test_num_trades_counts_completed_trades():
+    # open long @110, close @121 -> trade_log has [open, close] but only 1 trade
+    data = _mkdata([100.0, 110.0, 121.0, 121.0])
+    r = run_backtest(_ScriptedStrategy([(110.0, 10000.0), (121.0, 0.0)]), data)
+    assert len(r.trade_log) == 2, "trade_log should record both the open and the close leg"
+    assert r.num_trades == 1, "num_trades should count the completed trade, not the open leg"
 
 
 # ---------------------------------------------------------------------------

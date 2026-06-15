@@ -555,7 +555,12 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     # flips, and partial reduces), not just full closes. The realized flag
     # (tuple index 5) marks events that locked in PnL on a closed/reduced portion.
     trade_pnls = [t[4] for t in trade_log if len(t) > 5 and t[5]]
-    num_trades = len(trade_log)
+    # num_trades counts COMPLETED trades (realizing events), not raw order legs.
+    # Pure open/add legs build a position but don't constitute a finished trade,
+    # so they don't count toward sample sufficiency or the <10-trade hard cutoff.
+    # This keeps num_trades, win_rate, and sample_factor on one consistent
+    # "realized trade" basis.
+    num_trades = len(trade_pnls)
     if trade_pnls:
         wins = [p for p in trade_pnls if p > 0]
         losses = [p for p in trade_pnls if p < 0]
