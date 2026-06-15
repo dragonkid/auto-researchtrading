@@ -59,14 +59,6 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
-# Profit-milestone harvest ladder (sample_factor lever). Realize a small fixed
-# fraction each time peak_pnl crosses a new integer multiple of _pp_min. Adds
-# PnL-realizing events (lifts num_trades -> sample_factor in trending/profit
-# regimes; all 3 strong regimes throttle at 33-41 < 50 trades) and locks
-# incremental profit. Anchored to peak_pnl (monotonic high-water mark).
-HARVEST_FRAC = 0.12
-HARVEST_MAX_LEVELS = 4
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -126,11 +118,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Architectural: per-symbol highest profit-milestone level harvested so far.
-        # Integer count of _pp_min multiples of peak_pnl already harvested; each new
-        # level triggers one fixed-fraction realize. Monotonic within a trade, reset
-        # on entry. Drives the harvest-ladder sample_factor lever.
-        self._harvest_level = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -1002,25 +989,6 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural: profit-milestone harvest ladder (sample_factor lever).
-                # Each time peak_pnl crosses a new integer multiple of _pp_min, realize
-                # one fixed HARVEST_FRAC slice of the CURRENT position. The trigger is the
-                # peak_pnl high-water mark (monotonic — only rises within a trade), so the
-                # milestone crossing is noise-immune (no boundary that flips back under
-                # AR(1) noise). Per-symbol integer _harvest_level ensures each level fires
-                # exactly once and never reverses direction (pure shrink toward 0, capped
-                # at HARVEST_MAX_LEVELS). Adds PnL-realizing events -> lifts num_trades ->
-                # sample_factor in the trending/profit regimes (all 3 strong regimes
-                # throttle below 50 trades) without touching entry admission or the rally
-                # reversal layer. New control flow: a third realizing path keyed on a
-                # monotonic state counter.
-                if target != 0 and self.peak_pnl[symbol] > _pp_min and _sl_pressure < 0.5:
-                    _level_now = min(HARVEST_MAX_LEVELS, int(self.peak_pnl[symbol] / max(_pp_min, 1e-6)))
-                    _level_done = self._harvest_level.get(symbol, 0)
-                    if _level_now > _level_done:
-                        self._harvest_level[symbol] = _level_now
-                        target = target * (1.0 - HARVEST_FRAC)
-
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
                 # full-exit path AND de-risk ramp (which produces target=0 at boundary).
@@ -1151,13 +1119,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._harvest_level):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._harvest_level[symbol] = 0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
