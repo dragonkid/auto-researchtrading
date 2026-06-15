@@ -618,8 +618,22 @@ class Strategy:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
+                    # Architectural: pnl-conditioned scale-in adverse-move freeze.
+                    # When the in-flight scale-in position has gone adverse (pos_pnl < 0),
+                    # smoothly attenuate scale-in growth (don't add more size on losing bars).
+                    # Continuous via tanh: at breakeven full growth, ramps to ~50% freeze at
+                    # pos_pnl = -0.4*|STOP_LOSS|, saturating to ~75% freeze at -|STOP_LOSS|.
+                    # New cross-bar dep at scale-in boundary: scale-in pace depends on
+                    # currently-realized adverse excursion of the in-flight entry.
+                    # Mechanism: protects against compounding adverse-move size adds in
+                    # noisy regimes (rally pullbacks during fresh-entry scale-in).
+                    _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT))))
+                    scale_frac = scale_frac * (1.0 - _adv_freeze)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
+                    # Don't shrink below current position - this is scale-in, not exit
+                    if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
+                        target = current_pos
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
