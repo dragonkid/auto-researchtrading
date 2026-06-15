@@ -93,7 +93,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # Same-direction re-entries are never blocked. Suppresses the noise-flippable
 # long<->short churn that the diagnostic identified as the source of rally instability.
 REVERSAL_COOLDOWN_BARS = 6
-REVERSAL_CONV_RELEASE = 0.30  # new-side margin scale at which the reversal block releases
+REVERSAL_CONV_RELEASE = 1.20  # new-side margin scale at which the reversal block releases
 
 
 def ema(values, span):
