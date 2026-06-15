@@ -322,27 +322,6 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Architectural: two-sided trade-rate servo. _freq_factor above is the
-            # CHURN half — it RAISES admission when recent entry density is high.
-            # This adds the complementary UNDER-TRADE half: LOWER admission when the
-            # symbol has been idle (flat, no position) for a long stretch. Self-
-            # measured behavioral feedback (idle bars since last exit), NOT a regime
-            # classifier — regimes that are deeply in-market (rally ~99pct of bars)
-            # almost never accumulate long idle gaps, so the relaxation stays ~off
-            # there by construction. Over-selective sparse regimes (bull/crash/
-            # sideways: 33-41 trades, avg ~200 bars between) accumulate long flats
-            # and get gradual relaxation, admitting the marginal entries the post-fee
-            # sample_factor now rewards (those three regimes sit below the 50-trade
-            # sample_factor saturation). Smooth tanh, max 12pct relaxation, ramps in
-            # over a 40-bar idle window. New cross-bar data dep at admission boundary.
-            # Gate on genuinely-flat: only relax when symbol holds no position (so
-            # _idle_bars is a true since-last-exit idle stretch). During a hold,
-            # exit_bar reflects the PRE-entry exit and would spuriously read large —
-            # gating to flat keeps the relaxation out of the margins that feed exit
-            # voter_bias / flip paths (those depend on the unrelaxed thresholds).
-            _is_flat = portfolio.positions.get(symbol, 0.0) == 0
-            _idle_bars = self.bar_count - self.exit_bar.get(symbol, -999)
-            _undertrade_relax = 1.0 - 0.12 * (1.0 if _is_flat else 0.0) * max(0.0, np.tanh((_idle_bars - 40.0) / 40.0))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -364,8 +343,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * _undertrade_relax * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * _undertrade_relax * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
