@@ -1038,23 +1038,22 @@ class Strategy:
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        # Architectural: counter-trend-AND-loss blend of squared/linear.
-                        # Use squared mapping ONLY when position is counter-trend OR in
-                        # loss (i.e. when noise-driven oscillation matters most). For
-                        # trend-aligned profit positions (the bull regime case), use
-                        # linear (preserves the responsiveness that bull needs).
-                        # _trend_align in [0,1]: 1 when fully trend-aligned. Squared
-                        # weight = 1 - _trend_align * profit_weight. Continuous tanh.
+                        # Architectural: VOL-conditioned blend of squared (low-vol) and
+                        # linear (high-vol) de-risk mappings. Low vol (rally, sideways):
+                        # pressure noise dominates near the floor — squared mapping is
+                        # noise-insensitive there. High vol (crash, bull): pressure
+                        # signal dominates — linear gives proper response gradient.
+                        # Continuous via tanh((vol_ratio - 0.85) / 0.30): low-vol fully
+                        # squared, mid-vol blended, high-vol fully linear. Orthogonal
+                        # to trend (which previously hurt rally) and to PNL (which
+                        # previously hurt bull profit). Vol_ratio captures regime-
+                        # specific noise floor.
                         _frac = (_exit_pressure - _de_floor * _exit_thresh) / max((1.0 - _de_floor) * _exit_thresh, 1e-10)
                         _frac = max(0.0, min(1.0, _frac))
                         _de_risk_sq = 1.0 - _frac * _frac
                         _de_risk_lin = 1.0 - _frac
-                        _pos_dir_de = 1.0 if current_pos > 0 else -1.0
-                        _ta_de = max(0.0, np.tanh(ret_long * _pos_dir_de / 0.04))  # 0..1 trend-aligned
-                        _profit_de = max(0.0, _pnl_scale)
-                        # Use linear when trend-aligned AND in profit (bull case).
-                        _w_lin_de = _ta_de * _profit_de
-                        _de_risk = _de_risk_lin * _w_lin_de + _de_risk_sq * (1.0 - _w_lin_de)
+                        _w_vol_de = max(0.0, np.tanh((vol_ratio - 0.85) / 0.30))
+                        _de_risk = _de_risk_lin * _w_vol_de + _de_risk_sq * (1.0 - _w_vol_de)
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
