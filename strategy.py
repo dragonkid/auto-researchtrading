@@ -138,13 +138,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol EMA-smoothed soft exit pressure (cross-bar state).
-        # SL pressure remains binary/raw (safety net). Soft pressure stack (slope/pp/
-        # time/ve/ar) is single-bar noisy in low-vol regimes — single-bar spikes
-        # trigger premature exits in rally/sideways. EMA smoothing (alpha=0.5, ~2-bar
-        # half-life) requires a 2-bar persistent soft signal before crossing the exit
-        # threshold. New cross-bar data dependency at the exit boundary.
-        self._soft_max_ema = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -902,15 +895,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Architectural: EMA smoothing on soft exit pressure (alpha=0.5,
-                # ~2-bar half-life). Cross-bar data dep — soft signal must persist
-                # across bars to cross threshold. Eliminates single-bar pressure
-                # spikes that drive low-vol regime instability (rally stab 0.447).
-                # SL kept binary (safety net) so stop-loss exits remain immediate.
-                _prev_soft_ema = self._soft_max_ema.get(symbol, _soft_max)
-                _soft_max_ema = 0.5 * _soft_max + 0.5 * _prev_soft_ema
-                self._soft_max_ema[symbol] = _soft_max_ema
-                _exit_pressure = max(_sl_pressure, _soft_max_ema) + _voter_bias
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -1052,7 +1037,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._soft_max_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
