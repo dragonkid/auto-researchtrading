@@ -429,16 +429,33 @@ class Strategy:
             # CONSTRUCTION. Drops the churn gate (len(_eh)>=3) entirely — persistence
             # is the cleaner separator. Smooth ramp via the continuous persistence
             # magnitude; refractory engages above 0.6 persistence (≥80pct one-side).
+            # Branch step 5: replace the hard boolean refractory with a CONTINUOUS,
+            # THRESHOLD-FREE size attenuation. Step 4 showed the boolean boundary
+            # (persistence>=0.6 AND prior_loss AND bars<=1) collapsed rally stability
+            # even though it blocked ZERO rally entries on the clean path — the
+            # boundary ITSELF is the noise source (perturbed paths cross it). Test
+            # the failure hypothesis directly: remove ALL hard thresholds. Reversal
+            # re-entry SIZE is scaled by a smooth product of three CONTINUOUS,
+            # DETERMINISTIC factors — directional persistence (realized signs),
+            # recency (tanh decay over bars-since-exit), and prior-loss magnitude.
+            # No boolean gate, no threshold crossing. If rally stab now survives,
+            # the boundary was the culprit; if it still collapses, reversal-touching
+            # at any granularity is walled (final confirmation).
             _sh = self._entry_sign_history.get(symbol, [])
             if len(_sh) >= 4:
                 _dir_persist = abs(sum(_sh) / len(_sh))  # [0,1]; 1=one-directional, 0=balanced
             else:
-                _dir_persist = 0.0  # too few samples → spare (don't block on thin history)
-            _persist_block = _dir_persist >= 0.6  # ≥80pct one-side recent entries
-            _base_refractory = (_bars_since_exit <= COOLDOWN_BARS) and _prior_loss and _persist_block
+                _dir_persist = 0.0
+            # Continuous recency: 1.0 right after exit, decays smoothly to ~0 over ~3 bars.
+            _recency = max(0.0, 1.0 - np.tanh(_bars_since_exit / 2.0))
+            # Continuous prior-loss magnitude (already-defined _loss_only is the smooth form).
+            _rev_atten_strength = _dir_persist * _recency * _loss_only  # [0,1], all smooth+deterministic
+            # Size multiplier on reversal re-entries: up to 70pct cut when one-directional
+            # book + immediate + deep prior loss; 1.0 (no effect) when balanced book OR
+            # not recent OR prior win. Per-direction reversal flags (smooth, not boolean).
             _exit_sign = self._last_exit_sign.get(symbol, 0)
-            _bull_refractory = _base_refractory and _exit_sign == -1  # re-long after short-exit = reversal
-            _bear_refractory = _base_refractory and _exit_sign == 1   # re-short after long-exit = reversal
+            _bull_rev_mult = 1.0 - 0.70 * _rev_atten_strength if _exit_sign == -1 else 1.0
+            _bear_rev_mult = 1.0 - 0.70 * _rev_atten_strength if _exit_sign == 1 else 1.0
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -656,10 +673,10 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _bull_refractory:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _bear_refractory:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_rev_mult
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_rev_mult
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
