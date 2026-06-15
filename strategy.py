@@ -398,26 +398,6 @@ class Strategy:
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
-            # Architectural: direction-aware adverse-semivariance size reweight.
-            # Vol-targeting above uses SYMMETRIC realized_vol, which over-penalizes
-            # benign trend-direction moves (for a long in an uptrend, large UPSIDE
-            # bars inflate symmetric vol but are not risk). Decompose the same
-            # VOL_LOOKBACK return series into downside/upside semivariance and size
-            # to the ADVERSE half: downside for longs, upside for shorts. Centered
-            # at 1.0 for symmetric distributions (2*adverse_semivar == mean_square),
-            # so sideways/chop is unaffected BY CONSTRUCTION (no boundary, no regime
-            # classifier). In trends the adverse half is the smaller half → the
-            # trend-aligned side gets a larger commitment (downside semivar small in
-            # uptrend → bull mult >1; upside semivar small in downtrend → bear mult
-            # >1). Bounded [0.85, 1.25], gentle 0.5 exponent. New data dependency
-            # (semivariance decomposition); applied at ENTRY size only — does NOT
-            # touch the walled exit-timing subsystem.
-            _semi_rets = np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))
-            _down_semivar = np.mean(np.minimum(_semi_rets, 0.0) ** 2)
-            _up_semivar = np.mean(np.maximum(_semi_rets, 0.0) ** 2)
-            _mean_square = _down_semivar + _up_semivar
-            _bull_risk_mult = max(0.85, min(1.25, (_mean_square / max(2.0 * _down_semivar, 1e-12)) ** 0.5))
-            _bear_risk_mult = max(0.85, min(1.25, (_mean_square / max(2.0 * _up_semivar, 1e-12)) ** 0.5))
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
@@ -601,9 +581,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_risk_mult
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_risk_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -651,7 +631,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size * _bull_risk_mult if current_pos > 0 else -size * _bear_risk_mult
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
