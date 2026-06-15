@@ -300,8 +300,28 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural: dual-channel voter aggregation (conviction quintic +
+            # breadth linear, trend-blended). The quintic ramp (c-0.5)^5*97.66
+            # emphasizes near-saturated single voters and under-counts broad
+            # MODERATE consensus (e.g. 5 voters at conf 0.70 contribute ~0 to the
+            # quintic sum). In sustained trends (crash/bull), directional voters
+            # align at moderate conviction but rarely all saturate the same bar —
+            # the quintic structurally misses this breadth. Add a LINEAR breadth
+            # channel (max(0,(c-0.5)*2.5)*w, normalized so saturation==quintic max,
+            # preserving _strong_min calibration) and blend it in proportional to
+            # long-window trend strength: alpha = 0.5*_trend_strength_w in [0,0.5].
+            # Chop (sideways) keeps pure quintic (broad moderate consensus there IS
+            # noise); trends get breadth credit (broad moderate consensus IS the
+            # trend signal). New aggregation-function structure + new cross-timescale
+            # data dependency (blend weight depends on ret_long). Entry-side only —
+            # does not touch the walled exit-timing subsystem.
+            _agg_alpha = 0.5 * _trend_strength_w  # in [0, 0.5]
+            _bull_quint = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_quint = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_breadth = sum(max(0.0, (c - 0.5) * 2.5) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_breadth = sum(max(0.0, (c - 0.5) * 2.5) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = (1.0 - _agg_alpha) * _bull_quint + _agg_alpha * _bull_breadth
+            _bear_strong = (1.0 - _agg_alpha) * _bear_quint + _agg_alpha * _bear_breadth
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
