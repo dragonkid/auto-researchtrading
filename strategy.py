@@ -596,24 +596,23 @@ class Strategy:
                 # the entry-time trend gate. If trend deteriorates post-entry, pnl-attn alone
                 # captures it (price follows trend in losses). Removing trend_agree blend
                 # eliminates correlated double-counting of trend signal across entry+scale-in.
-                # Architectural: trend-conditioned scale-in pace + LIVE-CONVICTION modulator.
-                # Trend-magnitude floor (existing): 2 bars in strong trend, up to 4 in chop.
-                # NEW conviction-margin acceleration: when CURRENT bar's own-side conviction
-                # margin (over admission threshold) is high, the position is being affirmed
-                # by sustained voter agreement — accelerate scale-in to capture more signal
-                # before it dissipates. Compute current-side margin (bull or bear depending
-                # on position direction). Subtract up to 1.0 bar from the trend-derived pace
-                # via tanh on margin/0.30. Floor at 1.5 bars. New cross-bar data dependency:
-                # scale-in pace depends on live-bar voter conviction, not just entry-time.
-                _live_side_margin = _bull_margin if current_pos > 0 else _bear_margin
-                # Trend-magnitude gate on conv-accel: in strong long-window trends
-                # the trend itself supplies signal continuity — additional live-conviction
-                # acceleration front-loads the position into volatile early-trend bars
-                # (bull regression in fff46ce keep). Mute the accelerator proportional to
-                # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
-                _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
-                _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
+                # Architectural simplification: removed LIVE-CONVICTION scale-in
+                # accelerator (_conv_accel / _conv_trend_mute / _live_side_margin).
+                # The accelerator made scale-in PACE depend on the current bar's own-side
+                # conviction MARGIN — a per-bar, noisy, non-monotonic quantity — and its
+                # trend-mute made it FULLY active in chop (rally pullbacks, sideways),
+                # exactly where margin is noisiest. Prior sessions established that (a)
+                # stability is fixable only by decision-TIMING robustness, not sizing, and
+                # (iv) per-bar margin-responsive logic is a confirmed noise channel. This
+                # accelerator injects margin noise directly into the scale-in TIMING for
+                # the first ~4 bars of every position — a fresh noise-flippable boundary on
+                # each of rally's ~91 entries. Removing it leaves scale-in pace governed by
+                # rsi_trend_str alone (a smoother long-window trend quantity), making the
+                # scale-in trajectory deterministic per regime. Subtractive timing-robustness
+                # change in the one category prior sessions identified as able to move
+                # stability. Code-structure removal: 3 cross-bar dependencies + 1 control
+                # term eliminated from the scale-in pace.
+                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str))  # [2.0, 4]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
