@@ -139,13 +139,6 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: per-symbol recent exit-pressure history (2-bar rolling).
-        # Used by exit-persistence gate to require 2 consecutive bars of
-        # sustained over-threshold pressure before firing the soft-exit path.
-        # Symmetric to entry-persistence gate; filters single-bar noise spikes
-        # in low-vol regimes (rally) where soft pressures oscillate near
-        # threshold. Stop-loss path remains binary (entry-anchored, immune).
-        self._exit_pressure_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -980,21 +973,9 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural: 2-bar exit-pressure persistence gate on soft-exit path.
-                # Update rolling 2-bar exit_pressure history (per-symbol). Soft exit
-                # fires only when CURRENT bar AND PREVIOUS bar both crossed threshold
-                # (sustained pressure). Single-bar noise spikes near threshold in low-vol
-                # (rally) regimes do not exit. Stop-loss path remains binary (entry-
-                # anchored, already noise-immune). Symmetric to entry-persistence gate.
-                _eph = self._exit_pressure_history.get(symbol, [])
-                _eph.append(_exit_pressure)
-                if len(_eph) > 2:
-                    _eph = _eph[-2:]
-                self._exit_pressure_history[symbol] = _eph
-                _exit_persist_ok = len(_eph) >= 2 and _eph[-2] >= _exit_thresh
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif _exit_pressure >= _exit_thresh and _exit_persist_ok and target != 0:
+                elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
@@ -1080,13 +1061,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_pressure_history):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._exit_pressure_history.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
