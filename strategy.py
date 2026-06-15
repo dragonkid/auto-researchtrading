@@ -82,9 +82,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
-MIN_VOTES = 2.92  # scaled for 7 voters
-FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
+STRONG_WEIGHT_MIN = 1.65  # required sum of margin-above-0.5 voter contributions (scaled for 6 voters, VWAP removed)
+MIN_VOTES = 2.50  # scaled for 6 voters
+FLIP_MIN_VOTES = 2.40  # scaled for 6 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -233,14 +233,12 @@ class Strategy:
                 (_macd_diff - 0.0003) / 0.00012,
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
-                _vwap_dev / 0.0015,  # 7th voter: VWAP deviation, ~0.15% scale for binary-ish behavior
             ]
-            # Architectural: VWAP post-admission SIZE multiplier on top of VWAP voter.
-            # VWAP serves dual role: (1) voter in admission ensemble (trend-conditioned
-            # weight, load-bearing for bull/sideways admission quality), (2) trend-only
-            # post-admission size multiplier amplifying trend-confirmed entries. Size
-            # multiplier fires only in trends (_trend_strength_w blend to 1.0 in chop).
-            # In rally/bull trends, price > VWAP confirms volume-backed continuation.
+            # Architectural: VWAP removed from voter, kept as trend-only size multiplier.
+            # The rally raw-score gain (0.096->0.424, step1) comes from VWAP removal from
+            # voter ensemble — removing volume-weighted noise from admission gate. Size
+            # multiplier is additive on top. STRONG_WEIGHT_MIN tightened to 1.65 balances
+            # the lost admission contribution of VWAP voter.
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
@@ -259,14 +257,8 @@ class Strategy:
             # voter aggregation function depends on long-window return.
             _trend_strength_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
             _wt_shift = 0.20 * _trend_strength_w
-            # VWAP voter chop-dampener: in low-trend (chop), volume-weighted price
-            # is dominated by recent action which oscillates with chop noise; in
-            # trends, VWAP captures genuine directional pressure. Scale VWAP voter
-            # weight from 0.55 (deep chop) up to 1.05 (strong trend). Continuous
-            # via _trend_strength_w. Preserves the rally/crash gain while reducing
-            # the sideways regression introduced by full VWAP weight.
-            _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
+            # VWAP voter removed from ensemble — trend-only size multiplier on entry.
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -288,13 +280,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 7)
+                _arr = np.array(_sig_hist)  # (K, 6)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(7)
+                _persistence_mult = np.ones(6)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
