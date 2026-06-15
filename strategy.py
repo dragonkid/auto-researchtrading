@@ -417,18 +417,7 @@ class Strategy:
             _down_semivar = np.mean(np.minimum(_semi_rets, 0.0) ** 2)
             _up_semivar = np.mean(np.maximum(_semi_rets, 0.0) ** 2)
             _mean_square = _down_semivar + _up_semivar
-            # Branch step 5: floor the adverse-semivar denominator at a fraction of
-            # mean_square. ROOT CAUSE of rally stab collapse: in strong trends the
-            # adverse half shrinks toward 0 -> the ratio's denominator becomes
-            # RELATIVELY noise-sensitive (a single perturbed bar flips a small-up into
-            # small-down, changing _down_semivar by a large fraction) -> the multiplier
-            # jumps under AR(1) noise exactly where rally lives. Flooring _down_semivar
-            # at 0.33*_mean_square pins the multiplier to a CONSTANT (~1.23) once the
-            # adverse half is small (strong trend) -> noise-immune in rally/bull while
-            # still varying smoothly in moderate/symmetric regimes. Clamp restored to
-            # [0.85,1.25] as a safety rail (floor is now the active controller).
-            _down_eff = max(_down_semivar, 0.33 * _mean_square)
-            _bull_risk_mult = max(0.85, min(1.25, (_mean_square / max(2.0 * _down_eff, 1e-12)) ** 0.5))
+            _bull_risk_mult = max(0.96, min(1.08, (_mean_square / max(2.0 * _down_semivar, 1e-12)) ** 0.5))
             # Branch step 3: disable bear-side directional multiplier (isolate cause of
             # rally clean-run failure). Rally is bidirectional and prior sessions confirm
             # its counter-trend SHORT trades are alpha; shrinking them to 0.85x amplifies
