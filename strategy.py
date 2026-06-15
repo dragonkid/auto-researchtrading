@@ -118,6 +118,9 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Per-symbol sign (+1/-1) of the last non-zero position, recorded at exit.
+        # Drives the directional-persistence-gated reversal re-entry attenuator.
+        self._last_pos_sign = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -580,10 +583,36 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Architectural: directional-persistence-gated reversal re-entry size
+                # attenuator (SUBTRACTIVE, new per-symbol _last_pos_sign state + new
+                # control flow at cold-entry sizing). A reversal re-entry = a fresh
+                # entry whose sign OPPOSES the last closed position's sign. Prior
+                # sessions proved that blocking fast long<->short reversals delivers a
+                # large bull gain (counter-trend bull shorts in a clean uptrend are
+                # noise) but churn/macro gates also fire in rally, where reversals are
+                # genuine bidirectional alpha — an inseparable-cost wall.
+                # KEY: gate the attenuation on the LONG-WINDOW efficiency ratio (net
+                # move / path length over 48 bars). ER is HIGH in a clean one-directional
+                # grind (bull 2021, deep bear) where a reversal contradicts an efficient
+                # trend (=noise), and LOW in a choppy back-and-forth advance (rally 2024,
+                # sideways) where the path wanders even if net move is large. ER is
+                # ORTHOGONAL to macro-magnitude (|net return|) and to churn — both of
+                # which fire in rally and thus failed to separate it. Recency-gated so it
+                # only damps FAST reversal flips (the noise pattern), not independent
+                # later re-entries. Subtractive (only shrinks size, never blocks/admits),
+                # so it cannot add a noise-flippable admission boundary in rally.
+                _last_sign = self._last_pos_sign.get(symbol, 0.0)
+                _er_long_n = min(48, len(closes) - 1)
+                _er_long_path = np.sum(np.abs(np.diff(closes[-_er_long_n - 1:])))
+                _er_long_net = abs(closes[-1] - closes[-_er_long_n - 1])
+                _er_long = _er_long_net / max(_er_long_path, 1e-10)  # [0,1], high=clean trend
+                _rev_recency = max(0.0, 1.0 - _bars_since_exit / 12.0)  # 1 just after exit -> 0 at 12 bars
+                _bull_rev_atten = 1.0 - 0.50 * _er_long * _rev_recency if _last_sign < 0 else 1.0
+                _bear_rev_atten = 1.0 - 0.50 * _er_long * _rev_recency if _last_sign > 0 else 1.0
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_rev_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_rev_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1120,6 +1149,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
+                        self._last_pos_sign[symbol] = 1.0 if current_pos > 0 else -1.0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
