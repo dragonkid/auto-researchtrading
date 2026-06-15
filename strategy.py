@@ -1078,7 +1078,28 @@ class Strategy:
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
-            if abs(target - current_pos) > 1.0:
+            # Architectural subsystem redesign (execution/order-emission layer):
+            # churn-gated proportional trade-admission deadband. The order-emission
+            # gate previously fired on any move > 1.0 unit. Small same-sign resizes
+            # (scale-in steps, partial de-risks, mult-driven size wobble) are the
+            # dominant churn source — each is a fresh decision boundary that flips
+            # under noise. A SYMMETRIC proportional hold-zone on resizes was the only
+            # mechanism in many prior sessions to lift the worst regime's stability,
+            # but a UNIFORM hold cost the low-churn regimes raw score. Gate the
+            # deadband on the symbol's OWN recent entry density (len(_eh), the same
+            # pruned-30-bar churn signal _freq_factor reads): high local churn opens a
+            # wider hold-zone (suppress micro-resizes → fewer noise-flip boundaries),
+            # low churn keeps the gate ~off (preserves raw). Self-measured behavioral
+            # feedback, NOT a market-regime classifier — the regime effects fall out
+            # of each symbol's realized trade rate. Entries (current_pos==0), full
+            # exits (target==0), and flips (sign change) are ALWAYS exempt: risk
+            # transitions must never be held. Only same-sign resizes pass through the
+            # deadband. New control flow + new cross-component data dep at the gate.
+            _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))  # [0,1], same shape as _freq_factor
+            _deadband_frac = 0.16 * _churn_dz  # 0 in low churn, up to 0.16 of current pos in high churn
+            _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
+            _min_move = max(1.0, _deadband_frac * abs(current_pos)) if _is_resize else 1.0
+            if abs(target - current_pos) > _min_move:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
