@@ -1038,21 +1038,18 @@ class Strategy:
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        # Architectural: continuous trend-conditioned blend of squared
-                        # and linear de-risk mappings. In chop (low |ret_long|), squared
-                        # mapping (1-frac^2) is noise-insensitive near floor — preserves
-                        # gains in sideways through small pressure oscillations. In strong
-                        # trends (high |ret_long|), linear mapping (1-frac) gives faster
-                        # response — needed for bull/rally pressure escalation. Blend
-                        # weight w_trend = tanh(|ret_long|/0.04) in [0,1]. Continuous
-                        # via tanh, no boundary. Functional form changes smoothly with
-                        # trend magnitude — different from binary regime switch.
+                        # Architectural: squared-pressure de-risk mapping (replaces linear).
+                        # Linear ramp has constant sensitivity dD/dP — small pressure noise
+                        # near floor produces equal position-size noise as near saturation.
+                        # Squared mapping has zero derivative at floor: dD/dP=0 at P=F*T,
+                        # ramps quadratically to 1 at P=T. Noise near floor produces ~zero
+                        # derisk swing; sustained pressure still produces full derisk.
+                        # Mathematically: _de_risk = 1 - frac^2 where frac=(P-F*T)/((1-F)*T).
+                        # Preserves boundary values (1.0 at floor, 0.0 at threshold) while
+                        # changing functional form on the graduation ramp.
                         _frac = (_exit_pressure - _de_floor * _exit_thresh) / max((1.0 - _de_floor) * _exit_thresh, 1e-10)
                         _frac = max(0.0, min(1.0, _frac))
-                        _de_risk_sq = 1.0 - _frac * _frac
-                        _de_risk_lin = 1.0 - _frac
-                        _w_trend_de = max(0.0, np.tanh(abs(ret_long) / 0.04))
-                        _de_risk = _de_risk_lin * _w_trend_de + _de_risk_sq * (1.0 - _w_trend_de)
+                        _de_risk = 1.0 - _frac * _frac
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
