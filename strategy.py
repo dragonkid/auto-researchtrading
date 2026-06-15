@@ -1014,12 +1014,22 @@ class Strategy:
                 # throttle below 50 trades) without touching entry admission or the rally
                 # reversal layer. New control flow: a third realizing path keyed on a
                 # monotonic state counter.
-                if target != 0 and self.peak_pnl[symbol] > _pp_min and _sl_pressure < 0.5:
+                # Branch step 2: smooth vol_ratio gate on harvest fraction. Step 1 showed
+                # the ladder lifts crash AND rally RAW (both flagged headroom) but the
+                # level-crossing fires at a noise-dependent BAR in low-vol/near-tied
+                # regimes (sideways/rally) -> realizing-event timing shifts under noise
+                # -> equity divergence (stab collapse). Crash (high-vol) kept stab 1.0.
+                # Gate the harvested fraction by vol_ratio via tanh((vol_ratio-1)/0.3):
+                # ~1 in high-vol crash (full harvest, where it is stable + beneficial),
+                # ~0 in low-vol sideways/rally (harvest disabled, timing noise removed).
+                # Continuous, no regime switch — the regime effects fall out of vol_ratio.
+                _harvest_vol_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.3))
+                if target != 0 and self.peak_pnl[symbol] > _pp_min and _sl_pressure < 0.5 and _harvest_vol_gate > 0.0:
                     _level_now = min(HARVEST_MAX_LEVELS, int(self.peak_pnl[symbol] / max(_pp_min, 1e-6)))
                     _level_done = self._harvest_level.get(symbol, 0)
                     if _level_now > _level_done:
                         self._harvest_level[symbol] = _level_now
-                        target = target * (1.0 - HARVEST_FRAC)
+                        target = target * (1.0 - HARVEST_FRAC * _harvest_vol_gate)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
