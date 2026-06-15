@@ -442,6 +442,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
             # Update position
             if sig.target_position == 0:
                 # Closing position — realize PnL
+                pnl = 0.0
                 if sig.symbol in portfolio.entry_prices:
                     entry = portfolio.entry_prices[sig.symbol]
                     if entry > 0:
@@ -450,14 +451,16 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                     del portfolio.entry_prices[sig.symbol]
                 if sig.symbol in portfolio.positions:
                     del portfolio.positions[sig.symbol]
-                trade_log.append(("close", sig.symbol, delta, exec_price, pnl if 'pnl' in dir() else 0))
+                # realized=True: a full close locks in PnL
+                trade_log.append(("close", sig.symbol, delta, exec_price, pnl, True))
             else:
                 if current_pos == 0:
                     # Opening new position
                     portfolio.cash -= abs(sig.target_position)
                     portfolio.positions[sig.symbol] = sig.target_position
                     portfolio.entry_prices[sig.symbol] = exec_price
-                    trade_log.append(("open", sig.symbol, delta, exec_price, 0))
+                    # realized=False: opening a position realizes no PnL
+                    trade_log.append(("open", sig.symbol, delta, exec_price, 0.0, False))
                 else:
                     # Modifying position
                     old_notional = abs(current_pos)
@@ -479,16 +482,21 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                         # 3. Fresh entry for new direction
                         portfolio.entry_prices[sig.symbol] = exec_price
                         portfolio.positions[sig.symbol] = sig.target_position
-                        trade_log.append(("modify", sig.symbol, delta, exec_price, flip_pnl))
+                        # realized=True: a flip closes the old position, locking in flip_pnl
+                        trade_log.append(("modify", sig.symbol, delta, exec_price, flip_pnl, True))
                     else:
                         # Same-direction resize
+                        realized_resize = False
+                        resize_pnl = 0.0
                         if abs(sig.target_position) < abs(current_pos):
                             reduced = abs(current_pos) - abs(sig.target_position)
                             if old_entry > 0:
-                                pnl = (current_pos / abs(current_pos)) * reduced * (exec_price - old_entry) / old_entry
+                                resize_pnl = (current_pos / abs(current_pos)) * reduced * (exec_price - old_entry) / old_entry
                             else:
-                                pnl = 0
-                            portfolio.cash += reduced + pnl
+                                resize_pnl = 0.0
+                            portfolio.cash += reduced + resize_pnl
+                            # realized=True: a partial reduce locks in PnL on the closed portion
+                            realized_resize = True
                         elif abs(sig.target_position) > abs(current_pos):
                             added = abs(sig.target_position) - abs(current_pos)
                             portfolio.cash -= added
@@ -496,8 +504,9 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                             if old_notional + added > 0:
                                 new_entry = (old_entry * old_notional + exec_price * added) / (old_notional + added)
                                 portfolio.entry_prices[sig.symbol] = new_entry
+                            # realized=False: adding to a position realizes no PnL
                         portfolio.positions[sig.symbol] = sig.target_position
-                        trade_log.append(("modify", sig.symbol, delta, exec_price, 0))
+                        trade_log.append(("modify", sig.symbol, delta, exec_price, resize_pnl, realized_resize))
 
         # Recalculate equity after trades
         unrealized_pnl = 0.0
@@ -542,8 +551,10 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     drawdown = (peak - eq) / np.where(peak > 0, peak, 1)
     max_drawdown_pct = drawdown.max() * 100
 
-    # Win rate and profit factor
-    trade_pnls = [t[4] for t in trade_log if t[0] == "close"]
+    # Win rate and profit factor — count every PnL-realizing event (full closes,
+    # flips, and partial reduces), not just full closes. The realized flag
+    # (tuple index 5) marks events that locked in PnL on a closed/reduced portion.
+    trade_pnls = [t[4] for t in trade_log if len(t) > 5 and t[5]]
     num_trades = len(trade_log)
     if trade_pnls:
         wins = [p for p in trade_pnls if p > 0]
