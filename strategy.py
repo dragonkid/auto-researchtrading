@@ -1099,13 +1099,20 @@ class Strategy:
             # transitions are exempt and keep the 1-unit gate: opening from flat,
             # closing to flat (target==0), and flips (sign change) — these must
             # always execute. General mechanism; regime effects fall out of backtest.
+            # Branch step 2: GROWTH-ONLY deadband. Step 1 held protective sub-threshold
+            # SHRINKS (de-risk/TP giveback-locking), delaying risk reduction and
+            # collapsing bull raw. Fix: exempt all exposure-REDUCING moves (shrinks keep
+            # the 1-unit gate — protection must execute promptly); apply the proportional
+            # deadband ONLY to same-side GROWTH (scale-in jitter), which is discretionary
+            # and harmless to hold sub-threshold.
             _is_flat_now = abs(current_pos) <= 1.0
             _is_close = (target == 0)
             _is_flip = (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0)
-            if _is_flat_now or _is_close or _is_flip:
+            _is_growth = (not _is_flip) and abs(target) > abs(current_pos)
+            if _is_flat_now or _is_close or _is_flip or (not _is_growth):
                 _admit = abs(target - current_pos) > 1.0
             else:
-                # Same-side resize: require a minimum proportional move.
+                # Same-side GROWTH: require a minimum proportional move.
                 _admit = abs(target - current_pos) > ADJUST_DEADBAND_FRAC * abs(current_pos)
             if _admit:
                 signals.append(Signal(symbol=symbol, target_position=target))
