@@ -59,6 +59,10 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
+# Scale-OUT rate cap (symmetric counterpart to scale-IN pace).
+# Profit-side soft exits shrink by at most this fraction of full size per bar.
+SCALE_OUT_MAX_FRAC = 0.5  # full soft de-risk takes >=2 bars (mirrors ~2-3 bar scale-in)
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -1076,6 +1080,39 @@ class Strategy:
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
+
+                # Architectural: deterministic scale-OUT rate cap (symmetric to the
+                # scale-IN linear pace). Scale-IN is rate-limited (full size reached
+                # over ~2-3 bars) but soft scale-OUT has NO per-bar magnitude limit —
+                # a soft-pressure spike (slope/pp/time/ve) can shrink a full position
+                # to near-zero in a SINGLE bar. Under AR(1) noise the bar at which a
+                # soft spike crosses the de-risk floor SHIFTS, so the perturbed equity
+                # path takes the same total de-risk but on a different bar, producing a
+                # large single-bar tracking-error vs the clean path. A per-bar shrink
+                # cap spreads soft de-risk across >=2 bars: the FIRST-bar reaction is
+                # still immediate (position starts shrinking on the same bar the signal
+                # fires) but the per-bar magnitude is bounded, so a one-bar timing jitter
+                # in the signal moves only SCALE_OUT_MAX_FRAC of size, not all of it.
+                # Depends ONLY on size magnitude (deterministic, NOT realized trade
+                # history) — avoids the confirmed reversal-wall failure mode where
+                # history-varying mechanisms make the rally book noise-sensitive.
+                # EXEMPT (must cut risk immediately, no cap):
+                #   - stop-loss saturation (_sl_pressure >= 0.95)
+                #   - reversal opp_gate (sign change / large reversal)
+                #   - full exits to zero (target == 0)
+                #   - loss-side shrinks (losing positions must exit fast)
+                # Applies only to PROFIT-side soft de-risk shrinks of an existing
+                # same-sign position.
+                if (current_pos != 0 and target != 0
+                        and (current_pos > 0) == (target > 0)
+                        and abs(target) < abs(current_pos)
+                        and _sl_pressure < 0.95
+                        and not (not in_cooldown and _opp_gate)
+                        and pos_pnl > 0):
+                    _min_after_shrink = abs(current_pos) * (1.0 - SCALE_OUT_MAX_FRAC)
+                    if abs(target) < _min_after_shrink:
+                        _pos_sign = 1.0 if current_pos > 0 else -1.0
+                        target = _pos_sign * _min_after_shrink
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
