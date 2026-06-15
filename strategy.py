@@ -88,19 +88,18 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Architectural: post-exit re-entry SIZE attenuation. After an exit, a fresh
-# re-entry's FIRST-BAR commitment is shrunk by a smoothly-decaying factor gated on
-# the integer bars-since-exit counter (noise-immune). Distinct from the admission
-# axis (confirmed inseparable for rally — blocking marginal fast re-entries lifts
-# stability to 1.0 but collapses raw, because the rally's raw alpha lives in those
-# same immediate zero-margin re-entries). Size operates on a different axis: the
-# trade STILL FIRES on clean data (raw preserved, no trade-sequence cascade) but
-# its smaller position causes a smaller equity-path divergence when the entry
-# boolean flips under noise — improving stability without removing the trade.
-# Direction-agnostic (rally is dominated by same-direction buy-the-dip re-entries;
-# prior sessions only attenuated opposite-direction reversals). exp-decay keeps it
-# active only in the immediate post-exit window.
-REENTRY_SIZE_CUT = 0.35
+# Architectural: post-exit re-entry conviction hysteresis. After an exit, the
+# cold-entry admission threshold is elevated by a smoothly-decaying premium that
+# is overridden by sufficient conviction. Targets fast MARGINAL re-entries that
+# sit near the decision boundary (the confirmed source of rally noise-sensitivity)
+# WITHOUT a hard block — prior sessions confirmed a hard re-entry block drives
+# rally stability to 1.0 but collapses raw (kills the net-positive fast re-entries
+# wholesale). A smooth premium instead filters only the weakest, most
+# boundary-adjacent re-entries (worst for stability, least raw); strong-conviction
+# signals clear the elevated bar and still enter (preserving raw). Integer
+# bar-since-exit counter is noise-immune (noise test perturbs price, not the
+# counter); exp-decay keeps it active only in the immediate post-exit window.
+REENTRY_HYST_MAX = 0.02
 REENTRY_HYST_DECAY = 2.5
 
 
@@ -595,18 +594,20 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Post-exit re-entry SIZE attenuation: shrink first-bar commitment
-                # by a smoothly-decaying factor gated on the integer bars-since-exit
-                # counter (noise-immune). Admission gate UNCHANGED (the trade still
-                # fires — raw preserved); only the position size is reduced, so a
-                # noise-induced boolean flip near the boundary produces a smaller
-                # equity-path divergence (stability improves) without removing the
-                # net-positive re-entry. Decays to 1.0 (no cut) as bars-since-exit grows.
-                _reentry_size_factor = 1.0 - REENTRY_SIZE_CUT * np.exp(-_bars_since_exit / REENTRY_HYST_DECAY)
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _reentry_size_factor
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _reentry_size_factor
+                # Post-exit re-entry conviction hysteresis: elevate the admission
+                # threshold by a smoothly-decaying premium gated on the integer
+                # bars-since-exit counter (noise-immune). Applied ONLY to the
+                # cold-entry gate (not to _bull_margin/_bear_margin which feed the
+                # exit subsystem). Filters marginal fast re-entries near the decision
+                # boundary — the confirmed source of rally noise-sensitivity — while
+                # strong-conviction signals clear the elevated bar and still enter.
+                _reentry_premium = REENTRY_HYST_MAX * np.exp(-_bars_since_exit / REENTRY_HYST_DECAY)
+                _bull_min_re = _bull_strong_min * (1.0 + _reentry_premium)
+                _bear_min_re = _bear_strong_min * (1.0 + _reentry_premium)
+                if _bull_strong >= _bull_min_re and _bull_admit and _bull_persist_ok:
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                elif _bear_strong >= _bear_min_re and _bear_admit and _bear_persist_ok:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
