@@ -113,6 +113,11 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # Filters sub-threshold intra-trade jitter that would otherwise micro-trade every
 # bar and diverge equity paths under noise.
 ADJUST_DEADBAND_FRAC = 0.12
+# Width of the near-breakeven shrink hold-zone, as a multiple of |STOP_LOSS_PCT|.
+# The shrink-side deadband fades out as |pos_pnl| grows past this scale, so only
+# true-breakeven chop jitter is held; meaningful (larger-pnl) de-risk shrinks
+# execute promptly.
+SHRINK_BREAKEVEN_SCALE = 0.5
 
 
 class Strategy:
@@ -1123,7 +1128,7 @@ class Strategy:
                 if _is_shrink:
                     # Breakeven gate: ~1 near breakeven (hold chop jitter symmetrically),
                     # ->0 at large |pos_pnl| (execute protective giveback/stop promptly).
-                    _shrink_gate = 1.0 - max(0.0, np.tanh(abs(pos_pnl) / (1.5 * abs(STOP_LOSS_PCT))))
+                    _shrink_gate = 1.0 - max(0.0, np.tanh(abs(pos_pnl) / (SHRINK_BREAKEVEN_SCALE * abs(STOP_LOSS_PCT))))
                     _band = ADJUST_DEADBAND_FRAC * _shrink_gate
                 else:
                     _band = ADJUST_DEADBAND_FRAC
