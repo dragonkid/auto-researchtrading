@@ -93,6 +93,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # Same-direction re-entries are never blocked. Suppresses the noise-flippable
 # long<->short churn that the diagnostic identified as the source of rally instability.
 REVERSAL_COOLDOWN_BARS = 6
+REVERSAL_CONV_RELEASE = 0.30  # new-side margin scale at which the reversal block releases
 
 
 def ema(values, span):
@@ -608,11 +609,21 @@ class Strategy:
                 # crash/sideways — sparing them by construction (self-measured behavioral
                 # feedback, NOT a regime classifier). Crash protective flips (rare, low churn)
                 # pass through, avoiding the prior flip-suppression failures.
+                # Branch step 2: block only LOW-CONVICTION reversals. A reversal whose
+                # NEW-side conviction margin is high is a decisive directional change (real
+                # alpha — rally's profitable down-legs); only near-tied reversals (margin
+                # near zero) are the noise-flippable ones that destroy stability. Gate the
+                # block by an inverse-margin factor: full block at margin<=0, releasing to
+                # no block as the new-side margin exceeds REVERSAL_CONV_RELEASE. Keeps the
+                # directional-stability + bull gain while restoring rally raw via decisive
+                # reversals.
                 _rev_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 high churn
                 _rev_cd = REVERSAL_COOLDOWN_BARS * _rev_churn
                 _last_sign = self._last_pos_sign.get(symbol, 0)
-                _rev_block_bull = _last_sign < 0 and _bars_since_exit < _rev_cd
-                _rev_block_bear = _last_sign > 0 and _bars_since_exit < _rev_cd
+                _bull_lowconv = 1.0 - max(0.0, min(1.0, np.tanh(max(0.0, _bull_margin) / REVERSAL_CONV_RELEASE)))
+                _bear_lowconv = 1.0 - max(0.0, min(1.0, np.tanh(max(0.0, _bear_margin) / REVERSAL_CONV_RELEASE)))
+                _rev_block_bull = _last_sign < 0 and _bars_since_exit < _rev_cd * _bull_lowconv
+                _rev_block_bear = _last_sign > 0 and _bars_since_exit < _rev_cd * _bear_lowconv
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _rev_block_bull:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _rev_block_bear:
