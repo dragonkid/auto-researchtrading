@@ -828,17 +828,7 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # Architectural: removed own-side voter_bias subtraction; kept opp-side
-                # addition. Own-side subtraction was -0.20 × _chop_amp × tanh(_side_margin/0.30)
-                # which lowers exit_pressure every bar based on noisy own-side margin —
-                # the chop_amp×tanh product swings on rally voter noise injecting ±0.20
-                # bar-to-bar. Opp-side addition retained: it provides the load-bearing
-                # continuous reversal-evidence mechanism (exp3 catastrophic when removed).
-                # The de-risk ramp's _de_floor relaxation already handles "let winners run"
-                # via pnl_scale-conditioned floor (lower floor in profit = wider de-risk
-                # window). One-sided removal eliminates the noisiest piece while preserving
-                # the structurally critical reversal-evidence channel.
-                _voter_bias = 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
