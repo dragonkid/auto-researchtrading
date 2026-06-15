@@ -99,7 +99,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # signals clear the elevated bar and still enter (preserving raw). Integer
 # bar-since-exit counter is noise-immune (noise test perturbs price, not the
 # counter); exp-decay keeps it active only in the immediate post-exit window.
-REENTRY_HYST_MAX = 0.06
+REENTRY_HYST_MAX = 0.25
 REENTRY_HYST_DECAY = 2.5
 
 
