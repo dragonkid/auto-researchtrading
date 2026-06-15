@@ -613,7 +613,18 @@ class Strategy:
                 # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
                 _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
                 _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
+                # Architectural: path-efficiency-conditioned scale-in pace (NEW cross-
+                # component data dependency — scale-in pace now reads the ER subsystem).
+                # Low efficiency-ratio (jagged/choppy price path) extends the scale-in
+                # window so the position eases in gradually through whipsaw-prone bars;
+                # high ER (clean efficient trend) leaves the pace unchanged (commit
+                # quickly while the trend is smooth). ER reused from the entry-frac stage
+                # (12-bar net/path on smoothed_closes). Continuous tanh, max +0.9 bars.
+                # Mechanism: a jagged uptrend with sharp pullbacks (lower ER than a
+                # smooth bull trend) gets a slower, lower-exposure entry ramp, reducing
+                # early-entry whipsaw losses; a smooth trend is unaffected.
+                _er_pace = max(0.0, np.tanh((0.35 - _er) / 0.20))
+                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel + 0.9 * _er_pace)  # [1.5, ~4.9]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
