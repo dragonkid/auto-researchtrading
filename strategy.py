@@ -88,6 +88,13 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Churn-gated macro-trend directional admission anchor (see on_bar). A slow
+# MACRO_WINDOW-bar return is a noise-robust directional reference used to break
+# near-tied bull/bear admission decisions consistently across noise realizations.
+MACRO_WINDOW = 100
+MACRO_SCALE = 0.10          # tanh scale: macro_ret ~0.10 -> near-saturated direction
+MACRO_ANCHOR_TIGHTEN = 0.15  # max admission tightening on the against-macro side
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -345,6 +352,29 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Architectural: churn-gated MACRO-trend directional admission anchor.
+            # Noise-test diagnostic: in rally the position is in-market ~99% of bars and
+            # noise flips the entire regime's DIRECTIONAL commitment (long<->short) — the
+            # bull/bear strong-sums sit near-tied during pullbacks, so a single noise
+            # realization tips which side wins and the position then persists, producing a
+            # huge sustained equity divergence (rally stability 0.508, bimodal 0.21 vs 0.82
+            # across noise trials). Fix: break near-ties with a SLOW macro-trend (a long
+            # MACRO_WINDOW-bar return averages out per-bar noise -> noise-robust), and gate
+            # it on the symbol's OWN recent entry density (len(_eh), the same churn signal
+            # the execution deadband uses) so it engages in high-churn rally and stays ~0 in
+            # low-churn crash/sideways (sparing them by construction, NOT a regime
+            # classifier). Tighten admission on the side AGAINST the macro-trend so
+            # near-tied directional decisions resolve consistently with the slow trend
+            # across all noise realizations. Symmetric in bull/bear (macro sign decides
+            # which side is "against"). New cross-timescale + cross-component data dep at the
+            # admission boundary, distinct from the 20-bar ret_long term (which is itself
+            # noise-flippable near zero) and from _freq_factor (symmetric, non-directional).
+            _macro_n = min(MACRO_WINDOW, len(closes) - 1)
+            _macro_ret = (closes[-1] - closes[-_macro_n - 1]) / closes[-_macro_n - 1]
+            _macro_dir = np.tanh(_macro_ret / MACRO_SCALE)  # [-1, 1], noise-robust slow trend
+            _macro_churn_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 high churn
+            _bull_strong_min *= 1.0 + MACRO_ANCHOR_TIGHTEN * _macro_churn_gate * max(0.0, -_macro_dir)
+            _bear_strong_min *= 1.0 + MACRO_ANCHOR_TIGHTEN * _macro_churn_gate * max(0.0, _macro_dir)
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
