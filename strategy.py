@@ -599,26 +599,20 @@ class Strategy:
                 # Architectural simplification: removed LIVE-CONVICTION scale-in
                 # accelerator (_conv_accel / _conv_trend_mute / _live_side_margin) — it
                 # made scale-in PACE depend on the per-bar conviction MARGIN (noisy,
-                # non-monotonic) and was fully active in chop where margin is noisiest,
-                # adding bull noise. Branch step 2: the accelerator was ALSO a rally-pace
-                # source (removing it slowed rally scale-in: raw 0.393->0.371). Restore the
-                # chop-side acceleration via a SMOOTH path-efficiency gate instead of
-                # per-bar margin. _er_long = 48-bar net/path efficiency ratio: HIGH in a
-                # clean one-directional grind (bull 2021, deep bear), LOW in a choppy
-                # back-and-forth advance (rally 2024) or flat chop (sideways). Accelerate
-                # scale-in (subtract up to 1.0 bar) only when ER is LOW (choppy) — restoring
-                # rally pullback exposure — and leave the slow pace untouched when ER is
-                # HIGH (clean bull), so the bull-noise removal is preserved. ER is a 48-bar
-                # smoothed quantity (far less noise-flippable per-bar than margin) and is
-                # orthogonal to rsi_trend_str (magnitude) — it measures path shape. Prior
-                # data: slow-at-low-ER hurt rally raw (0.360); this is the inverse
-                # (fast-at-low-ER) which prior data predicts lifts it (fast->0.401).
-                _er_long_n = min(48, len(closes) - 1)
-                _er_long_path = np.sum(np.abs(np.diff(closes[-_er_long_n - 1:])))
-                _er_long_net = abs(closes[-1] - closes[-_er_long_n - 1])
-                _er_long = _er_long_net / max(_er_long_path, 1e-10)  # [0,1], high=clean trend
-                _pace_accel = max(0.0, np.tanh((0.40 - _er_long) / 0.20))  # ~0 at ER>=0.4, ->1 as ER->0
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _pace_accel)  # [1.5, 4]
+                # non-monotonic), adding bull noise. Branch: the accelerator was ALSO a
+                # rally-pace source (removing it slowed rally: raw 0.393->0.371). Step 2
+                # tried a 48-bar ER gate to restore chop pace but ER is low in EARLY bull
+                # too, so it re-added bull noise (bull 0.806->0.772). Step 3: the real issue
+                # is that the base pace formula MIS-classifies rally as "chop" (low
+                # rsi_trend_str) and assigns it SLOW scale-in (4 bars), but rally is a
+                # grinding uptrend whose pullbacks reward FAST scale-in. Fix deterministically
+                # by halving the chop-slowdown coefficient (2.0 -> 1.0): chop pace 4.0->3.0,
+                # trend pace unchanged at 2.0. No per-bar / ER term — pace depends only on
+                # the smooth long-window rsi_trend_str (bull untouched at high rsi_trend_str,
+                # so bull's 0.806 noise-removal gain is preserved). Single structural change
+                # to the scale-in TIMING, the one lever prior sessions found able to move
+                # stability.
+                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
