@@ -138,6 +138,9 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol rolling soft-exit-pressure history (3-bar) for
+        # median denoising at the exit-decision boundary. Reset on each entry.
+        self._soft_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -936,6 +939,23 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Architectural: 3-bar median denoising of fused soft-exit pressure.
+                # Single-bar soft-pressure transients (slope/time/pp spikes during
+                # rally pullbacks) flip the exit decision under the AR(1) noise test,
+                # destroying rally stability (0.508). Median of last 3 bars rejects
+                # pure single-bar spikes while staying responsive to sustained (2+ bar)
+                # pressure — distinct from the discarded hysteresis (which BLOCKED
+                # de-risk and routed exits through the lossier binary path); the median
+                # tracks genuine sustained pressure with at most a 1-bar lag and never
+                # holds a position through 2+ bars of real pressure. Applied only to the
+                # soft-pressure channel; _sl_pressure (hard stop) bypasses the median.
+                # New per-symbol state + new control flow at the exit-fusion boundary.
+                _sh = self._soft_hist.get(symbol, [])
+                _sh.append(_soft_max)
+                if len(_sh) > 3:
+                    _sh = _sh[-3:]
+                self._soft_hist[symbol] = _sh
+                _soft_max = float(np.median(_sh))
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1120,12 +1140,13 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._soft_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._soft_hist.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
