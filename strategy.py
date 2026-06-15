@@ -107,6 +107,19 @@ ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
+# Continuous conviction-margin admission-size ramp (subsystem redesign of the
+# entry-admission -> sizing coupling). The binary admission gate jumps first-bar
+# size from 0 to full at the strong-sum boundary; near the boundary, noise flips
+# the entry on/off, moving equity by the full first-bar size each bar -> large
+# tracking error -> low stability. Replace the constant first-bar fraction with a
+# smooth tanh ramp on conviction margin: marginal entries (margin~0) commit only
+# ADMIT_RAMP_FLOOR of the fraction, high-conviction entries (margin >> scale) the
+# full fraction. The on/off flip then moves only FLOOR*size, shrinking tracking
+# error where it is largest. Bull saturates strong_min (high margin -> ramp~1, no
+# effect); rally's marginal pullback entries get the stability benefit.
+ADMIT_RAMP_FLOOR = 0.30
+ADMIT_RAMP_SCALE = 0.40
+
 
 class Strategy:
     def __init__(self):
@@ -580,10 +593,16 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Conviction-margin admission-size ramp: continuous first-bar size as a
+                # function of how far the strong-sum exceeds its admission threshold.
+                # FLOOR at the boundary, saturating to 1.0 as margin grows. Removes the
+                # 0->full discontinuity that the noise test penalizes at the gate.
+                _bull_admit_ramp = ADMIT_RAMP_FLOOR + (1.0 - ADMIT_RAMP_FLOOR) * max(0.0, min(1.0, np.tanh(max(0.0, _bull_margin) / ADMIT_RAMP_SCALE)))
+                _bear_admit_ramp = ADMIT_RAMP_FLOOR + (1.0 - ADMIT_RAMP_FLOOR) * max(0.0, min(1.0, np.tanh(max(0.0, _bear_margin) / ADMIT_RAMP_SCALE)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_admit_ramp
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_admit_ramp
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
