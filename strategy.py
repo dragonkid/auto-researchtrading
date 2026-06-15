@@ -910,8 +910,14 @@ class Strategy:
                 _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
                 # Confirmation strength: 0 at single-source, 1 at full agreement
                 _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
-                # Attenuator: 0.75 at single-source, 1.0 at agreement
-                _soft_atten = 0.75 + 0.25 * _agree_gate
+                # Branch step 2: chop-only gating. In trends (high abs(ret_long)),
+                # single-source pressure signals are real (slope reversal alone =
+                # genuine trend break). Mute the attenuator's effect by trend strength
+                # so it operates only in chop where single-source spikes ARE noise.
+                _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
+                # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
+                # in trend approaches 1.0x always (no attenuation)
+                _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
