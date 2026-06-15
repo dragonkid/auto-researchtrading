@@ -65,14 +65,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # regimes; all 3 strong regimes throttle at 33-41 < 50 trades) and locks
 # incremental profit. Anchored to peak_pnl (monotonic high-water mark).
 HARVEST_FRAC = 0.12
-HARVEST_MAX_LEVELS = 6
-# Deep-peak floor: harvest only fires once peak_pnl reaches this multiple of
-# _pp_min. Deep peaks are reached by steep sustained directional moves (crash)
-# where the level-crossing bar is noise-robust; shallow/slow-grind regimes
-# (sideways/rally) rarely reach this depth, so they are naturally excluded
-# without a regime switch — the level-crossing timing noise that collapsed their
-# stability in step 1 is removed by construction.
-HARVEST_MIN_LEVEL = 3
+HARVEST_MAX_LEVELS = 4
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1030,23 +1023,13 @@ class Strategy:
                 # ~1 in high-vol crash (full harvest, where it is stable + beneficial),
                 # ~0 in low-vol sideways/rally (harvest disabled, timing noise removed).
                 # Continuous, no regime switch — the regime effects fall out of vol_ratio.
-                # Branch step 3: deep-peak floor gate (replaces step-2 vol gate, which
-                # regressed — crash vol_ratio is NOT reliably >1, it is a deep bear not a
-                # vol-spike regime, so the vol gate killed the crash gain). Step 1 showed
-                # crash kept stab 1.0 under the FULL ladder while only sideways/rally
-                # collapsed. True distinguisher is PEAK DEPTH: crash makes steep sustained
-                # directional moves reaching deep peaks (crossing bar noise-robust on a
-                # steep trajectory); sideways/rally are shallow/slow grinds whose crossing
-                # bar is noise-sensitive on a flat trajectory. Fire only at/above
-                # HARVEST_MIN_LEVEL: crash reaches it (gain preserved), sideways/rally
-                # rarely do (timing noise removed by construction). Vol-independent,
-                # anchored to monotonic peak depth.
-                if target != 0 and self.peak_pnl[symbol] > _pp_min and _sl_pressure < 0.5:
+                _harvest_vol_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.3))
+                if target != 0 and self.peak_pnl[symbol] > _pp_min and _sl_pressure < 0.5 and _harvest_vol_gate > 0.0:
                     _level_now = min(HARVEST_MAX_LEVELS, int(self.peak_pnl[symbol] / max(_pp_min, 1e-6)))
                     _level_done = self._harvest_level.get(symbol, 0)
-                    if _level_now > _level_done and _level_now >= HARVEST_MIN_LEVEL:
+                    if _level_now > _level_done:
                         self._harvest_level[symbol] = _level_now
-                        target = target * (1.0 - HARVEST_FRAC)
+                        target = target * (1.0 - HARVEST_FRAC * _harvest_vol_gate)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
