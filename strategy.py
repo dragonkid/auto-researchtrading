@@ -113,11 +113,17 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # Filters sub-threshold intra-trade jitter that would otherwise micro-trade every
 # bar and diverge equity paths under noise.
 ADJUST_DEADBAND_FRAC = 0.12
-# Width of the near-breakeven shrink hold-zone, as a multiple of |STOP_LOSS_PCT|.
-# The shrink-side deadband fades out as |pos_pnl| grows past this scale, so only
-# true-breakeven chop jitter is held; meaningful (larger-pnl) de-risk shrinks
-# execute promptly.
-SHRINK_BREAKEVEN_SCALE = 0.5
+# Shrink hold-zone shape (as multiples of |STOP_LOSS_PCT|). The shrink-side deadband
+# is active only inside a smooth SMALL-PROFIT window and is suppressed outside it:
+#  - losing / breakeven positions (pos_pnl <= 0): no hold — shrinks are loss-cutting
+#    protection and must execute (crash).
+#  - large-profit positions: no hold — shrinks are peak-giveback / stop locks and
+#    must execute (bull).
+#  - small-profit positions: hold sub-threshold chop jitter (rally pullback de-risk).
+# SHRINK_WIN_SCALE sets how fast the hold ramps IN above breakeven; SHRINK_FADE_SCALE
+# sets how fast it fades OUT at large profit.
+SHRINK_WIN_SCALE = 0.3
+SHRINK_FADE_SCALE = 1.5
 
 
 class Strategy:
@@ -1126,9 +1132,20 @@ class Strategy:
             else:
                 _is_shrink = abs(target) < abs(current_pos)
                 if _is_shrink:
-                    # Breakeven gate: ~1 near breakeven (hold chop jitter symmetrically),
-                    # ->0 at large |pos_pnl| (execute protective giveback/stop promptly).
-                    _shrink_gate = 1.0 - max(0.0, np.tanh(abs(pos_pnl) / (SHRINK_BREAKEVEN_SCALE * abs(STOP_LOSS_PCT))))
+                    # Small-profit window gate (sign-aware, orthogonal to raw width).
+                    # Step 5 showed the symmetric |pos_pnl|-magnitude gate trades rally
+                    # vs crash/sideways directly (same magnitude axis). Discriminate
+                    # instead by WHERE protective shrinks live: losing positions cut
+                    # losses (crash) and large-profit positions lock giveback (bull) —
+                    # both must execute; only small-PROFIT chop jitter (rally pullback
+                    # de-risk) should be held. ramp_in rises from 0 at breakeven to 1
+                    # above SHRINK_WIN_SCALE; fade_out falls from 1 to 0 past
+                    # SHRINK_FADE_SCALE. Product is a smooth band peaking in small
+                    # profit, ~0 for losses and large profits. No discontinuity.
+                    _r = pos_pnl / abs(STOP_LOSS_PCT)  # signed, in stop-units
+                    _ramp_in = max(0.0, np.tanh(_r / SHRINK_WIN_SCALE)) if _r > 0 else 0.0
+                    _fade_out = 1.0 - max(0.0, np.tanh((_r - SHRINK_FADE_SCALE) / SHRINK_FADE_SCALE)) if _r > 0 else 0.0
+                    _shrink_gate = _ramp_in * _fade_out
                     _band = ADJUST_DEADBAND_FRAC * _shrink_gate
                 else:
                     _band = ADJUST_DEADBAND_FRAC
