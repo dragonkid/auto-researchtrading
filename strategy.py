@@ -138,6 +138,13 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol last-derisk-bar timestamp. Drives 2-bar
+        # hysteresis cooldown on the de-risk path — after a derisk fires,
+        # subsequent noise-driven derisks are suppressed for 2 bars unless
+        # pressure has escalated near full saturation. Filters compounded
+        # oscillation-driven shrinkage in low-vol noise without delaying
+        # legitimate reversals (escape valve at >=0.95*_exit_thresh).
+        self._last_derisk_bar = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1040,7 +1047,24 @@ class Strategy:
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
-                        target = target * _de_risk
+                        # Architectural: 2-bar derisk hysteresis cooldown.
+                        # When a derisk was applied within the last 2 bars,
+                        # suppress further mid-pressure derisks (rally noise
+                        # oscillation drives sequential small shrinkages that
+                        # compound into full exit). Escape valve: pressure at
+                        # >=0.95*_exit_thresh bypasses cooldown (real reversal
+                        # signal — derisk must proceed). New per-symbol state
+                        # + new control flow at exit-graduation boundary.
+                        _bars_since_derisk = self.bar_count - self._last_derisk_bar.get(symbol, -999)
+                        _in_derisk_cooldown = _bars_since_derisk < 2
+                        _near_saturation = _exit_pressure >= 0.95 * _exit_thresh
+                        if _in_derisk_cooldown and not _near_saturation:
+                            # Suppress mid-pressure derisk; position holds (no shrinkage applied).
+                            pass
+                        else:
+                            target = target * _de_risk
+                            if _de_risk < 1.0:
+                                self._last_derisk_bar[symbol] = self.bar_count
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
@@ -1084,7 +1108,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._last_derisk_bar):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
