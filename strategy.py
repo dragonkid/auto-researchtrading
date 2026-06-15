@@ -1038,22 +1038,21 @@ class Strategy:
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        # Architectural: VOL-conditioned blend of squared (low-vol) and
-                        # linear (high-vol) de-risk mappings. Low vol (rally, sideways):
-                        # pressure noise dominates near the floor — squared mapping is
-                        # noise-insensitive there. High vol (crash, bull): pressure
-                        # signal dominates — linear gives proper response gradient.
-                        # Continuous via tanh((vol_ratio - 0.85) / 0.30): low-vol fully
-                        # squared, mid-vol blended, high-vol fully linear. Orthogonal
-                        # to trend (which previously hurt rally) and to PNL (which
-                        # previously hurt bull profit). Vol_ratio captures regime-
-                        # specific noise floor.
+                        # Architectural: PNL-conditioned blend of squared (profit) and
+                        # linear (loss) de-risk mappings. In profit (_pnl_scale > 0),
+                        # squared mapping is noise-insensitive at the floor — preserves
+                        # winning positions through pullback giveback noise. In loss
+                        # (_pnl_scale < 0), linear mapping gives fast cut response —
+                        # losing positions should not linger as pressure mounts.
+                        # Continuous via _pnl_scale = tanh(pos_pnl / abs(STOP_LOSS_PCT)).
+                        # Orthogonal to trend dimension: rally pullback winners get
+                        # squared protection; bull losers (rare) still cut fast.
                         _frac = (_exit_pressure - _de_floor * _exit_thresh) / max((1.0 - _de_floor) * _exit_thresh, 1e-10)
                         _frac = max(0.0, min(1.0, _frac))
                         _de_risk_sq = 1.0 - _frac * _frac
                         _de_risk_lin = 1.0 - _frac
-                        _w_vol_de = max(0.0, np.tanh((vol_ratio - 0.85) / 0.30))
-                        _de_risk = _de_risk_lin * _w_vol_de + _de_risk_sq * (1.0 - _w_vol_de)
+                        _w_profit_de = max(0.0, _pnl_scale)  # 0 in loss, ~1 in profit
+                        _de_risk = _de_risk_sq * _w_profit_de + _de_risk_lin * (1.0 - _w_profit_de)
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
