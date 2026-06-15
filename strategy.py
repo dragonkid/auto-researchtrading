@@ -532,14 +532,22 @@ class Strategy:
                 _bear_align = sum(np.tanh(-s / sc) for s, sc in zip(_slps, _cons_scales)) / 3.0
                 _bull_consensus_atten = 0.40 + 0.60 * (_bull_align + 1.0) / 2.0
                 _bear_consensus_atten = 0.40 + 0.60 * (_bear_align + 1.0) / 2.0
-                # Architectural simplification: removed bilateral-conviction quality attenuator.
-                # The opp/own strong-sum ratio is a ratio of two noisy quantities — noise in
-                # either numerator or denominator flips the ratio, creating noise amplification
-                # in the entry-size product chain. The admission gate (strong >= strong_min) and
-                # persistence gate (2-bar sustained conviction) already filter low-quality
-                # entries. Code-structure removal: -12 lines, -2 ratio computations.
-                _bull_quality_atten = 1.0
-                _bear_quality_atten = 1.0
+                # Architectural: bilateral-conviction-quality entry size attenuator.
+                # New cross-component data dep: own-side first-bar size depends on the
+                # OPPOSITE side's strong-sum. When opp_strong is small relative to side_strong,
+                # voters are decisively one-sided (high quality entry). When opp_strong is
+                # close to side_strong (bilateral noise — voters split), entry quality is
+                # low and size should be cut. Compute opp/own ratio (0..1+); attenuate via
+                # tanh: 1.0x at ratio<=0.3, ramps down to 0.7x at ratio>=0.9. Independent
+                # from entry-pass gate (entry still admitted at marginal quality, but at
+                # smaller commitment). Mechanism: filters splitting-vote false entries that
+                # the strong-sum gate alone passes when own-side just barely exceeds floor
+                # while opp-side is also nearly at floor — exactly the noise-amplified
+                # entries that lose most.
+                _bull_opp_ratio = _bear_strong / max(_bull_strong, 1e-6)
+                _bear_opp_ratio = _bull_strong / max(_bear_strong, 1e-6)
+                _bull_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.3) / 0.4)))
+                _bear_quality_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.3) / 0.4)))
                 # Architectural simplification: removed _vol_entry_atten (low-volume entry
                 # size attenuator). The mechanism cut first-bar size by up to 30% on
                 # low-volume bars. Redundant with: (a) persistence gate filtering weak
