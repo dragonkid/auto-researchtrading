@@ -748,17 +748,8 @@ class Strategy:
                 # binary activation at _pp_ratio >= 1.0. Code-structure removal: 6 lines
                 # → 1 line; eliminates the interpolation table that duplicates smoothing
                 # already provided by peak_pnl's high-water-mark mechanic.
-                # Architectural: smooth pp_activation replacing hard binary threshold.
-                # Old: _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0 — creates a
-                # noise-discontinuity at peak==pp_min boundary; under perturbation, the
-                # ratio noise-crosses 1.0 → activation flips on/off → _pp_pressure jumps
-                # → _soft_max jumps → exit decision flips. New: tanh activation centered
-                # at _pp_ratio=1.0 with band 0.05 — saturates to ~1.0 above ratio≈1.05,
-                # to ~0.0 below ratio≈0.95, smooth between. Removes a hard boundary on
-                # the exit-side fusion path that was identified as noise-source. Primitive
-                # change to activation fn (not a knob): 1 binary -> tanh transition.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _pp_activation = 0.5 * (1.0 + np.tanh((_pp_ratio - 1.0) / 0.05))
+                _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
