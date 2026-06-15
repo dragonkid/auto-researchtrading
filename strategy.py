@@ -118,6 +118,14 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Architectural: per-symbol EMA-smoothed realized winning-bar fraction since
+        # entry. Each held bar contributes +1 if pos_pnl rose vs the prior bar, 0 if
+        # it fell, blended via EMA. A position whose realized PnL path has been rising
+        # on most bars is robustly trend-confirmed (realized-PnL evidence, not a
+        # noise-flippable price boundary) and earns a looser giveback trail so winners
+        # run longer. Distinct from peak_pnl (high-water level) and from slope/voter
+        # signals (price-derived, per-bar). Reset on entry.
+        self._win_frac = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -657,6 +665,13 @@ class Strategy:
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
                 self._mae[symbol] = min(_curr_mae, pos_pnl)
+                # Architectural: EMA-smoothed realized winning-bar fraction.
+                # rising bar (pos_pnl >= prev) -> 1, falling -> 0, EMA-blended (alpha
+                # 0.3 ~= 6-bar memory). Robust trend-confirmation from realized PnL,
+                # not a price boundary. Seeded at 0.5 (neutral) on first held bar.
+                _wf_prev = self._win_frac.get(symbol, 0.5)
+                _wf_bar = 1.0 if pos_pnl >= _prev_pnl else 0.0
+                self._win_frac[symbol] = 0.3 * _wf_bar + 0.7 * _wf_prev
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -750,6 +765,17 @@ class Strategy:
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                # Architectural: realized winning-streak loosens the binding giveback
+                # trail. When the held position's realized PnL path has been rising on
+                # most bars (_win_frac high) AND the position is in profit, the trail
+                # tightening is attenuated (up to 35%), letting robustly-confirmed
+                # winners run further before giveback-driven exit. Subtractive on the
+                # BINDING exit term (_pp_pressure), gated on realized-PnL trajectory —
+                # not the non-binding _max_hold backstop, not a price boundary. Profit
+                # gate ensures losers are never loosened. Continuous via tanh.
+                _ws_gate = max(0.0, np.tanh((self._win_frac.get(symbol, 0.5) - 0.55) / 0.15))
+                _ws_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _pp_raw = _pp_raw * (1.0 - 0.35 * _ws_gate * _ws_profit)
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
@@ -1119,12 +1145,13 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._win_frac):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._win_frac[symbol] = 0.5
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
