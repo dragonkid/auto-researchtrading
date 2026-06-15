@@ -55,7 +55,6 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-PERSIST_HOLD_BONUS = 2.0  # max extra bars when recent slope DIRECTION is persistent and agrees (grinding-trend hold)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
@@ -765,25 +764,7 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Architectural: slope-DIRECTION-persistence hold extension (timing lever).
-                # The instantaneous _slope_strength is small for a grinding low-vol trend
-                # (rally), so _hold_adj barely fires there — the position exits early and
-                # re-enters, generating the near-tied reversal decisions prior sessions
-                # localized as the rally noise source. Measure magnitude-weighted directional
-                # agreement of slopes at fixed multi-windows (same robust aggregation as
-                # _persistence_mult / the existing multi-window exit slope): persistence=1
-                # when all windows point the same way (genuine grind), ~0 when mixed (chop).
-                # Extend max_hold (one-sided, never shorten) ONLY when the persistent
-                # direction agrees with the position. Chop/sideways (low persistence) is
-                # spared by construction; a longer hold removes exit->re-entry decision
-                # points exactly where the trend genuinely persists. New cross-window data
-                # dependency at the time-pressure boundary; continuous (no switch point).
-                _persist_slopes = [_fast_slope(np.log(_hl2[-_pw:])) for _pw in (6, 12, 18, 24)]
-                _persist_net = sum(_persist_slopes)
-                _slope_persist = abs(_persist_net) / max(sum(abs(s) for s in _persist_slopes), 1e-12)
-                _persist_agrees = (_persist_net > 0 and current_pos > 0) or (_persist_net < 0 and current_pos < 0)
-                _persist_hold = PERSIST_HOLD_BONUS * _slope_persist if _persist_agrees else 0.0
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj + _persist_hold
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
