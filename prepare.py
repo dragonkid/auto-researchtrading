@@ -702,7 +702,12 @@ def compute_score(result: BacktestResult) -> float:
     dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
     dd_gate *= math.exp(-dd_excess / 10.0)
 
-    # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
+    # Volatility gate: 1/(1 + vol). NOTE: return_volatility is ANNUALIZED
+    # (hourly std × sqrt(8760)), so for real hourly crypto strategies it sits
+    # in roughly 0.5–2.0 and vol_gate lands in ~0.33–0.67 — it never reaches
+    # ~1.0. It is effectively a near-constant dampening factor plus a mild
+    # "lower annualized vol scores higher" gradient; it does NOT award a 1.0 to
+    # low-vol strategies. (Partly overlaps dd_gate's downside-risk penalty.)
     vol_gate = 1.0 / (1.0 + result.return_volatility)
 
     # Consecutive loss gate: exp(-streak/30) — smooth exponential decay
