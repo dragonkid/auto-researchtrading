@@ -92,8 +92,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # REVERSAL (long->short / short->long) after an exit, scaled by per-symbol churn.
 # Same-direction re-entries are never blocked. Suppresses the noise-flippable
 # long<->short churn that the diagnostic identified as the source of rally instability.
-REVERSAL_COOLDOWN_BARS = 6
-REVERSAL_CONV_RELEASE = 1.20  # new-side margin scale at which the reversal block releases
+REVERSAL_COOLDOWN_BARS = 2
 
 
 def ema(values, span):
@@ -609,19 +608,18 @@ class Strategy:
                 # crash/sideways — sparing them by construction (self-measured behavioral
                 # feedback, NOT a regime classifier). Crash protective flips (rare, low churn)
                 # pass through, avoiding the prior flip-suppression failures.
-                # Branch step 4: gate the block by LAST-EXIT-LOSS (noise-robust discrete
-                # signal), not by conviction margin (which is itself noise-sensitive — steps
-                # 2/3 were non-monotonic in the margin-release threshold). A reversal that
-                # follows a WINNING exit is a genuine regime change (real alpha — e.g. rally
-                # rotating into a profitable down-leg) and should pass; a reversal that
-                # follows a LOSING exit is whipsaw churn — the strategy was just wrong on the
-                # prior leg and immediately flips, exactly the noise-flippable knife-edge the
-                # diagnostic identified. Block reversals only after a losing exit. _loss_only
-                # (already computed above from _last_exit_pnl) is the smooth, noise-robust
-                # loss indicator; scale the cooldown bars by it so the block strength tracks
-                # how bad the prior leg was.
+                # Branch step 5: revert to the step-1 mechanism (block ALL fast reversals
+                # during churn — no conviction/loss gate; steps 2-4 each let some reversals
+                # through and crushed the bull gain or rally stability). Step 1 was the best
+                # state (bull +0.158, rally stability 0.508->1.0) and its ONLY failure was
+                # rally raw->0: a 6-bar block leaves the in-market-99pct rally STUCK on the
+                # wrong side, unable to rotate into 2024's profitable down-legs. Shorten the
+                # cooldown to REVERSAL_COOLDOWN_BARS so the block kills the immediate single-
+                # bar whipsaw (the noise-flippable knife-edge) but releases soon enough to
+                # catch genuine multi-bar reversals — restoring rally raw while keeping the
+                # directional-stability and bull gains.
                 _rev_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 high churn
-                _rev_cd = REVERSAL_COOLDOWN_BARS * _rev_churn * _loss_only
+                _rev_cd = REVERSAL_COOLDOWN_BARS * _rev_churn
                 _last_sign = self._last_pos_sign.get(symbol, 0)
                 _rev_block_bull = _last_sign < 0 and _bars_since_exit < _rev_cd
                 _rev_block_bear = _last_sign > 0 and _bars_since_exit < _rev_cd
