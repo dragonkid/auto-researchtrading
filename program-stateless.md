@@ -33,13 +33,22 @@ Each experiment may be a **single-variable change OR a multi-variable structural
 
 1. Read `strategy.py`, `results.tsv`, and run `git log main..HEAD --oneline -n 30`.
 2. **Analyze**: What worked? What failed? What hasn't been tried? **Saturation check**: grep `results.tsv` descriptions for directions you're considering. If a direction has 10+ prior experiments with mostly `discard`, it's saturated — switch to something structurally different.
-3. **Incremental viability check**: count the most recent non-architectural experiments (descriptions without "architectural") and their keep rate. If the last 10+ non-architectural experiments are ALL discards, incremental changes are exhausted at this baseline — all experiments this session MUST be architectural (new code structure, new control flow, new data dependencies). If non-architectural keeps exist in recent history, you may attempt incremental experiments freely.
+3. **Extract structural knowledge from prior sessions**: grep `results.tsv` for `session-summary` rows and descriptions containing "load-bearing", "CROSS-EXPERIMENT", or "CONCLUSION". Prior sessions have already proven which components are load-bearing (removing them regresses a regime) and which directions are dead ends. Do NOT re-attempt a removal/change that a prior session already confirmed catastrophic. Build on confirmed mechanism insights instead of rediscovering them.
+4. **Incremental viability check**: count the most recent non-architectural experiments (descriptions without "architectural") and their keep rate. If the last 10+ non-architectural experiments are ALL discards, incremental changes are exhausted at this baseline — all experiments this session MUST be architectural (new code structure, new control flow, new data dependencies). If non-architectural keeps exist in recent history, you may attempt incremental experiments freely.
 
 ### PARAMETER-SPACE SATURATION RULE
 
 If the last 5 branches (from results.tsv BRANCH SUMMARY lines) all operate within the SAME parameter space — position sizing (SIZE/FRAC/GATE_FLOOR/GATE_SCALE/CONF_MIN), sigmoid width, MIN_VOTES/FLIP_MIN_VOTES tuning — the parameter space is SATURATED. Your next experiment MUST change the DECISION ARCHITECTURE itself.
 
 "Architectural" does NOT mean "multi-variable parameter change." It means the CODE STRUCTURE changes — new functions, new control flow, new data dependencies between components. If your change can be described as "adjust parameter X from A to B" or "combine parameters X+Y+Z at different values", it is NOT architectural.
+
+### COMPONENT-SATURATION RULE (escalate to subsystem redesign)
+
+Single-component changes (add one pressure source, remove one voter, gate one threshold) operate WITHIN the existing subsystem structure. If multiple recent sessions have confirmed (via session-summary rows) that every single component is load-bearing — i.e., the strategy sits in a tight local optimum where add/remove/modify of any individual component regresses at least one regime — then component-level exploration is saturated.
+
+At that point a valid experiment may be a **subsystem redesign**: a coordinated rewrite of an entire decision subsystem (e.g., the exit-pressure fusion layer, the voter-aggregation mechanism, the position-sizing pipeline, the entry-admission gate) where multiple interdependent components are replaced together by a structurally different mechanism. This is still ONE experiment (one commit, one results.tsv row, fully revertable via `git revert`) — it is judged by the same keep/discard rules. The point is that some improvements are only reachable by changing several coupled components at once; a redesign that replaces a whole subsystem is a legitimate single hypothesis even though its diff is large.
+
+Do NOT target a specific regime by name in the redesign (that would be regime-detection overfitting — forbidden). Redesign the subsystem's general mechanism; let the regime effects fall out of the backtest.
 
 ### Phase 2: Experiment loop
 
@@ -201,7 +210,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 - Check `composite_score` and `mean_score` — both must improve vs baseline
 - Check per-regime scores — check both `raw_score` and final `score` to understand penalty impact
 - Check `regime_X_flip_count` and `regime_X_flip_pnl` — these are significant cost contributors
-- The ONLY hard constraint is: no regime MaxDD > 95%
+- Hard constraints (see Keep/discard rules above): no regime score drop > 50% vs baseline, no regime MaxDD > 10%
 
 **Score decomposition fields** (output by `regime_test.py` for each regime):
 - `regime_X_raw_score` — score BEFORE stability and flip_streak penalties
