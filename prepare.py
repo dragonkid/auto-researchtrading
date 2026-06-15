@@ -98,6 +98,7 @@ class BacktestResult:
     return_volatility: float = 0.0       # annualized std of hourly returns
     max_consecutive_losses: int = 0      # longest streak of losing trades
     backtest_seconds: float = 0.0
+    truncated: bool = False               # True if the run hit TIME_BUDGET and stopped early
     equity_curve: list = field(default_factory=list)
     trade_log: list = field(default_factory=list)
     # Flip metrics
@@ -350,10 +351,12 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     # this, mark-to-market would drop that symbol's unrealized PnL for the gap bar
     # while still counting its notional, producing a spurious equity swing.
     last_close: dict = {}
+    truncated = False  # set True if TIME_BUDGET forces an early stop
 
     for ts in timestamps:
         elapsed = time.time() - t_start
         if elapsed > TIME_BUDGET:
+            truncated = True
             break
 
         portfolio.timestamp = ts
@@ -638,6 +641,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         return_volatility=return_volatility,
         max_consecutive_losses=max_consecutive_losses,
         backtest_seconds=t_end - t_start,
+        truncated=truncated,
         equity_curve=equity_curve,
         trade_log=trade_log,
         flip_count=flip_count,
@@ -659,6 +663,11 @@ def compute_score(result: BacktestResult) -> float:
     Hard cutoffs for degenerate strategies.
     """
     # Hard cutoffs — strict risk limits
+    # Truncated runs hit TIME_BUDGET and stopped early: the result covers only a
+    # prefix of the data, so it is non-reproducible (depends on machine speed)
+    # and survivorship-biased (a later blow-up may be hidden). Reject outright.
+    if result.truncated:
+        return -999.0
     if result.num_trades < 10:
         return -999.0
     if result.max_drawdown_pct > 10.0:

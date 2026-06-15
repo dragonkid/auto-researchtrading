@@ -316,6 +316,33 @@ def test_hard_cutoff_precedes_negative_region():
 
 
 # ---------------------------------------------------------------------------
+# Truncated runs (hit TIME_BUDGET, stopped early) are non-reproducible and
+# survivorship-biased -> compute_score must reject them with -999. A normal
+# (non-truncated) result with the same metrics must score normally. Guards H3.
+# ---------------------------------------------------------------------------
+def test_truncated_result_rejected():
+    normal = BacktestResult(
+        sharpe=2.0, num_trades=50, max_drawdown_pct=2.0,
+        return_volatility=0.3, max_consecutive_losses=0,
+        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 1.05],
+        truncated=False,
+    )
+    truncated = BacktestResult(
+        sharpe=2.0, num_trades=50, max_drawdown_pct=2.0,
+        return_volatility=0.3, max_consecutive_losses=0,
+        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 1.05],
+        truncated=True,
+    )
+    assert compute_score(normal) > 0, "non-truncated result should score normally"
+    assert compute_score(truncated) == pytest.approx(-999.0, abs=TOL)
+
+
+def test_default_result_not_truncated():
+    # Default must be False so normal runs are never accidentally rejected.
+    assert BacktestResult().truncated is False
+
+
+# ---------------------------------------------------------------------------
 # Leverage constraint rejects orders that exceed MAX_LEVERAGE.
 # ---------------------------------------------------------------------------
 def test_leverage_constraint():
