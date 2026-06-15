@@ -816,8 +816,24 @@ class Strategy:
                 #      (bilateral — explicit reversal evidence raises exit).
                 # Bilateral-additive fusion decouples voter influence from individual
                 # pressure terms while preserving net effect on exit decision.
-                _side_margin = _bull_margin if current_pos > 0 else _bear_margin
-                _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
+                # Architectural: sustained-conviction margins for voter_bias.
+                # Use 2-bar MIN strong-sum from _hist (already tracked for entry
+                # persistence) to compute margins. Replaces per-bar noisy strong-
+                # sum with sustained-conviction version: voter_bias injects ±0.20
+                # only when conviction has held for 2 bars. Per-bar voter
+                # oscillations (rally low-vol noise) get smoothed via min-
+                # aggregation. New cross-bar data dep at exit-fusion boundary
+                # for voter_bias ONLY (entry-side margins unchanged).
+                if len(_hist) >= 2:
+                    _bull_strong_min2 = min(_hist[-2][0], _hist[-1][0])
+                    _bear_strong_min2 = min(_hist[-2][1], _hist[-1][1])
+                else:
+                    _bull_strong_min2 = _bull_strong
+                    _bear_strong_min2 = _bear_strong
+                _bull_margin_sus = (_bull_strong_min2 - _bull_strong_min) / max(_bull_strong_min, 1e-6)
+                _bear_margin_sus = (_bear_strong_min2 - _bear_strong_min) / max(_bear_strong_min, 1e-6)
+                _side_margin = _bull_margin_sus if current_pos > 0 else _bear_margin_sus
+                _opp_margin = _bear_margin_sus if current_pos > 0 else _bull_margin_sus
                 # Chop-amplified own-side subtraction with divergence taper: in pure sideways
                 # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
                 _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
