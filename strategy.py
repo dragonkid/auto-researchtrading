@@ -230,16 +230,8 @@ class Strategy:
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
                 (rsi - _rsi_thresh) / 4.0,
-                # Architectural: widened MACD and linreg slope scale 50% (0.00012->0.00018,
-                # 0.00010->0.00015). Following VWAP scale-widening success (+0.071 rally
-                # in 77099b5 keep): wider tanh scales reduce noise amplification at
-                # boundary, improving stability. MACD and slope are the sharpest-scale
-                # voters — in low-vol rally, small absolute values mean noise dominates
-                # conf changes. 50% wider scale preserves signal discrimination in trend
-                # regimes (where signal magnitudes are larger) while softening noise
-                # sensitivity in low-signal rally chop.
-                (_macd_diff - 0.0003) / 0.00018,
-                (_lr_slope - 0.00015) / 0.00015,
+                (_macd_diff - 0.0003) / 0.00012,
+                (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
             ]
