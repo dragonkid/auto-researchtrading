@@ -116,6 +116,11 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Per-symbol position high-water mark (largest abs size held this trade).
+        # Used by the re-engagement controller: de-risked positions may regrow
+        # back toward — but never beyond — what they previously held. Converts
+        # the shrink-only exit controller into a bidirectional one.
+        self._pos_hwm = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -589,6 +594,9 @@ class Strategy:
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                # Position high-water mark: largest abs size held this trade.
+                # Bounds the re-engagement controller (regrowth never exceeds it).
+                self._pos_hwm[symbol] = max(self._pos_hwm.get(symbol, 0.0), abs(current_pos))
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -1041,6 +1049,38 @@ class Strategy:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
+                    else:
+                        # Architectural: re-engagement controller (subsystem redesign of the
+                        # position-size controller from shrink-only to bidirectional). The
+                        # de-risk path above shrinks the position as exit pressure rises but
+                        # never lets it recover — once de-risked, a position can only shrink
+                        # further or exit. This permanently surrenders size to transient
+                        # pressure spikes that subsequently recede (chop pullback-and-recover).
+                        # Mechanism: when exit pressure has receded BELOW the de-risk
+                        # activation floor AND the position currently sits below its own
+                        # high-water mark (it was de-risked earlier this trade) AND own-side
+                        # voter conviction is still present, regrow the position back TOWARD
+                        # (never beyond) its high-water mark. Regrowth fraction scales with
+                        # how far pressure has receded and with live conviction. This is the
+                        # structural inverse of the position-fraction ratchet (which locked
+                        # de-risked positions at the lower fraction and regressed exactly the
+                        # recover-after-dip pattern): instead of forbidding regrowth, the
+                        # controller allows reversible, conviction-gated regrowth. New control
+                        # flow + new per-symbol state (_pos_hwm); regime effects fall out of
+                        # the backtest rather than being targeted.
+                        _hwm = self._pos_hwm.get(symbol, abs(current_pos))
+                        # Only regrow when (a) the position sits meaningfully below its
+                        # high-water mark (it was de-risked earlier), and (b) no upstream
+                        # path reduced target this bar (TP-harvest / scale-in) — i.e. the
+                        # deliberate same-bar reduction is respected, regrowth never undoes it.
+                        if _hwm > abs(current_pos) * 1.02 and abs(target) >= abs(current_pos) - 1e-9:
+                            _press_floor_re = _de_floor * _exit_thresh
+                            _recede = max(0.0, min(1.0, (_press_floor_re - _exit_pressure) / max(_press_floor_re, 1e-6)))
+                            _re_conv = max(0.0, np.tanh(_side_margin / 0.30))
+                            _re_frac = 0.5 * _recede * _re_conv
+                            _pos_dir_re = 1.0 if current_pos > 0 else -1.0
+                            _regrow_to = abs(current_pos) + (_hwm - abs(current_pos)) * _re_frac
+                            target = _pos_dir_re * min(_hwm, max(abs(current_pos), _regrow_to))
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
@@ -1084,12 +1124,13 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._pos_hwm):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._pos_hwm[symbol] = abs(target)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
