@@ -82,7 +82,7 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 4.25  # rescaled for quartic ramp (~2.5x at typical conf mix, was 1.75 for quintic)
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -300,19 +300,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            # Architectural: quartic (power-4) strong-sum ramp replaces quintic (power-5).
-            # Quintic creates extreme winner-take-all: conf=0.6 → 0.001, conf=0.9 → 1.0
-            # (1000x range). In low-vol regimes (rally), most voters sit near 0.5-0.65,
-            # making strong_sum hinge on 1-2 saturated voters — single-voter noise
-            # flips the entire admission decision. Quartic gives proportional contribution:
-            # conf=0.6 → 0.004, conf=0.7 → 0.063, conf=0.9 → 1.0 (250x range). Mid-
-            # confidence voters meaningfully contribute, distributing conviction across
-            # the full ensemble. Endpoint behavior (conf=0.9 = 1.0) unchanged.
-            # Normalization: 1/0.4^4 = 39.06 so max contribution at conf=0.9 is 1.0.
-            # Also rescale STRONG_WEIGHT_MIN/MIN_VOTES/FLIP_MIN_VOTES for the now-larger
-            # contributions from mid-confidence voters (strong_sum ~2x at typical mix).
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 4 * 39.06) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 4 * 39.06) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
