@@ -976,19 +976,16 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
-                    _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    # Trend-gated activation: in chop (low |ret_long|), peaks are
-                    # rare AND likely mean-reverting — disable harvest to let small
-                    # sideways wins run. In trending regimes (high |ret_long|), peaks
-                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
-                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
-                    # when peak is a confirmed trend extension. Counter-trend or rally
-                    # pullback peaks get full harvest (mean-reverting by structure).
-                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    target = target * (1.0 - _tp_scale)
+                # Architectural simplification: removed profit-target partial harvest path
+                # (-13 LOC). Mechanism fired peak >= 1.6*_pp_min as smooth scale-down up to
+                # 30%. Redundant with _pp_pressure (giveback-trailing on peak), which already
+                # locks gains via giveback-ratio measurement. TP-harvest acted on peak_pnl
+                # directly (proactive scale-down even at zero giveback), while _pp_pressure
+                # acts on giveback (reactive scale-down on price retreat). The proactive path
+                # composed multiplicatively with peak-protect trailing, double-counting the
+                # same realized-peak signal. Removing eliminates this third decision path
+                # without altering giveback-based locking. Code-structure removal: -13 LOC,
+                # -1 size-decision path, eliminates _tp_ratio/_tp_trend_gate/_ts_supp/_tp_scale.
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
