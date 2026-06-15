@@ -52,11 +52,18 @@ def _run_window(args: tuple) -> dict:
     window_hours = len(first_df)
 
     result = run_backtest(strategy, data)
-    base_score = compute_score(result)
+    score = compute_score(result)
     annual_return = annualize_return(result.total_return_pct, window_hours)
 
-    return_gate = math.log(1.0 + max(annual_return, 0.0) / 100.0)
-    score = base_score * return_gate if base_score > 0 else base_score
+    # `score` is the bare compute_score (base score), matching backtest.py /
+    # test_oos.py. The pre-score-v5 return_gate was removed here — it was
+    # redundant with the fee-adjusted Sharpe already in compute_score and was
+    # dropped from the main search pipeline in the score-v5 overhaul (ce88a4e1).
+    # This score is the SAME scale as compute_score everywhere, but it does NOT
+    # apply the stability or flip_streak penalties that regime_test.py layers on
+    # top. So it differs from `regime_test.py --holdout` ONLY by those two
+    # penalty multipliers (both ≤ 1.0). Suitable for ranking sub-periods and for
+    # rough comparison against search per-regime base scores.
 
     return {
         "name": name,

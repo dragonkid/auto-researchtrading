@@ -1,5 +1,12 @@
 # autotrader
 
+> **DEPRECATED — not used by autoresearch.** This file is the legacy single-prompt
+> spec, superseded by `program-stateless.md` (normal research loop) +
+> `program-council.md` (Council Mode). `autoresearch.sh` reads only those two and
+> never this file. The scoring formula below predates the score-v5 overhaul
+> (return_gate / turnover_penalty were removed) — do NOT treat it as current.
+> Kept for historical reference only.
+
 Autonomous trading strategy research on Hyperliquid perpetual futures.
 
 ## Context

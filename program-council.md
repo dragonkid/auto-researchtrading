@@ -79,25 +79,31 @@ COUNCIL_PASS / COUNCIL_ACCEPT Proposal X (philosophy)
 
 ## Results TSV
 
-Also record each proposal test in `results.tsv`:
+Also record each proposal test in `results.tsv` using the 10-column schema (same as the normal experiment loop):
 ```
-commit	score	mean_score	std_score	status	description
+commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
 ```
 
 Use status `council_discard` or `council_keep` to distinguish from normal experiments.
 
 ## Scoring formula
 
-Multiplicative per-regime score, then combined:
+Multiplicative per-regime score, then combined. This mirrors `compute_score()` in `prepare.py` plus the stability and flip-streak penalties applied in `regime_test.py` — it is the exact metric, not an approximation.
 
 ```
-Base = log(1+sharpe) × sqrt(trade_factor) × 1/(1+DD%) × exp(-max(0,DD%-5)/10) × 1/(1+vol) × exp(-streak/30)
-Per-regime = base × log(1 + annual_return% / 100)   # return gate
-Hard cutoffs: <10 trades, >20% DD, >25% capital loss → -999
-Soft DD penalty: mild exponential decay above 5% DD (8%→0.74x, 10%→0.61x)
+base = log(1+max(sharpe,0)) × sqrt(min(trades/50,1)) × dd_gate × 1/(1+vol) × exp(-streak/30)
+  dd_gate = 1/(1+DD%) × exp(-max(0,DD%-5)/10)
 
-Composite = mean(regime_scores) - 0.5 * std(regime_scores) + simplicity_bonus
-Simplicity bonus = max(0, (500 - effective_LOC)) * 0.001
+Per-regime score = base × stability_factor × flip_streak_gate
+  stability_factor = clamp((stability-0.50)/(0.80-0.50), 0, 1)   # AR(1) correlated-noise test; applied only when base>0
+  flip_streak_gate = 1/(1 + flip_streak_drag_per_bar/0.5)         # applied only when score>0
+
+Hard cutoffs: <10 trades, >10% DD, >15% capital loss → -999
+Soft DD penalty: smooth exponential above 5% DD (5%→0.95x, 8%→0.68x, 10%→0.55x)
+
+Composite = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
+
+There is no return gate, turnover gate, or simplicity bonus — those were removed in the score-v5 overhaul. Higher trade frequency is NOT penalized beyond the fee-adjusted Sharpe already embedded in `base`.
 
 The composite score is the key metric. Parse it from `grep "^composite_score:" run.log`.
