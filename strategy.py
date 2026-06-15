@@ -618,16 +618,19 @@ class Strategy:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
                     scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
-                    # Architectural: pnl-conditioned scale-in adverse-move freeze.
-                    # When the in-flight scale-in position has gone adverse (pos_pnl < 0),
-                    # smoothly attenuate scale-in growth (don't add more size on losing bars).
-                    # Continuous via tanh: at breakeven full growth, ramps to ~50% freeze at
-                    # pos_pnl = -0.4*|STOP_LOSS|, saturating to ~75% freeze at -|STOP_LOSS|.
-                    # New cross-bar dep at scale-in boundary: scale-in pace depends on
-                    # currently-realized adverse excursion of the in-flight entry.
-                    # Mechanism: protects against compounding adverse-move size adds in
-                    # noisy regimes (rally pullbacks during fresh-entry scale-in).
-                    _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT))))
+                    # Architectural: pnl-conditioned scale-in adverse-move freeze with
+                    # COUNTER-TREND gating. Adverse moves during scale-in fall into two
+                    # categories: (1) real reversal (counter-trend entries facing the
+                    # actual trend, e.g. bear short during uptrend → losses real), and
+                    # (2) pullback noise (trend-aligned entries facing temporary noise
+                    # in rally). Branch step 2: gate the freeze by counter-trend strength.
+                    # Trend-aligned scale-in (pos_dir matches ret_long sign) bypasses
+                    # the freeze entirely (rally pullback noise recovers). Counter-trend
+                    # scale-in still freezes (real reversals shouldn't grow into losses).
+                    # New cross-component dep: scale-in freeze depends on (pos_dir, ret_long).
+                    _pos_dir_si = 1.0 if current_pos > 0 else -1.0
+                    _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
+                    _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
