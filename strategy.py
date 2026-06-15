@@ -100,8 +100,8 @@ COOLDOWN_TREND_DECAY = 0.06
 # Direction-agnostic (rally is dominated by same-direction buy-the-dip re-entries;
 # prior sessions only attenuated opposite-direction reversals). exp-decay keeps it
 # active only in the immediate post-exit window.
-REENTRY_SIZE_CUT = 0.35
-REENTRY_HYST_DECAY = 2.5
+REENTRY_SIZE_CUT = 0.30
+REENTRY_SIZE_WINDOW = 6
 
 
 def ema(values, span):
@@ -153,13 +153,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol re-entry size factor, fixed at entry and held
-        # constant through the whole trade (scale-in included). A re-entry shortly
-        # after an exit runs at reduced size for its ENTIRE life so its equity-path
-        # footprint under noise is uniformly smaller (not just bar-1) — the
-        # asymmetric bar-1-only cut left the full-size scale-in bars dominating the
-        # noise divergence. Decayed by bars-since-exit AT ENTRY only.
-        self._reentry_size = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -602,20 +595,22 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Post-exit re-entry SIZE attenuation: shrink the re-entry's size by
-                # a factor decayed on the integer bars-since-exit counter (noise-immune)
-                # AT ENTRY TIME, then hold it constant for the whole trade (applied in
-                # scale-in too via self._reentry_size). Admission gate UNCHANGED (the
-                # trade still fires — raw preserved); the smaller position causes a
-                # uniformly smaller equity-path divergence when the entry boolean flips
-                # under noise (stability up). Decays to 1.0 (no cut) as bars-since-exit grows.
-                _reentry_size_factor = 1.0 - REENTRY_SIZE_CUT * np.exp(-_bars_since_exit / REENTRY_HYST_DECAY)
+                # Post-exit re-entry SIZE attenuation: apply a FLAT (constant) first-bar
+                # size cut to any re-entry within REENTRY_SIZE_WINDOW bars of the last
+                # exit. CONSTANT (not exp-decayed) by design: exit timing is itself
+                # noise-sensitive, so a decay profile would make the size jump when the
+                # exit bar shifts by one under noise — adding a new noise channel (the
+                # confirmed prior-session failure mode of gating on noisy quantities).
+                # A flat cut inside a wide window is invariant to a ±1-bar exit-timing
+                # shift (the boundary at bar 6 is far from the 1-3 bar re-entry action),
+                # so it carries NO boundary noise. Admission gate UNCHANGED (trade fires,
+                # raw preserved); the smaller first-bar position reduces noise-flip
+                # equity divergence on the most flip-prone (immediate) re-entries.
+                _reentry_size_factor = 1.0 - REENTRY_SIZE_CUT if _bars_since_exit <= REENTRY_SIZE_WINDOW else 1.0
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _reentry_size_factor
-                    self._reentry_size[symbol] = _reentry_size_factor
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _reentry_size_factor
-                    self._reentry_size[symbol] = _reentry_size_factor
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -663,10 +658,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Hold the re-entry size cut constant through scale-in so the
-                    # entire re-entry trade runs smaller (uniform noise footprint).
-                    _rs = self._reentry_size.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _rs
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
