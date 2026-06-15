@@ -1038,17 +1038,18 @@ class Strategy:
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        # Architectural: hybrid linear+squared de-risk mapping.
-                        # _de_risk = 1 - 0.5*frac - 0.5*frac^2 = (1-frac)(1+0.5*frac).
-                        # Slope at frac=0: -0.5 (vs -1 for linear, 0 for pure squared) —
-                        # half the noise sensitivity of linear at the floor while
-                        # preserving meaningful initial response. Slope at frac=1: -1.5
-                        # (vs -1 for linear, -2 for pure squared) — faster final approach
-                        # to full derisk. Single mapping (no trend blending), uniform
-                        # across regimes. Different functional form from linear.
+                        # Architectural: trend-conditioned blend of squared (chop) and
+                        # linear (trend) de-risk mappings. Branch step 2 with sharper
+                        # transition: tanh(|ret_long|/0.025) gives faster cutover to
+                        # linear at moderate trend magnitudes (bull/rally fully linear
+                        # by |ret_long|>=0.05 vs prior 0.08). Sideways/chop still gets
+                        # full squared (noise-insensitive near floor). Continuous blend.
                         _frac = (_exit_pressure - _de_floor * _exit_thresh) / max((1.0 - _de_floor) * _exit_thresh, 1e-10)
                         _frac = max(0.0, min(1.0, _frac))
-                        _de_risk = 1.0 - 0.5 * _frac - 0.5 * _frac * _frac
+                        _de_risk_sq = 1.0 - _frac * _frac
+                        _de_risk_lin = 1.0 - _frac
+                        _w_trend_de = max(0.0, np.tanh(abs(ret_long) / 0.025))
+                        _de_risk = _de_risk_lin * _w_trend_de + _de_risk_sq * (1.0 - _w_trend_de)
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
