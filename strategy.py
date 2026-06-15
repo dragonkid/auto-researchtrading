@@ -55,7 +55,6 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-VOL_TREND_HOLD_BONUS = 3.0  # max extra hold bars in decisive volatile trends (high vol_ratio AND high abs(ret_long))
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
@@ -765,27 +764,6 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Architectural: vol×trend "decisive-trend" hold extension (raw lever,
-                # regime effect falls out of the gate — NOT a regime classifier).
-                # Exp1 (crash +0.038) and exp3 (crash +0.040) both reproducibly showed crash
-                # raw GAINS from longer holds (sustained shorts ride the bear), but BOTH
-                # failed because the trigger also fired in bull/sideways/rally (premature
-                # exits there want SHORTER holds, and exp3's pos_pnl-derived gate amplified
-                # rally noise). Isolate the gain with a gate built from indicators ALREADY
-                # pervasive in the strategy and noise-robust: high vol_ratio AND high
-                # abs(ret_long). The PRODUCT is large only when BOTH hold:
-                #   - rally (low vol, trend) -> vol term ~0 -> bonus ~0 (FIXES exp1/exp3
-                #     rally collapse: rally hold timing untouched -> stab preserved)
-                #   - sideways (low trend, vol can spike) -> trend term ~0 -> bonus ~0
-                #     (FIXES exp3 sideways raw drop -> time-exit discipline preserved)
-                #   - crash (high vol AND high trend) -> bonus fires (the intended gain)
-                # Gated on _slope_agrees so it NEVER extends a hold against the move (cannot
-                # ride through a reversal -> rally reversal alpha untouched). Continuous tanh
-                # (no switch point). Uses vol_ratio + ret_long only (NOT pos_pnl) so no noisy
-                # boundary. New cross-timescale data dep at the time-pressure backstop.
-                _vol_trend_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.35)) * max(0.0, np.tanh(abs(ret_long) / 0.06))
-                _vol_trend_hold = VOL_TREND_HOLD_BONUS * _vol_trend_gate if _slope_agrees else 0.0
-                _hold_adj = _hold_adj + _vol_trend_hold
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
