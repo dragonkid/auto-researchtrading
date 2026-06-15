@@ -912,7 +912,27 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                _soft_max = max(_soft_terms)
+                # Architectural: softmax-weighted blend replaces discrete MAX fusion.
+                # Old: _soft_max = max(_soft_terms) — under noise, top-2 nearby terms
+                # can flip which "wins," creating boundary discontinuities in the
+                # exit pressure trajectory. Each term feeds into MAX with hard winner
+                # take-all dynamics, amplifying noise at MAX-boundary.
+                # New: softmax-weighted average (beta=8) — smooth, continuously
+                # differentiable everywhere. At extremes (one term dominates) it
+                # approximates MAX (~0.997 of max when winner is 5x runner-up).
+                # At boundary (top-2 within ~10pct), output blends both proportionally
+                # instead of flipping. Reduces noise-driven step-changes in _soft_max.
+                # Hypothesis: rally stability improves (rally stab=0.49) because
+                # noise no longer propagates through MAX-winner flips at exit fusion.
+                # Other regimes already at higher stab — minimal change expected.
+                _soft_arr = np.array(_soft_terms)
+                _max_val = _soft_arr.max()
+                if _max_val > 1e-6:
+                    _beta_sm = 8.0
+                    _w_sm = np.exp(_beta_sm * (_soft_arr - _max_val))
+                    _soft_max = float((_w_sm * _soft_arr).sum() / _w_sm.sum())
+                else:
+                    _soft_max = 0.0
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
