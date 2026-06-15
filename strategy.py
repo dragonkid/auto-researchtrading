@@ -1095,26 +1095,22 @@ class Strategy:
             # exits (target==0), and flips (sign change) are ALWAYS exempt: risk
             # transitions must never be held. Only same-sign resizes pass through the
             # deadband. New control flow + new cross-component data dep at the gate.
-            # Branch step 3: efficiency-gated snap-to-hold resize deadband. Step 1
-            # (hard snap-to-hold) was Zeno-free and SPARED crash/sideways (the gate
-            # fires only in the two uptrends, where pullback-reentries cluster) but
-            # hurt bull — because bull's churn is CLEAN-TREND signal (the position
-            # rebuilds after new highs) while rally's churn is WHIPSAW noise (rebuild
-            # after deep pullbacks). Step 2 (smooth damping) recovered bull stab but
-            # created a residual-gap Zeno loop that doubled bull trades. Synthesis:
-            # snap-to-hold (Zeno-free) gated on LOW PATH-EFFICIENCY × churn. The
-            # efficiency-ratio _er (12-bar net/path on smoothed_closes, already
-            # computed for entry-frac) is HIGH in clean trends (bull) and LOW in
-            # choppy pullback-heavy action (rally). Deadband width =
-            # base × churn_gate × chop_gate, so it opens ONLY on choppy + high-churn
-            # resizes (rally's noise churn), stays ~0 for clean trends (bull spared)
-            # and low-churn regimes (crash/sideways spared). When a resize is held,
-            # the target snaps to current_pos (no residual gap → no re-trigger churn).
-            # Symmetric growth/shrink (one-sided ratchets amplify path divergence).
-            # Entries (current_pos==0), exits (target==0), flips (sign change) exempt.
-            _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))  # [0,1], same shape as _freq_factor
-            _chop_dz = max(0.0, np.tanh((0.30 - _er) / 0.15))      # [0,1], high when path is choppy (low ER)
-            _deadband_frac = 0.22 * _churn_dz * _chop_dz           # 0 unless BOTH choppy AND high-churn
+            # Branch step 4: CONSTANT-WIDTH fast-saturating churn-gated snap deadband.
+            # Step 3's chop gate read the efficiency-ratio _er, which is itself noise-
+            # sensitive — gating the deadband WIDTH on a noisy quantity made the snap
+            # boundary doubly-noisy and crushed rally stability (churn-only step1
+            # rally=0.385 → churn×chop step3 rally=0.218). The prior-session UNIFORM
+            # (constant-width) deadband, by contrast, LIFTED the worst regime's
+            # stability to 0.578. Lesson: the deadband helps only when its width is
+            # CONSTANT where it fires. So: drop the _er chop gate; gate width ON/OFF
+            # by churn alone, with a FAST-saturating sigmoid so the width is
+            # effectively constant in high-churn regimes (len>=3 → gate≈1.0) and ~0 in
+            # low-churn regimes (len<=1 → gate≈0). Constant width where active = no
+            # boundary-noise amplification → reproduces the uniform rally-stab lift
+            # while sparing crash/sideways (their churn keeps the gate near 0). Snap-
+            # to-hold (Zeno-free). Symmetric growth/shrink. Entries/exits/flips exempt.
+            _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
+            _deadband_frac = 0.13 * _churn_dz
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
