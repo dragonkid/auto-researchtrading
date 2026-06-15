@@ -381,7 +381,17 @@ class Strategy:
             # Spares bull/crash/sideways BY CONSTRUCTION (they rarely reach 3 entries
             # per symbol in 30 bars — their churn gate stays off). Entry-only: the
             # opp_gate exit path is NOT gated (never trap an open position).
-            _entry_refractory = (_bars_since_exit <= COOLDOWN_BARS) and (len(_eh) >= 3)
+            # Branch step 2: OUTCOME-GATE on prior-exit PnL. The symmetric block
+            # (step 1) drove rally stability to 1.000 but cut raw to negative — it
+            # removed profitable fast re-entries too. The churn-LOSS spiral (an exit
+            # at a loss immediately followed by a near-tied re-entry that loses again)
+            # is the noise-flippable pattern; a fast re-entry after a WINNING exit is
+            # trend-continuation alpha (the up-leg resuming after a shake-out). Only
+            # impose the settle bar after a LOSING prior exit. _last_exit_pnl already
+            # tracked; threshold is deterministic (sign of realized PnL, noise-immune
+            # — the realized outcome is fixed history, not a perturbable live signal).
+            _prior_loss = self._last_exit_pnl.get(symbol, 0.0) < 0.0
+            _entry_refractory = (_bars_since_exit <= COOLDOWN_BARS) and (len(_eh) >= 3) and _prior_loss
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
