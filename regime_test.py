@@ -72,11 +72,16 @@ def _run_regime_worker(args: tuple) -> dict:
     from noise_test import compute_signal_stability, STABILITY_THRESHOLD
     if score > 0:
         stability = compute_signal_stability(data, result)
-        stability_factor = min(1.0, max(0.0, stability / STABILITY_THRESHOLD))
-        if stability < 0.70:
-            stability_factor *= 0.50
-        elif stability < 0.80:
-            stability_factor *= 0.75
+        # Continuous linear ramp: factor rises 0.0→1.0 as stability goes 0.50→0.80,
+        # flat 1.0 at/above 0.80. Replaces the old 3-tier step function (×0.50/×0.75/×1.0),
+        # which had cliffs at 0.70 and 0.80 — a 0.01 stability change could jump score 26%,
+        # and within a tier improving stability gave zero factor gain (no gradient to track).
+        # A continuous ramp gives a usable gradient at every stability value.
+        STABILITY_FLOOR = 0.50
+        stability_factor = min(
+            1.0,
+            max(0.0, (stability - STABILITY_FLOOR) / (STABILITY_THRESHOLD - STABILITY_FLOOR)),
+        )
         score = score * stability_factor
     else:
         stability = 1.0

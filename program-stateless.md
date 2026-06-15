@@ -193,9 +193,12 @@ Search regimes (4 non-overlapping periods):
 
 Stability penalty (applied per-regime when score > 0, uses AR(1) correlated noise test):
 
-- stability < 0.70 → factor = (stab/0.80) × 0.50
-- stability 0.70–0.79 → factor = (stab/0.80) × 0.75
-- stability ≥ 0.80 → factor = stab/0.80, capped at 1.0
+- Continuous linear ramp: stability_factor = clamp((stability - 0.50) / (0.80 - 0.50), 0, 1)
+- stability ≤ 0.50 → factor 0.0 (effectively rejected)
+- stability 0.50–0.80 → factor ramps linearly 0.0 → 1.0
+- stability ≥ 0.80 → factor 1.0 (no penalty)
+
+Every stability value has a usable gradient — improving stability always raises the factor, no tier cliffs.
 
 ### Diagnostic-first approach (optional, recommended for new sessions)
 
