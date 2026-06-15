@@ -428,13 +428,7 @@ class Strategy:
             # still varying smoothly in moderate/symmetric regimes. Clamp restored to
             # [0.85,1.25] as a safety rail (floor is now the active controller).
             _down_eff = max(_down_semivar, 0.33 * _mean_square)
-            # Branch step 6 DIAGNOSTIC: make bull multiplier a LITERAL CONSTANT (no
-            # price dependence). Isolates whether the rally stab collapse is from the
-            # multiplier VARYING under noise (signal-noise, salvageable) or from the
-            # static long/short SIZE-BALANCE shift itself (structural). If rally stab
-            # recovers -> noise; if it stays ~0.37 -> the long-bias balance shift is the
-            # structural cause and directional sizing is fundamentally rally-incompatible.
-            _bull_risk_mult = 1.20
+            _bull_risk_mult = max(0.85, min(1.25, (_mean_square / max(2.0 * _down_eff, 1e-12)) ** 0.5))
             # Branch step 3: disable bear-side directional multiplier (isolate cause of
             # rally clean-run failure). Rally is bidirectional and prior sessions confirm
             # its counter-trend SHORT trades are alpha; shrinking them to 0.85x amplifies
