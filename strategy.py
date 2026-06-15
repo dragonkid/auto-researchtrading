@@ -1095,11 +1095,27 @@ class Strategy:
             # exits (target==0), and flips (sign change) are ALWAYS exempt: risk
             # transitions must never be held. Only same-sign resizes pass through the
             # deadband. New control flow + new cross-component data dep at the gate.
+            # Branch step 2: SMOOTH churn-gated resize damping (replaces the hard
+            # deadband threshold from step 1). Step 1 used a hard emit/no-emit test at
+            # abs(target-current_pos) > _min_move; that boundary is itself noise-
+            # sensitive (resizes near it flip under perturbation), which crushed bull
+            # stability and failed to lift rally. Replace with a continuous saturating
+            # damping factor f = r/(r + dz) where r is the relative move size and dz is
+            # the churn-gated half-damp scale. NO hard boundary: tiny moves are damped
+            # toward zero smoothly, large moves pass through (f→1). Symmetric on growth
+            # and shrink (prior insight: one-sided ratchets amplify path divergence).
+            # Churn-gated via the symbol's own 30-bar entry density (len(_eh)): low
+            # churn → dz≈0 → f≈1 → no damping (crash/sideways spared); high churn →
+            # dz up to 0.16 → micro-resizes damped (rally trajectory smoothed). Entries
+            # (current_pos==0), exits (target==0), and flips (sign change) are exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))  # [0,1], same shape as _freq_factor
-            _deadband_frac = 0.16 * _churn_dz  # 0 in low churn, up to 0.16 of current pos in high churn
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
-            _min_move = max(1.0, _deadband_frac * abs(current_pos)) if _is_resize else 1.0
-            if abs(target - current_pos) > _min_move:
+            if _is_resize and _churn_dz > 0.0:
+                _dz = 0.16 * _churn_dz  # half-damp point in fraction-of-position units
+                _r = abs(target - current_pos) / max(abs(current_pos), 1e-9)
+                _damp = _r / (_r + _dz)  # smooth saturating, in [0,1)
+                target = current_pos + (target - current_pos) * _damp
+            if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
