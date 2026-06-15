@@ -59,10 +59,6 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
-# Conviction-margin entry-size ramp width (stateless, at admission boundary).
-# tanh(margin / scale): margin >= 2*scale -> ~full size; near-boundary entries scaled down.
-ENTRY_MARGIN_RAMP_SCALE = 0.25
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -584,34 +580,10 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                # Architectural: stateless conviction-margin entry-size ramp at the
-                # admission boundary. The entry gate (_bull_strong >= _bull_strong_min)
-                # is a binary SIZE cliff: just below the threshold size is 0 (no entry),
-                # just above it the FULL first-bar size commits. Under AR(1) noise the
-                # strong-sum jitters across the threshold, so the full entry lands on
-                # DIFFERENT bars in clean vs perturbed runs -> a large single-bar
-                # tracking error (the dominant rally-instability mechanism). This is the
-                # same boundary-noise problem the VOTERS already solve with smooth tanh
-                # contributions instead of hard counts; extend that principle to the
-                # entry-SIZE decision. Ramp first-bar size by tanh(margin / RAMP_SCALE):
-                # at the boundary (margin~0) size ramps from ~0, reaching ~full for
-                # decisive entries (margin >> RAMP_SCALE). Voter-saturated regimes
-                # (bull/crash/sideways) sit far above threshold (large margin) -> ramp
-                # ~1.0, size unchanged. Only marginal, noise-flippable entries (rally
-                # pullback re-entries near the boundary) get scaled down -> a one-bar
-                # timing jitter now moves a SMALL size, not the full position. Purely a
-                # function of current-bar margin (STATELESS, not path/history-dependent),
-                # so it avoids the confirmed path-dependent position-trajectory wall. A
-                # RAMP, not a block: marginal entries still participate at proportional
-                # size, preserving proportional alpha (unlike reversal-block which zeroed
-                # them). New data dependency: first-bar entry size depends continuously
-                # on conviction margin at the admission boundary.
-                _bull_margin_ramp = np.tanh(max(0.0, _bull_margin) / ENTRY_MARGIN_RAMP_SCALE)
-                _bear_margin_ramp = np.tanh(max(0.0, _bear_margin) / ENTRY_MARGIN_RAMP_SCALE)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_margin_ramp
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_margin_ramp
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
