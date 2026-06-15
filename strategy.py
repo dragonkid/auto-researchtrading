@@ -684,9 +684,23 @@ class Strategy:
                 # Multi-window slope MEAN (not median): mean averages out window-specific noise
                 # better than median in low-vol where all 3 slopes are small and noise-dominated.
                 # Median can flip on a single window; mean spreads the contribution.
+                # Architectural: trend-adaptive slope windows for exit-slope detection.
+                # Old: fixed (12, 16, 22) windows. In rally pullbacks, short windows
+                # show against-slope while long-window trend remains intact — generates
+                # noise-driven slope-pressure on trend-aligned positions during
+                # pullbacks (rally stab 0.49). New: extend slope windows in strong
+                # trends, contract in chop. Continuous via tanh(abs(ret_long)/0.04).
+                # Chop: ~12/16/22 (short, fast detection); strong trend: ~22/30/40
+                # (long, smooths pullback noise). New cross-timescale data dep:
+                # slope window selection depends on long-window trend strength.
+                # Multi-variable: 3 windows scale together.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _slope_extend = max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0, ~1]
+                _w_short = int(round(12 + 10 * _slope_extend))  # 12..22
+                _w_med = int(round(16 + 14 * _slope_extend))  # 16..30
+                _w_long_e = int(round(22 + 18 * _slope_extend))  # 22..40
                 _slopes = []
-                for _w in (12, 16, 22):
+                for _w in (_w_short, _w_med, _w_long_e):
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
