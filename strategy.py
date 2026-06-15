@@ -87,6 +87,12 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Churn-gated cross-side dominance admission gate.
+# Max separation requirement (normalized (chosen-opp)/(chosen+opp)) demanded
+# when a symbol is churning. Blocks near-tied (voters-split) cold entries — the
+# noise-flippable population that flips position SIGN under perturbation — while
+# admitting decisive (one-sided) entries. Scales to ~0 in low-churn symbols.
+ENTRY_SEP_MAX = 0.20
 
 
 def ema(values, span):
@@ -580,9 +586,31 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Architectural: churn-gated cross-side dominance admission gate.
+                # Root-cause attack on the diagnosed rally instability — rally is
+                # ~99% in-market and noise flips the whole position SIGN via near-tied
+                # reversal re-entries. Prior reversal-gating used margin-above-FLOOR of
+                # the new side; but a near-tie can have HIGH margin (both sides far above
+                # floor) yet ~0 SEPARATION between sides. Separation = (chosen - opp) /
+                # (chosen + opp) ∈ [0,1] measures voter DOMINANCE: ~0 when voters split
+                # (noise-flippable), ~1 when decisively one-sided (real directional
+                # alpha). Require separation >= ENTRY_SEP_MAX, but SCALE the requirement
+                # by the symbol's OWN 30-bar entry density (len(_eh), same churn signal
+                # _freq_factor / the execution deadband read): high-churn symbols (rally
+                # churns ~2x) must clear the dominance bar; low-churn symbols (crash,
+                # sideways) see req ~0 and are SPARED by construction. Self-measured
+                # behavioral feedback, NOT a regime classifier. Subtractive (only blocks
+                # entries — never adds size/boundary terms, per confirmed rally lever).
+                # Fast-saturating churn gate mirrors the proven execution-deadband gate.
+                _sep_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 at len<=1, ~1 at len>=3
+                _sep_req = ENTRY_SEP_MAX * _sep_churn
+                _bull_sep = (_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6)
+                _bear_sep = (_bear_strong - _bull_strong) / max(_bull_strong + _bear_strong, 1e-6)
+                _bull_dom_ok = _bull_sep >= _sep_req
+                _bear_dom_ok = _bear_sep >= _sep_req
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_dom_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_dom_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
