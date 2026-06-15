@@ -111,16 +111,6 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 class Strategy:
     def __init__(self):
         self.entry_prices, self.exit_bar, self.peak_pnl, self.entry_bar = {}, {}, {}, {}
-        # Architectural: per-symbol entry-frozen scale-in destination size. The
-        # scale-in target full_target = +/- size recomputes size = equity*BASE*
-        # combined_mult EVERY bar; combined_mult depends on per-bar vol_ratio/
-        # calm_boost/strength_scale, so the scale-in DESTINATION wobbles bar-to-bar
-        # under AR(1) noise — a per-bar noise channel in the scale-in subsystem (the
-        # one lever prior sessions found able to move stability). Freeze the
-        # destination at the entry event so the scale-in trajectory is anchored to
-        # the entry-bar mult (entry-anchored like entry_prices, NOT path-accumulating
-        # like a per-bar rate cap -> no feedback loop, avoids the path-dependence wall).
-        self._entry_size = {}
         # Maximum adverse excursion (MAE): per-symbol low-water mark of pos_pnl since entry.
         # Used by adverse-recovery exit pressure (architectural): when current pos_pnl
         # has recovered from MAE but still in modest loss, position is "barely surviving"
@@ -641,11 +631,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Use entry-frozen destination size (anchored to the entry-bar
-                    # combined_mult) instead of the per-bar-recomputed `size`. Removes
-                    # the bar-to-bar destination wobble from the scale-in trajectory.
-                    _dest_size = self._entry_size.get(symbol, size)
-                    full_target = _dest_size if current_pos > 0 else -_dest_size
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1133,14 +1119,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_size):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    # Freeze the scale-in destination size at the entry-bar mult.
-                    self._entry_size[symbol] = size
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
