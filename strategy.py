@@ -693,30 +693,6 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Architectural: deep-downtrend short-hold slope-against attenuator.
-                # Prior sessions established crash raw IS improvable by letting winning
-                # shorts ride the bear longer, and that the binding crash-short exit is
-                # the SLOPE path (not the time backstop — exp5 of session 421 showed
-                # time-path crash gain = ZERO). A winning short in a confirmed deep
-                # downtrend faces frequent transient UPWARD slope (dead-cat bounces);
-                # _sl_slope_pressure fires on these and exits prematurely. Attenuate it
-                # proportional to downtrend conviction so crash shorts hold through
-                # bounces. STRUCTURAL SEPARATION (not a regime classifier): (1) SHORT-
-                # only — spares all bull/sideways LONG holds; (2) gated on strongly
-                # NEGATIVE ret_long (the crash correlate) via tanh(-ret_long/0.05) —
-                # rally's ret_long is mostly positive so it is spared on the long side,
-                # and rally's brief down-legs are further gated by (3) INVERSE-CHURN
-                # (1-_churn_dz): rally's down-legs are high-churn (gate->0) while crash
-                # is low-churn (gate->1). All three continuous; effect emerges from the
-                # backtest, no period is named. Also gated IN-PROFIT (pos_pnl>0) so it
-                # only protects winners, never delays cutting a losing short. Max 45pct
-                # attenuation. New cross-component dep at the exit slope-pressure path.
-                if current_pos < 0:
-                    _dd_short_gate = max(0.0, np.tanh(-ret_long / 0.05))  # [0,~1] deep downtrend
-                    _profit_short_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # winners only
-                    _inv_churn_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # spares high-churn rally
-                    _crash_short_atten = 1.0 - 0.45 * _dd_short_gate * _profit_short_gate * _inv_churn_gate
-                    _sl_slope_pressure = _sl_slope_pressure * _crash_short_atten
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
