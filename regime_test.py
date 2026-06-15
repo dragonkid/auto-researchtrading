@@ -206,13 +206,19 @@ if __name__ == "__main__":
         var_s = sum((s - mean_s) ** 2 for s in scores) / len(scores) if scores else 0
         std_s = math.sqrt(var_s)
 
-        # Compute raw composite (before stability penalty) for keep threshold check
+        # Compute raw composite (before stability AND flip-streak penalties) for
+        # keep threshold check. Must divide out BOTH gates that worker applied to
+        # r["score"] (stability_factor at line ~85 and flip_streak_gate at ~95),
+        # matching the per-regime raw_score reported below (which divides by
+        # sf*fsg). Dividing by sf alone left a residual flip_streak_gate factor,
+        # systematically deflating raw_composite when any regime had flip drag.
         raw_scores = []
         for r in results:
             if "error" not in r:
-                stab = r.get("stability", 1.0)
                 sf = r.get("stability_factor", 1.0)
-                raw_s = r["score"] / sf if sf > 0 else r["score"]
+                fsg = r.get("flip_streak_gate", 1.0)
+                denom = sf * fsg
+                raw_s = r["score"] / denom if denom > 0 else r["score"]
                 raw_scores.append(raw_s)
         if raw_scores:
             raw_mean = sum(raw_scores) / len(raw_scores)
