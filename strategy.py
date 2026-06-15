@@ -417,7 +417,7 @@ class Strategy:
             _down_semivar = np.mean(np.minimum(_semi_rets, 0.0) ** 2)
             _up_semivar = np.mean(np.maximum(_semi_rets, 0.0) ** 2)
             _mean_square = _down_semivar + _up_semivar
-            _bull_risk_mult = max(0.96, min(1.08, (_mean_square / max(2.0 * _down_semivar, 1e-12)) ** 0.5))
+            _bull_risk_mult = max(0.85, min(1.25, (_mean_square / max(2.0 * _down_semivar, 1e-12)) ** 0.5))
             # Branch step 3: disable bear-side directional multiplier (isolate cause of
             # rally clean-run failure). Rally is bidirectional and prior sessions confirm
             # its counter-trend SHORT trades are alpha; shrinking them to 0.85x amplifies
