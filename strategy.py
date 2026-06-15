@@ -911,14 +911,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Architectural: vol-adaptive exit threshold. In low-vol (rally, sideways),
-                # exit pressure terms have lower signal-to-noise ratio — small price
-                # perturbations cause proportionally larger noise in pressure terms.
-                # Raise the threshold in low-vol to require more evidence before exiting.
-                # Continuous via tanh(1.0 - vol_ratio) / 0.5: max +0.25 at vol_ratio=0.5,
-                # zero at vol_ratio=1.0. vol_ratio < 0.5 is rare (annual minimum), capped.
-                # New cross-component data dependency: exit_thresh depends on vol_ratio.
-                _exit_thresh += 0.25 * max(0.0, np.tanh((1.0 - vol_ratio) / 0.5))
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
