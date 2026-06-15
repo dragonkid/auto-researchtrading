@@ -138,6 +138,14 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol position-fraction ratchet — high-water mark
+        # of |target|/|full_target| during position's life. Once a derisk
+        # shrinks position below the ratchet, scale-in cannot regrow above
+        # the post-derisk floor. New cross-bar data dep at scale-in path.
+        # Mechanism: prevents derisk+regrow oscillation on rally noise.
+        # Reset on full exit. Distinct from derisk hysteresis (suppresses
+        # derisks) and from cooldown (post-exit holdoff).
+        self._pos_ratchet = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -634,6 +642,14 @@ class Strategy:
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
+                    # Architectural: position-fraction ratchet cap on scale-in.
+                    # Once derisk has shrunk position below the ratchet, scale-in
+                    # cannot grow it above the post-derisk peak fraction. Filters
+                    # derisk+regrow noise oscillation in rally low-vol. Continuous
+                    # cap, not a binary gate; uses |target|/|full_target| ratio.
+                    _ratchet = self._pos_ratchet.get(symbol, 1.0)
+                    _cap_frac = min(scale_frac, _ratchet)
+                    target = full_target * _cap_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
                         target = current_pos
@@ -1041,6 +1057,11 @@ class Strategy:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
+                        # Update ratchet: post-derisk position fraction caps future scale-in.
+                        # Use the de_risk multiplier as the new ratchet (only-decreasing per
+                        # life of position via min). Saves |target|/|full_target| computation.
+                        _prev_ratchet = self._pos_ratchet.get(symbol, 1.0)
+                        self._pos_ratchet[symbol] = min(_prev_ratchet, _de_risk)
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
@@ -1084,7 +1105,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._pos_ratchet):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
