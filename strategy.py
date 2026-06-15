@@ -1099,29 +1099,21 @@ class Strategy:
             # transitions are exempt and keep the 1-unit gate: opening from flat,
             # closing to flat (target==0), and flips (sign change) — these must
             # always execute. General mechanism; regime effects fall out of backtest.
-            # Branch step 3: SHRINK-ONLY, |pos_pnl|-gated deadband. Step 2 isolated the
-            # two components: a GROWTH deadband collapses rally stability (pure harm,
-            # bull/crash/sideways flat), while the SHRINK deadband (step 1) is what
-            # lifted rally stability (+0.086) but collapsed bull RAW by delaying
-            # protective giveback-locking. The discriminator between a noise-shrink to
-            # hold and a protective-shrink to execute is |pos_pnl|: bull peak-giveback
-            # and stop-loss shrinks occur at LARGE |pos_pnl| (must lock now); rally chop
-            # jitter occurs near breakeven (small |pos_pnl|, holding suppresses path
-            # divergence). Mechanism: exempt growth entirely (1-unit gate); for same-side
-            # SHRINKS apply a proportional deadband scaled by a breakeven gate that
-            # vanishes as |pos_pnl| grows. General profit-magnitude gate, not regime
-            # detection. pos_pnl is in scope here (shrinks require current_pos != 0).
+            # Branch step 2: GROWTH-ONLY deadband. Step 1 held protective sub-threshold
+            # SHRINKS (de-risk/TP giveback-locking), delaying risk reduction and
+            # collapsing bull raw. Fix: exempt all exposure-REDUCING moves (shrinks keep
+            # the 1-unit gate — protection must execute promptly); apply the proportional
+            # deadband ONLY to same-side GROWTH (scale-in jitter), which is discretionary
+            # and harmless to hold sub-threshold.
             _is_flat_now = abs(current_pos) <= 1.0
             _is_close = (target == 0)
             _is_flip = (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0)
-            _is_shrink = (not _is_flip) and (not _is_close) and (not _is_flat_now) and abs(target) < abs(current_pos)
-            if _is_shrink:
-                # Breakeven gate: ~1 near breakeven (hold chop jitter), ->0 at large
-                # |pos_pnl| (execute protective giveback/stop promptly).
-                _shrink_gate = 1.0 - max(0.0, np.tanh(abs(pos_pnl) / (1.5 * abs(STOP_LOSS_PCT))))
-                _admit = abs(target - current_pos) > max(1.0, ADJUST_DEADBAND_FRAC * _shrink_gate * abs(current_pos))
-            else:
+            _is_growth = (not _is_flip) and abs(target) > abs(current_pos)
+            if _is_flat_now or _is_close or _is_flip or (not _is_growth):
                 _admit = abs(target - current_pos) > 1.0
+            else:
+                # Same-side GROWTH: require a minimum proportional move.
+                _admit = abs(target - current_pos) > ADJUST_DEADBAND_FRAC * abs(current_pos)
             if _admit:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
