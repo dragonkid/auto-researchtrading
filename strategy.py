@@ -613,7 +613,22 @@ class Strategy:
                 # abs(ret_long) via tanh; full activation in chop, ~0 in strong trends.
                 _conv_trend_mute = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,1], 0 in strong trend
                 _conv_accel = max(0.0, np.tanh(_live_side_margin / 0.30)) * _conv_trend_mute
-                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel)  # [1.5, 4]
+                # Architectural: trend-aligned profit-gated scale-in ACCELERATION —
+                # the missing mirror of the counter-trend adverse-FREEZE below. When
+                # a scaling-in position is BOTH trend-aligned (pos_dir matches ret_long)
+                # AND already in profit (the trend is validating the entry), reach full
+                # size faster to capture more of the move. Distinct from _conv_accel,
+                # which is conviction-margin based and deliberately MUTED in strong
+                # trends; this one is ACTIVE in trends but requires realized profit as
+                # the safety gate (only accelerate positions the market is confirming,
+                # never front-load a fresh unproven first bar). New cross-component data
+                # dependency: scale-in pace depends jointly on (ret_long, pos_dir, pos_pnl).
+                # Mechanism: a trend-aligned winning entry (e.g. a clean uptrend leg) hits
+                # full exposure sooner; counter-trend or losing scale-ins are untouched.
+                _ta_si_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _profit_si = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _ta_accel = _ta_si_align * _profit_si  # both required, [0, ~1]
+                _entry_full_bars_dyn = max(1.5, 2.0 + 2.0 * (1.0 - rsi_trend_str) - 1.0 * _conv_accel - 0.8 * _ta_accel)  # [1.5, 4]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
