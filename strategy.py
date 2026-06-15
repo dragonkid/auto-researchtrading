@@ -965,51 +965,32 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
-                    target = 0.0
-                elif _exit_pressure >= _exit_thresh and target != 0:
-                    target = 0.0
-                elif target != 0 and bars_held >= 2:
-                    # Architectural: PnL-conditioned partial-exit floor (replaces
-                    # vol-conditioning). New cross-subsystem data dep at exit
-                    # graduation: floor depends on whether position is currently
-                    # winning vs losing. Profit (pos_pnl > 0): wider ramp (floor=0.55,
-                    # gradual de-risk to lock partial gains while letting upside run
-                    # if pressure dissipates). Loss (pos_pnl < 0): narrower ramp
-                    # (floor=0.85, near-binary fast exit — losers should not linger
-                    # at half-size while soft pressures continue to mount). Smooth
-                    # transition via tanh of pos_pnl / abs(STOP_LOSS_PCT) (same
-                    # _pnl_scale used in pressure weights). Continuous, no boundary.
-                    # Mechanism rationale: existing fast-exit semantics in losers
-                    # are achieved by full _exit_pressure crossing _exit_thresh
-                    # (binary path); the de-risk path gradient is currently MOST
-                    # active in mid-pressure, profit-side mid-life situations where
-                    # graduation makes most sense. Tightening loser graduation
-                    # routes more loser exits through the _exit_thresh binary path.
-                    _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
-                    # Architectural: one-sided trend-aligned de-risk floor relaxation.
-                    # When position is trend-aligned (pos_dir matches ret_long sign) AND
-                    # profitable, lower the de-risk floor to widen the graduated-exit
-                    # ramp — trend-aligned winners de-risk more gradually through pullback
-                    # noise. Counter-trend and losing positions keep original floor.
-                    # Continuous tanh product, no boundary. Pattern: asymmetric exit-side
-                    # relaxation, following afa6281 admission-side bull-only pattern.
-                    # Only applies in profit (_pnl_scale > 0), trend-aligned via
-                    # tanh(ret_long * pos_dir / 0.04), max relaxation 0.10.
+                # Architectural: unified smooth exit ramp replaces separate binary-threshold
+                # full-exit and graduated de-risk paths. Old: two hard boundaries —
+                # _exit_pressure >= _exit_thresh (full exit) and _exit_pressure >=
+                # _de_floor * _exit_thresh (partial de-risk). Both create noise
+                # discontinuities in rally (stab 0.355) where pressure hovers near
+                # thresholds. New: single smoothstep from hold_floor to exit_ceil,
+                # mapping exit_mult ∈ [1.0, 0.0] continuously. PnL-conditioned
+                # hold_floor: profit=0.55 (wide ramp, gradual de-risk), loss=0.85
+                # (narrow ramp, near-binary). SL path kept as hard override.
+                # New control flow: single exit decision from smoothstep, no binary
+                # branches. Eliminates -40 LOC, replaces with unified function.
+                if target != 0:
+                    _exit_floor = _exit_thresh * (0.55 + 0.30 * max(0.0, -_pnl_scale))
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
-                    _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
-                    # of an entry get binary-exit-only behavior (exit on full pressure
-                    # or no exit). Partial exits during scale-in conflict with the
-                    # scale-in pace itself — de-risk shrinks position while scale-in
-                    # tries to grow it. Defer de-risk consideration until bars_held>=2
-                    # so the position has cleared the initial commit-noise window.
-                    # New control flow: bars_held condition gates the de-risk branch.
-                    if _exit_pressure >= _de_floor * _exit_thresh:
-                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
-                        _de_risk = max(0.0, min(1.0, _de_risk))
-                        target = target * _de_risk
+                    _exit_floor -= _exit_thresh * 0.10 * _ta_de_align * _ta_de_profit
+                    _exit_ceil = _exit_thresh
+                    if _sl_pressure >= 0.95:
+                        _exit_ceil = 1.0  # SL path: force standard ceil
+                    if _exit_pressure >= _exit_ceil:
+                        target = 0.0
+                    elif bars_held >= 2 and _exit_pressure >= _exit_floor:
+                        _t = (_exit_pressure - _exit_floor) / max(_exit_ceil - _exit_floor, 1e-6)
+                        _t = max(0.0, min(1.0, _t))
+                        _exit_mult = 1.0 - _t * _t * (3.0 - 2.0 * _t)  # smoothstep
+                        target = target * _exit_mult
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
