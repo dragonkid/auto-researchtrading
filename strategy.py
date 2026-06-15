@@ -888,12 +888,43 @@ class Strategy:
                 _ar_pressure = 0.0
                 _curr_mae_e = self._mae.get(symbol, 0.0)
                 _mae_floor = -0.5 * abs(STOP_LOSS_PCT)
+                # Architectural change: peak-relative MAE-recovery pressure.
+                # Old: pure entry-anchored MAE — fires whenever pos_pnl recovers from
+                # entry-since lowest point to small loss. Issue: in trending winners,
+                # peak_pnl may be substantially positive while MAE was tiny entry-bar
+                # noise (e.g., -0.5% then +5%); MAE-recovery never activates. But
+                # winning trades that GIVE BACK from large peak to small loss are
+                # exactly where adverse-recovery noise risk lives — current MAE doesn't
+                # detect this because pos_pnl never went negative.
+                # New: when peak_pnl is meaningful (>= 0.6 * _pp_min), supplement
+                # MAE-anchored recovery with PEAK-anchored giveback-to-loss recovery.
+                # Computes a second pseudo-recovery: peak_giveback_recovery = how much
+                # of the peak-to-current decline has been "recovered" (where current
+                # pos_pnl rises off a recent local low after dropping from peak).
+                # Activates only on: peak_pnl substantial AND pos_pnl currently in modest
+                # loss territory AND prior bar pos_pnl < current (mild upward bounce
+                # off a giveback low). Fires partial pressure to lock the bounce before
+                # second adverse leg. Distinct from _pp_pressure (giveback ratio from
+                # peak independent of bounce direction) and from _ar_pressure (entry-
+                # anchored recovery). New per-bar control flow on (peak_pnl, prev_pnl,
+                # pos_pnl, MAE) joint state — orthogonal recovery dimension.
                 if _curr_mae_e < _mae_floor and pos_pnl < 0:
                     # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
                     # ramp smoothly to 0.40 cap at full breakeven recovery.
                     _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                # New: peak-anchored giveback-to-loss recovery pressure (additive max).
+                # Fires when peak_pnl was substantial AND now in loss AND bouncing.
+                _curr_peak_e = self.peak_pnl.get(symbol, 0.0)
+                if _curr_peak_e >= 0.6 * _pp_min and pos_pnl < -0.3 * abs(STOP_LOSS_PCT) and pos_pnl > _prev_pnl:
+                    _peak_drop = _curr_peak_e - pos_pnl  # always positive here
+                    # Bounce strength: how much pos_pnl rose off prev (smooth tanh)
+                    _bounce = max(0.0, np.tanh((pos_pnl - _prev_pnl) / (0.2 * abs(STOP_LOSS_PCT))))
+                    # Drop-magnitude factor: only fires when peak->loss drop is meaningful
+                    _drop_mag = max(0.0, np.tanh(_peak_drop / abs(STOP_LOSS_PCT)))
+                    _peak_ar = 0.30 * _bounce * _drop_mag
+                    _ar_pressure = max(_ar_pressure, _peak_ar)
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
