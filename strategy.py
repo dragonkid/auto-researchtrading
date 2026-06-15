@@ -107,13 +107,6 @@ ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
-# Proportional trade-admission deadband (execution layer). A same-side position
-# RESIZE must move exposure by at least this fraction of the current position to
-# execute; entries-from-flat, exits-to-flat, and flips are exempt (1-unit gate).
-# Filters sub-threshold intra-trade jitter that would otherwise micro-trade every
-# bar and diverge equity paths under noise.
-ADJUST_DEADBAND_FRAC = 0.12
-
 
 class Strategy:
     def __init__(self):
@@ -1085,29 +1078,7 @@ class Strategy:
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
-            # Architectural: proportional trade-admission deadband at the execution
-            # boundary (subsystem change to the order-emission layer). The original
-            # gate (abs(target-current_pos) > 1.0) admits ANY change above ~1 unit —
-            # negligible against positions of hundreds-to-thousands of units — so
-            # every bar's small target jitter from the de-risk ramp, TP-harvest, and
-            # scale-in steps executes as a micro-trade. Under price noise those
-            # micro-steps shift bar-to-bar, producing divergent equity paths (the
-            # post-pressure -> position-trajectory noise channel prior sessions
-            # localized but never attacked at execution). New mechanism: a same-side
-            # RESIZE must move exposure by at least ADJUST_DEADBAND_FRAC of the
-            # current position to admit; sub-threshold resizes are held. Structural
-            # transitions are exempt and keep the 1-unit gate: opening from flat,
-            # closing to flat (target==0), and flips (sign change) — these must
-            # always execute. General mechanism; regime effects fall out of backtest.
-            _is_flat_now = abs(current_pos) <= 1.0
-            _is_close = (target == 0)
-            _is_flip = (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0)
-            if _is_flat_now or _is_close or _is_flip:
-                _admit = abs(target - current_pos) > 1.0
-            else:
-                # Same-side resize: require a minimum proportional move.
-                _admit = abs(target - current_pos) > ADJUST_DEADBAND_FRAC * abs(current_pos)
-            if _admit:
+            if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
