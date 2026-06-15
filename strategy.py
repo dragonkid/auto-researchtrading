@@ -93,17 +93,7 @@ COOLDOWN_TREND_DECAY = 0.06
 # Same-direction re-entries are never blocked. Suppresses the noise-flippable
 # long<->short churn that the diagnostic identified as the source of rally instability.
 REVERSAL_COOLDOWN_BARS = 6
-MACRO_WINDOW = 100  # slow trend window (bars) for the noise-robust macro return
-# Macro-strength gate for the reversal block: only block a reversal that opposes a
-# STRONG slow trend (|100-bar return| well above MACRO_BLOCK_FLOOR). Large macro
-# returns are noise-robust (sign does not flip under the AR(1) test), and they are
-# the structural signature that separates a sustained-trend regime (bull: persistent
-# strong macro -> counter-trend reversals are noise, block them) from a choppy
-# regime (rally: macro oscillates near zero -> block rarely fires -> profitable
-# reversals preserved). NOT a regime classifier: a single smooth function of the
-# macro return; the regime effects fall out of each regime's macro-trend strength.
-MACRO_BLOCK_FLOOR = 0.03
-MACRO_BLOCK_SCALE = 0.05
+REVERSAL_CONV_RELEASE = 0.20  # new-side margin scale at which the reversal block releases
 
 
 def ema(values, span):
@@ -619,28 +609,20 @@ class Strategy:
                 # crash/sideways — sparing them by construction (self-measured behavioral
                 # feedback, NOT a regime classifier). Crash protective flips (rare, low churn)
                 # pass through, avoiding the prior flip-suppression failures.
-                # Branch step 6: gate the reversal block by MACRO-TREND STRENGTH on the
-                # against-trend side. Step 1 (block-all) gave bull +0.158 but rally raw->0;
-                # the conviction/loss gates (steps 2-4) and the shortened cooldown (step 5)
-                # all coupled bull-gain to rally-loss through the shared churn gate. What
-                # STRUCTURALLY separates them is macro-trend strength: bull_2021 has a
-                # persistent strong 100-bar uptrend (counter-trend shorts are noise — block
-                # them, the +0.158 source), while rally_2024 is choppier (macro oscillates
-                # near zero — block rarely fires, profitable reversals preserved). Block a
-                # reversal only when it opposes a STRONG macro trend: a long macro return is
-                # noise-robust (sign stable under AR(1)), used here only where its MAGNITUDE
-                # is large (>MACRO_BLOCK_FLOOR), not near zero (exp4's failure mode). Combine
-                # with churn so the block still only acts in churny stretches.
-                _macro_n = min(MACRO_WINDOW, len(closes) - 1)
-                _macro_ret = (closes[-1] - closes[-_macro_n - 1]) / closes[-_macro_n - 1]
-                _macro_up = max(0.0, np.tanh((_macro_ret - MACRO_BLOCK_FLOOR) / MACRO_BLOCK_SCALE))    # strong up
-                _macro_dn = max(0.0, np.tanh((-_macro_ret - MACRO_BLOCK_FLOOR) / MACRO_BLOCK_SCALE))   # strong down
+                # Branch step 7: return to the step-2 conviction-release mechanism (the only
+                # variant that preserved BOTH bull (0.777) and rally raw (0.408 > baseline
+                # 0.393); steps 3-6 each destroyed one or the other). Block only LOW-
+                # conviction near-tied reversals (the noise-flippable knife-edges), releasing
+                # the block as the NEW-side margin grows. Tighten the release to 0.20 (from
+                # step-2's 0.30) so a few more of the lowest-conviction reversals are blocked,
+                # aiming to lift rally stability above step-2's 0.487 while keeping the raw.
                 _rev_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 high churn
+                _rev_cd = REVERSAL_COOLDOWN_BARS * _rev_churn
                 _last_sign = self._last_pos_sign.get(symbol, 0)
-                # Bull reversal (was short -> now long) opposes a strong DOWN macro; bear
-                # reversal (was long -> now short) opposes a strong UP macro.
-                _rev_block_bull = _last_sign < 0 and _bars_since_exit < REVERSAL_COOLDOWN_BARS * _rev_churn * _macro_dn
-                _rev_block_bear = _last_sign > 0 and _bars_since_exit < REVERSAL_COOLDOWN_BARS * _rev_churn * _macro_up
+                _bull_lowconv = 1.0 - max(0.0, min(1.0, np.tanh(max(0.0, _bull_margin) / REVERSAL_CONV_RELEASE)))
+                _bear_lowconv = 1.0 - max(0.0, min(1.0, np.tanh(max(0.0, _bear_margin) / REVERSAL_CONV_RELEASE)))
+                _rev_block_bull = _last_sign < 0 and _bars_since_exit < _rev_cd * _bull_lowconv
+                _rev_block_bear = _last_sign > 0 and _bars_since_exit < _rev_cd * _bear_lowconv
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _rev_block_bull:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _rev_block_bear:
