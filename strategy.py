@@ -118,15 +118,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Per-symbol last-exit position sign (+1 long, -1 short) for reversal-only
-        # re-entry refractory (branch step 3).
-        self._last_exit_sign = {}
-        # Per-symbol rolling history of REALIZED entry signs (branch step 4).
-        # Used to compute directional persistence: a regime whose recent entries
-        # were all one-directional (bull uptrend = all long) vs bidirectional
-        # (rally = mixed long/short). Separates anomalous reversal noise (bull)
-        # from genuine bidirectional alpha (rally) where churn cannot.
-        self._entry_sign_history = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -372,90 +363,6 @@ class Strategy:
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
-            # Architectural: deterministic churn-gated re-entry refractory (the
-            # snap-to-hold deadband's TIME-AXIS sibling). The diagnostic (c265424d)
-            # established rally instability = FAST near-tied re-entries that persist
-            # and diverge the equity curve under noise. The execution-layer deadband
-            # (ef027049) suppresses micro-RESIZES (size axis) but a fresh entry the
-            # bar immediately after an exit is unaffected (time axis). Block a fresh
-            # entry for COOLDOWN_BARS bars after an exit, but ONLY when the symbol is
-            # in high local churn (len(_eh) >= 3 entries in the pruned 30-bar window).
-            # FULLY DETERMINISTIC: gated on an INTEGER entry count (noise-immune — the
-            # count cannot wobble under the AR(1) price perturbation), so it adds NO
-            # price-derived noise channel (the failure mode of every walled rally
-            # attempt). SYMMETRIC: applies equally to same-direction and opposite-
-            # direction re-entries, so it does NOT unbalance the directional book the
-            # way the walled directional reversal-block did (f978677) — it only forces
-            # a one-bar settle to let a near-tied decision resolve before committing.
-            # Spares bull/crash/sideways BY CONSTRUCTION (they rarely reach 3 entries
-            # per symbol in 30 bars — their churn gate stays off). Entry-only: the
-            # opp_gate exit path is NOT gated (never trap an open position).
-            # Branch step 2: OUTCOME-GATE on prior-exit PnL. The symmetric block
-            # (step 1) drove rally stability to 1.000 but cut raw to negative — it
-            # removed profitable fast re-entries too. The churn-LOSS spiral (an exit
-            # at a loss immediately followed by a near-tied re-entry that loses again)
-            # is the noise-flippable pattern; a fast re-entry after a WINNING exit is
-            # trend-continuation alpha (the up-leg resuming after a shake-out). Only
-            # impose the settle bar after a LOSING prior exit. _last_exit_pnl already
-            # tracked; threshold is deterministic (sign of realized PnL, noise-immune
-            # — the realized outcome is fixed history, not a perturbable live signal).
-            _prior_loss = self._last_exit_pnl.get(symbol, 0.0) < 0.0
-            # Branch step 3: REVERSAL-ONLY refractory. Step 2 was inert (every blocked
-            # re-entry was already post-loss), proving rally's post-loss fast re-entries
-            # are not separable by outcome alone. The diagnostic (c265424d) specifically
-            # said noise flips the WHOLE regime DIRECTION (long<->short) via fast near-
-            # tied REVERSAL re-entries that then persist. So separate by DIRECTION:
-            # block only a re-entry OPPOSITE to the just-exited side (a flip — the
-            # noise-flippable near-tied decision), while a SAME-direction re-entry
-            # (buy-the-dip / re-short-the-bounce = trend continuation alpha) passes
-            # freely. _last_exit_sign is recorded at exit (deterministic realized
-            # history, noise-immune). Per-direction booleans applied at each entry
-            # branch below.
-            # Branch step 4: gate reversal-refractory on REALIZED DIRECTIONAL
-            # PERSISTENCE, not churn. Step 3 (churn-gated) confirmed bull reversals
-            # ARE noise (blocking them held bull at 0.724 with FEWER trades) and
-            # rally reversals ARE alpha — but churn fires in BOTH (rally is high-churn,
-            # bull moderate). The session-c265424d summary named the separator:
-            # "per-symbol realized DIRECTIONAL PERSISTENCE, not churn/macro which
-            # both fire in rally." Persistence = |mean(recent entry signs)|: ~1.0
-            # when recent entries were all one direction (bull 2021 sustained uptrend
-            # = nearly all longs → a fresh SHORT reversal is anomalous noise), ~0.0
-            # when mixed (rally 2024 bidirectional = longs and shorts interleaved →
-            # reversals are the regime's normal alpha). DETERMINISTIC: built from
-            # realized entry signs (fixed history, noise-immune — the AR(1) price
-            # perturbation cannot change which trades already happened). Block a
-            # reversal re-entry only when persistence is HIGH (one-directional book);
-            # spare it when persistence is LOW (bidirectional book = rally) BY
-            # CONSTRUCTION. Drops the churn gate (len(_eh)>=3) entirely — persistence
-            # is the cleaner separator. Smooth ramp via the continuous persistence
-            # magnitude; refractory engages above 0.6 persistence (≥80pct one-side).
-            # Branch step 5: replace the hard boolean refractory with a CONTINUOUS,
-            # THRESHOLD-FREE size attenuation. Step 4 showed the boolean boundary
-            # (persistence>=0.6 AND prior_loss AND bars<=1) collapsed rally stability
-            # even though it blocked ZERO rally entries on the clean path — the
-            # boundary ITSELF is the noise source (perturbed paths cross it). Test
-            # the failure hypothesis directly: remove ALL hard thresholds. Reversal
-            # re-entry SIZE is scaled by a smooth product of three CONTINUOUS,
-            # DETERMINISTIC factors — directional persistence (realized signs),
-            # recency (tanh decay over bars-since-exit), and prior-loss magnitude.
-            # No boolean gate, no threshold crossing. If rally stab now survives,
-            # the boundary was the culprit; if it still collapses, reversal-touching
-            # at any granularity is walled (final confirmation).
-            _sh = self._entry_sign_history.get(symbol, [])
-            if len(_sh) >= 4:
-                _dir_persist = abs(sum(_sh) / len(_sh))  # [0,1]; 1=one-directional, 0=balanced
-            else:
-                _dir_persist = 0.0
-            # Continuous recency: 1.0 right after exit, decays smoothly to ~0 over ~3 bars.
-            _recency = max(0.0, 1.0 - np.tanh(_bars_since_exit / 2.0))
-            # Continuous prior-loss magnitude (already-defined _loss_only is the smooth form).
-            _rev_atten_strength = _dir_persist * _recency * _loss_only  # [0,1], all smooth+deterministic
-            # Size multiplier on reversal re-entries: up to 70pct cut when one-directional
-            # book + immediate + deep prior loss; 1.0 (no effect) when balanced book OR
-            # not recent OR prior win. Per-direction reversal flags (smooth, not boolean).
-            _exit_sign = self._last_exit_sign.get(symbol, 0)
-            _bull_rev_mult = 1.0 - 0.70 * _rev_atten_strength if _exit_sign == -1 else 1.0
-            _bear_rev_mult = 1.0 - 0.70 * _rev_atten_strength if _exit_sign == 1 else 1.0
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -674,9 +581,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_rev_mult
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_rev_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1212,8 +1119,6 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                        # Branch step 3: record exit-side sign for reversal-only refractory.
-                        self._last_exit_sign[symbol] = 1 if current_pos > 0 else -1
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
@@ -1222,10 +1127,5 @@ class Strategy:
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
-                    # Branch step 4: record realized entry sign (rolling, last 8).
-                    _sh = self._entry_sign_history.setdefault(symbol, [])
-                    _sh.append(1 if target > 0 else -1)
-                    if len(_sh) > 8:
-                        del _sh[0]
 
         return signals
