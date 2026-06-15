@@ -654,8 +654,22 @@ def compute_score(result: BacktestResult) -> float:
     if final_equity < INITIAL_CAPITAL * 0.85:
         return -999.0
 
-    # Signal quality: log(1+sharpe) — diminishing returns at high Sharpe
-    signal_quality = math.log(1.0 + max(result.sharpe, 0.0))
+    # Signal quality: log(1+sharpe) — diminishing returns at high Sharpe.
+    # For sharpe <= 0 the multiplicative model breaks down: a negative
+    # signal_quality multiplied by the (0,1] risk gates would FLIP their meaning
+    # (a higher-risk losing strategy would score closer to 0 than a lower-risk
+    # one). So for sharpe <= 0 we return the bare sharpe as the score — a
+    # continuous negative gradient that (a) stays monotonic (higher sharpe =
+    # higher score), (b) is continuous at sharpe=0 (both sides -> 0), and (c)
+    # never lets the risk gates invert sign. This restores the optimization
+    # gradient in the loss region (a near-miss at sharpe=-0.05 now scores far
+    # better than a blow-up at sharpe=-5), which the old log(1+max(sharpe,0))
+    # collapsed to a flat 0 ("silent band"). Downside-risk in this region is
+    # already bounded by the hard cutoffs (>10% DD, >15% loss).
+    if result.sharpe <= 0.0:
+        return result.sharpe
+
+    signal_quality = math.log(1.0 + result.sharpe)
 
     # Sample sufficiency: sqrt ramp, full credit at 50+ trades
     sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))

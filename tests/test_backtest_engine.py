@@ -255,6 +255,67 @@ def test_compute_score_factors():
 
 
 # ---------------------------------------------------------------------------
+# sharpe <= 0 returns the bare sharpe (continuous negative gradient), NOT a flat
+# 0 ("silent band") and NOT a sign-flipped multiplicative score. Guards the M1
+# fix. These all pass the hard cutoffs (>=10 trades, DD<=10%, loss<15%).
+# ---------------------------------------------------------------------------
+def _passing_result(sharpe, dd=2.0, vol=0.3, streak=0):
+    # equity ends slightly down (>85% so no hard cutoff) for sharpe<=0 cases
+    return BacktestResult(
+        sharpe=sharpe, num_trades=50, max_drawdown_pct=dd,
+        return_volatility=vol, max_consecutive_losses=streak,
+        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 0.99],
+    )
+
+
+def test_negative_sharpe_returns_bare_sharpe():
+    # sharpe <= 0 -> score == sharpe exactly, independent of the risk gates.
+    for sh in [0.0, -0.05, -0.5, -2.0, -10.0]:
+        assert compute_score(_passing_result(sh)) == pytest.approx(sh, abs=TOL)
+
+
+def test_negative_region_gradient_not_flat():
+    # The old silent band collapsed all sharpe<=0 to 0; now there is a gradient:
+    # a near-miss must score strictly higher than a blow-up.
+    near_miss = compute_score(_passing_result(-0.05))
+    blow_up = compute_score(_passing_result(-5.0))
+    assert near_miss > blow_up
+
+
+def test_negative_region_no_sign_flip_from_risk_gates():
+    # Two losing strategies with the SAME sharpe but different risk profiles must
+    # score identically (risk gates must NOT invert sign in the negative region).
+    low_risk = compute_score(_passing_result(-0.5, dd=1.0, vol=0.1, streak=0))
+    high_risk = compute_score(_passing_result(-0.5, dd=9.0, vol=2.0, streak=20))
+    assert low_risk == pytest.approx(high_risk, abs=TOL)
+    assert low_risk == pytest.approx(-0.5, abs=TOL)
+
+
+def test_score_continuous_and_monotonic_at_zero():
+    # Continuity at sharpe=0 and monotonicity across the boundary.
+    s_neg = compute_score(_passing_result(-0.01))
+    s_zero = compute_score(_passing_result(0.0))
+    s_pos = compute_score(BacktestResult(
+        sharpe=0.01, num_trades=50, max_drawdown_pct=2.0,
+        return_volatility=0.3, max_consecutive_losses=0,
+        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 1.001],
+    ))
+    assert s_zero == pytest.approx(0.0, abs=TOL)
+    assert s_neg < s_zero <= s_pos  # monotonic across the boundary
+
+
+def test_hard_cutoff_precedes_negative_region():
+    # A negative-sharpe strategy that ALSO breaches a hard cutoff must still get
+    # -999 (cutoffs run before the bare-sharpe return).
+    r = BacktestResult(
+        sharpe=-0.5, num_trades=50, max_drawdown_pct=12.0,  # DD breach
+        return_volatility=0.3, max_consecutive_losses=0,
+        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 0.99],
+    )
+    assert compute_score(r) == pytest.approx(-999.0, abs=TOL)
+
+
+# ---------------------------------------------------------------------------
 # Leverage constraint rejects orders that exceed MAX_LEVERAGE.
 # ---------------------------------------------------------------------------
 def test_leverage_constraint():
