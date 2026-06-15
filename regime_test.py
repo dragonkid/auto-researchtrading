@@ -65,7 +65,7 @@ def _run_regime_worker(args: tuple) -> dict:
     base_score = compute_score(result)
     annual_return = annualize_return(result.total_return_pct, regime_hours)
 
-    # Score = base_score (already includes sharpe, dd_gate, turnover_gate)
+    # Score = base_score (already includes sharpe, dd_gate, vol_gate, streak_gate)
     score = base_score
 
     # Signal stability: penalize threshold-sensitive strategies

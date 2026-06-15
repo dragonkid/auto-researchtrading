@@ -164,12 +164,11 @@ Legacy rows (6 columns) may remain in the file for historical reference but are 
 Each regime is scored via `compute_score()`, then combined:
 
 ```
-score = signal_quality × sample_factor × dd_gate × turnover_gate × vol_gate × streak_gate
+score = signal_quality × sample_factor × dd_gate × vol_gate × streak_gate
 
 signal_quality = log(1 + max(sharpe, 0))
 sample_factor = sqrt(min(num_trades / 50, 1))
 dd_gate = 1/(1 + DD%) × exp(-max(0, DD%-5)/10)
-turnover_gate = 1 / (1 + trades_per_day / 10)
 vol_gate = 1 / (1 + return_volatility)
 streak_gate = exp(-max_consecutive_losses / 30)
 
@@ -178,9 +177,10 @@ Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
 Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
 ```
 
+Note: trades incur real fees (5bps taker + 1bp slippage) in the backtest, so transaction cost is already reflected in Sharpe. There is no separate turnover penalty — if higher trade frequency raises post-fee Sharpe, that is genuine alpha and is rewarded. `sample_factor` only enforces a minimum sample size (50 trades); it does not penalize high frequency.
+
 Multiplicative structure: any dimension being terrible collapses the entire score.
 The DD penalty is a smooth exponential — no cliff at any specific DD level. DD 5%→no penalty, 8%→0.74x, 10%→0.55x.
-The turnover gate penalizes trading frequency: 5 tpd→0.67, 10→0.50, 40→0.20.
 The composite rewards strategies that perform **consistently across all market conditions**.
 
 Search regimes (4 non-overlapping periods):

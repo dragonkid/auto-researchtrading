@@ -625,7 +625,7 @@ def compute_score(result: BacktestResult) -> float:
     """
     Multiplicative risk-adjusted score (HIGHER is better).
 
-    score = signal_quality × sample_factor × dd_gate × turnover_gate
+    score = signal_quality × sample_factor × dd_gate × vol_gate × streak_gate
 
     Hard cutoffs for degenerate strategies.
     """
@@ -650,14 +650,6 @@ def compute_score(result: BacktestResult) -> float:
     dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
     dd_gate *= math.exp(-dd_excess / 10.0)
 
-    # Turnover gate: penalize excessive TRADING FREQUENCY (not volume)
-    # Uses trades-per-day to prevent gaming via position-size reduction.
-    hours = len(result.equity_curve) - 1 if result.equity_curve else 1
-    trades_per_day = result.num_trades / max(hours / 24.0, 1.0)
-    # Gate: 1/(1 + tpd/10) — 10 trades/day is the neutral point
-    # 5 tpd → 0.67, 10 tpd → 0.50, 20 tpd → 0.33, 40 tpd → 0.20
-    turnover_gate = 1.0 / (1.0 + trades_per_day / 10.0)
-
     # Volatility gate: 1/(1 + vol) — low vol → ~1.0, high vol → shrinks
     vol_gate = 1.0 / (1.0 + result.return_volatility)
 
@@ -665,7 +657,7 @@ def compute_score(result: BacktestResult) -> float:
     # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
     streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
 
-    score = signal_quality * sample_factor * dd_gate * turnover_gate * vol_gate * streak_gate
+    score = signal_quality * sample_factor * dd_gate * vol_gate * streak_gate
     return score
 
 # ---------------------------------------------------------------------------
