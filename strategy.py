@@ -935,6 +935,28 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Architectural: stateless high-vol profit-hold de-rating of soft_max.
+                # EXP1 this session proved (via a path-dependent shrink-rate cap) that
+                # holding PROFIT-side positions longer lifts crash RAW substantially
+                # (0.676 -> 0.846) — crash profit-exits are currently too aggressive.
+                # But the position-space rate cap was PATH-DEPENDENT (carried current_pos
+                # forward) and collapsed stability. This captures the same "let high-vol
+                # winners run" effect STATELESSLY in PRESSURE space: de-rate the fused
+                # soft_max when the position is in profit AND volatility is elevated.
+                # Mechanism is a pure function of current-bar (pos_pnl via _pnl_scale,
+                # vol_ratio) — NO carried state — so it avoids the confirmed path-
+                # dependent position-trajectory wall. The de-rating shifts soft exit
+                # pressure down, so the existing graduated de-risk ramp fires later/softer
+                # for high-vol winners (they de-risk more gradually through pullback
+                # noise), while stop-loss stays exempt (applied after via max with
+                # _sl_pressure). Gated by vol_ratio so it is INERT in low-vol regimes
+                # (rally/sideways, vol_ratio<=1 -> gate~0 -> untouched BY CONSTRUCTION),
+                # isolating the effect to elevated-vol profit holds (crash recovery
+                # legs, bull thrusts). Counterpart to the existing _w_pp vol-gate which
+                # AMPLIFIES profit-side pp in high vol on the (now-falsified) premise that
+                # crash profits must be locked fast; EXP1 showed the opposite for raw.
+                _vol_hold_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # 0 in calm, ~1 high-vol
+                _soft_max = _soft_max * (1.0 - 0.30 * max(0.0, _pnl_scale) * _vol_hold_gate)
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
