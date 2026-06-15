@@ -113,10 +113,10 @@ while true; do
 
 echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
-ANTHROPIC_BASE_URL=https://litellm.qa1fdg.net ANTHROPIC_AUTH_TOKEN=sk-OZ7H_GmEFV3nOlf2PFZBBA ANTHROPIC_MODEL=deepseek-v4-pro MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
-  CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
+#ANTHROPIC_BASE_URL=https://litellm.qa1fdg.net ANTHROPIC_AUTH_TOKEN=sk-OZ7H_GmEFV3nOlf2PFZBBA ANTHROPIC_MODEL=deepseek-v4-pro MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
+MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
+  CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
     --dangerously-skip-permissions \
-    --model deepseek-v4-pro \
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
