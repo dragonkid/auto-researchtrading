@@ -118,6 +118,9 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Per-symbol last-exit position sign (+1 long, -1 short) for reversal-only
+        # re-entry refractory (branch step 3).
+        self._last_exit_sign = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -391,7 +394,21 @@ class Strategy:
             # tracked; threshold is deterministic (sign of realized PnL, noise-immune
             # — the realized outcome is fixed history, not a perturbable live signal).
             _prior_loss = self._last_exit_pnl.get(symbol, 0.0) < 0.0
-            _entry_refractory = (_bars_since_exit <= COOLDOWN_BARS) and (len(_eh) >= 3) and _prior_loss
+            # Branch step 3: REVERSAL-ONLY refractory. Step 2 was inert (every blocked
+            # re-entry was already post-loss), proving rally's post-loss fast re-entries
+            # are not separable by outcome alone. The diagnostic (c265424d) specifically
+            # said noise flips the WHOLE regime DIRECTION (long<->short) via fast near-
+            # tied REVERSAL re-entries that then persist. So separate by DIRECTION:
+            # block only a re-entry OPPOSITE to the just-exited side (a flip — the
+            # noise-flippable near-tied decision), while a SAME-direction re-entry
+            # (buy-the-dip / re-short-the-bounce = trend continuation alpha) passes
+            # freely. _last_exit_sign is recorded at exit (deterministic realized
+            # history, noise-immune). Per-direction booleans applied at each entry
+            # branch below.
+            _base_refractory = (_bars_since_exit <= COOLDOWN_BARS) and (len(_eh) >= 3) and _prior_loss
+            _exit_sign = self._last_exit_sign.get(symbol, 0)
+            _bull_refractory = _base_refractory and _exit_sign == -1  # re-long after short-exit = reversal
+            _bear_refractory = _base_refractory and _exit_sign == 1   # re-short after long-exit = reversal
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -454,7 +471,7 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
-            if current_pos == 0 and not in_cooldown and not _entry_refractory:
+            if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
                 # The 20-bar high/low range-position adjustment in [-0.04, +0.04] was a
                 # small entry-side bias correlated with trend direction (price near 20-bar
@@ -609,9 +626,9 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _bull_refractory:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _bear_refractory:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -1148,6 +1165,8 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
+                        # Branch step 3: record exit-side sign for reversal-only refractory.
+                        self._last_exit_sign[symbol] = 1 if current_pos > 0 else -1
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
