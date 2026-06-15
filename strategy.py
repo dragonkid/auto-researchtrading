@@ -363,6 +363,25 @@ class Strategy:
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
+            # Architectural: deterministic churn-gated re-entry refractory (the
+            # snap-to-hold deadband's TIME-AXIS sibling). The diagnostic (c265424d)
+            # established rally instability = FAST near-tied re-entries that persist
+            # and diverge the equity curve under noise. The execution-layer deadband
+            # (ef027049) suppresses micro-RESIZES (size axis) but a fresh entry the
+            # bar immediately after an exit is unaffected (time axis). Block a fresh
+            # entry for COOLDOWN_BARS bars after an exit, but ONLY when the symbol is
+            # in high local churn (len(_eh) >= 3 entries in the pruned 30-bar window).
+            # FULLY DETERMINISTIC: gated on an INTEGER entry count (noise-immune — the
+            # count cannot wobble under the AR(1) price perturbation), so it adds NO
+            # price-derived noise channel (the failure mode of every walled rally
+            # attempt). SYMMETRIC: applies equally to same-direction and opposite-
+            # direction re-entries, so it does NOT unbalance the directional book the
+            # way the walled directional reversal-block did (f978677) — it only forces
+            # a one-bar settle to let a near-tied decision resolve before committing.
+            # Spares bull/crash/sideways BY CONSTRUCTION (they rarely reach 3 entries
+            # per symbol in 30 bars — their churn gate stays off). Entry-only: the
+            # opp_gate exit path is NOT gated (never trap an open position).
+            _entry_refractory = (_bars_since_exit <= COOLDOWN_BARS) and (len(_eh) >= 3)
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -425,7 +444,7 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
-            if current_pos == 0 and not in_cooldown:
+            if current_pos == 0 and not in_cooldown and not _entry_refractory:
                 # Architectural simplification: removed Donchian range-position entry adj.
                 # The 20-bar high/low range-position adjustment in [-0.04, +0.04] was a
                 # small entry-side bias correlated with trend direction (price near 20-bar
