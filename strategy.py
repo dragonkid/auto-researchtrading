@@ -87,6 +87,14 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Counter-trend cross-side dominance admission gate.
+# Demand voter SEPARATION ((chosen-opp)/(chosen+opp)) only for COUNTER-TREND
+# entries (bear in uptrend / bull in downtrend), scaled by counter-trend
+# strength. In strong trends a near-tied (split-voter) counter-trend entry is
+# most likely noise; require dominance to admit it. Choppy regimes (small
+# ret_long) and trend-aligned entries see req ~0 (untouched). Touches only the
+# counter-trend side, so trend-aligned alpha and same-side admission are intact.
+ENTRY_SEP_MAX = 0.20
 
 
 def ema(values, span):
@@ -580,9 +588,30 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Architectural: counter-trend cross-side dominance admission gate.
+                # Exp1 (churn) and exp2 (persistence) both reproduced a clean bull +0.029
+                # with crash/sideways flat, but both crushed rally — churn and persistence
+                # fire in BOTH bull and rally. The defining difference: bull_2021 has a
+                # strong persistent ret_long SIGN (directional); rally_2024 has small/
+                # oscillating ret_long. So gate dominance only on the COUNTER-TREND side,
+                # scaled by counter-trend strength tanh(-ret_long*pos_dir/0.04). This
+                # auto-spares rally (small ret_long -> gate ~off) and sideways (ret_long~0),
+                # touches only counter-trend entries (bear in uptrend, bull in downtrend),
+                # and may HELP crash by blocking near-tied dead-cat-bounce longs — while
+                # AVOIDING the documented "crash sensitive to bear-admission" landmine
+                # (this tightens bull-in-downtrend, not bear admission). Separation
+                # (chosen-opp)/(chosen+opp) ∈[0,1] is the dominance measure; near-tied
+                # (split voters) = low separation = blocked when counter-trend. Smooth,
+                # subtractive (only blocks). New cross-timescale data dep at admission.
+                _bull_ct_str = max(0.0, np.tanh(-ret_long / 0.04))  # bull entry counter-trend in downtrend
+                _bear_ct_str = max(0.0, np.tanh(ret_long / 0.04))   # bear entry counter-trend in uptrend
+                _bull_sep = (_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6)
+                _bear_sep = (_bear_strong - _bull_strong) / max(_bull_strong + _bear_strong, 1e-6)
+                _bull_dom_ok = _bull_sep >= ENTRY_SEP_MAX * _bull_ct_str
+                _bear_dom_ok = _bear_sep >= ENTRY_SEP_MAX * _bear_ct_str
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _bull_dom_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _bear_dom_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
