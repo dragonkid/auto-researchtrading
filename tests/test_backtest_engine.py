@@ -324,3 +324,42 @@ def test_leverage_constraint():
     r = run_backtest(_ScriptedStrategy([(100.0, over_lever)]), data)
     # Order should be skipped -> no position opened -> no trades.
     assert r.num_trades == 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-symbol timestamp misalignment: when a held symbol has no bar at a
+# timestamp, mark-to-market must carry-mark it with its last observed close
+# instead of dropping its unrealized PnL (which would still count its notional,
+# producing a spurious equity swing — the "ghost jump" bug). Guards task1-C1.
+# ---------------------------------------------------------------------------
+def test_carry_mark_no_ghost_jump_on_missing_bar():
+    ts = [1_600_000_000_000 + i * 3600_000 for i in range(5)]
+    # BTC present every bar (flat 100, no PnL of its own).
+    btc = pd.DataFrame({"timestamp": ts, "open": [100.0]*5, "high": [100.0]*5,
+                        "low": [100.0]*5, "close": [100.0]*5,
+                        "volume": [1.0]*5, "funding_rate": [0.0]*5})
+    # ETH present at ts 0,1,3,4 but MISSING at ts index 2.
+    eth_ts = [ts[0], ts[1], ts[3], ts[4]]
+    eth = pd.DataFrame({"timestamp": eth_ts, "open": [2000., 2200., 2200., 2200.],
+                        "high": [2000., 2200., 2200., 2200.],
+                        "low": [2000., 2200., 2200., 2200.],
+                        "close": [2000., 2200., 2200., 2200.],
+                        "volume": [1.0]*4, "funding_rate": [0.0]*4})
+
+    class OpenETHOnce:
+        def __init__(self):
+            self.done = False
+        def on_bar(self, bd, pf):
+            if "ETH" in bd and not self.done:
+                self.done = True
+                return [Signal(symbol="ETH", target_position=10000.0)]  # $10k long @2000
+            return []
+
+    r = run_backtest(OpenETHOnce(), {"BTC": btc, "ETH": eth})
+    eq = [float(e) for e in r.equity_curve]
+    # After ETH rises to 2200 (unrealized +~$1000), equity should stay flat
+    # across the missing-bar gap, NOT dip and recover. Check the tail (post-rise)
+    # has no large bar-to-bar swing.
+    tail = eq[2:]  # from when ETH has risen onward
+    max_swing = max(abs(tail[i+1] - tail[i]) for i in range(len(tail) - 1)) if len(tail) > 1 else 0.0
+    assert max_swing < 50.0, f"ghost jump detected: equity tail {tail} has swing {max_swing:.2f}"

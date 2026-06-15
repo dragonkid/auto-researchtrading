@@ -345,6 +345,11 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     flip_log = []  # Track flip PnLs: [(symbol, pnl_pct), ...]
     total_volume = 0.0
     prev_equity = INITIAL_CAPITAL
+    # Last observed close per symbol, for marking positions when a symbol has no
+    # bar at the current timestamp (multi-symbol timestamp misalignment). Without
+    # this, mark-to-market would drop that symbol's unrealized PnL for the gap bar
+    # while still counting its notional, producing a spurious equity swing.
+    last_close: dict = {}
 
     for ts in timestamps:
         elapsed = time.time() - t_start
@@ -377,6 +382,7 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
                 funding_rate=row["funding_rate"],
                 history=hist_df,
             )
+            last_close[symbol] = row["close"]
 
         if not bar_data:
             continue
@@ -384,12 +390,16 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         # Update portfolio equity (mark-to-market)
         unrealized_pnl = 0.0
         for sym, pos_notional in portfolio.positions.items():
-            if sym in bar_data:
-                current_price = bar_data[sym].close
-                entry_price = portfolio.entry_prices.get(sym, current_price)
-                if entry_price > 0:
-                    price_change = (current_price - entry_price) / entry_price
-                    unrealized_pnl += pos_notional * price_change
+            # Use this bar's close if present, else carry-mark with the last
+            # observed close (keeps unrealized PnL consistent with the notional
+            # term during a symbol's data gap; avoids spurious equity swings).
+            mark_price = bar_data[sym].close if sym in bar_data else last_close.get(sym)
+            if mark_price is None:
+                continue
+            entry_price = portfolio.entry_prices.get(sym, mark_price)
+            if entry_price > 0:
+                price_change = (mark_price - entry_price) / entry_price
+                unrealized_pnl += pos_notional * price_change
 
         portfolio.equity = portfolio.cash + sum(abs(v) for v in portfolio.positions.values()) + unrealized_pnl
 
@@ -511,12 +521,15 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
         # Recalculate equity after trades
         unrealized_pnl = 0.0
         for sym, pos_notional in portfolio.positions.items():
-            if sym in bar_data:
-                current_price = bar_data[sym].close
-                entry_price = portfolio.entry_prices.get(sym, current_price)
-                if entry_price > 0:
-                    price_change = (current_price - entry_price) / entry_price
-                    unrealized_pnl += pos_notional * price_change
+            # Carry-mark with last observed close if this symbol has no bar now
+            # (see the pre-trade mark-to-market above for rationale).
+            mark_price = bar_data[sym].close if sym in bar_data else last_close.get(sym)
+            if mark_price is None:
+                continue
+            entry_price = portfolio.entry_prices.get(sym, mark_price)
+            if entry_price > 0:
+                price_change = (mark_price - entry_price) / entry_price
+                unrealized_pnl += pos_notional * price_change
 
         current_equity = portfolio.cash + sum(abs(v) for v in portfolio.positions.values()) + unrealized_pnl
         equity_curve.append(current_equity)
