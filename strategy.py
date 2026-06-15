@@ -1038,18 +1038,8 @@ class Strategy:
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        # Architectural: squared-pressure de-risk mapping (replaces linear).
-                        # Linear ramp has constant sensitivity dD/dP — small pressure noise
-                        # near floor produces equal position-size noise as near saturation.
-                        # Squared mapping has zero derivative at floor: dD/dP=0 at P=F*T,
-                        # ramps quadratically to 1 at P=T. Noise near floor produces ~zero
-                        # derisk swing; sustained pressure still produces full derisk.
-                        # Mathematically: _de_risk = 1 - frac^2 where frac=(P-F*T)/((1-F)*T).
-                        # Preserves boundary values (1.0 at floor, 0.0 at threshold) while
-                        # changing functional form on the graduation ramp.
-                        _frac = (_exit_pressure - _de_floor * _exit_thresh) / max((1.0 - _de_floor) * _exit_thresh, 1e-10)
-                        _frac = max(0.0, min(1.0, _frac))
-                        _de_risk = 1.0 - _frac * _frac
+                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
