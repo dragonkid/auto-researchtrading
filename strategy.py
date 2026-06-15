@@ -973,9 +973,15 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
+                # Architectural: removed binary soft-exit clause (-3 LOC).
+                # Old: 2 control-flow branches both fired at pressure=thresh — binary
+                # full-exit path AND de-risk ramp (which produces target=0 at boundary).
+                # The binary path fired on bars 0-1 (where de-risk is gated off),
+                # exposing fresh entries to single-bar soft-pressure noise spikes.
+                # Removing it: fresh entries (bars 0-1) become protected from soft-
+                # pressure noise (only SL or opp_gate can close them); bars>=2 keep
+                # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
-                    target = 0.0
-                elif _exit_pressure >= _exit_thresh and target != 0:
                     target = 0.0
                 elif target != 0 and bars_held >= 2:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
