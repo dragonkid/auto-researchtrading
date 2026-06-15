@@ -1075,6 +1075,23 @@ class Strategy:
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
+                    # Architectural: position-age refractory on the REVERSAL path (timing
+                    # lever, subtractive). A position entered last bar can currently be fully
+                    # reversed this bar on a single-bar opposite voter spike — the near-tied
+                    # whipsaw prior sessions localized as the rally noise source (noise flips
+                    # the whole-regime direction via immediate reversal re-entry). Genuine
+                    # directional swings persist multiple bars; a 1-bar-old reversal is almost
+                    # always noise. Scale the opp-gate exit fraction by position age: 0 at
+                    # bars_held==1 (suppress immediate reversal), ramps to full at bars_held>=2.
+                    # bars_held is a deterministic integer counter — NOISE-IMMUNE (the AR(1)
+                    # test perturbs prices, not the bar counter), so this adds NO new noise
+                    # boundary, unlike prior price-derived reversal terms that all amplified
+                    # rally TE. Distinct from the failed churn reversal-block (which blocked
+                    # the NEW entry side for many bars, trading rally raw 1:1): this only
+                    # delays the immediate whipsaw by one bar, letting real multi-bar reversals
+                    # through. SL path (separate, upstream) still stops fresh adverse positions.
+                    _opp_refractory = max(0.0, min(1.0, bars_held - 1.0))
+                    _opp_exit_frac = _opp_exit_frac * _opp_refractory
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             # Architectural subsystem redesign (execution/order-emission layer):
