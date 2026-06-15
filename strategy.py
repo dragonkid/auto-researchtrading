@@ -911,7 +911,33 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                _soft_max = max(_soft_terms)
+                # Architectural subsystem redesign (exit-fusion aggregator): replace the
+                # hard element-wise max() with a shifted log-sum-exp (LSE) smooth-max.
+                # The hard max() is non-differentiable at the argmax-switch boundary —
+                # when two soft terms are near-equal, an infinitesimal noise nudge flips
+                # WHICH term is selected, and although the VALUE is continuous there, the
+                # downstream graduated-de-risk RAMP reads a kinked input whose derivative
+                # jumps, so the per-bar de-risk amount is noise-amplified exactly where
+                # two pressures tie. LSE: m + (1/p)*log(sum exp(p*(t_i - m))) with
+                # m = max(terms). KEY DIFFERENCE from the tried-and-failed softmax-
+                # weighted SUM (382, beta=8): softmax-sum is a convex AVERAGE of the
+                # terms (always <= max, DILUTES the dominant term -> held losers ->
+                # bull catastrophic). LSE is an upper bound (always >= max, NEVER
+                # dilutes the dominant signal) that only ADDS a small smoothing offset
+                # which is largest precisely when terms tie (the boundary) and decays to
+                # ~0 when one term dominates (p*gap large -> log term -> 0). So decisive
+                # single-source exits are unchanged (= max) while tie-boundary kinks are
+                # smoothed. p chosen so the max offset (all 6 equal) is ~log(6)/p, small.
+                # Stateless current-bar function of the same terms -> no path-dependence.
+                _m_soft = max(_soft_terms)
+                if _m_soft > 1e-9:
+                    _lse_p = 40.0
+                    _soft_max = _m_soft + (1.0 / _lse_p) * np.log(
+                        sum(np.exp(_lse_p * (t - _m_soft)) for t in _soft_terms)
+                    )
+                    _soft_max = min(1.0, _soft_max)
+                else:
+                    _soft_max = _m_soft
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
