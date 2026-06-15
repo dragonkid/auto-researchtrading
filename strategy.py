@@ -55,9 +55,6 @@ RSI_TREND_BIAS_DECAY = 0.10
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
-MACRO_DOWN_HOLD_BONUS = 3.0  # max extra hold bars for SHORTS in a firmly-negative 100-bar macro trend
-MACRO_HOLD_WINDOW = 100      # bars for macro-trend return (sign noise-immune over this horizon)
-MACRO_HOLD_DECAY = 0.10      # abs(macro_ret) at which the down-trend hold bonus saturates
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
@@ -767,28 +764,6 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Architectural: macro-downtrend SHORT-hold extension (directional raw lever;
-                # regime effect falls out of the gate sign — NOT a regime classifier).
-                # Exp1 (crash +0.038) reproducibly showed crash SHORTS gain from longer holds
-                # (down-moves cluster/cascade — a general crypto asymmetry, not a regime label),
-                # while bull LONGS LOSE from longer holds and rally collapsed under any
-                # near-boundary gate. Exp4 falsified vol_ratio as the separator (its adaptive
-                # baseline keeps vol_ratio ~1 in crash AND it hovers near its boundary in rally,
-                # so rally noise crossed it -> stab collapse). The robust separator is the SIGN
-                # of the 100-bar macro return: 8-12bps/bar AR(1) noise CANNOT flip a firmly
-                # negative 100-bar cumulative return, so max(0, tanh(-macro_ret/scale)) is
-                # EXACTLY 0 for rally (firmly positive macro -> clamped, FAR from boundary ->
-                # noise cannot activate it -> fixes exp4's rally collapse) and for bull longs
-                # (positive macro -> clamped; also bull doesn't want longer holds). It fires
-                # only for SHORTS (current_pos<0) in a firmly negative macro trend (crash),
-                # ~0 in sideways (macro~0). Gated on _slope_agrees so it never holds against
-                # the move. Continuous tanh, directional, hard-zero-in-rally by construction.
-                # New cross-timescale data dep at the time-pressure backstop.
-                _macro_n = min(MACRO_HOLD_WINDOW, len(closes) - 1)
-                _macro_ret_hold = (closes[-1] - closes[-_macro_n]) / closes[-_macro_n]
-                _macro_down_gate = max(0.0, np.tanh(-_macro_ret_hold / MACRO_HOLD_DECAY))
-                _macro_down_hold = MACRO_DOWN_HOLD_BONUS * _macro_down_gate if (current_pos < 0 and _slope_agrees) else 0.0
-                _hold_adj = _hold_adj + _macro_down_hold
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
