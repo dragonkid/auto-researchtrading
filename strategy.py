@@ -314,15 +314,14 @@ class Strategy:
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
 
-            # Architectural simplification: removed _freq_factor trade-frequency self-regulator.
-            # (-7 LOC + per-symbol state pruning loop). Mechanism raised admission threshold
-            # by up to 20% when entry density >=2 in 30 bars. Redundant with COOLDOWN_BARS,
-            # _cooldown_factor (smooth tanh ramp post-exit), and _outcome_size_mult (loss-only
-            # post-exit size attenuator) which all dampen post-exit re-entry. The +20% threshold
-            # bump fires AFTER the cooldown mechanisms — third layer of frequency protection on
-            # top of two already-existing dampeners. Removing tests whether per-entry-density
-            # gating is load-bearing OR redundant with cooldown-derived churn dampening.
-            _freq_factor = 1.0
+            # Architectural: trade-frequency self-regulator. Per-symbol rolling
+            # entry-bar history over a 30-bar window. When recent entry density
+            # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
+            # Smooth via tanh; max factor 1.20.
+            _eh = self._entry_bar_history.setdefault(symbol, [])
+            while _eh and self.bar_count - _eh[0] > 30:
+                _eh.pop(0)
+            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
