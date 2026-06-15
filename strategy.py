@@ -580,10 +580,43 @@ class Strategy:
                 _ts_h = bd.timestamp // 3600000
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
+                # Architectural: cross-symbol directional-agreement entry attenuator.
+                # NEW CROSS-SYMBOL DATA DEPENDENCY at entry size (the strategy currently
+                # operates per-symbol independently at entry decision; only the constant
+                # CROSS_ASSET_FIXED_BOOST exists, applied uniformly regardless of actual
+                # cross-asset signal alignment). Mechanism: compute LONG_WINDOW return
+                # for each active symbol with sufficient history; project to direction
+                # via tanh(ret / 0.02). Average across the OTHER symbols (excluding
+                # current). When other-symbol consensus aligns with this entry's
+                # direction, full size; when it opposes, attenuate. New cross-asset
+                # data dep at entry: continuous tanh, smooth, bounded [0.75, 1.15].
+                # Asset-specific divergent entries (one symbol going against the others)
+                # are noise-dominated rotations rather than genuine crypto-wide directional
+                # signal. Smooth, no boundary.
+                _others_dirs = []
+                for _osym in ACTIVE_SYMBOLS:
+                    if _osym == symbol or _osym not in bar_data:
+                        continue
+                    _obd = bar_data[_osym]
+                    if len(_obd.history) < LONG_WINDOW + 1:
+                        continue
+                    _ocloses = _obd.history["close"].values
+                    _oret = (_ocloses[-1] - _ocloses[-LONG_WINDOW]) / _ocloses[-LONG_WINDOW]
+                    _others_dirs.append(np.tanh(_oret / 0.02))  # in [-1, 1]
+                if _others_dirs:
+                    _other_dir = float(np.mean(_others_dirs))  # in [-1, 1]
+                else:
+                    _other_dir = 0.0
+                # Bull entry: agreement = _other_dir > 0 alignment; bear entry = _other_dir < 0
+                _bull_xagree = 0.95 + 0.20 * max(0.0, np.tanh(_other_dir / 0.3)) - 0.20 * max(0.0, np.tanh(-_other_dir / 0.3))
+                _bear_xagree = 0.95 + 0.20 * max(0.0, np.tanh(-_other_dir / 0.3)) - 0.20 * max(0.0, np.tanh(_other_dir / 0.3))
+                # Clamp to [0.75, 1.15] to bound contribution
+                _bull_xagree = max(0.75, min(1.15, _bull_xagree))
+                _bear_xagree = max(0.75, min(1.15, _bear_xagree))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_xagree
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_xagree
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
