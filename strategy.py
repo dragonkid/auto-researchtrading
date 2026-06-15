@@ -107,6 +107,21 @@ ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
+# Per-bar position-GROWTH rate limiter (execution-layer risk cap). The largest
+# single-bar position increases are concentrated in the low-vol rally regime
+# (inverse-vol sizing + the low-vol combined_mult cap of 6.5 produce big notionals),
+# and the noise test shows rally's tracking error lives almost entirely in a handful
+# of these lumpy entry bars: under some noise realizations the big entry fires, under
+# others it does not, producing a large one-bar equity divergence. Capping per-bar
+# GROWTH to a fixed fraction of equity (a) de-concentrates those entries across more
+# bars (one big TE spike becomes several small ones -> lower TE std -> higher
+# stability) and (b) replaces a noise-sensitive large delta with a stable capped
+# delta. It is a universal risk limit (constant fraction, NOT a regime classifier);
+# the rally-selective effect falls out of the per-regime size distribution (rally's
+# growths reach ~0.26*equity vs ~0.14-0.17 elsewhere). Risk-reducing moves (exits,
+# flips, shrinks) are always exempt.
+MAX_GROWTH_FRAC_PER_BAR = 0.18
+
 
 class Strategy:
     def __init__(self):
@@ -1114,6 +1129,21 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
+            # Per-bar GROWTH rate limiter: clamp single-bar position increases (entries
+            # and same-side scale-ups) to MAX_GROWTH_FRAC_PER_BAR * equity. Growth is a
+            # position moving AWAY from zero (|target| > |current_pos|, same sign, or a
+            # fresh entry from flat). Risk-reducing moves are exempt: shrinks toward zero,
+            # full exits (target==0), and flips (sign change) pass through unclamped so
+            # the cap never delays getting out of or reversing a position. The cap
+            # de-concentrates the lumpy low-vol entries that dominate rally tracking error.
+            _is_growth = (current_pos == 0 and target != 0) or (
+                current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0) and abs(target) > abs(current_pos)
+            )
+            if _is_growth:
+                _max_step = MAX_GROWTH_FRAC_PER_BAR * equity
+                if abs(target - current_pos) > _max_step:
+                    _dir = 1.0 if target > current_pos else -1.0
+                    target = current_pos + _dir * _max_step
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
