@@ -711,26 +711,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Architectural: trend-aligned stop-loss widening. The stop is the most
-                # noise-IMMUNE threshold in the system — it compares pos_pnl (vs a FIXED
-                # entry price) against an entry-anchored level, so the threshold does not
-                # move under AR(1) close noise (only mid moves). In a strong CONFIRMED
-                # long-window trend, a TREND-ALIGNED position (long in uptrend / short in
-                # downtrend) that dips into a pullback and trips the stop exits prematurely,
-                # then must re-enter on trend resumption at a worse price — the whipsaw
-                # buy-high-after-selling-low cost that is rally's dominant RAW drag (rally
-                # sharpe 0.73 vs 1.28-1.71 elsewhere; pullbacks in a grind-up trend are
-                # more often noise than reversal). Widen the stop up to 1.3x scaled by
-                # trend-alignment so trend-aligned positions survive pullbacks; counter-
-                # trend positions (real reversals) keep the tight base stop, and chop
-                # (sideways, low |ret_long|) is unaffected (trend_align~0 -> 1.0x, sparing
-                # the best regime). Continuous tanh on ret_long*pos_dir (no boundary).
-                # New cross-timescale data dep: stop level depends on long-window trend
-                # alignment. RAW lever (changes exit price of pullback-tripped trades),
-                # noise-immune (entry-anchored level + slow ret_long).
-                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
-                _trend_align_sl = max(0.0, np.tanh(ret_long * _pos_dir_sl / 0.05))  # [0, ~1]
-                _stop_abs = _stop_abs * (1.0 + 0.30 * _trend_align_sl)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
