@@ -1149,34 +1149,6 @@ class Strategy:
             # to-hold (Zeno-free). Symmetric growth/shrink. Entries/exits/flips exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
             _deadband_frac = 0.13 * _churn_dz
-            # Architectural: high-churn-gated ENTRY-target quantization (extends the
-            # proven distinct-position-value-reduction grid family from RESIZES to the
-            # ENTRY first-bar value). All existing grids EXEMPT entries — so a burst
-            # re-entry's first-bar size is a continuous PRICE-DERIVED value (size *
-            # _entry_frac_dyn * many tanh attenuators) that AR(1) noise perturbs bar-to-
-            # bar, SEEDING the entire trade's position-value cascade from a noisy base.
-            # Rally is the ONLY regime with entry CLUSTERS (re-entries push len(_eh)>=2,
-            # _churn_dz>0); crash/sideways/bull first-entries sit at len<=1 (_churn_dz~0)
-            # so they are SPARED by construction (same gate that spares them in the resize
-            # grids). Snap the burst-entry target onto the SAME stable lattice the resize
-            # fine-grid uses (0.06*equity*BASE_POSITION_SIZE: equity slow + BASE const =
-            # noise-stable lines), scaled by _churn_dz. NO-SUPPRESS GUARD: an entry must
-            # still fire — if rounding would zero it, keep the nearest non-zero lattice
-            # point on the entry's own side (max(1 grid step)). Direction-preserving
-            # (round() keeps the entry sign). Noise-immune gate (integer churn), acts on
-            # the emitted VALUE not timing (the only un-walled rally axis per prior
-            # sessions). New control flow: a quantization branch on the ENTRY partition,
-            # disjoint from the resize branches below.
-            _is_entry_emit = current_pos == 0 and target != 0
-            if _is_entry_emit and _churn_dz > 0.0:
-                _grid_e = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
-                if _grid_e > 0:
-                    _qt_e = round(target / _grid_e) * _grid_e
-                    # no-suppress: never round an entry to zero — keep nearest non-zero
-                    # lattice point on the entry's own side
-                    if _qt_e == 0 or (_qt_e > 0) != (target > 0):
-                        _qt_e = _grid_e if target > 0 else -_grid_e
-                    target = _qt_e
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
