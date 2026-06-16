@@ -142,6 +142,17 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Architectural: per-symbol EMA state for the calm-gated exit-pressure smoother
+        # (exp4). Prior sessions found EMA-smoothing the fused exit pressure gives
+        # crash +0.25 / sideways +0.05 (filters dead-cat-bounce single-bar voter spikes
+        # that fire exits at adverse local lows) but KILLS bull/rally (trending regimes
+        # need fast exits). Every prior gate (vol_ratio/trend_align/pos_pnl) was noisy or
+        # regime-correlated and failed. The cumulative-max churn count (_churn_hist) is
+        # the proven NOISE-IMMUNE integer separator: crash max-len=1, sideways max-len=2
+        # (never burst -> smoothing ON), bull/rally burst len>=3 (smoothing OFF, byte-
+        # identical). Smooths the fused OUTPUT scalar only (not upstream margins) so
+        # opp_gate reversal detection stays intact (avoids the row-200 crash trap).
+        self._exit_ema = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -975,6 +986,18 @@ class Strategy:
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
+                # Architectural (exp4): calm-gated EMA smoothing of the fused exit pressure.
+                # Fire ONLY for never-bursting (calm) symbols via the proven noise-immune
+                # cumulative-max churn separator. For those symbols, blend this bar's
+                # exit_pressure with the prior bar's (2-bar EMA, alpha=0.6) to filter
+                # single-bar dead-cat-bounce voter spikes. Stop-loss saturation is exempt
+                # (force raw pressure so hard stops never lag). Bull/rally (bursting) keep
+                # raw exit_pressure unchanged. New per-symbol state + new control flow.
+                _cm_x = max(self._churn_hist.get(symbol, 0), len(_eh))
+                if _cm_x <= 2 and _sl_pressure < 0.95:
+                    _prev_xp = self._exit_ema.get(symbol, _exit_pressure)
+                    _exit_pressure = 0.6 * _exit_pressure + 0.4 * _prev_xp
+                self._exit_ema[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -1249,7 +1272,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
