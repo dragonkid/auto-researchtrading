@@ -250,6 +250,22 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
+            # Architectural: 8th voter — volume-FLOW direction (volume-weighted return).
+            # Orthogonal to the 7th VWAP voter (which measures volume-weighted price
+            # LOCATION) and to all price-only voters: this asks whether volume ARRIVES
+            # on up-bars or down-bars. Mechanism vs the rally-RAW binding constraint:
+            # grinding-uptrend pullbacks are LOW-VOLUME, so the volume-weighted mean
+            # return stays bullish during them — the new voter declines to confirm the
+            # price-trend voters' noise-driven bearish flip (the documented rally
+            # pullback-short killer), while a GENUINE high-volume reversal still flips
+            # it. _vf_raw = sum(log_ret * volume)/sum(volume) over 16 bars, z-scored by
+            # 0.5*realized_vol (diagnostic: std~1, symmetric). New data dependency:
+            # volume * per-bar return (distinct from VWAP's volume * price-level).
+            _vf_n = 16
+            _vf_ret = np.diff(np.log(closes[-_vf_n - 1:]))            # 16 returns
+            _vf_vol = bd.history["volume"].values[-_vf_n:]            # aligned end-bar volumes
+            _vf_raw = (_vf_ret * _vf_vol).sum() / max(_vf_vol.sum(), 1e-10)
+            _vf_signal = _vf_raw / max(0.5 * realized_vol, 1e-6)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -258,6 +274,7 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
+                _vf_signal,          # 8th voter: volume-flow direction (z-scored, ~O(1) at boundary)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -284,7 +301,24 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
+            # 8th voter (volume-flow) weight: like VWAP, chop-dampened (in chop,
+            # volume-flow is dominated by noise bars) and trend-amplified (in trends,
+            # volume-flow carries genuine directional confirmation). Renormalize the
+            # full 8-tuple to the SAME total as the 7-voter base so the strong-sum
+            # scale — and thus the admission thresholds (_strong_min etc.) — stay
+            # calibrated. Consequence (the load-bearing safety property): when volume
+            # CONFIRMS the price trend (the normal trend case), the 8 confs are all
+            # high and renormalization leaves total conviction unchanged → trend-voter
+            # co-firing is preserved (avoids the documented voter-aggregation wall).
+            # Only when volume DIVERGES from price does the new low conf dilute the
+            # renormalized total, trimming conviction ~10% on unconfirmed (noise)
+            # signals — exactly the rally pullback-short case.
+            _vf_wt = 0.45 + 0.45 * _trend_strength_w  # in [0.45, ~0.90]
+            _base_weights_raw = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, _vf_wt)
+            _bw7_total = 0.7 + (1.25 + _wt_shift) + (1.10 - _wt_shift) + (1.00 - _wt_shift) + 0.85 + (1.10 + _wt_shift) + _vwap_wt
+            _bw8_total = _bw7_total + _vf_wt
+            _renorm = _bw7_total / max(_bw8_total, 1e-6)
+            _base_weights = tuple(w * _renorm for w in _base_weights_raw)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -312,7 +346,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(7)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
