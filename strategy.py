@@ -1000,32 +1000,13 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Architectural: multi-day counter-trend EXIT pressure (new soft term).
-                # The slope-against pressure uses SHORT-term slopes (12/16/22-bar); during a
-                # multi-day-uptrend PULLBACK the short-term slope is DOWN, so a counter-trend
-                # SHORT's slope-against is ~0 (the pullback "validates" the short) — it is NOT
-                # pressured to exit, yet it is doomed once the pullback ends and the multi-day
-                # uptrend resumes. This term catches what slope-against structurally misses:
-                # positions opposed to the multi-day (96-bar) trend get accelerated exit. Uses
-                # the SAME fast-saturating ret_vlong (scale 0.01) the entry-size keep proved
-                # noise-free in rally's operating range (|ret_vlong| 0.02-0.04 sits in tanh's
-                # flat saturated tail -> near-constant pressure, no AR(1) tracking error ->
-                # stability preserved). Symmetric/general: fires for ANY counter-trend-to-
-                # multi-day position (rally pullback shorts, crash dead-cat longs); regime
-                # effects fall out of the backtest. RAW-moving (unlike the size keep which is
-                # Sharpe-invariant): cuts counter-trend losers faster -> higher Sharpe, lower
-                # DD, shorter loss streaks. New cross-timescale data dep in the exit fusion.
-                _pos_dir_cte = 1.0 if current_pos > 0 else -1.0
-                _ct_exit_pressure = 0.60 * max(0.0, np.tanh(-ret_vlong * _pos_dir_cte / 0.01))
-                _w_ct_exit = 1.0
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure,
-                    _w_ct_exit * _ct_exit_pressure
+                    _w_ar * _ar_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
