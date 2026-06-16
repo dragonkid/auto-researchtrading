@@ -728,7 +728,30 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size if current_pos > 0 else -size
+                    # Architectural: ONE-SIDED (long-in-multi-day-downtrend) whole-hold
+                    # counter-trend shrink. Row 507 applied the ct shrink to BOTH sides
+                    # through the hold (_bull_ct_vlong for longs-in-downtrend AND
+                    # _bear_ct_vlong for shorts-in-uptrend) — the BEAR side fires on RALLY's
+                    # pullback shorts (rally is a multi-day UPtrend, ret_vlong>0), so any
+                    # whole-hold bear-side shrink injects multi-bar position-value variance
+                    # into rally's zero-margin book -> rally stability collapse. Exp3/exp4
+                    # this session both leaked into rally via PROXY gates (cumulative-churn,
+                    # directional-imbalance). This sidesteps the leak ENTIRELY by applying
+                    # the shrink to ONLY the long-in-downtrend leg: the condition
+                    # max(0, tanh(-ret_vlong/0.01)) for a LONG position is STRUCTURALLY ZERO
+                    # in rally because rally's ret_vlong is POSITIVE (a multi-day uptrend) —
+                    # not a noisy proxy that can leak, but the actual SIGN of rally's trend.
+                    # It can only fire on a long position held against a multi-day DOWNtrend:
+                    # exactly crash's dead-cat-bounce longs (its Sharpe-dragging losers).
+                    # Crash has huge stability margin (0.974, factor 1.0) to absorb the
+                    # multi-bar variance. Bull (uptrend, ret_vlong>0) and sideways
+                    # (ret_vlong~0) also cannot fire the long-in-downtrend condition.
+                    # ret_vlong at the keep's noise-free fast-sat scale 0.01.
+                    if current_pos > 0:
+                        _ct_dn_shrink = 1.0 - 0.30 * max(0.0, np.tanh(-ret_vlong / 0.01))
+                    else:
+                        _ct_dn_shrink = 1.0
+                    full_target = (size if current_pos > 0 else -size) * _ct_dn_shrink
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
