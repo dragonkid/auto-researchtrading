@@ -138,8 +138,9 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Branch step 3: per-symbol trailing churn history (bar_count, len(_eh))
-        # for the persistent trailing-max churn gate on the low-churn coarse grid.
+        # Branch step 4: per-symbol CUMULATIVE-max churn (int) for the persistent
+        # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
+        # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
@@ -1219,12 +1220,23 @@ class Strategy:
             # integer counts has no boundary that flips under AR(1) noise (same safety
             # property as len(_eh) itself). New per-symbol state (_churn_hist) + new
             # control flow: grid application gated on trailing-max churn.
-            _ch = self._churn_hist.setdefault(symbol, [])
-            _ch.append((self.bar_count, len(_eh)))
-            while _ch and self.bar_count - _ch[0][0] > 100:
-                _ch.pop(0)
-            _recent_max_churn = max((c for _, c in _ch), default=0)
-            _calm_gate = 1.0 if _recent_max_churn <= 2 else 0.0  # fire only in never-bursting regimes
+            # Branch step 4: CUMULATIVE-max churn gate (replaces step-3's 100-bar
+            # window). The window leaked rally because rally's entry CLUSTERS are
+            # >100 bars apart — in the quiet stretches between clusters the trailing
+            # max dropped <=2 and the coarse grid fired on rally's noise-sensitive
+            # resizes (rally 0.000). Cumulative max never windows-out: once a symbol
+            # demonstrates ANY entry burst (len(_eh)>=3 even once), the grid turns OFF
+            # permanently for that symbol. crash (max len=1) and sideways (max len=2)
+            # NEVER burst -> grid stays ON the whole regime (their validated raw gains
+            # kept); rally/bull burst early -> grid OFF for the rest, including their
+            # quiet stretches that the window leaked. Monotonic integer max =
+            # noise-immune (no boundary that flips under AR(1)). Behavioral self-
+            # measurement ("has this symbol ever churned"), NOT a date/market-state
+            # classifier — generalizes to any persistently-calm vs bursty symbol.
+            _cm = self._churn_hist.get(symbol, 0)
+            _cm = max(_cm, len(_eh))
+            self._churn_hist[symbol] = _cm
+            _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
                 _grid_c = 0.06 * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
