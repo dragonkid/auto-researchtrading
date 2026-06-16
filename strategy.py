@@ -657,7 +657,7 @@ class Strategy:
                 # the exponent). Churn-gate retained so rally BURSTS still get exact-baseline
                 # product; the soft-min only governs calm + leaked-lone entries.
                 _fuse_min_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 at len<=1, ~0 at len>=3
-                _softmin_T = 0.15
+                _softmin_T = 0.30
                 def _softmin(vals):
                     _m = min(vals)
                     _w = [np.exp(-(v - _m) / _softmin_T) for v in vals]
