@@ -324,8 +324,24 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural subsystem redesign (voter-aggregation layer): trimmed
+            # strong-sum. The raw sum lets a SINGLE outsized voter contribution carry
+            # conviction over the admission floor — a marginal entry manufactured by one
+            # voter (often a noise-flipped short-window price-trend voter during a
+            # pullback) rather than by broad agreement. Replace the sum with a TRIMMED
+            # sum that drops each side's single largest contribution, then rescales by
+            # 7/6 to preserve the admission-floor calibration. This requires breadth: no
+            # lone voter can admit a trade, but a genuine multi-voter trend (4-5 agreeing
+            # voters) barely changes (dropping 1 of 5 leaves strong conviction). Robust-
+            # statistic redesign of the aggregation, general (no regime named). Trimming
+            # the MAX is a smooth operation w.r.t. the contribution vector at the
+            # crossover (the two largest are equal there → value unchanged), so it adds
+            # no noise boundary, unlike a gate.
+            _bull_clist = [max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)]
+            _bear_clist = [max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)]
+            _trim_rescale = 7.0 / 6.0
+            _bull_strong = (sum(_bull_clist) - max(_bull_clist)) * _trim_rescale
+            _bear_strong = (sum(_bear_clist) - max(_bear_clist)) * _trim_rescale
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
