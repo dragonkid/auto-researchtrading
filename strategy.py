@@ -1156,7 +1156,7 @@ class Strategy:
             # a near-always-zero quantity = both a simplification AND a coverage expansion.
             # Still resizes-only (entries/exits/flips exact); sign preserved; deterministic.
             if _is_resize:
-                _grid = 0.06 * equity * BASE_POSITION_SIZE
+                _grid = 0.02 * equity * BASE_POSITION_SIZE
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
