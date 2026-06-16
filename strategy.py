@@ -549,23 +549,25 @@ class Strategy:
                 # sustained multi-day downtrend (crash dead-cat-bounce longs), get up to
                 # 0.40x size reduction. Continuous (no decision boundary), multiplies into
                 # first-bar size alongside _bull_ct_atten / _bear_ct_atten.
-                # Branch step 4: CUMULATIVE-MAX churn gate on the multi-day ct attenuator
-                # (replaces step-3's leaky tanh gate, which stayed ~68% active at
-                # len(_eh)=1 and still hit rally's burst-INITIATING entries). The 5e4c5d5c
-                # baseline keep is a churn-gated order-emission grid that LIFTS rally
-                # stability; changing first-bar entry SIZE shifts which lattice cell each
-                # subsequent rally resize lands in, disrupting that grid. Use the EXACT
-                # noise-immune cumulative-max pattern the keep itself uses (line ~1283):
-                # once a symbol has EVER bursted (cumulative max len(_eh) >= 3), the
-                # ct-shrink turns OFF permanently for it (rally), so its order-emission
-                # grid is undisturbed; never-bursting symbols (bull/crash/sideways, max
-                # len(_eh) <= 2) keep the full ct-shrink. Read-only here — line ~1283
-                # performs the canonical persistence write. Monotonic integer max = no
-                # AR(1)-flippable boundary.
-                _cm_local = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _calm_ct = 1.0 if _cm_local <= 2 else 0.0  # fire only for never-bursting symbols
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
+                # Branch step 5: restore step-3's per-bar tanh churn gate (beat step-4's
+                # cumulative hard gate: rally benefits from the ct-shrink during its QUIET
+                # stretches between bursts — when len(_eh) drops back to <=1 — but is hurt
+                # DURING bursts; the per-bar gate re-enables the shrink in quiet stretches,
+                # the permanent-off cumulative gate does not). The 5e4c5d5c baseline keep
+                # is a churn-gated order-emission grid that LIFTS rally stability; changing
+                # first-bar entry SIZE shifts which lattice cell each rally resize lands in,
+                # so gate on the COMPLEMENT of the noise-immune integer churn count:
+                # _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways + rally quiet stretches),
+                # fading to ~0 at len(_eh)>=3 (rally bursts).
+                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 high churn
+                # Step 5 ALSO tightens the ret_vlong tanh scale 0.06 -> 0.03: in a strong
+                # multi-day trend tanh(ret_vlong/0.03) SATURATES to ~1 (flat, noise-
+                # insensitive -> a STABLE 0.60x shrink), removing the mid-slope size
+                # sensitivity that left rally's quiet-stretch shorts noise-exposed in
+                # step 3. Near ret_vlong~0 the shrink is ~0 anyway, so the only remaining
+                # gradient sits where the effect is negligible.
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.03))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.03))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
