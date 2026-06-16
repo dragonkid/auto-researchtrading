@@ -1086,30 +1086,6 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural: BINARY multi-day counter-trend exit gate (new exit
-                # decision-boundary on the noise-immune binary channel). A prior
-                # experiment proved the SIGNAL is correct — routing the noise-averaged
-                # 96-bar OLS-slope counter-trend signal into a SOFT exit-pressure term
-                # lifted rally raw 0.419->0.438 (Sharpe 0.735->0.778) — but it died
-                # because the soft term straddled the de-risk floor (0.55) boundary, so
-                # AR(1) noise crossed that boundary at divergent times and collapsed
-                # stability. This routes the SAME signal through a BINARY SATURATING
-                # full-exit instead (the only loss-cutting channel confirmed noise-
-                # immune, like the stop and opp_gate): when a position is held AGAINST
-                # the multi-day trend (bear in multi-day uptrend / bull in multi-day
-                # downtrend) AND is losing AND has cleared the fresh-entry window, force
-                # a full exit. Three saturating binary conditions (deep-loss, aged,
-                # deep-counter-trend) must ALL hold — each sits in a tanh flat-tail far
-                # from its boundary (fast-sat scale 0.01 on ret_vlong is the same flat-
-                # tail design the baseline keep uses), so none is noise-sensitive.
-                # General mechanism (no regime named): cut stale positions fighting the
-                # multi-day trend wherever they occur.
-                _pos_dir_mdct = 1.0 if current_pos > 0 else -1.0
-                _md_ct = max(0.0, np.tanh(-ret_vlong * _pos_dir_mdct / 0.01))  # ~1 when deep counter to multi-day trend
-                _md_ct_loss = max(0.0, np.tanh(-pos_pnl / (0.5 * abs(STOP_LOSS_PCT))))  # ~1 when meaningfully losing
-                if target != 0 and bars_held >= ENTRY_FULL_BARS and _md_ct > 0.85 and _md_ct_loss > 0.85 and _sl_pressure < 0.95:
-                    target = 0.0
-
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
                 # full-exit path AND de-risk ramp (which produces target=0 at boundary).
