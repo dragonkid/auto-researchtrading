@@ -559,24 +559,24 @@ class Strategy:
                 # so gate on the COMPLEMENT of the noise-immune integer churn count:
                 # _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways + rally quiet stretches),
                 # fading to ~0 at len(_eh)>=3 (rally bursts).
-                # Branch step 7: step-3's smooth per-bar churn gate × a SMOOTH cumulative
-                # fade (replaces step-6's HARD _never_burst cliff). Learning across
-                # steps 3-6: smooth gates beat hard gates for rally (step3 0.209 > step4
-                # 0.188 > step6 0.057), because a hard cumulative cliff (_cm crossing
-                # 2->3) lands on a PERTURBATION-DEPENDENT bar — rally's first burst shifts
-                # under noise, so the shrink turn-off bar wobbles -> size wobble ->
-                # stability damage. Make the cumulative gate smooth too: _cum_fade =
-                # 1 - tanh((_cm - 2.5)/1.0) decays gradually as a symbol's cumulative-max
-                # churn rises. bull/crash/sideways stay at _cm<=2 -> _cum_fade ~1.0 (full
-                # ct-shrink, +0.021 bull gain preserved); rally's _cm climbs to ~5 ->
-                # _cum_fade -> ~0 with NO hard transition. Both gates are monotone/smooth
-                # functions of integer churn counts (no AR(1)-flippable boundary).
-                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn now, ~0 bursting
-                _cm_local = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _cum_fade = 1.0 - max(0.0, np.tanh((_cm_local - 2.5) / 1.0))  # smooth: ~1 never-bursted, ->0 ever-bursted
-                _calm_ct = _calm_ct * _cum_fade
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
+                # Branch step 8: step-3's smooth per-bar churn gate (best of steps 3-7;
+                # cumulative fade dropped — it hurt in steps 4/6/7) PLUS a ret_vlong
+                # DEADZONE. Sensitivity analysis: rally's QUIET-stretch counter-trend
+                # shorts have SMALL |ret_vlong| (flat multi-day trend), sitting in the
+                # STEEP part of tanh(ret_vlong/0.06) (derivative ~6.6) — so their size
+                # WOBBLES under AR(1) noise -> rally tracking-error/stability damage that
+                # the shrink-benefit can't offset (rally has 50% counter-trend shorts).
+                # The deadzone max(0, tanh((|ret_vlong|-DZ)/w)) zeroes BOTH the shrink and
+                # its DERIVATIVE for |ret_vlong| < DZ=0.02, so small-trend shorts get NO
+                # noise-sensitive size change. Bull's counter-trend shorts occur in a
+                # STRONG multi-day uptrend (large ret_vlong, past the deadzone, in the
+                # flat-saturated region) -> still shrunk -> +0.021 bull gain preserved,
+                # AND rally's noise source removed -> rally stability can recover/exceed
+                # baseline. New mechanism: deadzone+saturation profile on the ct-shrink.
+                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
+                _CT_DZ = 0.02  # multi-day-trend deadzone: no shrink below this |ret_vlong|
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh((-ret_vlong - _CT_DZ) / 0.02))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh((ret_vlong - _CT_DZ) / 0.02))    # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
