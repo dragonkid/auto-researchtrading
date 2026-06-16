@@ -59,6 +59,12 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Near-breakeven band (abs pos_pnl) within which a partial reduce is deferred one
+# bar so it does not register as a spurious losing trade inflating
+# max_consecutive_losses. DD-bounded: only breakeven-band trims are held; deep-loss
+# de-risk and winner take-profit (|pos_pnl| >> band) always fire. 0.002 = 0.2%,
+# ~10x above the observed spurious-event depths (~0.01-0.02%).
+BREAKEVEN_BAND = 0.002
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1210,6 +1216,34 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
+            # Architectural: near-breakeven partial-reduce deferral (execution-layer,
+            # new control flow). Diagnostic (this session) found rally streak_gate=0.792
+            # (one of only two movable rally levers, a 21pct haircut) is inflated by
+            # IMMATERIAL partial-reduce losses: the 7-consecutive-loss run includes
+            # realizing events of pos_pnl ~ -0.01pct..-0.02pct (realized -0.06..-0.41 on
+            # $100k). max_consecutive_losses counts EVERY realizing event including
+            # de-risk-ramp partial reduces, so these near-breakeven micro-reduces extend
+            # the counted streak without materially moving equity; breaking the 7-streak
+            # into a 4-streak lifts streak_gate 0.792->0.875 (counting-sim this session).
+            # Exp2 (suppress by single-bar realized $) reproduced the de-risk-LATCH wall:
+            # EVERY ramp step is small $ by construction, so ALL de-risking was cancelled
+            # -> DD blowup. ROOT-CAUSE FIX here: gate on |pos_pnl| being in the
+            # near-breakeven BAND, not on per-step $. This is DD-bounded by construction
+            # -- a position within 0.2pct of entry that we defer-trim adds negligible DD,
+            # while deep-loss de-risk (|pos_pnl| >> band -> gate closed) and winner
+            # take-profit (pos_pnl >> band) ALWAYS fire. Only genuinely breakeven micro-
+            # trims (the spurious streak events) are deferred one bar. No admission
+            # change (walled axis), no price-derived sign-flip threshold (deferral has no
+            # direction boundary), no voter-weight change. Same SUPPRESS/snap-to-hold
+            # family as the churn deadband above (a proven keep family). Partial reduces
+            # only; entries/full-exits/flips exempt by construction.
+            _is_reduce = _is_resize and abs(target) < abs(current_pos)
+            if _is_reduce:
+                _be_pnl_now = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
+                if current_pos < 0:
+                    _be_pnl_now = -_be_pnl_now
+                if abs(_be_pnl_now) < BREAKEVEN_BAND:
+                    target = current_pos  # near-breakeven micro-trim -> defer one bar
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
