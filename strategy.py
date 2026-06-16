@@ -559,24 +559,24 @@ class Strategy:
                 # so gate on the COMPLEMENT of the noise-immune integer churn count:
                 # _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways + rally quiet stretches),
                 # fading to ~0 at len(_eh)>=3 (rally bursts).
-                # Branch step 8: step-3's smooth per-bar churn gate (best of steps 3-7;
-                # cumulative fade dropped — it hurt in steps 4/6/7) PLUS a ret_vlong
-                # DEADZONE. Sensitivity analysis: rally's QUIET-stretch counter-trend
-                # shorts have SMALL |ret_vlong| (flat multi-day trend), sitting in the
-                # STEEP part of tanh(ret_vlong/0.06) (derivative ~6.6) — so their size
-                # WOBBLES under AR(1) noise -> rally tracking-error/stability damage that
-                # the shrink-benefit can't offset (rally has 50% counter-trend shorts).
-                # The deadzone max(0, tanh((|ret_vlong|-DZ)/w)) zeroes BOTH the shrink and
-                # its DERIVATIVE for |ret_vlong| < DZ=0.02, so small-trend shorts get NO
-                # noise-sensitive size change. Bull's counter-trend shorts occur in a
-                # STRONG multi-day uptrend (large ret_vlong, past the deadzone, in the
-                # flat-saturated region) -> still shrunk -> +0.021 bull gain preserved,
-                # AND rally's noise source removed -> rally stability can recover/exceed
-                # baseline. New mechanism: deadzone+saturation profile on the ct-shrink.
+                # Branch step 9: step-3's smooth per-bar churn gate + FAST-SATURATION
+                # ret_vlong scale (0.06 -> 0.01), no deadzone (step-8's deadzone failed:
+                # it put the STEEP tanh region INSIDE rally's operating range). Direct
+                # sensitivity analysis: rally's counter-trend shorts operate at multi-day
+                # uptrend ret_vlong ~ 0.02-0.04. The DAMAGE to rally stability is the
+                # SENSITIVITY d(shrink)/d(ret_vlong) — how much the entry SIZE wobbles per
+                # unit of AR(1)-perturbed trend. At scale 0.06 (step 3) that sensitivity is
+                # ~5 across rally's range (size wobbles -> stability damage). At scale 0.01
+                # the SAME range sits in the FLAT saturated tail of tanh: shrink is a
+                # near-CONSTANT ~0.40x (sensitivity ~0.4, an order of magnitude lower) —
+                # a large but NOISE-FREE size reduction. This shrinks counter-trend shorts
+                # just as much as step 3 but stops their size from tracking noise, so rally
+                # stability is no longer damaged while the bull gain (its shorts also past
+                # the saturation knee) is preserved. New mechanism: near-binary saturated
+                # ct-shrink profile (vs step-3's mid-slope linear region).
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
-                _CT_DZ = 0.02  # multi-day-trend deadzone: no shrink below this |ret_vlong|
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh((-ret_vlong - _CT_DZ) / 0.02))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh((ret_vlong - _CT_DZ) / 0.02))    # bear entry in multi-day uptrend
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
