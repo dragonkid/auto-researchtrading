@@ -55,6 +55,7 @@ RSI_TREND_BIAS_DECAY = 0.10
 # Exit parameters (momentum-decay + slope + peak-profit + stop-loss)
 HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
+REDUCE_CADENCE = 3  # integer-time de-risk consolidation: emit same-sign SHRINK resizes only when bars_held % K == 0
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
@@ -1301,6 +1302,32 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
+            # Architectural: integer-time de-risk consolidation at the order-emission
+            # layer. DIAGNOSIS (prepare.py:573,604): partial REDUCES count as realized
+            # trades and feed max_consecutive_losses. A counter-trend rally short that
+            # bleeds slowly emits a tiny SHRINK most bars via the de-risk ramp — each is
+            # a small realized LOSS, manufacturing the 7-consecutive-loss streak that
+            # drags rally streak_gate to exp(-7/30)=0.792 (a 21% haircut on rally raw).
+            # Prior vehicles to suppress these spurious reduces were ALL walled: per-$
+            # materiality gate = de-risk LATCH (cancels all ramp steps), |pos_pnl|-band
+            # gate = PRICE-DERIVED noise boundary. This uses the un-walled channel: an
+            # INTEGER-TIME cadence keyed off bars_held (entry-anchored, noise-immune —
+            # AR(1) perturbation never shifts an integer bar index). Same-sign SHRINK
+            # resizes are BATCHED to fire only every REDUCE_CADENCE bars; on off-cadence
+            # bars the shrink is HELD (target snaps to current_pos), then the accumulated
+            # reduction emits as ONE larger resize on the cadence bar. This consolidates
+            # K tiny realized-loss reduces into 1 — collapsing the spurious loss streak —
+            # WITHOUT cancelling the de-risk (the position still reaches the same level,
+            # just in fewer steps, so it is NOT a latch). GROWS (scale-in), full exits
+            # (target==0), flips (sign change), and stop-loss saturation are ALWAYS
+            # exempt: risk-reducing exits and risk transitions must never be delayed.
+            # New control flow + entry-anchored integer data dep at order emission.
+            _is_shrink = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0) \
+                and abs(target) < abs(current_pos)
+            if _is_shrink and _sl_pressure < 0.95:
+                _bh_cad = self.bar_count - self.entry_bar.get(symbol, 0)
+                if _bh_cad % REDUCE_CADENCE != 0:
+                    target = current_pos  # off-cadence: hold shrink, batch into next cadence bar
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
