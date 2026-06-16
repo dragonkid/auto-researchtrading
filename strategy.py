@@ -1199,13 +1199,24 @@ class Strategy:
             # snap-toward-current_pos direction. The two grids are DISJOINT (churn_dz
             # and calm_dz are never both >0). New control flow: a second quantization
             # branch on the complementary churn partition.
+            # Branch step 2: low-churn SNAP-TO-HOLD deadband (replaces step-1's
+            # round()-grid). Step 1's coarse round()-grid moved low-churn resize
+            # targets to the NEAREST lattice line — but on rally's isolated low-churn
+            # (len<=1) bars that rounding boundary flips between two grid levels under
+            # AR(1) noise (rally stab 0.747->0.539). Snap-to-hold has NO foreign
+            # rounding boundary: when it fires the ONLY outcome is target=current_pos
+            # (a stable, already-held value), so a perturbed bar either holds the same
+            # position or passes through unchanged — never relocates to a noise-flippable
+            # new level. This is the SAME proven direction-agnostic mechanism already
+            # in the keep for HIGH churn (line ~1149); here it is the complementary
+            # LOW-churn gate, suppressing the micro-resizes (scale-in steps, partial
+            # de-risks, mult-driven size wobble) that drive turnover/fee cost in the
+            # rare-entry crash/sideways/bull regimes. Same noise-immune integer-churn
+            # gate, resize-only, snap-toward-current_pos.
             _calm_dz = max(0.0, np.tanh((1.5 - len(_eh)) / 0.6))  # ~1 at len<=0, ~0 at len>=2
-            if _is_resize and _calm_dz > 0.0:
-                _grid_c = 0.06 * equity * BASE_POSITION_SIZE * _calm_dz
-                if _grid_c > 0:
-                    _qt_c = round(target / _grid_c) * _grid_c
-                    if (_qt_c > 0) == (target > 0) and _qt_c != 0:
-                        target = _qt_c
+            _deadband_frac_c = 0.13 * _calm_dz
+            if _is_resize and abs(target - current_pos) < _deadband_frac_c * abs(current_pos):
+                target = current_pos  # snap-to-hold: suppress low-churn micro-resize
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
