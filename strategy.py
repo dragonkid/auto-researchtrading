@@ -728,7 +728,22 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size if current_pos > 0 else -size
+                    # Architectural: persist the multi-day counter-trend SIZE shrink through
+                    # the entire hold (not just bar 0). The keep's _bull_ct_vlong/_bear_ct_vlong
+                    # shrink first-bar entry size, but scale-in here re-grows the position back
+                    # toward FULL `size` over bars 1-3 — washing out the shrink (why the keep was
+                    # Sharpe-INVARIANT: a position shrunk at bar 0 then refilled is unchanged by
+                    # bar 3). Apply the SAME noise-free ct shrink to the scale-in full target so
+                    # counter-trend positions (rally's pullback shorts, 66% WR vs 86-100% trend-
+                    # aligned) stay capped at ~0.6x for their whole life. Down-weighting the
+                    # lower-Sharpe counter-trend sub-population raises portfolio Sharpe -> rally
+                    # RAW up (Sharpe-AFFECTING, unlike the bar-0-only keep). Same vehicle proven
+                    # noise-free: _calm_ct is integer-churn-gated (noise-immune) and ret_vlong at
+                    # scale 0.01 sits in tanh's flat saturated tail for rally (|ret_vlong| 0.02-
+                    # 0.04) -> near-constant 0.40 shrink, no AR(1) tracking error -> stability held.
+                    _calm_ct_hold = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                    _ct_vlong_hold = 1.0 - 0.40 * _calm_ct_hold * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01))
+                    full_target = (size if current_pos > 0 else -size) * _ct_vlong_hold
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
