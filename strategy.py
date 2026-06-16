@@ -322,11 +322,6 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Churn-gated SIZE attenuator (kept e51d7b6), lifted to top-level so it can
-            # gate BOTH the first-bar entry size AND the scale-in ceiling. Integer churn
-            # count len(_eh) (pruned 30-bar entry density) is noise-immune: fires in rally,
-            # ~0 in crash/sideways (spared by construction).
-            _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -618,8 +613,8 @@ class Strategy:
                 # full weight (Sharpe scale-invariant -> raw preserved). Integer-gated (not
                 # a continuous price-derived quantity like Exp1 trend-gate proximity which
                 # is noisy near boundary). New data dep: first-bar entry size depends on
-                # integer churn count. (_churn_size_atten now defined at top-level so the
-                # SAME factor also gates the scale-in ceiling below.)
+                # integer churn count.
+                _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
@@ -671,19 +666,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Architectural: extend the churn-shrink (e51d7b6 keep) from FIRST-BAR
-                    # to the SCALE-IN CEILING. e51d7b6 shrinks only bar-0 size; over the next
-                    # 2-3 scale-in bars the position grows back to FULL `size`, so a churny-
-                    # burst position "un-shrinks" and re-introduces distinct position values
-                    # across the rally trajectory (the proven rally-stab axis). Multiply the
-                    # scale-in ceiling by the SAME integer-churn attenuator so the WHOLE
-                    # position of a high-churn-burst entry stays smaller, not just bar 0.
-                    # KEY DISTINCTION from the reverted 10bfd268 conviction-through-scale-in
-                    # branch: that used a PRICE-DERIVED margin (perturbed entry-bar
-                    # classification propagated through the trade = exp3 trap). _churn_size_atten
-                    # is INTEGER (noise-immune) and recomputed LIVE per bar (averages cleanly,
-                    # no frozen-classification lag). Spares crash/sideways (churn~0).
-                    full_target = (size if current_pos > 0 else -size) * _churn_size_atten
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
