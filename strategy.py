@@ -144,13 +144,6 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: per-symbol rolling history of recent ENTRY directions
-        # (+1 long / -1 short). The directional-IMBALANCE |mean(dir)| is the gate
-        # that separates ONE-SIDED regimes (bull ~all longs -> imbalance ~1) from
-        # BIDIRECTIONAL regimes (rally ~50% pullback shorts -> imbalance ~0). Unlike
-        # the cumulative-churn gate (which leaks pre-burst rally), imbalance is
-        # structurally low in rally regardless of burst timing — a robust separator.
-        self._entry_dir_history = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -735,33 +728,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Architectural: directional-IMBALANCE-gated counter-trend sustained
-                    # shrink on the scale-in ceiling. Row 507 proved that persisting the
-                    # multi-day counter-trend shrink through the WHOLE hold (not just bar 0)
-                    # gives bull +0.036 (0.776->0.813) AND rally raw +0.006 (GENUINE Sharpe
-                    # gains) — but collapsed rally STABILITY because its gate (_calm_ct, a
-                    # per-bar churn quantity) jumps bar-to-bar, injecting multi-bar
-                    # position-value variance into rally's zero-margin book. THIS replaces
-                    # the leaky per-bar churn gate with a NOISE-IMMUNE directional-imbalance
-                    # gate: imb = |mean(recent entry dirs)| is ~1 for ONE-SIDED bull (all
-                    # longs) and ~0 for BIDIRECTIONAL rally (50% pullback shorts). The gate
-                    # fires the shrink ONLY where imbalance is high (bull) and is structurally
-                    # ~0 in rally REGARDLESS of burst timing (unlike cumulative-churn which
-                    # leaks pre-burst). imb updates only on EXIT/ENTRY events (slow, integer-
-                    # derived sign mean) -> no bar-to-bar variance -> rally's held-position
-                    # value is untouched. Counter-trend leg detected via ret_vlong vs pos_dir
-                    # at the keep's noise-free fast-sat scale 0.01. Shrinks bull's counter-
-                    # trend pullback shorts' SUSTAINED size -> smaller losing legs -> higher
-                    # bull Sharpe; rally spared by imbalance~0; crash/sideways: crash is
-                    # one-sided-short so imb high but its ct longs (dead-cat) get shrunk too
-                    # (beneficial); sideways imb~0 (balanced) -> untouched.
-                    _dh_si = self._entry_dir_history.get(symbol, [])
-                    _imb = abs(sum(_dh_si) / len(_dh_si)) if _dh_si else 0.0  # [0,1]
-                    _imb_gate = max(0.0, np.tanh((_imb - 0.4) / 0.25))  # ~0 below 0.4, ramps to 1
-                    _pos_dir_ct = 1.0 if current_pos > 0 else -1.0
-                    _ct_vl_si = max(0.0, np.tanh(-ret_vlong * _pos_dir_ct / 0.01))  # [0,1] counter-trend
-                    _ct_hold_shrink = 1.0 - 0.30 * _imb_gate * _ct_vl_si
-                    full_target = (size if current_pos > 0 else -size) * _ct_hold_shrink
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1348,10 +1315,5 @@ class Strategy:
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
-                    # Record the NEW entry's direction for the directional-imbalance gate.
-                    _dh = self._entry_dir_history.setdefault(symbol, [])
-                    _dh.append(1.0 if target > 0 else -1.0)
-                    if len(_dh) > 10:
-                        del _dh[0]
 
         return signals
