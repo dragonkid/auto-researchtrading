@@ -1111,26 +1111,6 @@ class Strategy:
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
             _deadband_frac = 0.13 * _churn_dz
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
-            # Architectural: churn-gated resize SLEW-DAMPING (temporal low-pass on the
-            # position trajectory). Distinct mechanism from snap-to-hold (a deadzone) and
-            # grid-quantize (spatial discretization): instead of fully resizing to the raw
-            # target, move only PART of the way each bar. target = current_pos +
-            # alpha*(raw_target - current_pos), with alpha ramping 1.0 (no damping, low
-            # churn) -> 0.6 (40% damping, high churn) via the noise-immune integer churn
-            # count. Under AR(1) noise two perturbed runs produce slightly different raw
-            # target sequences; damping makes each realized position a low-pass-filtered
-            # version of its target, so the two trajectories track more closely -> lower
-            # per-bar size divergence -> lower tracking error -> higher rally stability.
-            # Unlike the grid deadzone (exp2/3, which fully HELD a level and killed rally
-            # raw), damping still ADVANCES toward the target every bar (no dead zone), so
-            # it preserves directional response while smoothing magnitude. Direction-
-            # agnostic (sign of the step preserved), deterministic given the target, no new
-            # price-derived/noisy quantity. Same-sign resizes only (entries/exits/flips
-            # exact). Applied FIRST in the resize pipeline; snap-to-hold and grid then act
-            # on the damped value as before.
-            if _is_resize and _churn_dz > 0.0:
-                _slew_alpha = 1.0 - 0.40 * _churn_dz  # 1.0 low churn -> 0.6 high churn
-                target = current_pos + _slew_alpha * (target - current_pos)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
