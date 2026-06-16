@@ -686,17 +686,17 @@ class Strategy:
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
-                    # Branch step 2: freeze a hold-shrink factor based on ret_vlong saturation
-                    # ONLY (drop _calm_ct). The bar-0 entry keep keeps _calm_ct (execution-grid
-                    # protection); but for the FROZEN hold factor, _calm_ct reads live len(_eh)
-                    # which is entry-timing-sensitive (rally entries shift +-1 bar under noise ->
-                    # different len(_eh) -> different frozen factor = variance). ret_vlong at
-                    # scale 0.01 sits in tanh's flat saturated tail for rally's op-range
-                    # (|ret_vlong| 0.02-0.04) -> robustly ~0.6 across the noise ensemble.
-                    self._ct_hold_frac[symbol] = 1.0 - 0.40 * max(0.0, np.tanh(-ret_vlong / 0.01))
+                    # Branch step 3: restore step-1 frozen _bull_ct_vlong (with _calm_ct, which
+                    # step 2 proved load-bearing for rally raw) but HALVE the persisted depth.
+                    # The freeze variance (entry-timing-sensitive _calm_ct) scales with shrink
+                    # depth; blending the frozen factor 50% toward 1.0 halves the cross-path
+                    # position-value divergence (stability probe) while retaining half the
+                    # counter-trend down-weighting (raw/bull gain). Frontier probe: does shallower
+                    # persisted shrink recover rally stability while keeping bull's gain?
+                    self._ct_hold_frac[symbol] = 0.5 + 0.5 * _bull_ct_vlong
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
-                    self._ct_hold_frac[symbol] = 1.0 - 0.40 * max(0.0, np.tanh(ret_vlong / 0.01))
+                    self._ct_hold_frac[symbol] = 0.5 + 0.5 * _bear_ct_vlong
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
