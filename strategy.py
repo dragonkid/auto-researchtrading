@@ -142,17 +142,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol EMA state for the calm-gated exit-pressure smoother
-        # (exp4). Prior sessions found EMA-smoothing the fused exit pressure gives
-        # crash +0.25 / sideways +0.05 (filters dead-cat-bounce single-bar voter spikes
-        # that fire exits at adverse local lows) but KILLS bull/rally (trending regimes
-        # need fast exits). Every prior gate (vol_ratio/trend_align/pos_pnl) was noisy or
-        # regime-correlated and failed. The cumulative-max churn count (_churn_hist) is
-        # the proven NOISE-IMMUNE integer separator: crash max-len=1, sideways max-len=2
-        # (never burst -> smoothing ON), bull/rally burst len>=3 (smoothing OFF, byte-
-        # identical). Smooths the fused OUTPUT scalar only (not upstream margins) so
-        # opp_gate reversal detection stays intact (avoids the row-200 crash trap).
-        self._exit_ema = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -986,39 +975,6 @@ class Strategy:
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
-                # Branch step 2: DEAD-CAT-BOUNCE-SETUP-isolated EMA smoothing of fused
-                # exit pressure. Step 1 (calm-churn-gated) lifted crash +0.030 but
-                # regressed sideways (calm partition can't separate the two) and bull/rally
-                # (early cumulative-max leak). The benefit MECHANISM is specifically the
-                # dead-cat-bounce: a SHORT position in a sustained DOWNTREND, where a
-                # single-bar bull-voter spike (the bounce) momentarily inflates exit
-                # pressure and fires the short exit at an adverse local low. Isolate the
-                # smoothing to exactly that setup via a continuous gate:
-                #   short position (current_pos < 0) AND sustained downtrend (ret_long < 0).
-                # _dcb_gate = tanh(-ret_long/0.04) when short, else 0. This fires for crash
-                # (shorts in downtrend), ~0 for sideways (ret_long~0), 0 for bull/rally
-                # (longs / not-short). Smoothing STRENGTH (the EMA weight on the prior bar)
-                # scales with the gate so non-crash setups are byte-identical. Still
-                # SL-exempt and still kept under the calm-churn gate as a secondary guard
-                # against firing in a bursting (rally/bull) symbol.
-                # Branch step 7: SIDE-ASYMMETRIC weights. Step 2 (short@0.40) gave bull
-                # +0.020 clean; step 4 (long@0.40 added) gave rally +0.023 but bull -0.097.
-                # The long side helps rally (dip-buy pullback noise) and hurts bull (dip-buy
-                # reversal) by the SAME amount of smoothing. Test whether bull is more
-                # sensitive than rally: keep the short side at full 0.40 (bull's gain) but
-                # add the long side at a WEAKER 0.20 — if rally gains faster than bull loses
-                # at low weight, the net lifts the low outlier (rally) -> narrows std + raises
-                # mean = the double-benefit composite KEEP path. Both sides downtrend-gated,
-                # calm-churn-gated, SL-exempt.
-                _cm_x = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _dn_str = max(0.0, np.tanh(-ret_long / 0.04))  # downtrend strength
-                _side_w = 0.40 if current_pos < 0 else 0.20    # shorts full, longs half
-                _dcb_gate = _dn_str
-                if _cm_x <= 2 and _sl_pressure < 0.95 and _dcb_gate > 0.0:
-                    _prev_xp = self._exit_ema.get(symbol, _exit_pressure)
-                    _ema_w = _side_w * _dcb_gate
-                    _exit_pressure = (1.0 - _ema_w) * _exit_pressure + _ema_w * _prev_xp
-                self._exit_ema[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -1293,7 +1249,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
