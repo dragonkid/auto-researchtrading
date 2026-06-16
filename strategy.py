@@ -657,16 +657,12 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Branch step 3: persist the conviction down-weight through scale-in
-                    # but recompute it LIVE each bar from the CURRENT own-side margin
-                    # (not the frozen entry value — step 2 froze it and rally stability
-                    # FELL 0.727->0.671 because a marginal classification on a perturbed
-                    # entry bar propagated across the whole trade = exp3 noise-propagation
-                    # trap). Live recompute lets per-bar margin noise average out (exp3
-                    # lesson) while still keeping genuinely-marginal trades small for
-                    # their whole life. Own-side margin chosen by position direction.
-                    _pos_margin = _bull_margin if current_pos > 0 else _bear_margin
-                    _conv_mult = 0.70 + 0.30 * max(0.0, min(1.0, _pos_margin / 0.40))
+                    # Persist the entry-bar conviction down-weight through scale-in:
+                    # apply the frozen conviction scalar to the LIVE size (size still
+                    # recomputes per bar -> noise averages out; only the constant
+                    # conviction multiplier is held). Marginal trades stay smaller for
+                    # their whole life -> sustained tracking-error reduction.
+                    _conv_mult = self._entry_conv_mult.get(symbol, 1.0)
                     full_target = (size if current_pos > 0 else -size) * _conv_mult
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
