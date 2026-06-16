@@ -144,10 +144,6 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: per-symbol consecutive losing-exit counter (noise-immune
-        # integer). Increments on a losing full-exit, resets to 0 on a winning exit.
-        # Drives the consecutive-loss admission tightening that targets streak_gate.
-        self._loss_streak = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -371,25 +367,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Architectural: consecutive-loss admission tightening (targets streak_gate).
-            # Diagnostic (this session) found rally's raw score is dragged by TWO factors:
-            # low Sharpe (sq=0.551) AND streak_gate=0.792 from 7 consecutive losses (a 21%
-            # haircut) — the clustering counter-trend pullback shorts in the grinding uptrend.
-            # Prior sessions only ever attacked rally's SHARPE (size/exit/admission, all walled);
-            # the streak_gate via the max-consecutive-loss mechanism is UNTOUCHED. New per-symbol
-            # noise-immune integer state _loss_streak: after a RUN of losing exits, raise the
-            # admission threshold so the next same-pattern entry is skipped unless conviction is
-            # much higher — breaking the loss RUN (lowers max_consecutive_losses -> raises
-            # streak_gate) and filtering the net-loser re-entries (raises Sharpe). Self-targeting:
-            # fires ONLY after losses, so winning long-runs and the calm regimes (crash 0 / sideways
-            # 1 / bull 2 consecutive losses) are spared by construction. Same proven family as the
-            # load-bearing _freq_factor (multiplicative admission factor on an integer counter), but
-            # loss-conditioned not density-conditioned. tanh saturation: streak 1 -> ~1.05x,
-            # streak 3 -> ~1.18x, streak 5+ -> ~1.25x (capped). Integer-gated => noise-immune.
-            _ls = self._loss_streak.get(symbol, 0)
-            _loss_admit = 1.0 + 0.25 * max(0.0, np.tanh((_ls - 1.0) / 2.0))
-            _bull_strong_min = _strong_min * _freq_factor * _loss_admit * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * _loss_admit * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -1327,14 +1306,7 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        _signed_ep = -_ep if current_pos < 0 else _ep
-                        self._last_exit_pnl[symbol] = _signed_ep
-                        # Update consecutive losing-exit counter (noise-immune integer):
-                        # a losing exit increments, a winning exit resets to 0.
-                        if _signed_ep < 0:
-                            self._loss_streak[symbol] = self._loss_streak.get(symbol, 0) + 1
-                        else:
-                            self._loss_streak[symbol] = 0
+                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
