@@ -557,29 +557,19 @@ class Strategy:
                 # quality-filtered; additional volume-based attenuation is redundant.
                 # Code-structure removal: -16 lines + -3 cross-bar volume reads.
                 _vol_entry_atten = 1.0
-                # Architectural: time-of-day session-quality entry size modulator.
-                # Continuous cyclical feature: cos-cycle peaking at UTC 16 (US session
-                # peak overlap), trough at UTC 04 (low Asia hour). _activity in [0, 1].
-                # Maps to size multiplier in [0.85, 1.15] — entries during high-volume
-                # hours get up to 15% larger commitment, low-volume hours up to 15% smaller.
-                # NEW DATA SOURCE: bd.timestamp (UTC hour-of-day), orthogonal to all
-                # within-bar/within-window primitives currently saturated. Smooth via
-                # cos (no boundary). Applied only to first-bar entry size (does not
-                # touch voters, exits, or scale-in).
-                # NEW DATA SOURCE: timestamp-derived TOD+DOW+MOM compound activity.
-                # TOD: cos cycle 24h peaking UTC 16. DOW: cos cycle 7d peaking Wed/Thu.
-                # MOM: cos cycle ~30d peaking mid-month (day 15), trough around month-end/start.
-                # Mid-month captures monthly options expiry + futures rollover concentration;
-                # month-end carries window-dressing rebalance noise. All three compound
-                # multiplicatively into _activity. Single _tod_atten var absorbs all three.
-                # 5th cycle: semi-annual (~180d cos peak day 90 mid-half-year) — distinct
-                # frequency from MOM (30d) and QUARTER (91d), captures half-year market
-                # rhythm. Scaled 0.85-1.0 (smallest amplitude) to bound contribution since
-                # contributions decrease with each cycle stacked (TOD +0.0001 -> DOW +0.0006
-                # -> MOM +0.0003 -> QUARTER +0.0001). +0 LOC fused into single expression.
-                _ts_h = bd.timestamp // 3600000
-                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
-                _tod_atten = 0.85 + 0.30 * _activity
+                # Architectural simplification: removed 6-cycle calendar entry-size
+                # modulator (_tod_atten). It stacked TOD(24h)+DOW(7d)+MOM(30d)+QUARTER(91d)
+                # +SEMI(180d)+ANNUAL(365d) cosine cycles into a +-15% first-bar size scalar.
+                # Overfitting-hygiene removal: the modulator's OWN comments documented each
+                # added cycle contributing only +0.0001..+0.0006 — six stacked calendar
+                # harmonics fit to 4 in-sample regimes is a textbook meta-overfit smell at
+                # this experiment count. It is noise-IMMUNE (timestamp is never perturbed by
+                # the AR(1) test), so removal CANNOT lower any stability_factor — the test
+                # isolates whether the modulator provides real raw alpha or is pure curve-fit.
+                # Code-structure removal: a NEW DATA SOURCE (bd.timestamp) and its entire
+                # 6-harmonic computation deleted; first-bar size no longer depends on
+                # calendar. If raw holds, the simpler strategy generalizes better.
+                _tod_atten = 1.0
                 # Architectural: conviction-margin first-bar SIZE attenuator (shrink,
                 # don't block). Exp2 this session proved marginal-conviction entries
                 # drive rally instability — but blocking them (raising admission)
