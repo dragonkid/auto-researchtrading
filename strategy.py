@@ -59,11 +59,6 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
-# Architectural: vol-expansion-gated entry-size attenuation. Max fractional cut to
-# first-bar entry size when short-term realized vol expands above the medium baseline
-# (vol-of-vol > 1.3x). DD-targeted, Sharpe-neutral entry-VALUE lever (see usage site).
-VE_ENTRY_CUT = 0.30
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -624,28 +619,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: vol-expansion-gated first-bar entry SIZE attenuator.
-                # NEW data dependency at the entry-sizing layer: vol-of-vol (short 6-bar
-                # realized vol / medium 18-bar realized vol) — currently used ONLY as an
-                # EXIT pressure (_ve_pressure), never on entry size. Mechanism (DD-targeted,
-                # Sharpe-neutral): rally's raw is suppressed mainly by its DD gate (max_dd
-                # 1.857%, ~4x sideways → dd_gate ~0.35, the worst). Entries taken while
-                # short-term vol is EXPANDING above the medium baseline are pullback-prone —
-                # they contribute disproportionately to drawdown. Shrinking exactly those
-                # entries lowers their DD contribution (raises dd_gate → raw) while leaving
-                # Sharpe ~unchanged (scale-invariant: down-weighting a subset of entries does
-                # not shift the return distribution's shape). Smaller positions also reduce
-                # clean/perturbed tracking error (stability). Activates only above 1.3x
-                # expansion (same threshold as the exit pressure); ~1.0x in calm trends so
-                # clean-trend raw is preserved. Continuous tanh, no boundary. Entry-VALUE
-                # lever only — does not touch emission timing/frequency (the walled axis).
-                _ve6_e = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
-                _ve18_e = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
-                _ve_entry_atten = 1.0 - VE_ENTRY_CUT * max(0.0, np.tanh((_ve6_e / _ve18_e - 1.3) / 0.4))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _ve_entry_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _ve_entry_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
