@@ -686,17 +686,16 @@ class Strategy:
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
-                    # Branch step 3: restore step-1 frozen _bull_ct_vlong (with _calm_ct, which
-                    # step 2 proved load-bearing for rally raw) but HALVE the persisted depth.
-                    # The freeze variance (entry-timing-sensitive _calm_ct) scales with shrink
-                    # depth; blending the frozen factor 50% toward 1.0 halves the cross-path
-                    # position-value divergence (stability probe) while retaining half the
-                    # counter-trend down-weighting (raw/bull gain). Frontier probe: does shallower
-                    # persisted shrink recover rally stability while keeping bull's gain?
-                    self._ct_hold_frac[symbol] = 0.5 + 0.5 * _bull_ct_vlong
+                    # Branch step 4 pivot: freeze the FULL bar-0 ct factor (carries the full
+                    # counter-trend signal) but no longer use it for SIZE persistence (walled:
+                    # composite monotone-decreasing in depth). Instead it now drives a tighter
+                    # STOP for counter-trend positions (see _stop_abs below) — the entry-anchored
+                    # binary-saturating channel that prior sessions proved is rally's ONLY
+                    # noise-immune exit.
+                    self._ct_hold_frac[symbol] = _bull_ct_vlong
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
-                    self._ct_hold_frac[symbol] = 0.5 + 0.5 * _bear_ct_vlong
+                    self._ct_hold_frac[symbol] = _bear_ct_vlong
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -744,19 +743,10 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Architectural: persist the FROZEN bar-0 multi-day ct shrink through the
-                    # hold. The keep shrinks only bar-0 entry size; scale-in re-grows the
-                    # position back toward FULL `size` over bars 1-3 (washes the shrink out ->
-                    # Sharpe-invariant). exp2 this session tried a LIVE recompute and broke
-                    # rally stab (time-varying _calm_ct read live len(_eh) -> full_target
-                    # jumped bar-to-bar). Here the factor is the constant captured at entry
-                    # (bar-0, the keep's already-noise-free evaluation); `size` stays live so
-                    # full_target = live_size * const has the SAME noise profile as baseline,
-                    # just scaled down for counter-trend positions. Down-weights rally's low-WR
-                    # pullback shorts vs trend-aligned winners for the whole hold -> Sharpe up
-                    # (raw-affecting) WITHOUT introducing a new noise-tracking term.
-                    _cthf = self._ct_hold_frac.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _cthf
+                    # Branch step 4: size-persistence reverted to baseline (walled: composite
+                    # monotone-decreasing in persisted shrink depth). The frozen ct flag now
+                    # drives a tighter stop instead (see _stop_abs).
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -797,6 +787,19 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Branch step 4: counter-trend stop tightening via the FROZEN entry ct flag.
+                # _ct_hold_frac is captured once at entry (noise-free, the keep's bar-0
+                # evaluation) and is in [0.6, 1.0]: ~1.0 trend-aligned, ~0.6 multi-day
+                # counter-trend. Counter-trend positions are rally's losers (pullback shorts,
+                # 66% WR vs 86-100% trend-aligned), so tighten their stop to cut them faster.
+                # Vehicle = the entry-anchored binary-SATURATING stop (the ONLY rally exit
+                # prior sessions proved noise-immune: it's anchored to entry_price (fixed) and
+                # _sl_pressure saturates binary >=0.95 on a loss cut — no soft graduated value
+                # modulation). Frozen flag -> stop_mult in [0.80, 1.0]: counter-trend stop is
+                # 20% tighter. Raw-affecting (cuts losers earlier -> Sharpe up, DD down) via a
+                # channel orthogonal to the walled held-position-size variance.
+                _cthf_stop = self._ct_hold_frac.get(symbol, 1.0)
+                _stop_abs = _stop_abs * (0.80 + 0.20 * max(0.0, min(1.0, (_cthf_stop - 0.6) / 0.4)))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
