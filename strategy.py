@@ -549,18 +549,21 @@ class Strategy:
                 # sustained multi-day downtrend (crash dead-cat-bounce longs), get up to
                 # 0.40x size reduction. Continuous (no decision boundary), multiplies into
                 # first-bar size alongside _bull_ct_atten / _bear_ct_atten.
-                # Branch step 3: LOW-CHURN gate on the multi-day ct attenuator. The
-                # 5e4c5d5c baseline keep is a churn-gated order-emission grid that LIFTS
-                # rally stability; changing first-bar entry SIZE shifts which lattice cell
-                # each subsequent rally resize lands in, disrupting that grid's noise-
-                # immunity (rally has churn bursts to len(_eh)=5). Bull/crash entries are
-                # sparse (len(_eh)<=1) so they keep the full ct-shrink cleanly. Gate the
-                # attenuator on the COMPLEMENT of the established noise-immune integer
-                # churn count: _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways), ~0 at
-                # len(_eh)>=3 (rally bursts) — so rally's high-churn entries are exempt
-                # and its order-emission grid is undisturbed. Same fast-saturating tanh
-                # on an integer count (no AR(1)-flippable boundary).
-                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 high churn
+                # Branch step 4: CUMULATIVE-MAX churn gate on the multi-day ct attenuator
+                # (replaces step-3's leaky tanh gate, which stayed ~68% active at
+                # len(_eh)=1 and still hit rally's burst-INITIATING entries). The 5e4c5d5c
+                # baseline keep is a churn-gated order-emission grid that LIFTS rally
+                # stability; changing first-bar entry SIZE shifts which lattice cell each
+                # subsequent rally resize lands in, disrupting that grid. Use the EXACT
+                # noise-immune cumulative-max pattern the keep itself uses (line ~1283):
+                # once a symbol has EVER bursted (cumulative max len(_eh) >= 3), the
+                # ct-shrink turns OFF permanently for it (rally), so its order-emission
+                # grid is undisturbed; never-bursting symbols (bull/crash/sideways, max
+                # len(_eh) <= 2) keep the full ct-shrink. Read-only here — line ~1283
+                # performs the canonical persistence write. Monotonic integer max = no
+                # AR(1)-flippable boundary.
+                _cm_local = max(self._churn_hist.get(symbol, 0), len(_eh))
+                _calm_ct = 1.0 if _cm_local <= 2 else 0.0  # fire only for never-bursting symbols
                 _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
                 _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
