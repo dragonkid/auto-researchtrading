@@ -228,7 +228,7 @@ If results.tsv already contains diagnostic insights from prior sessions (grep fo
 Design strategies with smooth thresholds to minimize stability penalty.
 
 **Do NOT use open price as a "stable" signal source.** The noise test only perturbs close (then adjusts high/low). Open appears noise-immune but this is an artifact of the test methodology, not a real property. In live trading, open is equally noisy.
-**HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 8bps, low: std 12bps). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
+**HL2 in noise test.** HL2=(high+low)/2 is tested with AR(1) correlated noise (high: std 4bps, low: std 5bps — empirically calibrated 2026-06 to demeaned cross-source random dispersion, see noise_test.py header). HL2-based signals have comparable noise exposure to close-based signals. No discount needed.
 
 **Hard binary regime switches are forbidden.** A strategy that detects "current regime = sideways" and switches to a different code path creates boundary noise that destroys stability (the switch point itself is noise-sensitive). More importantly, the AR(1) correlated noise test CANNOT detect regime-detection overfitting — a smooth regime classifier (e.g., 100-bar volatility average) will pass stability tests while being perfectly overfit to the 4 known backtest regimes. This is the one form of overfitting our test harness does not catch.
 
