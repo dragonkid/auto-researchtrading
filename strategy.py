@@ -636,12 +636,26 @@ class Strategy:
                 # NON-price state multipliers (cooldown timing, post-loss outcome, portfolio
                 # DD, time-of-day, integer churn) stay as product — they are orthogonal and
                 # not part of the correlated price-quality noise cluster.
+                # Branch step 2: CHURN-GATE the fusion. Pure min collapsed rally (argmin-
+                # switch boundary flips under noise in near-tied bidirectional entries).
+                # Blend min (calm/low-churn entries) toward product (bursty/high-churn) via
+                # the noise-IMMUNE integer churn count len(_eh): calm symbols (bull spread-out
+                # entries, len<=1) get min-fusion (validated +0.019 bull, stab->1.0); rally
+                # bursts (len>=3) get product = EXACT baseline (spares rally). Fast-saturating
+                # sigmoid -> effectively constant min in calm, constant product in bursts;
+                # transition region (len=2 = crash/sideways) is flat under both. Same gate
+                # the kept fine grid uses to fire in rally and stay ~0 elsewhere.
+                _fuse_min_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 at len<=1, ~0 at len>=3
+                _bull_quality_prod = _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _bull_conv_atten
+                _bear_quality_prod = _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _bear_conv_atten
                 _bull_quality_min = min(_bull_ct_atten, _bull_consensus_atten, _bull_quality_atten, _bull_conv_atten)
                 _bear_quality_min = min(_bear_ct_atten, _bear_consensus_atten, _bear_quality_atten, _bear_conv_atten)
+                _bull_quality_fused = _bull_quality_prod * (1.0 - _fuse_min_gate) + _bull_quality_min * _fuse_min_gate
+                _bear_quality_fused = _bear_quality_prod * (1.0 - _fuse_min_gate) + _bear_quality_min * _fuse_min_gate
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_quality_min * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_quality_fused * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_quality_min * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_quality_fused * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
