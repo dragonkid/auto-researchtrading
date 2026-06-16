@@ -147,26 +147,6 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
-        # Architectural: cross-symbol market-breadth signal (computed once per bar
-        # across ALL symbols, before the per-symbol loop). NEW cross-symbol data
-        # dependency — every existing voter/sizer reads this-symbol price only.
-        # Mechanism exploits the noise-test structure: the AR(1) perturbation is
-        # 0.85 cross-symbol CORRELATED, so a broad-market-concordant entry (this
-        # symbol's direction agreeing with the BTC/ETH/SOL aggregate) is driven by
-        # the correlated common component (noise-robust); an idiosyncratic divergent
-        # entry rides the independent component the noise test perturbs hardest and
-        # is the one whose timing flips under noise. The mean of 20-bar returns is
-        # smooth (per-bar noise ~4bps vs 0.04 scale) so the breadth value itself is
-        # noise-stable — unlike own-symbol proximity features. Used to shrink the
-        # first-bar size of divergent entries (one-sided down, first-bar only:
-        # the proven-safe rally-stab pattern), with a NEW (cross-symbol) gate.
-        _mkt_rets = []
-        for _msym in ACTIVE_SYMBOLS:
-            if _msym in bar_data and len(bar_data[_msym].history) >= LONG_WINDOW + 1:
-                _mc = bar_data[_msym].history["close"].values
-                _mkt_rets.append((_mc[-1] - _mc[-LONG_WINDOW]) / _mc[-LONG_WINDOW])
-        _mkt_mean_ret = float(np.mean(_mkt_rets)) if _mkt_rets else 0.0
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -635,28 +615,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: cross-symbol concordance first-bar SIZE attenuator
-                # (shrink, don't block; one-sided down; first-bar only — the proven
-                # safe rally-stab family). For a BULL entry, concordance = how much
-                # the market-breadth aggregate _mkt_mean_ret agrees with going long;
-                # for a BEAR entry, with going short. When this entry is DIVERGENT
-                # (own side disagrees with broad market), it is idiosyncratic — driven
-                # by the independent price component the 0.85-correlated noise test
-                # perturbs hardest, so its entry timing flips under noise (the rally
-                # tracking-error source). Attenuate divergent entries up to 25%;
-                # market-concordant entries keep full size. Gated above |_mkt_mean_ret|
-                # > 0.01 so it stays ~off in flat broad markets (no breadth signal to
-                # act on). Continuous tanh on the signed disagreement (no decision
-                # boundary that flips direction). New cross-symbol data dep at entry size.
-                _mkt_gate = max(0.0, np.tanh((abs(_mkt_mean_ret) - 0.01) / 0.04))
-                _bull_concord = np.tanh(_mkt_mean_ret / 0.04)   # +1 broad up, -1 broad down
-                _bear_concord = -_bull_concord
-                _bull_div_atten = 1.0 - 0.25 * _mkt_gate * max(0.0, -_bull_concord)
-                _bear_div_atten = 1.0 - 0.25 * _mkt_gate * max(0.0, -_bear_concord)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _bull_div_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _bear_div_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
