@@ -1085,29 +1085,6 @@ class Strategy:
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
-                # Architectural: calm-gated integer-cadence winning scale-out (sample_factor
-                # lever). DIAGNOSIS: crash (45 trades) & sideways (49) sit below the 50-trade
-                # sample_factor knee (sqrt(trades/50) = 0.949 / 0.990); their realized trades
-                # are ~all partial reduces (crash has 0 full closes). Row 439 proved a profit
-                # HARVEST LADDER lifts crash raw (+0.022) — but its price-threshold trigger
-                # (peak crossing _pp_min multiples) is TIMING-VARIABLE under noise and its
-                # gates (vol_ratio / deep-peak) could not separate crash from rally, so it
-                # collapsed rally. The MISSING separator (discovered later, row 465 KEEP) is
-                # the cumulative-max churn gate _calm_gate: 1.0 for NEVER-bursting symbols
-                # (crash max-len=1, sideways max-len=2), 0.0 once a symbol bursts (rally/bull
-                # reach len>=3). This peels a SMALL FIXED FRACTION off a WINNING MATURE
-                # position on an INTEGER bars_held cadence — BOTH triggers noise-immune
-                # (integer bar index + integer churn), unlike row 439's price-threshold. The
-                # resulting reduce target is then quantized by the calm grid below (line
-                # ~1300) onto the stable lattice, so it inherits the row-465 stability
-                # property (NOT a price-derived de-risk boundary like the walled de_floor).
-                # Adds realized WINNING reduces to crash/sideways -> trade count toward 50 ->
-                # sample_factor up. Rally/bull spared by construction (gate 0 once bursty).
-                # Skipped under stop-loss (full exit follows) and during scale-in (bars<2).
-                _cm_so = max(self._churn_hist.get(symbol, 0), len(_eh))
-                if (target != 0 and _cm_so <= 2 and pos_pnl > 0 and bars_held >= 4
-                        and bars_held % 4 == 0 and _sl_pressure < 0.5):
-                    target = target * (1.0 - 0.12)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
