@@ -950,28 +950,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Architectural: soft-argmax (temperature softmax) pooling replaces the
-                # hard max() selection. The hard max has a non-differentiable selection
-                # boundary — when the top-2 soft terms are near-equal, WHICH term is the
-                # maximum flips bar-to-bar under AR(1) noise, injecting exit-timing
-                # divergence (the clean vs perturbed run pick different dominant pressures
-                # at the same bar). Replace with a convex-combination pool:
-                #   soft_max = sum_i t_i * w_i,  w_i = exp(t_i/T) / sum_j exp(t_j/T)
-                # When one term dominates (gap >> T), w concentrates on it and the pool == max
-                # (raw preserved on the vast majority of bars). When two terms are within ~T,
-                # the pool smoothly blends them instead of hard-selecting, so a noise-induced
-                # tie-flip moves the pooled value continuously rather than discretely. The
-                # pool is a convex combination (weights>=0 sum to 1) so it is bounded ABOVE
-                # by max(terms) — it NEVER raises exit pressure above current behavior, only
-                # softens near-tie selection. This is a WITHIN-BAR source-dimension smoothing
-                # (same dimension the kept agreement-attenuator already operates on), NOT the
-                # walled TIME-axis EMA family (no cross-bar state). Numerically stabilized by
-                # subtracting the max inside exp.
-                _st_arr = np.array(_soft_terms)
-                _T_pool = 0.20
-                _w_pool = np.exp((_st_arr - _st_arr.max()) / _T_pool)
-                _w_pool = _w_pool / _w_pool.sum()
-                _soft_max = float((_st_arr * _w_pool).sum())
+                _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
