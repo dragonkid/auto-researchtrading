@@ -142,10 +142,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Exp1 (architectural): per-symbol bar_count of the LAST emitted same-sign
-        # resize. Drives a churn-gated minimum-hold-time (resize cooldown) on the
-        # order-emission layer — TIME-axis counterpart to the space-axis grids.
-        self._last_resize_bar = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1156,38 +1152,6 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
-            # Exp1 (architectural): churn-gated minimum-hold-time on same-sign resizes
-            # (TIME-axis order-emission lever, orthogonal to the SPACE-axis grids below).
-            # The grids cut the count of DISTINCT position VALUES under the noise
-            # ensemble; this cuts the count of distinct position-CHANGES over TIME by
-            # forcing a refractory window between consecutive same-sign resizes. In a
-            # high-churn burst, a position that just resized is held frozen for
-            # RESIZE_COOLDOWN bars regardless of how the continuous price-derived target
-            # wobbles — so AR(1) noise that nudges the raw target across an emission
-            # boundary within the window produces NO new order (fewer noise-driven
-            # micro-resizes = fewer perturbation-sensitive boundaries on the held-equity
-            # path). Gated on the noise-IMMUNE integer churn count (fires in rally
-            # bursts, ~0 in crash/sideways which are spared by construction). Entries
-            # (current_pos==0), full exits (target==0), and flips (sign change) are
-            # ALWAYS exempt — risk transitions must never be deferred. New per-symbol
-            # state (_last_resize_bar) + new control flow at the emission layer.
-            # Branch step 3: DETERMINISTIC BAR-PHASE resize gate (fully noise-immune).
-            # Step1's broad raw gains (sideways +0.061, rally raw +0.15) came from cutting
-            # high-churn resize frequency, but its since-resize counter created a timing
-            # boundary that AR(1) noise flips (rally stab 0.73->0.43). Step2's decaying
-            # band kept a recency boundary -> still collapsed. Root fix: gate resizes on a
-            # MODULAR PHASE of bar_count, which is a pure clock index — identical in the
-            # clean and every perturbed run, so the gate has NO boundary that noise can
-            # move. In high churn, allow a same-sign resize ONLY when bar_count lands on
-            # the phase (bar_count % RESIZE_COOLDOWN == 0); otherwise hold. This thins
-            # resize frequency ~3x exactly like step1's freeze, but the held-position
-            # value across the noise ensemble now changes on the SAME bars regardless of
-            # perturbation -> distinct-position-value cascade collapses without a noise-
-            # sensitive trigger. Churn-gated (fires in rally bursts, off in crash/sideways).
-            # Entries/exits/flips still exempt (only _is_resize passes).
-            RESIZE_COOLDOWN = 3
-            if _is_resize and _churn_dz >= 0.5 and (self.bar_count % RESIZE_COOLDOWN) != 0:
-                target = current_pos  # phase-gated hold: same bars across noise ensemble
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
@@ -1281,9 +1245,6 @@ class Strategy:
                         target = _qt_c
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
-                # Exp1: record same-sign resize bar for the churn-gated resize cooldown.
-                if _is_resize:
-                    self._last_resize_bar[symbol] = self.bar_count
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
