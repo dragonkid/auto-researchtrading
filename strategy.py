@@ -143,13 +143,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Branch step 2: per-symbol PERSISTENT-CALM streak — consecutive bars the symbol's
-        # cumulative-max churn has stayed at 1. Monotonic integer counter (noise-immune,
-        # same safety property as _churn_hist). Diagnostic: rally symbols leave _cm==1 by
-        # bar ~44 (streak never reaches 100); crash symbols hold _cm==1 for all ~10200 bars
-        # (streak -> thousands). A streak>=threshold gate thus EXCLUDES rally entirely while
-        # keeping crash — fixing the rally-SOL transient-_cm==1 leak from the branch-open.
-        self._calm_streak = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -353,16 +346,6 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Branch step 2: update persistent-calm streak (consecutive bars at _cm==1).
-            # _cm here uses the same cumulative-max-of-len(_eh) as the emission layer
-            # (monotonic, so reading it early is consistent — len(_eh) only grows within a
-            # bar at the entry-emission step below). Streak resets to 0 the moment a symbol
-            # has ever bursted (_cm>=2); grows by 1 each bar it stays deeply calm.
-            _cm_now = max(self._churn_hist.get(symbol, 0), len(_eh))
-            if _cm_now <= 1:
-                self._calm_streak[symbol] = self._calm_streak.get(symbol, 0) + 1
-            else:
-                self._calm_streak[symbol] = 0
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -1101,47 +1084,6 @@ class Strategy:
                     # pullback peaks get full harvest (mean-reverting by structure).
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    # Architectural: deep-calm (_cm==1) tp-harvest attenuation — let
-                    # never-bursting-symbol winners run longer. DIAGNOSIS: crash has the
-                    # HIGHEST ret_vol of the calm three (0.0276) yet 100% WR — its low
-                    # Sharpe (1.29) is LUMPY-RETURN-bound, not loss-bound (0 losing trades).
-                    # The tp-harvest cuts winners 30% at peaks; row 257 confirmed letting
-                    # winners run helps the CALM regimes (sideways +0.046) but hurt bull/
-                    # rally DD when UNGATED. The rally-safe separator (this session's
-                    # diagnostic) is the cumulative-max churn == 1: crash holds _cm==1 for
-                    # ALL symbols the whole regime, while rally-SOL hits _cm==2 early and
-                    # rally-BTC/ETH hit 5 — so _cm==1 EXCLUDES rally entirely. Soften the
-                    # harvest by half ONLY for deep-calm symbols (crash + earliest sideways),
-                    # where DD is tiny (crash 0.73%, huge stability margin) so over-holding a
-                    # winning peak cannot blow the DD gate. Lets calm winners capture more
-                    # per trade -> smoother realization -> higher crash Sharpe. Rally/bull
-                    # untouched (gate 0). Integer-churn gate = noise-immune; this REDUCES a
-                    # cut (lets winners run), it does not ADD a noise-sensitive cut (unlike
-                    # exp3 scale-out), so no new timing boundary on the calm trajectory.
-                    # Branch step 3: restore the TRANSIENT _cm==1 firing (step-2's
-                    # persistent>=100 gate excluded crash's EARLY deep-peak harvest events
-                    # where the +0.031 gain lived -> gains lost). The real obstacle is only
-                    # the rally-SOL early-window leak. Exclude rally via its UNIQUE signature:
-                    # rally is a sustained multi-day UPTREND (ret_vlong strongly POSITIVE),
-                    # while crash is deep-bear (ret_vlong strongly NEGATIVE). A FAST-SATURATING
-                    # gate on ret_vlong (scale 0.01 — the baseline-keep's proven noise-immune
-                    # trick that puts rally's operating range in the FLAT tanh tail) is ~1 when
-                    # ret_vlong<=0 (crash passes, harvest-reduction fires) and ~0 when ret_vlong
-                    # strongly positive (rally excluded). Multiplies the 0.5 reduction so it
-                    # smoothly vanishes for up-trending symbols. _cm==1 still required (calm
-                    # base partition); the ret_vlong gate removes the rally-SOL transient leak.
-                    # Branch step 4: persistent-calm streak at a LOW threshold (>=24).
-                    # Diagnostic: rally symbols' max calm_streak is 13 (they leave _cm==1
-                    # by bar ~44); crash holds _cm==1 forever (streak->10170) and reaches
-                    # 24 by ~bar 55. A >=24 gate thus EXCLUDES rally entirely (max 13 < 24)
-                    # while admitting crash from bar ~55 onward — capturing crash's harvest
-                    # events without the rally-SOL transient leak AND without step-3's
-                    # price-derived ret_vlong gate (which re-introduced noise and only
-                    # half-fired in crash consolidations). Pure integer-streak gate =
-                    # noise-immune. Step-2 used >=100 which excluded crash's bar-55..131
-                    # window; >=24 is the minimal threshold above rally's max-13.
-                    if self._calm_streak.get(symbol, 0) >= 24:
-                        _tp_scale = _tp_scale * 0.5
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
