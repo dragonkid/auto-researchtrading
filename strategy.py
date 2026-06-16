@@ -204,8 +204,16 @@ class Strategy:
             # shorts ARE noise) — but routing it through ADMISSION collapsed stability
             # (pass/fail boundary at ret_vlong=0). Here it feeds a continuous SIZE
             # attenuator instead (no decision boundary). New cross-timescale data dep.
+            # Branch step 2: compute the multi-day trend as an OLS slope over the full
+            # 96-bar window (not a 2-endpoint return). _fast_slope on log(HL2) uses ALL
+            # 96 points, so each bar's AR(1) noise carries weight ~1/96 instead of the
+            # full weight the two endpoints had in step 1 — the position-size wobble that
+            # collapsed rally stability is averaged out. Convert the per-bar log slope to
+            # an equivalent net window return (slope * n) so the existing tanh(.../0.06)
+            # scale is preserved.
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
-            ret_vlong = (closes[-1] - closes[-_vlong_n]) / closes[-_vlong_n]
+            _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
+            ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
