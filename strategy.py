@@ -1029,22 +1029,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Architectural: high-churn-gated de-risk floor relaxation (rally-stab
-                    # lever, exit-side counterpart to the ef027049 entry-resize deadband).
-                    # In high local churn (len(_eh) high — rally's clustered-entry bars),
-                    # LOWER the de-risk floor -> WIDER, more gradual de-risk ramp -> each
-                    # unit of exit-pressure moves less position per bar -> reduces the
-                    # position-diff cascade that AR(1) noise induces in rally's high-turnover
-                    # book -> targets rally stability (the sole binding constraint). Gated on
-                    # the noise-IMMUNE integer 30-bar entry-density count (same signal
-                    # _freq_factor and the execution deadband read) so the gate itself never
-                    # flips under noise. Low-churn regimes (crash/sideways, isolated entries)
-                    # keep the original floor = SPARED by construction. New cross-component
-                    # data dep: exit-graduation ramp width depends on the symbol's own recent
-                    # entry density. Same family as the proven gradual-change rally lever
-                    # (scale-in pace, snap-to-hold) — NOT a price-derived exit-timing term.
-                    _churn_de = max(0.0, np.tanh((len(_eh) - 1.5) / 0.8))  # ~0 at len<=1, ~1 at len>=3
-                    _de_floor = max(0.25, _de_floor - 0.15 * _churn_de)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
