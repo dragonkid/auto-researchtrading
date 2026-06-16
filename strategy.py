@@ -935,6 +935,33 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: entry-anchored TAKE-PROFIT pressure (7th soft source).
+                # Exp4 this session DISCOVERED (load-bearing): rally's ONLY noise-immune
+                # exit is the entry-anchored STOP (pos_pnl vs a FIXED entry price — the
+                # threshold does not move under AR(1) close noise). ALL profit-side exits
+                # (pp-giveback, slope, time, ve) are PATH/PEAK-dependent — they read
+                # peak_pnl (a running high-water mark) or HL2 slopes, which DO shift under
+                # noise, so rally's profitable exits diverge across the noise ensemble =
+                # rally's stability ceiling. This adds the SYMMETRIC profit-side counterpart
+                # to _sl_pressure: a take-profit pressure that ramps as pos_pnl (vs the FIXED
+                # entry price, same noise-immune anchor as the stop) approaches a profit
+                # target = _tp_k * _stop_abs. Because it is anchored to the entry price (not
+                # peak_pnl, not slopes), the EXIT BAR for a winner running into the target is
+                # the same in the clean and perturbed runs -> fewer distinct exit timings ->
+                # higher rally stability. Symmetric band to _sl_pressure. Target set high
+                # (_tp_k=2.2) so it fires only on LARGE favorable excursions (does not
+                # prematurely cap small sideways/bull wins — those exit via pp/time as
+                # before; this only adds a noise-immune CEILING on big runners). New
+                # entry-anchored data-dependent exit term in the fusion. RAW impact: caps
+                # the largest winners (may trim sharpe slightly) but the stability lift on
+                # the binding rally constraint is the target.
+                _tp_k = 2.2
+                _tp_target = _tp_k * _stop_abs
+                _tp_band = (0.06 + 0.20 * min(1.0, vol_ratio)) * _tp_target
+                _tp_pressure = max(0.0, min(1.0, (pos_pnl - (_tp_target - _tp_band)) / (2.0 * _tp_band)))
+                # Profit-side only: fire on winners (pos_pnl>0, definitionally gated by the
+                # high target). Full weight — this is a noise-immune profit ceiling.
+                _w_tp = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -948,7 +975,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _w_tp * _tp_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
