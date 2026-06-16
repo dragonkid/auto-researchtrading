@@ -1146,6 +1146,25 @@ class Strategy:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
+            # Architectural: extend the stable-lattice quantization to FRESH ENTRIES.
+            # The resize-grid above (09f09ab keep) discretizes scale-in/de-risk resize
+            # LEVELS but EXEMPTS first-bar entries (current_pos==0). Yet an entry size is
+            # a product of ~10 continuous noisy attenuators (consensus/quality/ct/tod/...)
+            # -> every fresh rally entry establishes an UN-discretized continuous position
+            # value that AR(1) noise perturbs = the SAME distinct-position-value channel
+            # the resize-grid closes, but on the entry path it never covered. Round the
+            # entry size onto the SAME stable lattice (0.06*equity*BASE, slow-moving),
+            # churn-gated. CRITICAL: FLOOR at 1 grid unit so a real entry is NEVER rounded
+            # to zero — the trade still FIRES (identical trade count), only its SIZE snaps
+            # to a grid level. Direction-agnostic (sign preserved), deterministic given
+            # target. Same proven mechanism (snap/grid) on the one path it exempts.
+            _is_fresh_entry = current_pos == 0 and target != 0
+            if _is_fresh_entry and _churn_dz > 0.0:
+                _grid_e = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
+                if _grid_e > 0:
+                    _sgn_e = 1.0 if target > 0 else -1.0
+                    _lvl_e = max(1, round(abs(target) / _grid_e))  # floor 1 unit: never zero
+                    target = _sgn_e * _lvl_e * _grid_e
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
