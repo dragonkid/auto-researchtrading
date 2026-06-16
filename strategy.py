@@ -424,6 +424,22 @@ class Strategy:
             # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
+            # Architectural: churn-gated DE-NOISING of the initial-commit fraction.
+            # _entry_frac_dyn is built from PRICE-DERIVED inputs (vol_ratio + efficiency
+            # ratio _er), so it WOBBLES bar-to-bar in rally chop -> the first-bar position
+            # value differs between clean/perturbed AR(1) runs = tracking error = the rally
+            # stability drag. This is ORTHOGONAL to the e51d7b6 keep: that shrinks the final
+            # size LEVEL (one-sided down); this reduces the entry fraction's VARIANCE by
+            # blending it toward its CONSTANT base (ENTRY_INITIAL_FRAC_BASE, zero variance)
+            # in high churn only. Centering (two-sided, ~level-neutral) so it does NOT
+            # systematically cut directional alpha the way Exp4's whole-trajectory level
+            # shrink did — it attacks distinct-position-value COUNT (the proven rally-stab
+            # axis) via the fraction's noise, not its magnitude. Gated on the noise-immune
+            # integer churn count len(_eh) (fires in rally, ~0 in crash/sideways = SPARED).
+            # First-bar only (the proven sweet spot). New data dep: the initial-commit
+            # fraction's de-noising depends on integer churn density.
+            _churn_blend = max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+            _entry_frac_dyn = _entry_frac_dyn * (1.0 - _churn_blend) + ENTRY_INITIAL_FRAC_BASE * _churn_blend
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
