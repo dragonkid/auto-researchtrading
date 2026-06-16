@@ -1084,6 +1084,26 @@ class Strategy:
                     # pullback peaks get full harvest (mean-reverting by structure).
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Architectural: deep-calm (_cm==1) tp-harvest attenuation — let
+                    # never-bursting-symbol winners run longer. DIAGNOSIS: crash has the
+                    # HIGHEST ret_vol of the calm three (0.0276) yet 100% WR — its low
+                    # Sharpe (1.29) is LUMPY-RETURN-bound, not loss-bound (0 losing trades).
+                    # The tp-harvest cuts winners 30% at peaks; row 257 confirmed letting
+                    # winners run helps the CALM regimes (sideways +0.046) but hurt bull/
+                    # rally DD when UNGATED. The rally-safe separator (this session's
+                    # diagnostic) is the cumulative-max churn == 1: crash holds _cm==1 for
+                    # ALL symbols the whole regime, while rally-SOL hits _cm==2 early and
+                    # rally-BTC/ETH hit 5 — so _cm==1 EXCLUDES rally entirely. Soften the
+                    # harvest by half ONLY for deep-calm symbols (crash + earliest sideways),
+                    # where DD is tiny (crash 0.73%, huge stability margin) so over-holding a
+                    # winning peak cannot blow the DD gate. Lets calm winners capture more
+                    # per trade -> smoother realization -> higher crash Sharpe. Rally/bull
+                    # untouched (gate 0). Integer-churn gate = noise-immune; this REDUCES a
+                    # cut (lets winners run), it does not ADD a noise-sensitive cut (unlike
+                    # exp3 scale-out), so no new timing boundary on the calm trajectory.
+                    _cm_tp = max(self._churn_hist.get(symbol, 0), len(_eh))
+                    if _cm_tp <= 1:
+                        _tp_scale = _tp_scale * 0.5
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
