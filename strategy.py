@@ -728,7 +728,32 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size if current_pos > 0 else -size
+                    # Architectural: multi-day-trend-aligned DIFFERENTIAL scale-in ceiling
+                    # boost, gated on cumulative-churn. Size is Sharpe-INVARIANT only when
+                    # UNIFORM (pure leverage scales numerator and denominator of Sharpe
+                    # equally); DIFFERENTIAL sizing — bigger on high-edge trades, same on
+                    # low-edge — changes the trade MIX and DOES move Sharpe. Prior directional
+                    # sizing collapsed rally stability, but gate on the proven CUMULATIVE-MAX
+                    # churn signal (_cm<=2, the SAME never-windowed gate the order-emission grid
+                    # uses): it fires ONLY for never-bursting symbols (crash max-len=1, sideways
+                    # max-len=2) and is OFF for rally/bull (burst early) — rally/bull spared by
+                    # CONSTRUCTION, no stability exposure. Within the calm partition, ret_vlong
+                    # alignment SEPARATES crash (aligned shorts in a deep multi-day downtrend,
+                    # ret_vlong<<0) from sideways (ret_vlong~0 -> no boost): crash's aligned
+                    # shorts grow to a +20% ceiling while its counter-trend dead-cat-bounce
+                    # longs (pos_dir opposes ret_vlong -> align=0) do NOT — shifting crash's
+                    # capital MIX toward the higher-edge trend-following side -> higher Sharpe.
+                    # ret_vlong is the keep's noise-free 96-bar OLS slope at fast-sat scale 0.01
+                    # (flat saturated tail across the operating range -> near-constant, no
+                    # bar-to-bar size wobble). crash has large stability margin (0.974, factor
+                    # 1.0) and DD headroom (0.73%). New cross-component data dep: scale-in
+                    # ceiling depends on (cumulative-churn, ret_vlong alignment, pos_dir).
+                    _cm_si = self._churn_hist.get(symbol, 0)
+                    _calm_gate_si = 1.0 if _cm_si <= 2 else 0.0
+                    _pos_dir_al = 1.0 if current_pos > 0 else -1.0
+                    _vlong_al = max(0.0, np.tanh(ret_vlong * _pos_dir_al / 0.01))  # [0,~1] aligned
+                    _aligned_boost = 1.0 + 0.20 * _calm_gate_si * _vlong_al
+                    full_target = (size if current_pos > 0 else -size) * _aligned_boost
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
