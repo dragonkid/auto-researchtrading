@@ -986,17 +986,27 @@ class Strategy:
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
-                # Architectural (exp4): calm-gated EMA smoothing of the fused exit pressure.
-                # Fire ONLY for never-bursting (calm) symbols via the proven noise-immune
-                # cumulative-max churn separator. For those symbols, blend this bar's
-                # exit_pressure with the prior bar's (2-bar EMA, alpha=0.6) to filter
-                # single-bar dead-cat-bounce voter spikes. Stop-loss saturation is exempt
-                # (force raw pressure so hard stops never lag). Bull/rally (bursting) keep
-                # raw exit_pressure unchanged. New per-symbol state + new control flow.
+                # Branch step 2: DEAD-CAT-BOUNCE-SETUP-isolated EMA smoothing of fused
+                # exit pressure. Step 1 (calm-churn-gated) lifted crash +0.030 but
+                # regressed sideways (calm partition can't separate the two) and bull/rally
+                # (early cumulative-max leak). The benefit MECHANISM is specifically the
+                # dead-cat-bounce: a SHORT position in a sustained DOWNTREND, where a
+                # single-bar bull-voter spike (the bounce) momentarily inflates exit
+                # pressure and fires the short exit at an adverse local low. Isolate the
+                # smoothing to exactly that setup via a continuous gate:
+                #   short position (current_pos < 0) AND sustained downtrend (ret_long < 0).
+                # _dcb_gate = tanh(-ret_long/0.04) when short, else 0. This fires for crash
+                # (shorts in downtrend), ~0 for sideways (ret_long~0), 0 for bull/rally
+                # (longs / not-short). Smoothing STRENGTH (the EMA weight on the prior bar)
+                # scales with the gate so non-crash setups are byte-identical. Still
+                # SL-exempt and still kept under the calm-churn gate as a secondary guard
+                # against firing in a bursting (rally/bull) symbol.
                 _cm_x = max(self._churn_hist.get(symbol, 0), len(_eh))
-                if _cm_x <= 2 and _sl_pressure < 0.95:
+                _dcb_gate = (max(0.0, np.tanh(-ret_long / 0.04)) if current_pos < 0 else 0.0)
+                if _cm_x <= 2 and _sl_pressure < 0.95 and _dcb_gate > 0.0:
                     _prev_xp = self._exit_ema.get(symbol, _exit_pressure)
-                    _exit_pressure = 0.6 * _exit_pressure + 0.4 * _prev_xp
+                    _ema_w = 0.40 * _dcb_gate  # max 40% weight on prior bar in deep downtrend
+                    _exit_pressure = (1.0 - _ema_w) * _exit_pressure + _ema_w * _prev_xp
                 self._exit_ema[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
