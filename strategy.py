@@ -1171,14 +1171,25 @@ class Strategy:
             # (current_pos==0), full exits (target==0), and flips (sign change) are
             # ALWAYS exempt — risk transitions must never be deferred. New per-symbol
             # state (_last_resize_bar) + new control flow at the emission layer.
+            # Branch step 2: replace the cooldown's TWO hard cliffs (integer
+            # bars_since_resize<COOLDOWN boundary + _hold_prob>=0.5 threshold) — both of
+            # which flip under AR(1) noise in rally bursts (rally stab collapse 0.73->0.43)
+            # — with a BOUNDARY-FREE refractory deadband. Mechanism: instead of a binary
+            # freeze for K bars, the cooldown WIDENS the resize deadband smoothly as a
+            # function of recency. A resize that just fired sets a large effective
+            # deadband that decays continuously toward 0 over RESIZE_COOLDOWN bars. Within
+            # the window a noise-nudged target must clear a LARGER hold-zone to emit; the
+            # zone shrinks each bar so genuine moves eventually pass. No since-resize
+            # cliff and no probability threshold — the only comparison is the same smooth
+            # magnitude test the deadband already uses (continuous, noise-robust). Churn-
+            # gated (fires in rally, ~0 in crash/sideways).
             RESIZE_COOLDOWN = 3
             if _is_resize and _churn_dz > 0.0:
                 _bars_since_resize = self.bar_count - self._last_resize_bar.get(symbol, -999)
-                if _bars_since_resize < RESIZE_COOLDOWN:
-                    # within refractory window proportional to churn strength: hold
-                    _hold_prob = _churn_dz  # ~1 at high churn, ~0 at low
-                    if _hold_prob >= 0.5:
-                        target = current_pos  # freeze: defer resize to after cooldown
+                _recency = max(0.0, 1.0 - _bars_since_resize / RESIZE_COOLDOWN)  # 1 just-resized -> 0 after window
+                _cooldown_band = 0.35 * _churn_dz * _recency  # extra deadband width, decays smoothly
+                if abs(target - current_pos) < _cooldown_band * abs(current_pos):
+                    target = current_pos  # hold within smoothly-decaying refractory band
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
