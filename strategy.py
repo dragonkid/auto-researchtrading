@@ -1181,6 +1181,31 @@ class Strategy:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
+            # Architectural: COMPLEMENTARY low-churn-gated coarse grid (inverse-churn
+            # partition of the order-emission layer). The existing grid above fires
+            # ONLY in high churn (_churn_dz>0 at len>=2 = rally bursts); low-churn
+            # regimes (crash/sideways/bull, whose entries are rare so len(_eh)<=1)
+            # currently get ZERO grid quantization. The always-on grid branch
+            # (4a40af0) proved a 0.06 lattice cuts turnover/fee cost in exactly these
+            # stability-factor-1.0 regimes (crash raw +0.081, sideways raw +0.148) —
+            # but uniform application killed rally (its fine bidirectional resizes
+            # need the un-quantized continuum). This adds that same proven coarse
+            # grid but gated on the COMPLEMENT: _calm_dz fires at len<=1 (the inverse
+            # of _churn_dz), so it quantizes low-churn resizes (crash/sideways/bull)
+            # while staying OFF in rally — where the existing fine grid keeps
+            # operating. Same stable lattice (0.06*equity*BASE_POSITION_SIZE, equity
+            # slow + BASE const = noise-stable lines), same noise-IMMUNE integer-churn
+            # gate (just the other side), same resize-only exemptions, same
+            # snap-toward-current_pos direction. The two grids are DISJOINT (churn_dz
+            # and calm_dz are never both >0). New control flow: a second quantization
+            # branch on the complementary churn partition.
+            _calm_dz = max(0.0, np.tanh((1.5 - len(_eh)) / 0.6))  # ~1 at len<=0, ~0 at len>=2
+            if _is_resize and _calm_dz > 0.0:
+                _grid_c = 0.06 * equity * BASE_POSITION_SIZE * _calm_dz
+                if _grid_c > 0:
+                    _qt_c = round(target / _grid_c) * _grid_c
+                    if (_qt_c > 0) == (target > 0) and _qt_c != 0:
+                        target = _qt_c
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
