@@ -11,25 +11,6 @@ def _fast_slope(y):
     slope = ((np.arange(n) - x_mean) * (y - y_mean)).sum() / (n * x_var)
     return slope
 
-
-def _breadth_factor(contribs, families, discount, conc_floor):
-    """Decorrelated-breadth conviction haircut.
-
-    contribs = per-voter weighted strong-sum contributions (>=0). Conviction
-    concentrated in a single voter FAMILY (a cluster of correlated signals) is
-    discounted; conviction spread across decorrelated families keeps full weight.
-    concentration = dominant-family share of total; smooth linear ramp from
-    conc_floor (no discount) to 1.0 (full discount). Continuous (the family-switch
-    kink in max() leaves the value unchanged), and a no-op when total conviction
-    is ~0 (sub-admission, so it never affects a decision near zero)."""
-    total = sum(contribs)
-    if total <= 1e-9:
-        return 1.0
-    fam_max = max(sum(contribs[i] for i in fam) for fam in families)
-    conc = fam_max / total
-    ramp = max(0.0, min(1.0, (conc - conc_floor) / (1.0 - conc_floor)))
-    return 1.0 - discount * ramp
-
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -107,14 +88,6 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-
-# Voter families for decorrelated aggregation. Voter order:
-# [ret_short, EMA_cross, RSI, MACD, slope_16, EMA_slope, VWAP_dev].
-# Price-trend family = 5 correlated short-window directional voters; the two
-# orthogonal single-voter families are the oscillator (RSI) and volume (VWAP).
-VOTER_FAMILIES = ((0, 1, 3, 4, 5), (2,), (6,))
-BREADTH_DISCOUNT = 0.35       # max conviction haircut when concentrated in one family
-BREADTH_CONC_FLOOR = 0.5      # concentration below this -> no discount (broad agreement)
 
 
 def ema(values, span):
@@ -351,26 +324,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            # Architectural subsystem redesign (voter-aggregation layer): family-
-            # decorrelated breadth weighting. The linear strong-sum counts the 5
-            # correlated short-window price-trend voters (ret_short, EMA_cross,
-            # MACD, slope_16, EMA_slope) as 5 INDEPENDENT confirmations — so when
-            # they co-fire (the structural failure mode of any pullback in a
-            # directional regime), they manufacture "high conviction" with zero
-            # orthogonal (oscillator/volume) support. Replace the raw sum with a
-            # breadth-discounted sum: keep per-voter contributions, then scale the
-            # total by how DECORRELATED the agreeing voters are across the three
-            # families. Single-family concentration is haircut up to BREADTH_DISCOUNT;
-            # multi-family agreement keeps full weight. General mechanism (not regime-
-            # targeted): conviction earned by one correlated cluster is down-weighted
-            # everywhere; the regime effects fall out of the backtest. Continuous,
-            # noise-stable (a no-op at sub-admission totals).
-            _bull_contribs = [max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights)]
-            _bear_contribs = [max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights)]
-            _bull_breadth = _breadth_factor(_bull_contribs, VOTER_FAMILIES, BREADTH_DISCOUNT, BREADTH_CONC_FLOOR)
-            _bear_breadth = _breadth_factor(_bear_contribs, VOTER_FAMILIES, BREADTH_DISCOUNT, BREADTH_CONC_FLOOR)
-            _bull_strong = sum(_bull_contribs) * _bull_breadth
-            _bear_strong = sum(_bear_contribs) * _bear_breadth
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
