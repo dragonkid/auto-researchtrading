@@ -218,10 +218,21 @@ class Strategy:
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
-
-            # 5-bar median signal (maximum noise immunity, returns sacrificed for stability)
-            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            # Architectural: replace discrete int(round()) vol-adaptive median window
+            # with a FIXED window. The old adaptive_med = int(round(vol-dependent expr))
+            # stepped the median reference window (8..16 bars) as an INTEGER, so when
+            # AR(1) noise perturbs vol_ratio near a rounding boundary the window jumps
+            # discretely (diagnostic this session: 365 bar-to-bar steps in rally = 4.3pct
+            # of bars), discretely shifting _med_ref_med and flipping the ret_short
+            # voter — the FIRST voter, which also drives strength_scale for sizing. This
+            # is a hidden noise boundary inside the most foundational voter. Replace with
+            # a fixed central window (MED2_WINDOW) so the reference is a continuous
+            # function of (noise-perturbed) prices with no integer-rounding step. The
+            # vol-adaptivity it provided is redundant: vol_ratio already modulates
+            # dyn_threshold, smoothing span, sizing, and many gates. Code-structure
+            # change: removes the int(round()) discretization from the signal path.
+            _amf = MED2_WINDOW
+            _med_ref_med = np.median(smoothed_closes[-_amf - 2: -_amf + 3])
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
