@@ -138,16 +138,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol EMA state of the fused SOFT exit-pressure, VOL-GATED.
-        # Prior uniform-EMA test (exp1 this session) improved crash raw (+0.031) AND
-        # rally stability (+0.035) but collapsed low-vol raw (uniform exit-delay gives
-        # back thin edge in rally/sideways/bull). Decomposition says: smoothing helps in
-        # HIGH vol (crash — exits fire on noisy slope/vol-expansion spikes; delay lets
-        # bear shorts ride) and hurts in LOW vol. Gate the smoothing strength by vol_ratio
-        # so it engages only when vol is elevated and is OFF in calm regimes. Continuous
-        # (tanh on vol_ratio), no regime switch. Hard stop-loss + voter_bias stay
-        # instantaneous (protection + reversal must remain fast).
-        self._exit_pressure_ema = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -945,22 +935,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: VOL-GATED temporal EMA on the fused soft-pressure.
-                # Smoothing strength (weight on the prior value) scales with vol_ratio:
-                # _smooth_w = 0.5 * tanh((vol_ratio-0.9)/0.4) clamped to [0, 0.5].
-                # Calm (vol_ratio<=0.9): _smooth_w~0 -> instantaneous (low-vol raw
-                # preserved). Elevated vol (crash): _smooth_w ramps to ~0.5 -> single-bar
-                # spike contributes only ~half, sustained pressure passes (rides bear
-                # shorts through noisy slope/vol-expansion ticks). Reset on entry bar
-                # (bars_held<=1) to avoid stale carryover across trades.
-                _smooth_w = max(0.0, min(0.5, 0.5 * np.tanh((vol_ratio - 0.9) / 0.4)))
-                if bars_held <= 1 or _smooth_w <= 1e-6:
-                    _soft_ema = _soft_max
-                else:
-                    _prev_se = self._exit_pressure_ema.get(symbol, _soft_max)
-                    _soft_ema = (1.0 - _smooth_w) * _soft_max + _smooth_w * _prev_se
-                self._exit_pressure_ema[symbol] = _soft_ema
-                _soft_max = _soft_ema
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1178,7 +1152,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_pressure_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
