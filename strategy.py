@@ -645,11 +645,28 @@ class Strategy:
                 # sigmoid -> effectively constant min in calm, constant product in bursts;
                 # transition region (len=2 = crash/sideways) is flat under both. Same gate
                 # the kept fine grid uses to fire in rally and stay ~0 elsewhere.
+                # Branch step 3: replace HARD min with SOFT-min (softmax-weighted average)
+                # in the calm branch. Hard min's failure is the non-differentiable ARGMIN
+                # SWITCH — a hard boundary at the crossover of two close attenuators that
+                # flips under noise at rally's near-tied entries (the len<=1 lone-entry leak
+                # the instantaneous churn gate cannot separate from bull's stable len<=1).
+                # Soft-min = sum(x_i * softmax(-x_i/T)) is smooth/differentiable everywhere
+                # -> NO boundary to flip (the proven-safe family), while still emphasizing the
+                # single binding discount (soft-min in [min, mean] >= min >= product, so bull
+                # keeps its larger-entry stability gain). Numerically stable (subtract min in
+                # the exponent). Churn-gate retained so rally BURSTS still get exact-baseline
+                # product; the soft-min only governs calm + leaked-lone entries.
                 _fuse_min_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 at len<=1, ~0 at len>=3
+                _softmin_T = 0.15
+                def _softmin(vals):
+                    _m = min(vals)
+                    _w = [np.exp(-(v - _m) / _softmin_T) for v in vals]
+                    _sw = sum(_w)
+                    return sum(v * w for v, w in zip(vals, _w)) / max(_sw, 1e-12)
                 _bull_quality_prod = _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _bull_conv_atten
                 _bear_quality_prod = _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _bear_conv_atten
-                _bull_quality_min = min(_bull_ct_atten, _bull_consensus_atten, _bull_quality_atten, _bull_conv_atten)
-                _bear_quality_min = min(_bear_ct_atten, _bear_consensus_atten, _bear_quality_atten, _bear_conv_atten)
+                _bull_quality_min = _softmin((_bull_ct_atten, _bull_consensus_atten, _bull_quality_atten, _bull_conv_atten))
+                _bear_quality_min = _softmin((_bear_ct_atten, _bear_consensus_atten, _bear_quality_atten, _bear_conv_atten))
                 _bull_quality_fused = _bull_quality_prod * (1.0 - _fuse_min_gate) + _bull_quality_min * _fuse_min_gate
                 _bear_quality_fused = _bear_quality_prod * (1.0 - _fuse_min_gate) + _bear_quality_min * _fuse_min_gate
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
