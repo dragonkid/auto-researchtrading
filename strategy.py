@@ -138,6 +138,15 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Branch: per-symbol snapshot of the entry-bar conviction multiplier.
+        # The first-bar conviction attenuator (keep 10bfd268) shrinks only bar 1;
+        # as the position scales in to full `size` the down-weight dilutes away.
+        # Snapshot the conviction multiplier at entry (a CONSTANT scalar — no per-bar
+        # noise) and apply it to the LIVE per-bar `size` during scale-in, so a
+        # marginal-conviction trade stays proportionally smaller for its whole life.
+        # Freezing only the scalar (not size) preserves live-size noise-averaging
+        # (exp3 lesson: freezing size propagates one perturbed bar = destabilizing).
+        self._entry_conv_mult = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -597,8 +606,10 @@ class Strategy:
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten
+                    self._entry_conv_mult[symbol] = _bull_conv_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten
+                    self._entry_conv_mult[symbol] = _bear_conv_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -646,7 +657,13 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size if current_pos > 0 else -size
+                    # Persist the entry-bar conviction down-weight through scale-in:
+                    # apply the frozen conviction scalar to the LIVE size (size still
+                    # recomputes per bar -> noise averages out; only the constant
+                    # conviction multiplier is held). Marginal trades stay smaller for
+                    # their whole life -> sustained tracking-error reduction.
+                    _conv_mult = self._entry_conv_mult.get(symbol, 1.0)
+                    full_target = (size if current_pos > 0 else -size) * _conv_mult
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1167,7 +1184,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_conv_mult):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
