@@ -59,12 +59,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Realized-PnL materiality floor for partial-reduce emission (fraction of equity).
-# A partial reduce realizing less than this fraction of equity is suppressed (held)
-# so it does not register as a spurious losing trade inflating max_consecutive_losses.
-# 1.5e-5 = $1.50 on $100k — above the immaterial micro-reduces (~$0.06-0.41 observed)
-# and far below material reduces ($10+).
-MATERIALITY_FRAC = 1.5e-5
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1216,34 +1210,6 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
-            # Architectural: realized-PnL MATERIALITY deadband on partial reduces
-            # (execution-layer, new control flow). Diagnostic (this session) found the
-            # rally streak_gate=0.792 (one of only two movable rally levers, a 21pct
-            # haircut) is driven by a 7-consecutive-loss run in which 3 of the 7 events
-            # are IMMATERIAL partial-reduce losses (realized PnL -0.41, -0.09, -0.06 on
-            # $100k equity = <5e-6 of capital). max_consecutive_losses counts EVERY
-            # realizing event — including the de-risk-ramp's tiny partial reduces — so
-            # these near-breakeven micro-reduces extend the counted streak without
-            # materially moving equity. Suppress a partial reduce (target shrinks
-            # toward current_pos but keeps sign) whose REALIZED PnL would be
-            # immaterial: realized = reduced_notional * pos_pnl. When |realized| <
-            # MATERIALITY_FRAC * equity, hold instead (snap target->current_pos). This
-            # removes spurious losing events -> shorter counted streak -> higher
-            # streak_gate, WITHOUT touching admission (the walled axis), any price-
-            # derived sign-flip threshold (the materiality gate is on realized $, and a
-            # suppressed reduce is simply deferred one bar — no boundary that flips
-            # direction under noise), or voter co-firing. Same SUPPRESS/snap-to-hold
-            # family as the churn deadband above (a proven keep family), gated on
-            # realized-PnL materiality instead of churn count. Full exits (target==0),
-            # entries, and flips are exempt (never a partial reduce by construction).
-            _is_reduce = _is_resize and abs(target) < abs(current_pos)
-            if _is_reduce:
-                _red_pnl_now = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                if current_pos < 0:
-                    _red_pnl_now = -_red_pnl_now
-                _reduced_notional = abs(current_pos) - abs(target)
-                if abs(_reduced_notional * _red_pnl_now) < MATERIALITY_FRAC * equity:
-                    target = current_pos  # immaterial reduce -> hold (defer to next bar)
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
