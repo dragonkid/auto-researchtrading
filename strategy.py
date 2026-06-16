@@ -19,6 +19,7 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 SHORT_WINDOW = 8
 LONG_WINDOW = 20
+VLONG_WINDOW = 96  # multi-day (~4d) trend-context horizon for counter-trend sizing
 
 # EMA parameters
 EMA_FAST = 3
@@ -194,6 +195,17 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
+            # Architectural: multi-day (~96-bar) trend context, a SLOWER timescale than
+            # the 20-bar ret_long. In a grinding rally the 20-bar window frequently
+            # shows local negative returns (multi-hour pullbacks) while the multi-day
+            # trend is strongly up, so a pullback short looks only mildly counter-trend
+            # at 20 bars but is catastrophically counter-trend at the multi-day scale.
+            # Exp1 this session proved this insight preserves rally raw (counter-trend
+            # shorts ARE noise) — but routing it through ADMISSION collapsed stability
+            # (pass/fail boundary at ret_vlong=0). Here it feeds a continuous SIZE
+            # attenuator instead (no decision boundary). New cross-timescale data dep.
+            _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
+            ret_vlong = (closes[-1] - closes[-_vlong_n]) / closes[-_vlong_n]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -519,6 +531,18 @@ class Strategy:
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
                 _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
                 _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural: multi-day counter-trend SIZE attenuator (layered on the
+                # 20-bar term above). The 20-bar _ct_gate is ~0 during a rally pullback
+                # (the local 20-bar return is flat/negative at the moment a pullback short
+                # opens), so the existing term does NOT shrink rally's pullback shorts —
+                # they are exactly the entries that lose (6/12 rally opens are shorts, WR
+                # 66%). ret_vlong stays positive through pullbacks, so this term fires:
+                # bear entries in a sustained multi-day uptrend, and bull entries in a
+                # sustained multi-day downtrend (crash dead-cat-bounce longs), get up to
+                # 0.40x size reduction. Continuous (no decision boundary), multiplies into
+                # first-bar size alongside _bull_ct_atten / _bear_ct_atten.
+                _bull_ct_vlong = 1.0 - 0.40 * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -620,9 +644,9 @@ class Strategy:
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
