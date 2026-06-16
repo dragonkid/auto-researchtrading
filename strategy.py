@@ -1143,7 +1143,24 @@ class Strategy:
             if _is_resize and _churn_dz > 0.0:
                 _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
                 if _grid > 0:
-                    _qt = round(target / _grid) * _grid
+                    # Architectural: SCHMITT-TRIGGER hysteresis on the grid rounding.
+                    # Plain round(target/grid) maps to the nearest level — but its
+                    # decision boundary sits at exactly +/-0.5*grid from each level. A
+                    # genuine rally resize that lands NEAR a grid boundary flips which
+                    # level it rounds to under AR(1) noise -> a residual distinct-
+                    # position-value channel the plain grid leaves open (the same axis
+                    # the grid keep moved, but at the rounding boundary itself). Fix:
+                    # anchor a symmetric DEADZONE around the CURRENT level (current_pos,
+                    # noise-immune held value). Stay at the current level unless target
+                    # clears +/-0.65*grid past it (wider than the 0.5 nearest-boundary).
+                    # Direction-agnostic (same threshold both sides), tied to the same
+                    # STABLE lattice. New control flow: target level depends on current
+                    # level via a hysteresis band, not on absolute nearest-rounding alone.
+                    _ci = round(current_pos / _grid)   # current level index (stable ref)
+                    _ti = round(target / _grid)        # target nearest level index
+                    if _ti != _ci and abs(target - _ci * _grid) < 0.65 * _grid:
+                        _ti = _ci                      # within deadzone -> hold level
+                    _qt = _ti * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
             if abs(target - current_pos) > 1.0:
