@@ -1126,30 +1126,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Architectural: LOW-CHURN-gated profit-side de-risk floor relaxation
-                    # (the rally-SAFE inversion of the row-443 high-churn failure).
-                    # DIAGNOSIS: crash (45 trades) and sideways (49) sit BELOW the 50-trade
-                    # sample_factor knee (sqrt(trades/50) = 0.949 / 0.990), capping their
-                    # scores; rally (68 trades) is already saturated. Row 439 proved ADDING
-                    # realized trades lifts crash/sideways raw (the sample_factor lever), but
-                    # every harvest/relaxation vehicle that fired IN RALLY collapsed its
-                    # stability (row 443 high-churn de_floor relaxation -> rally hard-cutoff).
-                    # The KEEP partition (row 465 complementary grid) is the cumulative-max
-                    # _calm_gate: 1.0 for NEVER-bursting symbols (crash max-len=1, sideways
-                    # max-len=2), 0.0 once a symbol ever bursts (rally/bull reach len>=3).
-                    # Reusing that EXACT noise-immune integer gate, lower the profit-side
-                    # de_floor for calm symbols only: their winning positions de-risk over a
-                    # WIDER, EARLIER graduated ramp -> more small WINNING partial reduces ->
-                    # crash/sideways realized-trade count rises toward 50 (sample_factor up)
-                    # AND short-lived crash-recovery profits lock faster. Rally/bull spared by
-                    # construction (gate=0 once bursty). Same _cm formula as the emission-layer
-                    # update below (read-before-write is consistent: len(_eh) is appended only
-                    # at entry emission, after this block). Profit-side only (max(0,_pnl_scale))
-                    # so it adds WINNING reduces, not loss-streak events. Floored at 0.30.
-                    _cm_exit = max(self._churn_hist.get(symbol, 0), len(_eh))
-                    _calm_gate_exit = 1.0 if _cm_exit <= 2 else 0.0
-                    _de_floor -= 0.15 * _calm_gate_exit * max(0.0, _pnl_scale)
-                    _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
