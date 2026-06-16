@@ -595,10 +595,30 @@ class Strategy:
                 # first-bar size depends on conviction margin above floor.
                 _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
+                # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
+                # don't block). The diagnostic (c265424d) proved fast re-entries are the
+                # entire rally instability; BLOCKING them (branch) gave PERFECT rally
+                # stability 1.000 but collapsed raw. The proven winning axis (10bfd268)
+                # is SHRINK marginal entries first-bar-only, not block/delay. Here the
+                # "marginal" axis is the symbol's own recent entry DENSITY — the integer
+                # churn count len(_eh) over the pruned 30-bar window, the SAME noise-immune
+                # gate the grid-quantize keep (09f09ab) uses to fire in rally and stay ~0
+                # in crash/sideways (spared by construction). len(_eh) currently feeds only
+                # the admission THRESHOLD (_freq_factor, a BLOCK mechanism) and the
+                # execution-layer grid/deadband — never the entry SIZE. This is the SHRINK
+                # counterpart: as churn rises, later-in-burst entries (the most noise-driven
+                # re-entries) get smaller first-bar size; the first entry of a sequence
+                # (len<=1) stays full. Non-uniform within rally (targets the churny ones),
+                # so it cuts their clean/pert tracking error while leaving stable entries at
+                # full weight (Sharpe scale-invariant -> raw preserved). Integer-gated (not
+                # a continuous price-derived quantity like Exp1 trend-gate proximity which
+                # is noisy near boundary). New data dep: first-bar entry size depends on
+                # integer churn count.
+                _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
