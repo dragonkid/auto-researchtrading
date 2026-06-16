@@ -138,14 +138,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol EMA state of the fused SOFT exit-pressure.
-        # Exit-side analog of the entry 2-bar persistence gate: entries require
-        # sustained conviction, but exits currently fire on a single bar's fused
-        # soft pressure (MAX fusion amplifies the worst single noisy term). EMA
-        # smoothing filters single-bar soft-pressure spikes so the de-risk/exit
-        # decision depends on sustained pressure. Hard stop-loss & voter_bias stay
-        # instantaneous (protection + reversal must remain fast).
-        self._exit_pressure_ema = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -943,21 +935,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: temporal EMA on the fused soft-pressure scalar.
-                # alpha=0.6 (~2-bar memory): a single-bar noise spike contributes
-                # only 0.6 of its value to the decision; a sustained 2-bar rise
-                # reaches ~0.84 of full. Reset to instantaneous value on the entry
-                # bar (no stale carryover across trades) via bars_held<=1 guard.
-                # Rising-pressure responsiveness is preserved because EMA tracks
-                # genuine sustained climbs; only isolated spikes are damped.
-                _se_alpha = 0.6
-                if bars_held <= 1:
-                    _soft_ema = _soft_max
-                else:
-                    _prev_se = self._exit_pressure_ema.get(symbol, _soft_max)
-                    _soft_ema = _se_alpha * _soft_max + (1.0 - _se_alpha) * _prev_se
-                self._exit_pressure_ema[symbol] = _soft_ema
-                _soft_max = _soft_ema
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1175,7 +1152,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_pressure_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
