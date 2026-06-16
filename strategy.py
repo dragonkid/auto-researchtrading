@@ -143,6 +143,13 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Per-symbol FROZEN multi-day counter-trend shrink factor, captured ONCE at
+        # entry (bar 0, the noise-free evaluation the keep already uses) and reused
+        # unchanged through the hold. Distinct from a live recompute (exp2: time-varying
+        # _calm_ct read live len(_eh) -> full_target jumped bar-to-bar) and from the
+        # freeze-trap (which froze the NOISY combined_mult); here only the near-constant
+        # flat-saturated ct factor is frozen, size stays live/noise-averaged.
+        self._ct_hold_frac = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -679,8 +686,11 @@ class Strategy:
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    # Freeze the noise-free multi-day ct shrink factor at entry for hold-persistence.
+                    self._ct_hold_frac[symbol] = _bull_ct_vlong
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    self._ct_hold_frac[symbol] = _bear_ct_vlong
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -728,7 +738,19 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size if current_pos > 0 else -size
+                    # Architectural: persist the FROZEN bar-0 multi-day ct shrink through the
+                    # hold. The keep shrinks only bar-0 entry size; scale-in re-grows the
+                    # position back toward FULL `size` over bars 1-3 (washes the shrink out ->
+                    # Sharpe-invariant). exp2 this session tried a LIVE recompute and broke
+                    # rally stab (time-varying _calm_ct read live len(_eh) -> full_target
+                    # jumped bar-to-bar). Here the factor is the constant captured at entry
+                    # (bar-0, the keep's already-noise-free evaluation); `size` stays live so
+                    # full_target = live_size * const has the SAME noise profile as baseline,
+                    # just scaled down for counter-trend positions. Down-weights rally's low-WR
+                    # pullback shorts vs trend-aligned winners for the whole hold -> Sharpe up
+                    # (raw-affecting) WITHOUT introducing a new noise-tracking term.
+                    _cthf = self._ct_hold_frac.get(symbol, 1.0)
+                    full_target = (size if current_pos > 0 else -size) * _cthf
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1307,7 +1329,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._ct_hold_frac):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
