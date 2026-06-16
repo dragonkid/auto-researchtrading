@@ -60,12 +60,6 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
-# Realized per-direction track-record size throttle (noise-immune: updated only
-# at exits, frozen during holds).
-DIR_PNL_ALPHA = 0.30   # EMA smoothing of realized closed-trade PnL (~3-trade memory)
-DIR_TRACK_MAX = 0.35   # max first-bar/scale-in size reduction for a bleeding side
-DIR_TRACK_SCALE = 0.015  # realized-PnL EMA scale for the tanh throttle
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -125,15 +119,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Architectural: per-symbol per-direction EMA of realized closed-trade PnL.
-        # {symbol: {+1: ema_long, -1: ema_short}}. Updated ONLY at exits (sparse →
-        # noise-immune, unlike per-bar price quantities like ret_vlong that walled
-        # 123 prior counter-trend attempts) and FROZEN during a hold. Read at entry
-        # to throttle the SIZE of a fresh entry whose side has a poor realized track
-        # record on that symbol. Selectivity is emergent, not a regime classifier:
-        # a side that keeps winning (crash shorts, bull/rally longs) stays full; a
-        # side that keeps bleeding (rally pullback shorts) shrinks.
-        self._dir_pnl_ema = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -692,23 +677,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: realized per-direction track-record SIZE throttle.
-                # Read the (frozen-during-hold) exit-updated PnL EMA for the side about
-                # to be entered. A side with a NEGATIVE realized track record on this
-                # symbol shrinks; non-negative track record passes at full size (one-
-                # sided: a good record never inflates). Smooth tanh on the EMA, gated to
-                # zero until enough trades exist (else 0.0-init looks neutral anyway).
-                # Constant across the position's life → applying it to scale-in adds NO
-                # multi-bar variance (the failure mode of prior whole-hold ret_vlong
-                # shrinks). New data dependency: first-bar entry size depends on the
-                # symbol-and-direction realized outcome history.
-                _de_cur = self._dir_pnl_ema.get(symbol, {1: 0.0, -1: 0.0})
-                _bull_track = 1.0 - DIR_TRACK_MAX * max(0.0, np.tanh(-_de_cur[1] / DIR_TRACK_SCALE))
-                _bear_track = 1.0 - DIR_TRACK_MAX * max(0.0, np.tanh(-_de_cur[-1] / DIR_TRACK_SCALE))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _bull_track
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _bear_track
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1334,13 +1306,7 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        _realized = -_ep if current_pos < 0 else _ep
-                        self._last_exit_pnl[symbol] = _realized
-                        # Update the per-symbol per-direction realized-PnL EMA for the
-                        # side just closed. Sparse update (exit-only) → noise-immune.
-                        _dir = 1 if current_pos > 0 else -1
-                        _de = self._dir_pnl_ema.setdefault(symbol, {1: 0.0, -1: 0.0})
-                        _de[_dir] = (1.0 - DIR_PNL_ALPHA) * _de[_dir] + DIR_PNL_ALPHA * _realized
+                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
