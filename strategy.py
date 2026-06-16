@@ -59,9 +59,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Aging-loser stop tightening (bars_held-conditioned, noise-immune time axis).
-STOP_AGE_BARS = 14        # ramp length (bars past HOLD_DECAY_START) for full tighten
-STOP_AGE_TIGHTEN = 0.30   # max fractional reduction of stop band for an aged deep loser
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -772,24 +769,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Architectural: bars_held-conditioned stop tightening (aging-loser cut).
-                # The stop is the ONE confirmed-noise-immune loss-cutting channel (it
-                # saturates BINARY on a price far below entry, immune to the boundary-
-                # crossing noise that walls every soft price-derived vehicle). bars_held
-                # is integer time — fully immune to AR(1) price perturbation. A position
-                # that has aged WITHOUT reaching profit is a slow bleeder (its entry
-                # thesis is decaying); progressively tighten its stop band so it is cut
-                # sooner the longer it bleeds. Gated to only-losing positions and ramped
-                # by age past a grace window, so winners (which exit via profit-side
-                # pressure well before this matters) are untouched. General mechanism:
-                # the aging-bleeder cut fires wherever entries decay into stale losses
-                # (rally's clustered counter-trend pullback shorts that never reverse are
-                # the structural case, but no regime is named). Multiplies _stop_abs down
-                # by up to STOP_AGE_TIGHTEN as age ramps over STOP_AGE_BARS, weighted by
-                # how deep into loss the position sits (noise-stable: far from pos_pnl=0).
-                _age_ramp = max(0.0, min(1.0, (bars_held - HOLD_DECAY_START) / STOP_AGE_BARS))
-                _loss_depth = max(0.0, np.tanh(-pos_pnl / (0.5 * _stop_abs)))  # ~0 near breakeven, ~1 deep in loss
-                _stop_abs = _stop_abs * (1.0 - STOP_AGE_TIGHTEN * _age_ramp * _loss_depth)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
