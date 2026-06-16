@@ -59,6 +59,19 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
+# Architectural: cross-sectional gross-exposure risk budget (NEW cross-symbol data
+# dependency — each symbol's first-bar entry size depends on the AGGREGATE gross
+# exposure of the OTHER symbols). When BTC/ETH/SOL pile into correlated positions
+# (rally: 3 correlated longs; crash: 3 correlated shorts) concentrated gross
+# exposure drives both the worst DD and the largest clean/perturbed equity-path
+# divergence under AR(1) noise. Standard portfolio risk budgeting: size down the
+# marginal entry when peers already hold large correlated exposure. Acts ONLY on
+# entry position VALUE (documented safe lever), never on emission frequency/timing
+# (the walled axis). Per-bar stateless (self-correcting). Smooth tanh, no boundary.
+RISK_BUDGET_FLOOR = 0.10   # other-symbol gross/equity below which no attenuation
+RISK_BUDGET_SCALE = 0.15   # tanh scale for the attenuation ramp
+RISK_BUDGET_CUT = 0.25     # max fractional first-bar size cut when peers heavily exposed
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -406,6 +419,16 @@ class Strategy:
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
+            # Architectural: cross-sectional gross-exposure risk budget. Sum the
+            # gross (abs) notional held by the OTHER active symbols and normalize by
+            # equity. When peers already carry large correlated exposure, attenuate
+            # THIS symbol's fresh-entry first-bar size. Continuous tanh ramp above
+            # RISK_BUDGET_FLOOR, max cut RISK_BUDGET_CUT. New cross-symbol data dep at
+            # the entry-sizing layer; previously every symbol was sized in isolation.
+            _other_gross = sum(abs(portfolio.positions.get(_s, 0.0)) for _s in ACTIVE_SYMBOLS if _s != symbol)
+            _other_gross_ratio = _other_gross / max(equity, 1e-10)
+            _risk_budget_atten = 1.0 - RISK_BUDGET_CUT * max(0.0, np.tanh((_other_gross_ratio - RISK_BUDGET_FLOOR) / RISK_BUDGET_SCALE))
+
             # Architectural: vol-conditioned initial commit fraction. Continuous tanh
             # mapping vol_ratio (band ~0.5..1.5 -> ~0.50..0.36). Decouples first-bar
             # exposure from a constant in regimes where initial-bar noise risk varies.
@@ -620,9 +643,9 @@ class Strategy:
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _risk_budget_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _risk_budget_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
