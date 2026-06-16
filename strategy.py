@@ -1118,14 +1118,22 @@ class Strategy:
                     # untouched (gate 0). Integer-churn gate = noise-immune; this REDUCES a
                     # cut (lets winners run), it does not ADD a noise-sensitive cut (unlike
                     # exp3 scale-out), so no new timing boundary on the calm trajectory.
-                    # Branch step 2: gate on PERSISTENT calm (>=100 consecutive bars at
-                    # _cm==1), not the transient instantaneous _cm==1. Diagnostic: rally
-                    # symbols leave _cm==1 by bar ~44 (streak never reaches 100) so the
-                    # harvest-reduction NEVER fires in rally — fixing the branch-open leak
-                    # (rally-SOL's first-entry _cm==1 window). Crash holds _cm==1 for all
-                    # ~10200 bars (streak -> thousands) so its winners still run longer.
-                    if self._calm_streak.get(symbol, 0) >= 100:
-                        _tp_scale = _tp_scale * 0.5
+                    # Branch step 3: restore the TRANSIENT _cm==1 firing (step-2's
+                    # persistent>=100 gate excluded crash's EARLY deep-peak harvest events
+                    # where the +0.031 gain lived -> gains lost). The real obstacle is only
+                    # the rally-SOL early-window leak. Exclude rally via its UNIQUE signature:
+                    # rally is a sustained multi-day UPTREND (ret_vlong strongly POSITIVE),
+                    # while crash is deep-bear (ret_vlong strongly NEGATIVE). A FAST-SATURATING
+                    # gate on ret_vlong (scale 0.01 — the baseline-keep's proven noise-immune
+                    # trick that puts rally's operating range in the FLAT tanh tail) is ~1 when
+                    # ret_vlong<=0 (crash passes, harvest-reduction fires) and ~0 when ret_vlong
+                    # strongly positive (rally excluded). Multiplies the 0.5 reduction so it
+                    # smoothly vanishes for up-trending symbols. _cm==1 still required (calm
+                    # base partition); the ret_vlong gate removes the rally-SOL transient leak.
+                    _cm_tp = max(self._churn_hist.get(symbol, 0), len(_eh))
+                    _downtrend_gate = max(0.0, min(1.0, 0.5 - 0.5 * np.tanh(ret_vlong / 0.01)))
+                    if _cm_tp <= 1:
+                        _tp_scale = _tp_scale * (1.0 - 0.5 * _downtrend_gate)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
