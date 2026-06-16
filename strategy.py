@@ -1179,10 +1179,31 @@ class Strategy:
             # is slow-moving (gradual) and BASE_POSITION_SIZE is constant, so the lattice
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
+            # Architectural: GEOMETRIC (log-spaced) lattice quantization replacing the
+            # additive fine grid at the high-churn (rally) order-emission layer. The
+            # additive lattice (0.06*equity*BASE, constant ABSOLUTE spacing) places
+            # uniform resolution at every position magnitude — but 4a40af0 proved a
+            # fixed additive step is TOO COARSE for rally's fine bidirectional resizes
+            # (raw collapse) while the entry-grid discard (line ~449) proved entries are
+            # too fine for the same step. Root cause: rally's resolution needs are
+            # magnitude-dependent, but an additive grid is magnitude-uniform. A geometric
+            # lattice has constant RELATIVE spacing: grid points at ref*exp(k*step), i.e.
+            # COARSER at large |target| (the full-position dwell where rally lingers and
+            # noise-wobbles -> more distinct-value reduction = higher stability) and FINER
+            # at small |target| (scale-in / fine bidirectional resizes preserved = raw
+            # kept). Same STABLE reference (equity*BASE_POSITION_SIZE: equity slow, BASE
+            # const -> lattice lines noise-stable), same integer-churn gate (fires rally),
+            # same resize-only + same-sign-preserving exemptions. New code structure
+            # (log/exp transform of the quantizer), not a parameter tweak. Distinct-value
+            # reduction on the resize LEVEL = the PROVEN rally-stab family, applied with
+            # magnitude-adaptive resolution for the first time.
             if _is_resize and _churn_dz > 0.0:
-                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
-                if _grid > 0:
-                    _qt = round(target / _grid) * _grid
+                _ref_g = equity * BASE_POSITION_SIZE
+                _log_step = 0.12 * _churn_dz
+                if _ref_g > 0 and _log_step > 0 and abs(target) > 1e-9:
+                    _sign_g = 1.0 if target > 0 else -1.0
+                    _q_log = round(np.log(abs(target) / _ref_g) / _log_step) * _log_step
+                    _qt = _sign_g * _ref_g * np.exp(_q_log)
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
             # Architectural: COMPLEMENTARY low-churn-gated coarse grid (inverse-churn
