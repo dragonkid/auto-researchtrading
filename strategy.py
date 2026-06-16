@@ -1001,26 +1001,19 @@ class Strategy:
                 # scales with the gate so non-crash setups are byte-identical. Still
                 # SL-exempt and still kept under the calm-churn gate as a secondary guard
                 # against firing in a bursting (rally/bull) symbol.
-                # Branch step 5: COMBINE the two clean directions found in steps 2/4.
-                # Decomposition (vs baseline):
-                #   shorts-in-downtrend -> bull stability 0.792->0.909 (+0.020 score), rally -0.009
-                #   longs-in-downtrend  -> bull -0.117 (losing dip-buys destabilized), rally +0.032
-                # The directions are opposed because the longs-side damage is bull's LOSING
-                # counter-trend dip-buys (smoothing holds them into real reversals), while the
-                # longs-side GAIN is rally's WINNING dip-buys (smoothing rides them through
-                # pullback noise). So gate the long side on IN-PROFIT (pos_pnl>0): smooth
-                # winning longs in downtrend (rally's gain) but let losing longs exit fast
-                # (protect bull). The short side stays ungated-by-pnl (bull's clean +0.020).
-                # Net target: bull +0.020 AND rally +~0.03 -> composite ~0.58 KEEP.
+                # Branch step 6: return to step-2's clean SHORT-in-downtrend gate (the only
+                # Pareto-positive direction: bull +0.020 via stabilizing counter-trend bull
+                # pullback shorts, all else >= baseline). Step 4 (broaden to longs) and step 5
+                # (pnl-gated longs) both regressed — the long side trades bull-stability for
+                # rally-stability with no clean composition. Step 6 amplifies ONLY the short
+                # side: weight cap 0.40->0.45 to push bull's stability gain into a clearer
+                # composite lift. Longs entirely exempt (byte-identical for rally pullback
+                # longs); sideways exempt (ret_long~0); rally shorts guarded by calm-churn.
                 _cm_x = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _dn_str = max(0.0, np.tanh(-ret_long / 0.04))  # downtrend strength
-                if current_pos < 0:
-                    _dcb_gate = _dn_str                                  # shorts: any pnl
-                else:
-                    _dcb_gate = _dn_str * (1.0 if pos_pnl > 0 else 0.0)  # longs: winning only
+                _dcb_gate = (max(0.0, np.tanh(-ret_long / 0.04)) if current_pos < 0 else 0.0)
                 if _cm_x <= 2 and _sl_pressure < 0.95 and _dcb_gate > 0.0:
                     _prev_xp = self._exit_ema.get(symbol, _exit_pressure)
-                    _ema_w = 0.40 * _dcb_gate  # max 40% weight on prior bar
+                    _ema_w = 0.45 * _dcb_gate  # max 45% weight on prior bar in downtrend
                     _exit_pressure = (1.0 - _ema_w) * _exit_pressure + _ema_w * _prev_xp
                 self._exit_ema[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
