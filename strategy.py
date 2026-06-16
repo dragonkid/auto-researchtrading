@@ -1032,29 +1032,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: multi-day-trend-ALIGNED hold extension (reduce soft
-                # exit pressure for positions aligned with the noise-free 96-bar trend).
-                # Row 506 ADDED counter-trend exit pressure as a 7th MAX term (failed:
-                # the new term straddled the de-risk floor 0.55). This is the untried
-                # OPPOSITE: scale DOWN the existing _soft_max for trend-ALIGNED positions,
-                # letting aligned winners run longer to capture multi-day trend Sharpe
-                # (crash shorts in deep downtrend, rally/bull longs in grind-up). The
-                # gate uses ret_vlong (96-bar OLS slope, proven noise-free in the keep)
-                # at the keep's fast-saturation scale 0.01 so the multiplier sits in
-                # tanh's flat tail across each regime's operating range (near-constant,
-                # noise-free). |ret_vlong| ALIGNMENT is the separator prior exit
-                # experiments lacked: crash (aligned shorts, ret_vlong<<0) gets extension
-                # while sideways (ret_vlong~0 -> align~0 -> multiplier~1.0) is untouched.
-                # Counter-trend positions (rally pullback shorts) get align=0 -> no
-                # extension -> still cut normally. Stop-loss exempt: only _soft_max is
-                # scaled; _sl_pressure is preserved in the max() below. Sharpe-affecting
-                # (changes how long aligned positions are held) and non-boundary
-                # (continuous tanh on a noise-free quantity) — exactly the vehicle the
-                # prior session-summary said is needed to move rally RAW noise-free.
-                _pos_dir_vl = 1.0 if current_pos > 0 else -1.0
-                _vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_vl / 0.01))  # [0,~1]
-                _vlong_hold = 1.0 - 0.25 * _vlong_align  # aligned: soft_max down to 0.75x
-                _soft_max = _soft_max * _vlong_hold
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
