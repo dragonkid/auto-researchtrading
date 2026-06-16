@@ -143,13 +143,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Per-symbol FROZEN multi-day counter-trend shrink factor, captured ONCE at
-        # entry (bar 0, the noise-free evaluation the keep already uses) and reused
-        # unchanged through the hold. Distinct from a live recompute (exp2: time-varying
-        # _calm_ct read live len(_eh) -> full_target jumped bar-to-bar) and from the
-        # freeze-trap (which froze the NOISY combined_mult); here only the near-constant
-        # flat-saturated ct factor is frozen, size stays live/noise-averaged.
-        self._ct_hold_frac = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -686,16 +679,8 @@ class Strategy:
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
-                    # Branch step 4 pivot: freeze the FULL bar-0 ct factor (carries the full
-                    # counter-trend signal) but no longer use it for SIZE persistence (walled:
-                    # composite monotone-decreasing in depth). Instead it now drives a tighter
-                    # STOP for counter-trend positions (see _stop_abs below) — the entry-anchored
-                    # binary-saturating channel that prior sessions proved is rally's ONLY
-                    # noise-immune exit.
-                    self._ct_hold_frac[symbol] = _bull_ct_vlong
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
-                    self._ct_hold_frac[symbol] = _bear_ct_vlong
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -725,19 +710,6 @@ class Strategy:
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
                 _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
-                # Branch step 5: SLOW the scale-in PACE for counter-trend positions via the
-                # FROZEN entry ct flag (size/exit/stop vehicles all walled this session). Pace
-                # is documented (line ~725) as "the one lever prior sessions found able to move
-                # stability." _ct_hold_frac in [0.6,1.0]: counter-trend (0.6) extends full-bars
-                # up to +1.5 bars (slower build); trend-aligned (1.0) unchanged. Counter-trend
-                # positions are rally's clustered losers (pullback shorts, 7-consec-loss
-                # problem) — building them slower means smaller average size when the loss
-                # materializes -> Sharpe up. Frozen flag is constant per-position (noise-immune)
-                # and bars_held is integer (noise-immune), so the pace trajectory is identical
-                # across the AR(1) ensemble -> no added position-path variance. Only affects
-                # bars 0-3 (scale-in window), not the whole hold (unlike step1's persistent cap).
-                _cthf_pace = self._ct_hold_frac.get(symbol, 1.0)
-                _entry_full_bars_dyn = _entry_full_bars_dyn * (1.0 + 1.5 * max(0.0, min(1.0, (1.0 - _cthf_pace) / 0.4)))
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
@@ -756,9 +728,6 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Branch step 4: size-persistence reverted to baseline (walled: composite
-                    # monotone-decreasing in persisted shrink depth). The frozen ct flag now
-                    # drives a tighter stop instead (see _stop_abs).
                     full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
@@ -1338,7 +1307,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._ct_hold_frac):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
