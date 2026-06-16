@@ -343,7 +343,24 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            # Architectural: trend-QUALITY gate on the bull admission relaxation.
+            # The relaxation (lower bull_strong_min in uptrend) was unconditional on
+            # trend magnitude (tanh(ret_long/0.04)) — but a choppy uptrend (rally:
+            # positive ret_long built from a noisy path) gets the SAME relaxation as
+            # a clean uptrend (bull). That over-admits marginal pullback entries in
+            # rally (65 trades, lowest Sharpe) raising churn + noise-flip boundaries.
+            # Gate the relaxation by the Kaufman efficiency ratio over the SAME long
+            # window ret_long spans: ER = |net move| / sum(|bar moves|), high=clean,
+            # low=choppy. Smooth sigmoid centered 0.40 scales the relaxation 0..1.
+            # Clean uptrend keeps full relaxation (bull preserved); choppy uptrend
+            # reverts toward base admission (fewer marginal rally entries). Crash
+            # (ret_long<0) and sideways (ret_long~0) already have ~0 relaxation — by
+            # construction this only touches positive-ret_long regimes (bull, rally).
+            _er_net_adm = abs(closes[-1] - closes[-LONG_WINDOW])
+            _er_path_adm = np.sum(np.abs(np.diff(closes[-LONG_WINDOW:])))
+            _er_long = _er_net_adm / max(_er_path_adm, 1e-10)
+            _trend_quality = 0.5 * (1.0 + np.tanh((_er_long - 0.40) / 0.20))  # in (0,1)
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * _trend_quality * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
