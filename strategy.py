@@ -143,6 +143,13 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Branch step 2: per-symbol PERSISTENT-CALM streak — consecutive bars the symbol's
+        # cumulative-max churn has stayed at 1. Monotonic integer counter (noise-immune,
+        # same safety property as _churn_hist). Diagnostic: rally symbols leave _cm==1 by
+        # bar ~44 (streak never reaches 100); crash symbols hold _cm==1 for all ~10200 bars
+        # (streak -> thousands). A streak>=threshold gate thus EXCLUDES rally entirely while
+        # keeping crash — fixing the rally-SOL transient-_cm==1 leak from the branch-open.
+        self._calm_streak = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -346,6 +353,16 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            # Branch step 2: update persistent-calm streak (consecutive bars at _cm==1).
+            # _cm here uses the same cumulative-max-of-len(_eh) as the emission layer
+            # (monotonic, so reading it early is consistent — len(_eh) only grows within a
+            # bar at the entry-emission step below). Streak resets to 0 the moment a symbol
+            # has ever bursted (_cm>=2); grows by 1 each bar it stays deeply calm.
+            _cm_now = max(self._churn_hist.get(symbol, 0), len(_eh))
+            if _cm_now <= 1:
+                self._calm_streak[symbol] = self._calm_streak.get(symbol, 0) + 1
+            else:
+                self._calm_streak[symbol] = 0
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -1101,8 +1118,13 @@ class Strategy:
                     # untouched (gate 0). Integer-churn gate = noise-immune; this REDUCES a
                     # cut (lets winners run), it does not ADD a noise-sensitive cut (unlike
                     # exp3 scale-out), so no new timing boundary on the calm trajectory.
-                    _cm_tp = max(self._churn_hist.get(symbol, 0), len(_eh))
-                    if _cm_tp <= 1:
+                    # Branch step 2: gate on PERSISTENT calm (>=100 consecutive bars at
+                    # _cm==1), not the transient instantaneous _cm==1. Diagnostic: rally
+                    # symbols leave _cm==1 by bar ~44 (streak never reaches 100) so the
+                    # harvest-reduction NEVER fires in rally — fixing the branch-open leak
+                    # (rally-SOL's first-entry _cm==1 window). Crash holds _cm==1 for all
+                    # ~10200 bars (streak -> thousands) so its winners still run longer.
+                    if self._calm_streak.get(symbol, 0) >= 100:
                         _tp_scale = _tp_scale * 0.5
                     target = target * (1.0 - _tp_scale)
 
