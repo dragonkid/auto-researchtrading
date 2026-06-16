@@ -142,6 +142,17 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Architectural: per-symbol rolling last-2 emitted target values, used by the
+        # 3-bar MEDIAN resize filter (rank-statistic value smoothing at the order-
+        # emission layer). A median is robust to single-bar spikes (rejects them
+        # exactly: median([95, 97_noise, 95]) == 95) yet has only a bounded 1-bar lag
+        # on genuine level shifts — unlike the low-pass slew-damper (row 450, infinite
+        # exponential lag) which removed rally directional responsiveness. At rally's
+        # full-position dwell (its ~99% of bars, slow-moving) the median rejects noise
+        # wobble with near-zero raw cost; it only lags on rare fast shifts. Acts on the
+        # emitted position VALUE, preserves resize timing/frequency exactly = the flagged
+        # frontier. Cleared on exit.
+        self._target_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1243,6 +1254,31 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
+            # Architectural: 3-bar MEDIAN resize filter (rank-statistic value smoothing).
+            # On same-sign resizes, replace the raw target with the median of the last
+            # two emitted targets and the current raw target. Median rejects single-bar
+            # noise spikes exactly while keeping only a 1-bar lag on real level shifts
+            # (vs the low-pass slew-damper's infinite lag that killed rally raw). Fires
+            # ONLY on resizes (current_pos!=0, target!=0, same sign) — entries, full
+            # exits, and flips are exempt (must hit exact targets). The median result is
+            # clamped to the same sign as the raw target (rank stat over same-sign values
+            # so sign is preserved structurally; guard kept for safety).
+            if _is_resize:
+                _th = self._target_hist.get(symbol, [])
+                if len(_th) >= 2:
+                    _med_t = float(np.median([_th[-2], _th[-1], target]))
+                    if (_med_t > 0) == (target > 0) and _med_t != 0:
+                        target = _med_t
+            # Maintain rolling last-2 target history for the median resize filter.
+            # Track the post-filter target whenever a position is (or becomes) open;
+            # cleared on flat so a new trade starts with a fresh window.
+            if target != 0:
+                _th2 = self._target_hist.setdefault(symbol, [])
+                _th2.append(target)
+                if len(_th2) > 2:
+                    self._target_hist[symbol] = _th2[-2:]
+            else:
+                self._target_hist.pop(symbol, None)
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
