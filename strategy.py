@@ -1113,6 +1113,31 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
+            # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
+            # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
+            # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
+            # rally genuinely resizes (change > deadband) the NEW absolute target is a
+            # continuous price-derived value that AR(1) noise still perturbs bar-to-bar ->
+            # the surviving position-value cascade that caps rally stab. Fix at the root:
+            # in high churn, round the absolute resize target onto a coarse grid (step =
+            # 0.10 * the symbol's natural position scale `size`). Noise-induced sub-grid
+            # wobble in the continuous target then collapses onto the SAME grid level ->
+            # fewer DISTINCT position values across the noise ensemble = the exact axis the
+            # two rally-stab keeps (snap-to-hold, scale-in pace) moved. Deterministic given
+            # target (pure rounding, no new price-derived term, no decision boundary that
+            # can flip direction). Gated on the noise-IMMUNE integer churn count (fires in
+            # rally, ~0 in crash/sideways = SPARED by construction). Resizes ONLY: entries
+            # (current_pos==0), full exits (target==0), flips (sign change) ALWAYS exempt —
+            # risk transitions must hit exact targets. Snap direction is toward current_pos
+            # so a quantized resize never crosses zero or overshoots past the raw target's
+            # side. New control flow at the order-emission layer.
+            if _is_resize and _churn_dz > 0.0 and size > 0:
+                _grid = 0.10 * size * _churn_dz
+                if _grid > 0:
+                    _qt = round(target / _grid) * _grid
+                    # keep quantized target same-sign and not beyond a full deadband from raw
+                    if (_qt > 0) == (target > 0) and _qt != 0:
+                        target = _qt
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
