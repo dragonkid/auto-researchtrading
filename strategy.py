@@ -108,7 +108,7 @@ ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction 
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
 # Always-on stable-lattice grid step as a fraction of equity*BASE_POSITION_SIZE.
-GRID_LATTICE_FRAC = 0.01
+GRID_LATTICE_FRAC = 0.005
 
 
 class Strategy:
