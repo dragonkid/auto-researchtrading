@@ -139,16 +139,6 @@ class Strategy:
         # entry decision boundary.
         self._entry_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: equity-curve return-volatility feedback state.
-        # Fast (span-48) and slow (span-400) EMAs of squared equity returns
-        # track the strategy's OWN realized volatility-of-returns at two
-        # horizons. Their ratio detects equity-chop expansion (signals
-        # misfiring) independent of any per-symbol price feature. Used to
-        # shave global entry size when the equity curve roughens. Distinct
-        # from _peak_equity/_port_dd_atten (drawdown LEVEL, not return VARIANCE).
-        self._eq_prev = 0.0
-        self._eq_var_fast = 0.0
-        self._eq_var_slow = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -156,28 +146,6 @@ class Strategy:
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
-        # Architectural: equity-volatility-expansion global entry-size scalar.
-        # Update two-horizon EMAs of squared equity returns, then attenuate entry
-        # size when fast (48-span) realized equity vol expands above its slow
-        # (400-span) baseline. New cross-bar data dependency: position SIZE depends
-        # on the strategy's own equity-curve roughness. Smooth multiplier (tanh, no
-        # boundary) -> no decision flip, only graduated size scaling. Warmup-gated
-        # (bar_count > 100) until the slow EMA stabilizes. Mechanism: when the
-        # equity curve becomes choppier than its own baseline, the strategy's
-        # signals are misfiring -> reduce exposure (lowers return_volatility ->
-        # vol_gate, and drawdown -> dd_gate). High-Sharpe regimes have smooth
-        # equity (rarely fires); the low-Sharpe/choppy regime fires most.
-        _eq_ret = (equity - self._eq_prev) / max(self._eq_prev, 1e-10) if self._eq_prev > 0 else 0.0
-        self._eq_prev = equity
-        _a_eq_fast = 2.0 / (48 + 1)
-        _a_eq_slow = 2.0 / (400 + 1)
-        self._eq_var_fast = (1.0 - _a_eq_fast) * self._eq_var_fast + _a_eq_fast * _eq_ret * _eq_ret
-        self._eq_var_slow = (1.0 - _a_eq_slow) * self._eq_var_slow + _a_eq_slow * _eq_ret * _eq_ret
-        if self.bar_count > 100:
-            _eq_vol_ratio = (self._eq_var_fast / max(self._eq_var_slow, 1e-12)) ** 0.5
-            _eq_vol_atten = 1.0 - 0.25 * max(0.0, np.tanh((_eq_vol_ratio - 1.0) / 0.5))
-        else:
-            _eq_vol_atten = 1.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -613,9 +581,9 @@ class Strategy:
                 _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
                 _tod_atten = 0.85 + 0.30 * _activity
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _eq_vol_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _eq_vol_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
