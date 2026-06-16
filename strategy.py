@@ -1171,25 +1171,23 @@ class Strategy:
             # (current_pos==0), full exits (target==0), and flips (sign change) are
             # ALWAYS exempt — risk transitions must never be deferred. New per-symbol
             # state (_last_resize_bar) + new control flow at the emission layer.
-            # Branch step 2: replace the cooldown's TWO hard cliffs (integer
-            # bars_since_resize<COOLDOWN boundary + _hold_prob>=0.5 threshold) — both of
-            # which flip under AR(1) noise in rally bursts (rally stab collapse 0.73->0.43)
-            # — with a BOUNDARY-FREE refractory deadband. Mechanism: instead of a binary
-            # freeze for K bars, the cooldown WIDENS the resize deadband smoothly as a
-            # function of recency. A resize that just fired sets a large effective
-            # deadband that decays continuously toward 0 over RESIZE_COOLDOWN bars. Within
-            # the window a noise-nudged target must clear a LARGER hold-zone to emit; the
-            # zone shrinks each bar so genuine moves eventually pass. No since-resize
-            # cliff and no probability threshold — the only comparison is the same smooth
-            # magnitude test the deadband already uses (continuous, noise-robust). Churn-
-            # gated (fires in rally, ~0 in crash/sideways).
+            # Branch step 3: DETERMINISTIC BAR-PHASE resize gate (fully noise-immune).
+            # Step1's broad raw gains (sideways +0.061, rally raw +0.15) came from cutting
+            # high-churn resize frequency, but its since-resize counter created a timing
+            # boundary that AR(1) noise flips (rally stab 0.73->0.43). Step2's decaying
+            # band kept a recency boundary -> still collapsed. Root fix: gate resizes on a
+            # MODULAR PHASE of bar_count, which is a pure clock index — identical in the
+            # clean and every perturbed run, so the gate has NO boundary that noise can
+            # move. In high churn, allow a same-sign resize ONLY when bar_count lands on
+            # the phase (bar_count % RESIZE_COOLDOWN == 0); otherwise hold. This thins
+            # resize frequency ~3x exactly like step1's freeze, but the held-position
+            # value across the noise ensemble now changes on the SAME bars regardless of
+            # perturbation -> distinct-position-value cascade collapses without a noise-
+            # sensitive trigger. Churn-gated (fires in rally bursts, off in crash/sideways).
+            # Entries/exits/flips still exempt (only _is_resize passes).
             RESIZE_COOLDOWN = 3
-            if _is_resize and _churn_dz > 0.0:
-                _bars_since_resize = self.bar_count - self._last_resize_bar.get(symbol, -999)
-                _recency = max(0.0, 1.0 - _bars_since_resize / RESIZE_COOLDOWN)  # 1 just-resized -> 0 after window
-                _cooldown_band = 0.35 * _churn_dz * _recency  # extra deadband width, decays smoothly
-                if abs(target - current_pos) < _cooldown_band * abs(current_pos):
-                    target = current_pos  # hold within smoothly-decaying refractory band
+            if _is_resize and _churn_dz >= 0.5 and (self.bar_count % RESIZE_COOLDOWN) != 0:
+                target = current_pos  # phase-gated hold: same bars across noise ensemble
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
