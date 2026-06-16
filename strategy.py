@@ -597,25 +597,8 @@ class Strategy:
                 # neutral-to-positive. Continuous (no decision-boundary flip — unlike a
                 # gated weight); same safe family as _bull_quality_atten. New data dep:
                 # first-bar size depends on conviction margin above floor.
-                # Architectural: churn-deepened conviction floor (joint churn×margin
-                # dependency on the marginal-entry fade DEPTH). Term-B analysis of the
-                # stability metric (std(clean_ret-pert_ret)/clean_vol): uniform position
-                # scaling cancels in the ratio, so stability moves only via RELATIVE
-                # position divergence at decision boundaries. The largest such divergence
-                # is the entry-admission boolean flip (0<->full size) — and the entries
-                # that flip under AR(1) noise are exactly the near-boundary (low-margin)
-                # ones. The baseline _conv_atten already fades low-margin entries (floor
-                # 0.70); this couples that floor's DEPTH to the noise-immune integer churn
-                # count so the fade DEEPENS in high-churn bursts (rally) where the flip
-                # cost dominates, and stays at the 0.70 baseline in calm regimes (crash/
-                # sideways/bull, churn~0 -> factor already 1.0, left untouched). Decisive
-                # entries (margin>=0.40) keep full size in ALL regimes -> raw preserved
-                # (only low-conviction flip-prone entries shrink). New cross-component
-                # data dep: conviction-fade floor depends on integer churn count.
-                _conv_churn_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                _conv_floor = 0.70 - 0.20 * _conv_churn_gate  # 0.70 calm -> 0.50 burst
-                _bull_conv_atten = _conv_floor + (1.0 - _conv_floor) * max(0.0, min(1.0, _bull_margin / 0.40))
-                _bear_conv_atten = _conv_floor + (1.0 - _conv_floor) * max(0.0, min(1.0, _bear_margin / 0.40))
+                _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
+                _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
