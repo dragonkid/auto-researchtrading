@@ -1131,11 +1131,19 @@ class Strategy:
             # risk transitions must hit exact targets. Snap direction is toward current_pos
             # so a quantized resize never crosses zero or overshoots past the raw target's
             # side. New control flow at the order-emission layer.
-            if _is_resize and _churn_dz > 0.0 and size > 0:
-                _grid = 0.10 * size * _churn_dz
+            # Branch step 2: STABLE-LATTICE grid (decouple from bar-varying combined_mult).
+            # Step 1 used grid = 0.10*size where size = equity*BASE*combined_mult — but
+            # combined_mult (strength_scale*calm_boost*sideways_boost*vol terms) varies
+            # every bar, so the lattice lines themselves MOVED bar-to-bar -> AR(1) noise
+            # shifted the grid -> the noisy-quantity-gating mistake (ef027049 step3) ->
+            # rally collapse. Fix: tie the grid to equity*BASE_POSITION_SIZE only — equity
+            # is slow-moving (gradual) and BASE_POSITION_SIZE is constant, so the lattice
+            # is stable across the noise ensemble (a perturbed bar barely moves equity).
+            # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
+            if _is_resize and _churn_dz > 0.0:
+                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
-                    # keep quantized target same-sign and not beyond a full deadband from raw
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
             if abs(target - current_pos) > 1.0:
