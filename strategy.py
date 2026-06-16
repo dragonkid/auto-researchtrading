@@ -636,55 +636,22 @@ class Strategy:
                 # NON-price state multipliers (cooldown timing, post-loss outcome, portfolio
                 # DD, time-of-day, integer churn) stay as product — they are orthogonal and
                 # not part of the correlated price-quality noise cluster.
-                # Branch step 2: CHURN-GATE the fusion. Pure min collapsed rally (argmin-
-                # switch boundary flips under noise in near-tied bidirectional entries).
-                # Blend min (calm/low-churn entries) toward product (bursty/high-churn) via
-                # the noise-IMMUNE integer churn count len(_eh): calm symbols (bull spread-out
-                # entries, len<=1) get min-fusion (validated +0.019 bull, stab->1.0); rally
-                # bursts (len>=3) get product = EXACT baseline (spares rally). Fast-saturating
-                # sigmoid -> effectively constant min in calm, constant product in bursts;
-                # transition region (len=2 = crash/sideways) is flat under both. Same gate
-                # the kept fine grid uses to fire in rally and stay ~0 elsewhere.
-                # Branch step 3: replace HARD min with SOFT-min (softmax-weighted average)
-                # in the calm branch. Hard min's failure is the non-differentiable ARGMIN
-                # SWITCH — a hard boundary at the crossover of two close attenuators that
-                # flips under noise at rally's near-tied entries (the len<=1 lone-entry leak
-                # the instantaneous churn gate cannot separate from bull's stable len<=1).
-                # Soft-min = sum(x_i * softmax(-x_i/T)) is smooth/differentiable everywhere
-                # -> NO boundary to flip (the proven-safe family), while still emphasizing the
-                # single binding discount (soft-min in [min, mean] >= min >= product, so bull
-                # keeps its larger-entry stability gain). Numerically stable (subtract min in
-                # the exponent). Churn-gate retained so rally BURSTS still get exact-baseline
-                # product; the soft-min only governs calm + leaked-lone entries.
-                # Branch step 5: ADD a one-sidedness gate to fix the rally lone-entry leak.
-                # The churn gate alone gives bull soft-min (low instantaneous churn) and
-                # rally-BURSTS product (high churn) — but rally's spread-out lone scale-in
-                # entries ALSO sit at low churn, so they wrongly get soft-min (the documented
-                # lone-entry leak). What separates rally-lone from bull (both low churn) is
-                # ONE-SIDEDNESS: bull entries are one-directional (opp/own strong-sum ratio
-                # LOW), rally entries are near-tied bidirectional (ratio HIGH). Require BOTH
-                # low-churn AND one-sided for soft-min; everything else gets product. Both
-                # regimes sit in the SATURATED (flat) zones of the tanh (bull ratio~0.2 ->
-                # gate~1 flat; rally ratio~0.8 -> gate~0 flat), so the gate is noise-robust
-                # (the steep transition at ratio~0.5 sees few entries). Reuses _bull_opp_ratio
-                # / _bear_opp_ratio already computed for _quality_atten.
-                _churn_fuse_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 at len<=1, ~0 at len>=3
-                _bull_onesided = 1.0 - max(0.0, min(1.0, np.tanh((_bull_opp_ratio - 0.5) / 0.2)))  # ~1 one-sided, ~0 near-tied
-                _bear_onesided = 1.0 - max(0.0, min(1.0, np.tanh((_bear_opp_ratio - 0.5) / 0.2)))
+                # Churn-gated SOFT-min fusion (branch step 3 reconstructed). Soft-min
+                # (softmax-weighted avg, T=0.15) is differentiable everywhere -> no argmin
+                # boundary to flip; emphasizes the binding discount (>=min>=product, bull
+                # keeps noise-reduction gain). Churn-gate -> rally bursts get product=baseline.
+                _fuse_min_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 at len<=1, ~0 at len>=3
                 _softmin_T = 0.15
                 def _softmin(vals):
                     _m = min(vals)
                     _w = [np.exp(-(v - _m) / _softmin_T) for v in vals]
-                    _sw = sum(_w)
-                    return sum(v * w for v, w in zip(vals, _w)) / max(_sw, 1e-12)
+                    return sum(v * w for v, w in zip(vals, _w)) / max(sum(_w), 1e-12)
                 _bull_quality_prod = _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _bull_conv_atten
                 _bear_quality_prod = _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _bear_conv_atten
                 _bull_quality_min = _softmin((_bull_ct_atten, _bull_consensus_atten, _bull_quality_atten, _bull_conv_atten))
                 _bear_quality_min = _softmin((_bear_ct_atten, _bear_consensus_atten, _bear_quality_atten, _bear_conv_atten))
-                _bull_fuse_min_gate = _churn_fuse_gate * _bull_onesided
-                _bear_fuse_min_gate = _churn_fuse_gate * _bear_onesided
-                _bull_quality_fused = _bull_quality_prod * (1.0 - _bull_fuse_min_gate) + _bull_quality_min * _bull_fuse_min_gate
-                _bear_quality_fused = _bear_quality_prod * (1.0 - _bear_fuse_min_gate) + _bear_quality_min * _bear_fuse_min_gate
+                _bull_quality_fused = _bull_quality_prod * (1.0 - _fuse_min_gate) + _bull_quality_min * _fuse_min_gate
+                _bear_quality_fused = _bear_quality_prod * (1.0 - _fuse_min_gate) + _bear_quality_min * _fuse_min_gate
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_quality_fused * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
