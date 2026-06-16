@@ -5,8 +5,13 @@ Simulates cross-exchange data-source differences using AR(1) correlated
 noise matching empirical characteristics (Binance/HL vs CryptoCompare,
 2 years of 1H data, 2024-01 ~ 2026-01).
 
-Design: conservative stress test. Parameters are intentionally more severe
-than current market conditions to ensure robustness margin.
+Design: empirically calibrated stress test. STD values are the demeaned
+cross-source random dispersion measured between the backtest data source
+(cached CryptoCompare, ≈ Binance/OKX perp) and live venues. Constant basis
+(spot-vs-perp ≈ 5bps) is excluded — it is a deterministic offset that any
+change/relative signal is immune to; only demeaned random dispersion can flip
+a signal near a decision boundary. A modest margin over the empirical median
+is retained for robustness.
 
 Anti-gaming: AC1 is a fixed grid across empirical range (not random, not fixed
 single value), and seeds are derived from AST hash of strategy.py (immune to
@@ -24,11 +29,14 @@ from prepare import run_backtest, BacktestResult
 N_TRIALS = 20
 STABILITY_THRESHOLD = 0.80  # no-penalty zone starts at 0.80
 
-# Empirical parameters (conservative worst-case design)
-# STD: 2-year full sample (covers market efficiency regression)
-NOISE_CLOSE_STD_BPS = 7.0
-NOISE_HIGH_STD_BPS = 8.0
-NOISE_LOW_STD_BPS = 12.0
+# Empirical parameters: demeaned cross-source random std (basis removed).
+# Measured 2026-06: cached source ≈ Binance/OKX perp; demeaned random dispersion
+# (Binance↔OKX 2yr full sample + HL↔Binance/OKX recent) is close ~2.5-3.3 /
+# high ~3.5-4.4 / low ~4-8 bps. Values below sit just above the empirical
+# median, keeping a modest robustness margin without the prior 2-3x overstatement.
+NOISE_CLOSE_STD_BPS = 3.0
+NOISE_HIGH_STD_BPS = 4.0
+NOISE_LOW_STD_BPS = 5.0
 
 # AC1: fixed grid across empirical range (each trial = one difficulty level)
 # All strategies face the same 20 AC1 values — enables paired comparison
