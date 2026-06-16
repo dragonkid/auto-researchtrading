@@ -107,9 +107,6 @@ ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
-# Always-on stable-lattice grid step as a fraction of equity*BASE_POSITION_SIZE.
-GRID_LATTICE_FRAC = 0.005
-
 
 class Strategy:
     def __init__(self):
@@ -1143,23 +1140,8 @@ class Strategy:
             # is slow-moving (gradual) and BASE_POSITION_SIZE is constant, so the lattice
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
-            # Architectural: ALWAYS-ON stable-lattice grid (remove churn-gating control
-            # flow). DIAGNOSTIC (this session) measured len(_eh)-derived _churn_dz ~= 0.002
-            # in EVERY regime including rally — so the churn-gated grid (09f09ab keep) fires
-            # on only ~0.2% of bars and its lattice step (0.06*equity*BASE*_churn_dz)
-            # collapses to ~zero on the other 99.8%, leaving almost all rally positions
-            # UN-quantized. The grid moved rally stab 0.520->0.565 from that sliver alone;
-            # the distinct-position-value axis is far from exhausted. Make the grid
-            # unconditional: drop the `_churn_dz > 0.0` gate AND the `* _churn_dz` width
-            # term so EVERY same-sign resize snaps onto a FIXED stable lattice (0.06 *
-            # equity * BASE_POSITION_SIZE — slow-moving, noise-immune, the same lattice the
-            # keep proved safe). This quantizes the full rally trajectory, not 0.2% of it.
-            # Low-churn regimes (bull/crash/sideways, all stab 1.0 with headroom) absorb a
-            # fine 6%-of-base lattice near-losslessly. Removes a control-flow dependency on
-            # a near-always-zero quantity = both a simplification AND a coverage expansion.
-            # Still resizes-only (entries/exits/flips exact); sign preserved; deterministic.
-            if _is_resize:
-                _grid = GRID_LATTICE_FRAC * equity * BASE_POSITION_SIZE
+            if _is_resize and _churn_dz > 0.0:
+                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
