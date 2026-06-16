@@ -1001,24 +1001,26 @@ class Strategy:
                 # scales with the gate so non-crash setups are byte-identical. Still
                 # SL-exempt and still kept under the calm-churn gate as a secondary guard
                 # against firing in a bursting (rally/bull) symbol.
-                # Branch step 4: test the crash-LONGS hypothesis. Step 2/3 showed the
-                # short+downtrend gate gives bull +0.020 (stabilizing counter-trend bull
-                # pullback shorts) but crash stayed BYTE-IDENTICAL (0.757015) — so step 1's
-                # crash +0.030 was NOT from shorts. The remaining crash dead-cat mechanism
-                # is the counter-trend LONG dip-buy: a long held into a continued downdraft
-                # gets noise-exited by a single-bar bear-voter spike at a local low right
-                # before the bounce. Broaden the gate to ANY position in a sustained
-                # downtrend (ret_long<0), at step-2 strength (/0.04, 0.40 cap). This now
-                # fires on crash dip-buy longs (target: +crash) AND keeps bull's
-                # counter-trend shorts (+bull). Sideways stays exempt (ret_long~0). Rally is
-                # guarded ONLY by the calm-churn gate (_cm_x<=2) — this step tests whether
-                # that guard holds when longs-in-downtrend (rally pullback longs) are in
-                # scope.
+                # Branch step 5: COMBINE the two clean directions found in steps 2/4.
+                # Decomposition (vs baseline):
+                #   shorts-in-downtrend -> bull stability 0.792->0.909 (+0.020 score), rally -0.009
+                #   longs-in-downtrend  -> bull -0.117 (losing dip-buys destabilized), rally +0.032
+                # The directions are opposed because the longs-side damage is bull's LOSING
+                # counter-trend dip-buys (smoothing holds them into real reversals), while the
+                # longs-side GAIN is rally's WINNING dip-buys (smoothing rides them through
+                # pullback noise). So gate the long side on IN-PROFIT (pos_pnl>0): smooth
+                # winning longs in downtrend (rally's gain) but let losing longs exit fast
+                # (protect bull). The short side stays ungated-by-pnl (bull's clean +0.020).
+                # Net target: bull +0.020 AND rally +~0.03 -> composite ~0.58 KEEP.
                 _cm_x = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _dcb_gate = max(0.0, np.tanh(-ret_long / 0.04))  # downtrend strength, any side
+                _dn_str = max(0.0, np.tanh(-ret_long / 0.04))  # downtrend strength
+                if current_pos < 0:
+                    _dcb_gate = _dn_str                                  # shorts: any pnl
+                else:
+                    _dcb_gate = _dn_str * (1.0 if pos_pnl > 0 else 0.0)  # longs: winning only
                 if _cm_x <= 2 and _sl_pressure < 0.95 and _dcb_gate > 0.0:
                     _prev_xp = self._exit_ema.get(symbol, _exit_pressure)
-                    _ema_w = 0.40 * _dcb_gate  # max 40% weight on prior bar in downtrend
+                    _ema_w = 0.40 * _dcb_gate  # max 40% weight on prior bar
                     _exit_pressure = (1.0 - _ema_w) * _exit_pressure + _ema_w * _prev_xp
                 self._exit_ema[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
