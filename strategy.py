@@ -138,12 +138,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Architectural: per-symbol last EMITTED resize direction (+1 grow, -1 shrink,
-        # 0 none/fresh). Drives churn-gated resize-direction HYSTERESIS at the order-
-        # emission layer: reversing the resize direction requires a wider deadband than
-        # continuing it. Sign-state, updated ONLY when a real resize emits (noise-immune
-        # cadence). Reset on entry/exit/flip.
-        self._last_resize_dir = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1117,25 +1111,7 @@ class Strategy:
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
             _deadband_frac = 0.13 * _churn_dz
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
-            # Architectural: resize-direction HYSTERESIS at the order-emission layer.
-            # The existing snap-to-hold deadband is SYMMETRIC — it suppresses a small
-            # grow and a small shrink with the same width. But the rally-stab-killing
-            # churn is specifically grow->shrink->grow MICRO-OSCILLATION: a resize that
-            # REVERSES the last emitted resize direction creates a fresh distinct
-            # position value that AR(1) noise flips. Make reversals harder to emit than
-            # continuations: when the proposed resize direction opposes the last EMITTED
-            # resize direction, widen the deadband by a hysteresis factor (reversal must
-            # clear a higher bar). Continuation resizes keep the base deadband. Gated on
-            # the SAME noise-immune integer churn (fires in rally, ~0 elsewhere). State
-            # (_last_resize_dir) updates ONLY when a real resize emits, so its cadence is
-            # noise-immune. Same-direction step-up/step-down trend resizes pass; only the
-            # oscillating reversal is held. New cross-bar state dep at the gate; distinct
-            # sub-axis from the symmetric deadband (direction-of-change, not magnitude).
-            _resize_dir = 1 if target > current_pos else (-1 if target < current_pos else 0)
-            _last_dir = self._last_resize_dir.get(symbol, 0)
-            _is_reversal = _is_resize and _last_dir != 0 and _resize_dir != 0 and _resize_dir != _last_dir
-            _hyst_mult = 1.0 + 0.8 * _churn_dz if _is_reversal else 1.0
-            if _is_resize and abs(target - current_pos) < _deadband_frac * _hyst_mult * abs(current_pos):
+            if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
@@ -1179,15 +1155,10 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
-                    self._last_resize_dir[symbol] = 0  # reset on full exit
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
-                    self._last_resize_dir[symbol] = 0  # reset on entry/flip
-                else:
-                    # same-sign resize emitted: record its direction for hysteresis
-                    self._last_resize_dir[symbol] = 1 if target > current_pos else -1
 
         return signals
