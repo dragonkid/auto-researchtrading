@@ -19,7 +19,6 @@ MED_WINDOW_MAX = 16
 MED2_WINDOW = 10
 SHORT_WINDOW = 8
 LONG_WINDOW = 20
-VLONG_WINDOW = 96  # multi-day (~4d) trend-context horizon for counter-trend admission
 
 # EMA parameters
 EMA_FAST = 3
@@ -195,15 +194,6 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            # Architectural: multi-day (~96-bar) trend context, a SLOWER-timescale
-            # signal than the 20-bar ret_long. In a grinding rally the 20-bar window
-            # frequently shows local negative returns (multi-hour pullbacks) even
-            # while the multi-day trend is strongly up — so a "pullback short" looks
-            # only mildly counter-trend at 20 bars but is catastrophically counter-
-            # trend at the multi-day scale. ret_vlong captures that scale. New
-            # cross-timescale data dependency feeding the counter-trend admission gate.
-            _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
-            ret_vlong = (closes[-1] - closes[-_vlong_n]) / closes[-_vlong_n]
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -357,18 +347,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Architectural: multi-day counter-trend admission tightening (new cross-
-            # timescale data dep). Layered ON TOP of the 20-bar ret_long counter-trend
-            # term. In a sustained multi-day uptrend (ret_vlong > 0), tighten BEAR
-            # admission further (rally pullback shorts are noise-driven counter-trend
-            # entries that lose); symmetrically tighten BULL admission in sustained
-            # multi-day downtrends (dead-cat-bounce longs in crash). One-sided: only
-            # raises the threshold, never relaxes, so trend-aligned entries are
-            # untouched. Max +18% threshold increase, smooth tanh on ret_vlong/0.06.
-            _ct_vlong_bear = 1.0 + 0.18 * max(0.0, np.tanh(ret_vlong / 0.06))
-            _ct_vlong_bull = 1.0 + 0.18 * max(0.0, np.tanh(-ret_vlong / 0.06))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * _ct_vlong_bull
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * _ct_vlong_bear
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
