@@ -549,8 +549,20 @@ class Strategy:
                 # sustained multi-day downtrend (crash dead-cat-bounce longs), get up to
                 # 0.40x size reduction. Continuous (no decision boundary), multiplies into
                 # first-bar size alongside _bull_ct_atten / _bear_ct_atten.
-                _bull_ct_vlong = 1.0 - 0.40 * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
+                # Branch step 3: LOW-CHURN gate on the multi-day ct attenuator. The
+                # 5e4c5d5c baseline keep is a churn-gated order-emission grid that LIFTS
+                # rally stability; changing first-bar entry SIZE shifts which lattice cell
+                # each subsequent rally resize lands in, disrupting that grid's noise-
+                # immunity (rally has churn bursts to len(_eh)=5). Bull/crash entries are
+                # sparse (len(_eh)<=1) so they keep the full ct-shrink cleanly. Gate the
+                # attenuator on the COMPLEMENT of the established noise-immune integer
+                # churn count: _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways), ~0 at
+                # len(_eh)>=3 (rally bursts) — so rally's high-churn entries are exempt
+                # and its order-emission grid is undisturbed. Same fast-saturating tanh
+                # on an integer count (no AR(1)-flippable boundary).
+                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 high churn
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
