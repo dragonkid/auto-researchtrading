@@ -142,10 +142,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Experiment: per-symbol rolling history of the raw per-bar `size` value
-        # (3-bar). Used by the churn-gated sizing-input smoother to average out
-        # AR(1) noise in the sizing channel during high-churn (rally) bursts.
-        self._recent_size = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -406,31 +402,6 @@ class Strategy:
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
-            # Architectural: churn-gated sizing-input MEAN smoother. Term-B of the
-            # stability metric is relative position divergence; in rally bursts the
-            # per-bar `size` (= equity*BASE*combined_mult) carries AR(1) noise through
-            # combined_mult's price-derived factors (strength_scale, calm/sideways
-            # boost, vol terms), and that noise propagates into BOTH first-bar entry
-            # and scale-in targets. Prior sessions proved: FREEZING one sample (entry-
-            # anchor) is a trap (locks a single noise realization), and MEDIAN filtering
-            # latches the de-risk path — but live recompute "AVERAGES OUT noise". A
-            # rolling MEAN is exactly that average: it is order-1 linear (no rank latch,
-            # no boundary flip), reduces the variance of the sizing channel by sqrt(K),
-            # and blends in proportional to the noise-IMMUNE integer churn count so it
-            # acts only in rally bursts (churn>0) and is INERT in calm regimes (churn~0
-            # -> size unchanged -> crash/sideways/bull raw preserved). Distinct from the
-            # walled position-VALUE EMA (which smoothed the emitted target post-decision,
-            # adding lag to the held path): this smooths the sizing INPUT pre-decision,
-            # so resize timing/direction are untouched. New per-symbol state + new
-            # cross-bar data dep on the sizing channel.
-            _sz_hist = self._recent_size.get(symbol, [])
-            _sz_hist.append(size)
-            if len(_sz_hist) > 3:
-                _sz_hist = _sz_hist[-3:]
-            self._recent_size[symbol] = _sz_hist
-            _size_smooth_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-            _size_mean = sum(_sz_hist) / len(_sz_hist)
-            size = size * (1.0 - _size_smooth_gate) + _size_mean * _size_smooth_gate
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
