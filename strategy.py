@@ -1243,29 +1243,6 @@ class Strategy:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
-            # Architectural: high-churn ENTRY-LEVEL quantization (generalizes the proven
-            # resize-grid to the FIRST bar). DIAGNOSIS this session: rally trades $638k
-            # notional for only +1.68% net ($383 fees) — it OVER-TRADES, and its low Sharpe
-            # is return-bound (ret_vol 0.023 = lowest of all regimes), not vol-bound. The
-            # proven rally lever is SPACE-AXIS level quantization (rows 445/465: fewer
-            # distinct position values -> less fee bleed + lower noise tracking error).
-            # Entries are currently EXEMPT from all grids ("risk transitions must hit exact
-            # targets") — but a fresh entry transitions FROM zero risk, so snapping its
-            # LEVEL onto the same stable lattice is safe (entry size is Sharpe-invariant)
-            # AND makes every downstream resize orbit a lattice-aligned reference -> the
-            # whole position trajectory lands on fewer distinct values -> less rally
-            # turnover/fee bleed and tracking-error. Same stable lattice (0.06*equity*BASE,
-            # noise-stable) and same noise-immune integer-churn gate (_churn_dz) as the
-            # resize grid; fires in rally bursts, ~0 in calm crash/sideways. Snap is
-            # nearest (direction preserved by construction, entry sign fixed by the voter
-            # branch). New control flow: a quantization branch on the entry emission.
-            _is_entry_q = current_pos == 0 and target != 0 and _churn_dz > 0.0
-            if _is_entry_q:
-                _grid_e = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
-                if _grid_e > 0:
-                    _qt_e = round(target / _grid_e) * _grid_e
-                    if (_qt_e > 0) == (target > 0) and _qt_e != 0:
-                        target = _qt_e
             # Architectural: COMPLEMENTARY low-churn-gated coarse grid (inverse-churn
             # partition of the order-emission layer). The existing grid above fires
             # ONLY in high churn (_churn_dz>0 at len>=2 = rally bursts); low-churn
