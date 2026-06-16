@@ -559,21 +559,22 @@ class Strategy:
                 # so gate on the COMPLEMENT of the noise-immune integer churn count:
                 # _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways + rally quiet stretches),
                 # fading to ~0 at len(_eh)>=3 (rally bursts).
-                # Branch step 6: revert step-5's scale tightening (0.03 -> 0.06, which
-                # collapsed rally to 0 by shrinking MORE bars), and COMBINE both churn
-                # gates for maximum rally protection. Step 3 (per-bar gate) and step 4
-                # (cumulative gate) each left rally damaged ~0.10 because each alone still
-                # shrinks SOME rally entries: per-bar fires in rally's quiet stretches,
-                # cumulative misses rally symbols that never burst. AND them: the shrink
-                # fires only when the symbol is low-churn NOW (_calm_ct, per-bar) AND has
-                # NEVER bursted (_never_burst, cumulative-max <= 2). Rally symbols that
-                # ever burst are permanently exempt even in their quiet stretches; bull/
-                # crash/sideways (persistently low churn, never burst) keep the full
-                # ct-shrink. Both gates are noise-immune integer-churn counts.
-                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn now, ~0 high churn
+                # Branch step 7: step-3's smooth per-bar churn gate × a SMOOTH cumulative
+                # fade (replaces step-6's HARD _never_burst cliff). Learning across
+                # steps 3-6: smooth gates beat hard gates for rally (step3 0.209 > step4
+                # 0.188 > step6 0.057), because a hard cumulative cliff (_cm crossing
+                # 2->3) lands on a PERTURBATION-DEPENDENT bar — rally's first burst shifts
+                # under noise, so the shrink turn-off bar wobbles -> size wobble ->
+                # stability damage. Make the cumulative gate smooth too: _cum_fade =
+                # 1 - tanh((_cm - 2.5)/1.0) decays gradually as a symbol's cumulative-max
+                # churn rises. bull/crash/sideways stay at _cm<=2 -> _cum_fade ~1.0 (full
+                # ct-shrink, +0.021 bull gain preserved); rally's _cm climbs to ~5 ->
+                # _cum_fade -> ~0 with NO hard transition. Both gates are monotone/smooth
+                # functions of integer churn counts (no AR(1)-flippable boundary).
+                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn now, ~0 bursting
                 _cm_local = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _never_burst = 1.0 if _cm_local <= 2 else 0.0  # symbol has never bursted
-                _calm_ct = _calm_ct * _never_burst  # both required
+                _cum_fade = 1.0 - max(0.0, np.tanh((_cm_local - 2.5) / 1.0))  # smooth: ~1 never-bursted, ->0 ever-bursted
+                _calm_ct = _calm_ct * _cum_fade
                 _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
                 _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
