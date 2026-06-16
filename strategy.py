@@ -1001,19 +1001,22 @@ class Strategy:
                 # scales with the gate so non-crash setups are byte-identical. Still
                 # SL-exempt and still kept under the calm-churn gate as a secondary guard
                 # against firing in a bursting (rally/bull) symbol.
-                # Branch step 6: return to step-2's clean SHORT-in-downtrend gate (the only
-                # Pareto-positive direction: bull +0.020 via stabilizing counter-trend bull
-                # pullback shorts, all else >= baseline). Step 4 (broaden to longs) and step 5
-                # (pnl-gated longs) both regressed — the long side trades bull-stability for
-                # rally-stability with no clean composition. Step 6 amplifies ONLY the short
-                # side: weight cap 0.40->0.45 to push bull's stability gain into a clearer
-                # composite lift. Longs entirely exempt (byte-identical for rally pullback
-                # longs); sideways exempt (ret_long~0); rally shorts guarded by calm-churn.
+                # Branch step 7: SIDE-ASYMMETRIC weights. Step 2 (short@0.40) gave bull
+                # +0.020 clean; step 4 (long@0.40 added) gave rally +0.023 but bull -0.097.
+                # The long side helps rally (dip-buy pullback noise) and hurts bull (dip-buy
+                # reversal) by the SAME amount of smoothing. Test whether bull is more
+                # sensitive than rally: keep the short side at full 0.40 (bull's gain) but
+                # add the long side at a WEAKER 0.20 — if rally gains faster than bull loses
+                # at low weight, the net lifts the low outlier (rally) -> narrows std + raises
+                # mean = the double-benefit composite KEEP path. Both sides downtrend-gated,
+                # calm-churn-gated, SL-exempt.
                 _cm_x = max(self._churn_hist.get(symbol, 0), len(_eh))
-                _dcb_gate = (max(0.0, np.tanh(-ret_long / 0.04)) if current_pos < 0 else 0.0)
+                _dn_str = max(0.0, np.tanh(-ret_long / 0.04))  # downtrend strength
+                _side_w = 0.40 if current_pos < 0 else 0.20    # shorts full, longs half
+                _dcb_gate = _dn_str
                 if _cm_x <= 2 and _sl_pressure < 0.95 and _dcb_gate > 0.0:
                     _prev_xp = self._exit_ema.get(symbol, _exit_pressure)
-                    _ema_w = 0.45 * _dcb_gate  # max 45% weight on prior bar in downtrend
+                    _ema_w = _side_w * _dcb_gate
                     _exit_pressure = (1.0 - _ema_w) * _exit_pressure + _ema_w * _prev_xp
                 self._exit_ema[symbol] = _exit_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
