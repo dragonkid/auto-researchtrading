@@ -595,10 +595,28 @@ class Strategy:
                 # first-bar size depends on conviction margin above floor.
                 _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
+                # Architectural: trend-gate-proximity first-bar SIZE attenuator (shrink,
+                # don't block). Parallel to _bull_conv_atten (strong-sum margin) but on the
+                # OTHER admission boundary — the trend deadzone gate (_bull_admit/_bear_admit
+                # on _trend_biased). An entry that just barely clears the deadzone
+                # (_trend_biased ~ the admit boundary) is noise-flippable: under +-1bar AR(1)
+                # noise it admits at a different bar (or not), and the position trajectory
+                # diverges between clean/perturbed runs = tracking error = stability drag.
+                # Same proven family as 10bfd268: SHRINK boundary-marginal entries (Sharpe is
+                # scale-invariant -> raw preserved; smaller first-bar delta -> less tracking
+                # error -> stability up). "Depth" = signed distance of _trend_biased past its
+                # own-side admit boundary, normalized by TREND_GATE_DEADZONE; depth~0 (just-
+                # admitted) -> 0.70x, depth>=1 deadzone (decisive trend agreement) -> 1.0x.
+                # New data dependency: first-bar size depends on trend-gate proximity, a
+                # quantity that previously fed ONLY the binary admit gate.
+                _bull_tgate_depth = (_trend_biased + TREND_GATE_DEADZONE * _bull_relax) / TREND_GATE_DEADZONE
+                _bear_tgate_depth = (TREND_GATE_DEADZONE * _bear_relax - _trend_biased) / TREND_GATE_DEADZONE
+                _bull_tgate_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_tgate_depth))
+                _bear_tgate_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_tgate_depth))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _bull_tgate_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _bear_tgate_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
