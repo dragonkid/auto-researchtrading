@@ -725,6 +725,19 @@ class Strategy:
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
                 _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
+                # Branch step 5: SLOW the scale-in PACE for counter-trend positions via the
+                # FROZEN entry ct flag (size/exit/stop vehicles all walled this session). Pace
+                # is documented (line ~725) as "the one lever prior sessions found able to move
+                # stability." _ct_hold_frac in [0.6,1.0]: counter-trend (0.6) extends full-bars
+                # up to +1.5 bars (slower build); trend-aligned (1.0) unchanged. Counter-trend
+                # positions are rally's clustered losers (pullback shorts, 7-consec-loss
+                # problem) — building them slower means smaller average size when the loss
+                # materializes -> Sharpe up. Frozen flag is constant per-position (noise-immune)
+                # and bars_held is integer (noise-immune), so the pace trajectory is identical
+                # across the AR(1) ensemble -> no added position-path variance. Only affects
+                # bars 0-3 (scale-in window), not the whole hold (unlike step1's persistent cap).
+                _cthf_pace = self._ct_hold_frac.get(symbol, 1.0)
+                _entry_full_bars_dyn = _entry_full_bars_dyn * (1.0 + 1.5 * max(0.0, min(1.0, (1.0 - _cthf_pace) / 0.4)))
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
@@ -787,19 +800,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Branch step 4: counter-trend stop tightening via the FROZEN entry ct flag.
-                # _ct_hold_frac is captured once at entry (noise-free, the keep's bar-0
-                # evaluation) and is in [0.6, 1.0]: ~1.0 trend-aligned, ~0.6 multi-day
-                # counter-trend. Counter-trend positions are rally's losers (pullback shorts,
-                # 66% WR vs 86-100% trend-aligned), so tighten their stop to cut them faster.
-                # Vehicle = the entry-anchored binary-SATURATING stop (the ONLY rally exit
-                # prior sessions proved noise-immune: it's anchored to entry_price (fixed) and
-                # _sl_pressure saturates binary >=0.95 on a loss cut — no soft graduated value
-                # modulation). Frozen flag -> stop_mult in [0.80, 1.0]: counter-trend stop is
-                # 20% tighter. Raw-affecting (cuts losers earlier -> Sharpe up, DD down) via a
-                # channel orthogonal to the walled held-position-size variance.
-                _cthf_stop = self._ct_hold_frac.get(symbol, 1.0)
-                _stop_abs = _stop_abs * (0.80 + 0.20 * max(0.0, min(1.0, (_cthf_stop - 0.6) / 0.4)))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
