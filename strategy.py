@@ -619,43 +619,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural subsystem redesign (entry-size fusion layer): replace the
-                # MULTIPLICATIVE product of the four price-derived QUALITY attenuators
-                # (_ct_atten, _consensus_atten, _quality_atten, _conv_atten) with MIN-fusion.
-                # These four all measure overlapping conviction/quality concepts (trend-
-                # alignment, multi-window slope consensus, bilateral vote-split, conviction
-                # margin) from the SAME strong-sums / price slopes — so each carries its own
-                # AR(1) noise realization, and the product COMPOUNDS all four multiplicatively:
-                # a perturbed bar's entry size diverges by the product of four perturbations,
-                # the exact continuous position-value divergence that caps rally stability
-                # (rally flip_count=0 -> divergence is size, not flips). MIN applies only the
-                # single most-binding discount per bar -> at most ONE noise channel reaches
-                # entry size, while the binding quality discount is preserved (raw-neutral:
-                # the true limiting factor still fires). This is the ENTRY-side mirror of the
-                # kept exit MAX-fusion ("eliminates correlated noise addition"). Structural
-                # NON-price state multipliers (cooldown timing, post-loss outcome, portfolio
-                # DD, time-of-day, integer churn) stay as product — they are orthogonal and
-                # not part of the correlated price-quality noise cluster.
-                # Churn-gated SOFT-min fusion (branch step 3 reconstructed). Soft-min
-                # (softmax-weighted avg, T=0.15) is differentiable everywhere -> no argmin
-                # boundary to flip; emphasizes the binding discount (>=min>=product, bull
-                # keeps noise-reduction gain). Churn-gate -> rally bursts get product=baseline.
-                _fuse_min_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 at len<=1, ~0 at len>=3
-                _softmin_T = 0.15
-                def _softmin(vals):
-                    _m = min(vals)
-                    _w = [np.exp(-(v - _m) / _softmin_T) for v in vals]
-                    return sum(v * w for v, w in zip(vals, _w)) / max(sum(_w), 1e-12)
-                _bull_quality_prod = _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _bull_conv_atten
-                _bear_quality_prod = _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _bear_conv_atten
-                _bull_quality_min = _softmin((_bull_ct_atten, _bull_consensus_atten, _bull_quality_atten, _bull_conv_atten))
-                _bear_quality_min = _softmin((_bear_ct_atten, _bear_consensus_atten, _bear_quality_atten, _bear_conv_atten))
-                _bull_quality_fused = _bull_quality_prod * (1.0 - _fuse_min_gate) + _bull_quality_min * _fuse_min_gate
-                _bear_quality_fused = _bear_quality_prod * (1.0 - _fuse_min_gate) + _bear_quality_min * _fuse_min_gate
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_quality_fused * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_quality_fused * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
