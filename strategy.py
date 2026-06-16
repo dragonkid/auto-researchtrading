@@ -559,15 +559,23 @@ class Strategy:
                 # so gate on the COMPLEMENT of the noise-immune integer churn count:
                 # _calm_ct ~1 at len(_eh)<=1 (bull/crash/sideways + rally quiet stretches),
                 # fading to ~0 at len(_eh)>=3 (rally bursts).
-                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 high churn
-                # Step 5 ALSO tightens the ret_vlong tanh scale 0.06 -> 0.03: in a strong
-                # multi-day trend tanh(ret_vlong/0.03) SATURATES to ~1 (flat, noise-
-                # insensitive -> a STABLE 0.60x shrink), removing the mid-slope size
-                # sensitivity that left rally's quiet-stretch shorts noise-exposed in
-                # step 3. Near ret_vlong~0 the shrink is ~0 anyway, so the only remaining
-                # gradient sits where the effect is negligible.
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.03))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.03))   # bear entry in multi-day uptrend
+                # Branch step 6: revert step-5's scale tightening (0.03 -> 0.06, which
+                # collapsed rally to 0 by shrinking MORE bars), and COMBINE both churn
+                # gates for maximum rally protection. Step 3 (per-bar gate) and step 4
+                # (cumulative gate) each left rally damaged ~0.10 because each alone still
+                # shrinks SOME rally entries: per-bar fires in rally's quiet stretches,
+                # cumulative misses rally symbols that never burst. AND them: the shrink
+                # fires only when the symbol is low-churn NOW (_calm_ct, per-bar) AND has
+                # NEVER bursted (_never_burst, cumulative-max <= 2). Rally symbols that
+                # ever burst are permanently exempt even in their quiet stretches; bull/
+                # crash/sideways (persistently low churn, never burst) keep the full
+                # ct-shrink. Both gates are noise-immune integer-churn counts.
+                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn now, ~0 high churn
+                _cm_local = max(self._churn_hist.get(symbol, 0), len(_eh))
+                _never_burst = 1.0 if _cm_local <= 2 else 0.0  # symbol has never bursted
+                _calm_ct = _calm_ct * _never_burst  # both required
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.06))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.06))   # bear entry in multi-day uptrend
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
