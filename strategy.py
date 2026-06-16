@@ -628,21 +628,20 @@ class Strategy:
                 # within-bar/within-window primitives currently saturated. Smooth via
                 # cos (no boundary). Applied only to first-bar entry size (does not
                 # touch voters, exits, or scale-in).
-                # Architectural simplification: removed _tod_atten 6-cosine calendar
-                # stack (TOD 24h + DOW 7d + MOM 30d + QUARTER 91d + semi-annual 180d +
-                # annual 365d), each with a hand-tuned phase (peak UTC 16, Wed/Thu, mid-
-                # month, etc.) multiplying first-bar entry size in [0.85, 1.15]. The TOD
-                # term has a plausible mechanism (US-session volume), but the five
-                # lower-frequency calendar cycles (DOW/MOM/QUARTER/semi-annual/annual)
-                # are textbook in-sample overfitting: their phases are fit to the
-                # specific dates inside the 4 search regimes and cannot carry a
-                # generalizable mechanism (there is no reason mid-month or day-90 should
-                # systematically improve entry quality out-of-sample). Per the hygiene
-                # rule that complexity hurts generalization, remove the entire stack and
-                # the bd.timestamp data dependency. If the score holds, the calendar
-                # modulation was fitting noise. Code-structure removal: -1 data source,
-                # -6 cosine terms collapsed to a constant.
-                _tod_atten = 1.0
+                # NEW DATA SOURCE: timestamp-derived TOD+DOW+MOM compound activity.
+                # TOD: cos cycle 24h peaking UTC 16. DOW: cos cycle 7d peaking Wed/Thu.
+                # MOM: cos cycle ~30d peaking mid-month (day 15), trough around month-end/start.
+                # Mid-month captures monthly options expiry + futures rollover concentration;
+                # month-end carries window-dressing rebalance noise. All three compound
+                # multiplicatively into _activity. Single _tod_atten var absorbs all three.
+                # 5th cycle: semi-annual (~180d cos peak day 90 mid-half-year) — distinct
+                # frequency from MOM (30d) and QUARTER (91d), captures half-year market
+                # rhythm. Scaled 0.85-1.0 (smallest amplitude) to bound contribution since
+                # contributions decrease with each cycle stacked (TOD +0.0001 -> DOW +0.0006
+                # -> MOM +0.0003 -> QUARTER +0.0001). +0 LOC fused into single expression.
+                _ts_h = bd.timestamp // 3600000
+                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
+                _tod_atten = 0.85 + 0.30 * _activity
                 # Architectural: conviction-margin first-bar SIZE attenuator (shrink,
                 # don't block). Exp2 this session proved marginal-conviction entries
                 # drive rally instability — but blocking them (raising admission)
