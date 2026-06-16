@@ -1130,10 +1130,18 @@ class Strategy:
                     # strongly positive (rally excluded). Multiplies the 0.5 reduction so it
                     # smoothly vanishes for up-trending symbols. _cm==1 still required (calm
                     # base partition); the ret_vlong gate removes the rally-SOL transient leak.
-                    _cm_tp = max(self._churn_hist.get(symbol, 0), len(_eh))
-                    _downtrend_gate = max(0.0, min(1.0, 0.5 - 0.5 * np.tanh(ret_vlong / 0.01)))
-                    if _cm_tp <= 1:
-                        _tp_scale = _tp_scale * (1.0 - 0.5 * _downtrend_gate)
+                    # Branch step 4: persistent-calm streak at a LOW threshold (>=24).
+                    # Diagnostic: rally symbols' max calm_streak is 13 (they leave _cm==1
+                    # by bar ~44); crash holds _cm==1 forever (streak->10170) and reaches
+                    # 24 by ~bar 55. A >=24 gate thus EXCLUDES rally entirely (max 13 < 24)
+                    # while admitting crash from bar ~55 onward — capturing crash's harvest
+                    # events without the rally-SOL transient leak AND without step-3's
+                    # price-derived ret_vlong gate (which re-introduced noise and only
+                    # half-fired in crash consolidations). Pure integer-streak gate =
+                    # noise-immune. Step-2 used >=100 which excluded crash's bar-55..131
+                    # window; >=24 is the minimal threshold above rally's max-13.
+                    if self._calm_streak.get(symbol, 0) >= 24:
+                        _tp_scale = _tp_scale * 0.5
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
