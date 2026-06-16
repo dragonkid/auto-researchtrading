@@ -138,6 +138,16 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
+        # Architectural: per-symbol snapshot of the entry-bar position scale `size`.
+        # During scale-in (bars 1-3) the full-position target is currently recomputed
+        # every bar as `size = equity*BASE*combined_mult`, but combined_mult depends on
+        # noise-sensitive per-bar terms (strength_scale, calm/sideways boosts, vol). So
+        # the scale-in TARGET wobbles bar-to-bar under AR(1) noise -> equity-return
+        # tracking error even though no trade DECISION changed. Snapshot size at entry
+        # and use it as the stable scale-in anchor: removes scale-in position-value
+        # wobble in ALL regimes (incl. low-churn rally the churn-gated grid misses),
+        # with NO lag and NO decision change. Same axis as the 09f09ab grid keep.
+        self._entry_size = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -631,7 +641,11 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = size if current_pos > 0 else -size
+                    # Use the entry-bar size snapshot (stable across the noise ensemble)
+                    # rather than the live per-bar `size` (which rides noise-sensitive
+                    # combined_mult). Falls back to live size if snapshot missing.
+                    _scale_size = self._entry_size.get(symbol, size)
+                    full_target = _scale_size if current_pos > 0 else -_scale_size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1152,12 +1166,14 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_size):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    # Snapshot the entry-bar size scale for stable scale-in targeting.
+                    self._entry_size[symbol] = size
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
