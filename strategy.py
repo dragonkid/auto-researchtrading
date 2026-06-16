@@ -655,7 +655,21 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
+                    # Architectural: smoothstep (S-curve) scale-in trajectory replacing
+                    # the linear ramp. smoothstep(e)=e^2(3-2e) has ZERO derivative at both
+                    # endpoints. The position DWELLS at full size (progress=1) — the proven
+                    # rally-stability binding zone (prior keeps moved rally stab via distinct-
+                    # position-value reduction near the dwell point). Under AR(1) noise the
+                    # entry bar can shift +-1, shifting _eff_progress by 1/_entry_full_bars_dyn;
+                    # with a LINEAR ramp that produces a constant scale_frac jump everywhere,
+                    # including right next to full position. smoothstep flattens the curve near
+                    # progress=1 (and progress=0), so a +-1 bar shift in the dwell-approach
+                    # bars perturbs the emitted position value far less -> fewer distinct
+                    # position values across the noise ensemble near the binding full-position
+                    # zone. Noise-immune class: function of integer bars_held + slow long-window
+                    # rsi_trend_str (via _entry_full_bars_dyn), NOT a price-derived size modulator.
+                    _smooth_progress = _eff_progress * _eff_progress * (3.0 - 2.0 * _eff_progress)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _smooth_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
                     # categories: (1) real reversal (counter-trend entries facing the
