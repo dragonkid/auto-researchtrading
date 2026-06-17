@@ -144,6 +144,11 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Architectural: per-symbol per-hold exit-pressure high-water mark.
+        # Drives the RATCHET de-risk consolidation: de-risk reduces fire only on
+        # NEW pressure highs, not every bar pressure sits in the band. Reset on
+        # entry/flip, popped on exit. Monotone within a hold (like peak_pnl).
+        self._exit_press_hwm = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1133,10 +1138,35 @@ class Strategy:
                     # tries to grow it. Defer de-risk consideration until bars_held>=2
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
+                    # Architectural: RATCHET de-risk consolidation (streak_gate lever).
+                    # Diagnostic (prior session): rally streak_gate=0.792 (21pct haircut,
+                    # the #1 recoverable rally drag) is built from 7 consecutive tiny
+                    # partial-reduce LOSSES. Root cause: the de-risk ramp recomputes
+                    # target = current_pos * _de_risk(_exit_pressure) EVERY bar pressure
+                    # sits in the band, so a position under sustained mild pressure is
+                    # shaved a little each bar — each shave realizes a small loss ->
+                    # long consecutive-loss streak -> streak_gate penalty. NEW state +
+                    # control flow: keep a per-hold exit-pressure HIGH-WATER MARK and
+                    # emit a fresh reduce ONLY when the current bar sets a NEW pressure
+                    # high; otherwise HOLD (target = current_pos, no new realized-loss
+                    # event). Collapses the every-bar shave cascade into a few reduces
+                    # (one per new pressure high), shortening the loss streak. This is a
+                    # de-risk-EMISSION-timing change (flagged-untried vehicle), distinct
+                    # from price-threshold gates: the trigger is "pressure made a new
+                    # within-hold high" — monotone like peak_pnl (the high-water-mark
+                    # mechanic the strategy already treats as noise-smooth). The endpoint
+                    # de-risk LEVEL is unchanged (still current_pos*_de_risk at peak
+                    # pressure); only the intermediate plateau shaves are suppressed.
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
-                        target = target * _de_risk
+                        _press_hwm_prev = self._exit_press_hwm.get(symbol, 0.0)
+                        if _exit_pressure > _press_hwm_prev:
+                            # New pressure high within this hold -> emit the reduce.
+                            target = target * _de_risk
+                            self._exit_press_hwm[symbol] = _exit_pressure
+                        # else: pressure below within-hold high -> HOLD (no new reduce),
+                        # target stays at current_pos (avoids the tiny-loss cascade).
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
@@ -1307,12 +1337,13 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_hwm):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._exit_press_hwm[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
