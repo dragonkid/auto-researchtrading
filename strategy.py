@@ -1204,22 +1204,26 @@ class Strategy:
                         # stab AND sideways raw). Scale = 0.5*|STOP| (a position that peaked
                         # half a stop in profit is a real winner). Combined with the trend-
                         # align gate (bull/crash strong-trend winners get both ~1 -> HOLD).
-                        # Branch step 6: revert trend scale to 0.04 (step-4 rally-stab-safe
-                        # value; step 5's 0.07 put rally in tanh's steep region -> stab
-                        # collapse) and RAISE the peak-gate threshold 0.5*|STOP| -> 1.0*|STOP|
-                        # (require a STRONGER peak for the plateau-hold). Diagnostic: bull
-                        # DD stayed 1.25 (held winners did NOT give back — clean strong
-                        # uptrend, big peaks) but rally DD rose 1.85->2.17 (held modest-peak
-                        # longs DID give back — choppy uptrend). The separator is PEAK
-                        # MAGNITUDE: bull winners peak large (>2-3pct) before any pressure ->
-                        # tanh(peak/0.024)~0.85 still holds (winner-run gain kept); rally's
-                        # modest pullback-recovery longs peak ~1pct -> tanh(0.01/0.024)~0.40
-                        # -> less hold -> revert to baseline shave -> rally raw + DD recover.
-                        # peak_pnl is a monotone high-water mark (noise-immune) so raising
-                        # its threshold costs no stability. Orthogonal to the trend scale.
+                        # Branch step 7: CHURN-gate the plateau-hold OFF in rally (the
+                        # proven noise-immune rally separator). Steps 4-6 confirmed the
+                        # ratchet plateau-hold is structurally OPPOSED between regimes:
+                        # great for clean-trend bull/crash, harmful for choppy rally — and
+                        # no CONTINUOUS gate (trend scale, peak threshold, profit) separates
+                        # them without a noise cost, because rally and bull both sit in the
+                        # "long-in-uptrend" continuum. The ONE signal proven to cleanly
+                        # separate rally is the INTEGER churn count len(_eh) (30-bar entry
+                        # density): rally bursts (high churn), crash/sideways/bull stay low
+                        # — it is the basis of the 26f4b23d ct-size keep AND both grid keeps,
+                        # and is noise-IMMUNE (integer count, no AR(1) boundary). Gate the
+                        # plateau-HOLD by the CALM complement: _calm_dr ~1 at low churn
+                        # (bull/crash/sideways -> keep winner-run gain), ~0 at high churn
+                        # (rally -> _hold_w~0 -> FULL revert to baseline every-bar shave ->
+                        # rally raw 0.419 + stab 0.809 recovered). Multiplies the step-4
+                        # trend-align x peak gate (scale 0.04, thresh 0.5 — the branch-best).
                         _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                        _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (1.0 * abs(STOP_LOSS_PCT))))
-                        _hold_w_dr = _trend_align_dr * _peak_gate_dr
+                        _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
+                        _calm_dr = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 rally bursts
+                        _hold_w_dr = _trend_align_dr * _peak_gate_dr * _calm_dr
                         if _exit_pressure > _press_hwm_prev:
                             # New pressure high within this hold -> emit the reduce.
                             target = target * _de_risk
