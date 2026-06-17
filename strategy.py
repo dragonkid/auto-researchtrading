@@ -83,9 +83,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 1.97  # required sum of margin-above-0.5 voter contributions (rescaled 1.75->1.97 for 8th voter, +total-weight ratio)
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
 MIN_VOTES = 2.92  # scaled for 7 voters
-FLIP_MIN_VOTES = 3.20  # rescaled 2.80->3.20 for 8 voters (x8/7, preserves flip-gate fraction-of-neutral)
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -250,21 +250,6 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Architectural: 8th voter — Chaikin money-flow (accumulation/distribution).
-            # Close-location-in-range ((close-low)-(high-close))/(high-low) in [-1,+1]
-            # weighted by volume over 12 bars. Orthogonal to all 7 existing voters:
-            # trend/momentum voters measure WHERE price went; CMF measures HOW it got
-            # there intrabar (closing near highs = accumulation/buying, near lows =
-            # distribution/selling) — new data dependency on intrabar high/low/close
-            # STRUCTURE x volume. New trade-set discriminator (can move raw score).
-            _cmf_n = 12
-            _cmf_high = bd.history["high"].values[-_cmf_n:]
-            _cmf_low = bd.history["low"].values[-_cmf_n:]
-            _cmf_close = closes[-_cmf_n:]
-            _cmf_vol = bd.history["volume"].values[-_cmf_n:]
-            _cmf_range = np.maximum(_cmf_high - _cmf_low, mid * 1e-5)
-            _clv = ((_cmf_close - _cmf_low) - (_cmf_high - _cmf_close)) / _cmf_range  # [-1,+1]
-            _cmf = (_clv * _cmf_vol).sum() / max(_cmf_vol.sum(), 1e-10)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -273,7 +258,6 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
-                _cmf / 0.10,  # 8th voter: Chaikin money-flow (accumulation/distribution)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -300,9 +284,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # 8th voter (CMF) weight: 0.85 (mid-range, matches slope voter); fixed
-            # (not trend-conditioned) since accumulation signal is regime-agnostic.
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.85)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -330,7 +312,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
