@@ -367,33 +367,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # PHASE-3 COMBINATION: low-volume admission TIGHTENING (Exp4 this session)
-            # x cumulative-churn partition (baseline _cm gate). Exp4 proved that raising
-            # the strong-sum floor on thin-volume bars (volume < 20-bar median) gives
-            # GENUINE raw gains to crash (+0.008) and sideways (+0.001) — illiquid bars
-            # carry information-poor price moves, so admitting fewer of them lifts trade
-            # quality — but it COLLAPSES rally (low-vol bars are rally's GOOD pullback-
-            # accumulation entries; the gate is directionally wrong there = a cross-regime
-            # conflict). The proven, NOISE-IMMUNE separator for exactly these regimes is
-            # the cumulative-max churn count _cm: crash never bursts (max-len=1), sideways
-            # barely (max=2), while rally (max=5) and bull (max=6) DO burst. Gate the
-            # volume tightening on the PRIOR-bar _cm (read from self._churn_hist before its
-            # end-of-bar update at the execution layer — purely historical, a monotonic
-            # integer with no AR(1) boundary to flip), so the tightening fires ONLY for
-            # never-bursting symbols (keeps crash/sideways gains) and is INERT for bursting
-            # ones (rally/bull stay at baseline). Same _cm<=2 partition the baseline coarse
-            # grid uses. Volume LEVEL admission (changes the trade SET = can move raw) is a
-            # distinct lever from the discarded volume-FLOW voter and the scale-invariant
-            # volume SIZE attenuators. Self-normalizing ratio, continuous tanh, symmetric
-            # bull/bear (no trend/regime targeting — regime effects fall out of _cm).
-            _lowvol_tighten = 1.0
-            if self._churn_hist.get(symbol, 0) <= 2:  # never-bursting symbol only
-                _vol_med_n = 20
-                _vol_med = max(np.median(bd.history["volume"].values[-_vol_med_n:]), 1e-10)
-                _vol_level_ratio = bd.history["volume"].values[-1] / _vol_med
-                _lowvol_tighten = 1.0 + 0.15 * max(0.0, np.tanh((1.0 - _vol_level_ratio) / 0.4))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * _lowvol_tighten
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * _lowvol_tighten
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
