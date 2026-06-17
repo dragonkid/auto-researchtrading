@@ -677,33 +677,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: trend-aligned first-bar FRACTION skew (pacing lever,
-                # NOT a size attenuator). Counter-trend entries (vs the multi-day
-                # trend) commit a SMALLER fraction on bar 0 and rely more on scale-in
-                # confirmation over the next bars; trend-aligned entries commit a
-                # LARGER bar-0 fraction. This shifts the TIMING of commitment, not the
-                # total target size (scale-in still grows to full `size` over
-                # ENTRY_FULL_BARS), so it is structurally distinct from the saturated
-                # counter-trend SIZE family (which scaled total position VALUE by a
-                # ret_vlong factor -> value tracked a continuous price quantity near a
-                # tanh boundary -> rally stab collapse). Pacing/scale-in timing is the
-                # documented stability lever. To avoid Exp2's boundary problem, the
-                # trend term is FULLY SATURATED (scale 0.01) so the fraction shift is a
-                # near-CONSTANT within each regime's |ret_vlong| operating range, not a
-                # steep slope that noise can wobble. Max shift +-0.06 around the base
-                # fraction. Rally's pullback shorts (counter to multi-day uptrend) get
-                # the reduced bar-0 commit; rally's trend-aligned longs get the larger
-                # commit. New cross-timescale dep on (ret_vlong sign, entry side) at
-                # the first-bar FRACTION (not the size multiplier chain).
-                _vlong_align = np.tanh(ret_vlong / 0.01)  # saturated: ~+-1 across rally range
-                _bull_frac_skew = 0.06 * _vlong_align   # bull aligned with uptrend -> +; counter -> -
-                _bear_frac_skew = -0.06 * _vlong_align   # bear aligned with downtrend -> +; counter -> -
-                _bull_entry_frac = max(0.30, min(0.55, _entry_frac_dyn + _range_bull_adj + _bull_frac_skew))
-                _bear_entry_frac = max(0.30, min(0.55, _entry_frac_dyn + _range_bear_adj + _bear_frac_skew))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * _bull_entry_frac * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * _bear_entry_frac * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
