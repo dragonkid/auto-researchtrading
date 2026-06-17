@@ -105,14 +105,6 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# Architectural: portfolio-drawdown entry-skip threshold. New entries are blocked when
-# the existing portfolio-DD circuit-breaker attenuator _port_dd_atten falls below this
-# (i.e. portfolio in deep drawdown ~>1.1%). Targets the CROSS-SYMBOL consecutive-loss
-# cluster (a correlated multi-symbol pullback IS a portfolio drawdown) at the correct
-# portfolio granularity — extends the existing _port_dd_atten size-shrink (rally-tolerated,
-# already in baseline) into an outright entry skip so the losing trades during a correlated
-# pullback are not opened, cutting max_consecutive_losses (the streak_gate input).
-PORT_DD_ENTRY_SKIP = 0.15
 
 
 def ema(values, span):
@@ -734,13 +726,9 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Portfolio-drawdown entry skip (see PORT_DD_ENTRY_SKIP): block fresh entries
-                # while the portfolio is in deep drawdown (correlated cross-symbol pullback),
-                # so the cross-symbol consecutive-loss cluster is not opened into.
-                _dd_entry_ok = _port_dd_atten >= PORT_DD_ENTRY_SKIP
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and _dd_entry_ok:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _dd_entry_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
