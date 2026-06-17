@@ -324,30 +324,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            # Architectural: multi-day-trend DIRECTION-ASYMMETRIC voter reweighting.
-            # New channel for the multi-day-trend-respect principle: prior attempts
-            # routed ret_vlong through SIZE (Sharpe-invariant), ADMISSION-THRESHOLD
-            # (zero-crossing boundary) and EXIT (open-status) — all walled. This routes
-            # it through the VOTER WEIGHTS instead: the same trend-confirming voters
-            # (EMA_cross idx1, slope_16 idx4, EMA_slope idx5) count MORE toward the
-            # bull strong-sum and LESS toward the bear strong-sum in a multi-day UPtrend
-            # (and vice-versa in a downtrend), so a counter-multi-day-trend entry needs
-            # more non-trend conviction to clear admission. FAST-SATURATION (scale 0.01):
-            # rally's |ret_vlong| ~0.02-0.04 sits in the flat tanh tail -> _md_align is a
-            # near-constant +-1 under AR(1) noise (the noise-free regime the 26f4b23d SIZE
-            # keep established), so the per-bar weight is noise-stable. Direction-asymmetric
-            # (distinct from the symmetric family-discount / max-trim reweightings that
-            # weakened co-firing): in a real trend it STRENGTHENS trend-voter co-firing on
-            # the aligned side and only discounts the counter-trend side. Continuous, no
-            # new hard gate (the admission boundary is unchanged; only the strong-sum input
-            # is trend-biased). Targets rally's root cause (50% counter-trend pullback shorts).
-            _md_align = np.tanh(ret_vlong / 0.01)  # [-1,1], fast-sat: saturated (noise-free) in trends
-            _md_adj = 0.20 * _md_align
-            _trend_voter_idx = (1, 4, 5)
-            _bull_weights = tuple(w * (1.0 + _md_adj) if i in _trend_voter_idx else w for i, w in enumerate(_voter_weights))
-            _bear_weights = tuple(w * (1.0 - _md_adj) if i in _trend_voter_idx else w for i, w in enumerate(_voter_weights))
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _bull_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _bear_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
