@@ -1301,6 +1301,25 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
+            # Architectural: DUST-position consolidation at the order-emission layer.
+            # A position that the de-risk graduation has reduced to a tiny fraction of
+            # a full position (< 0.25 * the bar's natural size scale) is effectively
+            # closed — it carries negligible directional exposure but still incurs
+            # carry, future micro-resize fills, and (being a live position) keeps
+            # contributing a small noise-sensitive equity-tracking term. Snap such
+            # de-risked DUST to a full exit (target=0) instead of holding the remnant.
+            # This is a SUBTRACTIVE clean-up (collapses dust -> 0, fewer distinct live
+            # states / fewer downstream fills), the same family as the snap-to-hold
+            # deadband (the only proven rally-safe lever). Gated strictly to a DE-RISK
+            # (abs(target) < abs(current_pos): position shrinking) so SCALE-IN (target
+            # growing past current_pos) and fresh ENTRIES (current_pos==0) are exempt —
+            # only an already-shrinking position can be snapped closed. Same-sign only;
+            # full exits / flips already hit target=0 or sign-change. New control flow:
+            # a magnitude-of-position threshold (distinct from the deadband's
+            # magnitude-of-CHANGE threshold) routes dust remnants to full exit.
+            if (current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
+                    and abs(target) < abs(current_pos) and abs(target) < 0.25 * size):
+                target = 0.0
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
