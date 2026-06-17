@@ -726,27 +726,10 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Architectural SUBSYSTEM REDESIGN (entry admission): replace the binary
-                # strong-sum gate (_strong >= _strong_min — a hard pass/fail boundary that
-                # treats a just-above-threshold entry identically to a decisive one and
-                # flips under noise) with a CONTINUOUS admission-strength -> size ramp.
-                # Entry is admitted whenever trend (_admit) and persistence (_persist_ok,
-                # which already enforces a ~0.65-0.95x sustained-conviction floor) hold; the
-                # strong-sum then SMOOTHLY scales first-bar size from 0 at 0.85x the threshold
-                # to full at 1.25x via a smoothstep. Removes the hard admission boundary
-                # (continuous, no zero-crossing flip -> stability-positive in principle) and
-                # quality-weights marginal entries by conviction magnitude. This is the only
-                # lever that ALTERS strong-regime trade SELECTION (entry-size/exit-fusion/
-                # cooldown changes are byte-identical there per this session rows 612/615/618/621).
-                _adm_lo, _adm_hi = 0.85, 1.25
-                _bull_adm_t = max(0.0, min(1.0, (_bull_strong / max(_bull_strong_min, 1e-6) - _adm_lo) / (_adm_hi - _adm_lo)))
-                _bear_adm_t = max(0.0, min(1.0, (_bear_strong / max(_bear_strong_min, 1e-6) - _adm_lo) / (_adm_hi - _adm_lo)))
-                _bull_adm = _bull_adm_t * _bull_adm_t * (3.0 - 2.0 * _bull_adm_t)  # smoothstep
-                _bear_adm = _bear_adm_t * _bear_adm_t * (3.0 - 2.0 * _bear_adm_t)
-                if _bull_adm > 0.0 and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _bull_adm
-                elif _bear_adm > 0.0 and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _bear_adm
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
