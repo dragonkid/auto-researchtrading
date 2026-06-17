@@ -496,18 +496,7 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                # Exp: 3-bar sustained-conviction persistence (was 2-bar). Require the
-                # strong-sum to clear the (trend-relaxed) persistence floor across the last
-                # THREE bars, not two — filtering single- AND double-bar conviction spikes.
-                # Rally's instability is driven by marginal entries that flip under AR(1)
-                # noise; a 3-bar minimum admits only entries whose conviction is sustained
-                # long enough that a single perturbed bar cannot create/destroy them, which
-                # should reduce the count of noise-flippable rally trades (a structural
-                # stability lever, not a re-seed gamble). _hist already retains 3 bars.
-                if len(_hist) >= 3:
-                    _min_bull_2 = min(_hist[-3][0], _hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-3][1], _hist[-2][1], _hist[-1][1])
-                elif len(_hist) >= 2:
+                if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
                 else:
