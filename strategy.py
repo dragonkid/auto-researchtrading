@@ -326,6 +326,25 @@ class Strategy:
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Architectural subsystem redesign: SMOOTH breadth co-firing amplifier on the
+            # strong-sum. Strongest documented insight (rows 525d, 429d): the price-trend
+            # voters co-firing IS the genuine trend signal — family-DISCOUNT (penalizing
+            # concentration) failed because it removed real trend conviction. This is the
+            # structural INVERSE: REWARD broad agreement. Breadth = smooth sum over voters of
+            # how far each side's conf sits above 0.5 (continuous, NO count boundary that
+            # flips under noise — the family-discount used a concentration RATIO which was
+            # noise-sensitive; this uses a continuous excess-sum). When many voters agree the
+            # strong-sum is amplified up to +12%; when split, no change. Applied symmetrically
+            # to both sides (cannot unbalance the rally book — row429 directional-asymmetry
+            # wall). Mechanism: deepens the conviction signal for genuinely broad trends
+            # (bull/crash/sideways trend co-firing) without a decision boundary. Risk: it
+            # shifts the admission-threshold crossing, and "breadth loosening = rally noise"
+            # is a documented wall — this tests whether SYMMETRIC smooth breadth-reward
+            # behaves differently from the asymmetric/ratio breadth mechanisms.
+            _bull_breadth = sum(max(0.0, c - 0.5) for c in _bull_confs)  # 0..~2.8 (7 voters * 0.4 max)
+            _bear_breadth = sum(max(0.0, c - 0.5) for c in _bear_confs)
+            _bull_strong *= 1.0 + 0.12 * max(0.0, np.tanh((_bull_breadth - 1.4) / 0.7))
+            _bear_strong *= 1.0 + 0.12 * max(0.0, np.tanh((_bear_breadth - 1.4) / 0.7))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
