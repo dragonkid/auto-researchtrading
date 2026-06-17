@@ -144,11 +144,6 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Architectural: per-symbol per-hold exit-pressure high-water mark.
-        # Drives the RATCHET de-risk consolidation: de-risk reduces fire only on
-        # NEW pressure highs, not every bar pressure sits in the band. Reset on
-        # entry/flip, popped on exit. Monotone within a hold (like peak_pnl).
-        self._exit_press_hwm = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1088,25 +1083,6 @@ class Strategy:
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    # Architectural: HIGH-VOL relaxation of the harvest suppressor (new
-                    # data dep: vol_ratio into the take-profit decision). _ts_supp pins
-                    # _tp_scale~0 for trend-aligned deep-peak winners — this is why crash
-                    # shorts ride the bear with 0 full closes / few trades (sample_factor
-                    # ~0.95 < 1) and lumpy give-back-prone returns (Sharpe 1.32 despite
-                    # 100% WR = return-vol-bound, the flagged un-explored angle). In HIGH
-                    # vol the bear's sharp counter-rally bounces give back deep peaks, so
-                    # locking partial profit on a deep peak both SMOOTHS realized returns
-                    # (lower return-vol -> higher Sharpe) and ADDS partial-close trades
-                    # (sample_factor toward 1.0). Relax the suppressor proportional to a
-                    # high-vol gate so trend-aligned deep winners harvest partially when
-                    # vol is elevated. RALLY-INERT BY CONSTRUCTION: rally vol_ratio ~1
-                    # (lowest ret-vol regime) sits BELOW the 1.2 gate and stays there
-                    # across the AR(1) ensemble (24-bar realized vol barely moves under
-                    # 4-5bps noise), so the gate never flips for rally — distinct from the
-                    # trend/price-gated harvest attempts that flipped under rally noise.
-                    # Continuous tanh (no boundary); only crash's high-vol bars engage.
-                    _hv_harvest = max(0.0, np.tanh((vol_ratio - 1.5) / 0.3))  # branch step2: 1.2->1.5, push rally's low vol_ratio into the flat tail (noise-immune); high-vol bull/crash/sideways spikes still engage
-                    _ts_supp = _ts_supp * (1.0 - 0.7 * _hv_harvest)
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
@@ -1157,98 +1133,10 @@ class Strategy:
                     # tries to grow it. Defer de-risk consideration until bars_held>=2
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
-                    # Architectural: RATCHET de-risk consolidation (streak_gate lever).
-                    # Diagnostic (prior session): rally streak_gate=0.792 (21pct haircut,
-                    # the #1 recoverable rally drag) is built from 7 consecutive tiny
-                    # partial-reduce LOSSES. Root cause: the de-risk ramp recomputes
-                    # target = current_pos * _de_risk(_exit_pressure) EVERY bar pressure
-                    # sits in the band, so a position under sustained mild pressure is
-                    # shaved a little each bar — each shave realizes a small loss ->
-                    # long consecutive-loss streak -> streak_gate penalty. NEW state +
-                    # control flow: keep a per-hold exit-pressure HIGH-WATER MARK and
-                    # emit a fresh reduce ONLY when the current bar sets a NEW pressure
-                    # high; otherwise HOLD (target = current_pos, no new realized-loss
-                    # event). Collapses the every-bar shave cascade into a few reduces
-                    # (one per new pressure high), shortening the loss streak. This is a
-                    # de-risk-EMISSION-timing change (flagged-untried vehicle), distinct
-                    # from price-threshold gates: the trigger is "pressure made a new
-                    # within-hold high" — monotone like peak_pnl (the high-water-mark
-                    # mechanic the strategy already treats as noise-smooth). The endpoint
-                    # de-risk LEVEL is unchanged (still current_pos*_de_risk at peak
-                    # pressure); only the intermediate plateau shaves are suppressed.
                     if _exit_pressure >= _de_floor * _exit_thresh:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
-                        _press_hwm_prev = self._exit_press_hwm.get(symbol, 0.0)
-                        # Branch step 2: TREND-ALIGNED-gated ratchet. The ungated ratchet
-                        # (step 1) revealed the asymmetry: holding through pressure plateaus
-                        # is excellent for TREND-ALIGNED winners (bull +0.153, crash +0.063)
-                        # but harmful for COUNTER-TREND positions (rally's 50pct-short book in
-                        # a grinding uptrend) and chop (sideways). Gate the plateau-HOLD by
-                        # trend-alignment: trend-aligned positions HOLD through plateaus (keep
-                        # the winner-run gain); counter-trend/chop positions revert to the
-                        # baseline every-bar shave (current_pos*_de_risk) -> restore rally/
-                        # sideways. At a NEW pressure high both behaviors agree (full reduce).
-                        # _trend_align = max(0,tanh(ret_long*pos_dir/0.04)) SATURATES AT 0 for
-                        # rally's counter-trend shorts (ret_long>0,pos_dir<0) -> noise-immune
-                        # there (same flat-tail property as the 26f4b23d ct-size keep); in
-                        # sideways |ret_long| is small so _trend_align~0 -> baseline shave.
-                        # Branch step 3: PROFIT-gate the plateau-hold (multiply trend-align
-                        # by a profit gate). Diagnostic D3 (prior session): rally PnL by
-                        # side = SHORT +2379 / LONG -380 -> rally's trend-aligned LONGS are
-                        # net drag (grinding/whipsaw uptrend), whereas bull's trend-aligned
-                        # longs WIN (clean uptrend). Trend-alignment alone cannot separate
-                        # them (both are long-in-uptrend). The separator is PROFIT: holding
-                        # a position through a pressure plateau pays off only when the
-                        # position is WINNING (continuation likely); a near-breakeven or
-                        # losing position at a plateau is a whipsaw/reversal -> shave it.
-                        # _profit_gate = max(0,tanh(pos_pnl/|STOP|)) (same accepted smooth
-                        # gate used by the opp-gate at the graduated-exit path). Bull/crash
-                        # winners: trend_align~1 AND profit~1 -> HOLD (keep winner-run gain).
-                        # Rally whipsaw longs (near breakeven) + sideways chop (small pnl):
-                        # profit~0 -> revert to baseline every-bar shave -> restore rally/
-                        # sideways. Rally counter-trend shorts: trend_align~0 already -> shave.
-                        # Branch step 4: swap the profit gate from INSTANTANEOUS pos_pnl
-                        # to the NOISE-IMMUNE high-water peak_pnl. Step 3 proved the profit
-                        # gate is the right rally-RAW fix (rally raw 0.340->0.401) but the
-                        # instantaneous pos_pnl gate sits AT breakeven — exactly where rally
-                        # whipsaw longs live — so the hold/shave decision flips under AR(1)
-                        # noise (rally stab 0.731->0.611). peak_pnl is a confirmed high-water
-                        # mark (monotone within a hold, only updates upward on rising bars —
-                        # the same smooth mechanic the ratchet itself relies on), so gating on
-                        # it removes the breakeven boundary noise. A position that has PEAKED
-                        # meaningfully above entry is a confirmed winner -> HOLD through the
-                        # plateau; rally whipsaw longs and sideways chop never peak far ->
-                        # _peak_gate~0 -> revert to baseline every-bar shave (restores rally
-                        # stab AND sideways raw). Scale = 0.5*|STOP| (a position that peaked
-                        # half a stop in profit is a real winner). Combined with the trend-
-                        # align gate (bull/crash strong-trend winners get both ~1 -> HOLD).
-                        # Branch step 9: add a LONG-HOLD (bars_held) gate to step-4's gate.
-                        # The remaining rally drag is rally's trend-ALIGNED whipsaw longs —
-                        # which are SHORT-LIVED (rally's grinding uptrend produces brief
-                        # pullback-recovery longs that resolve within a few bars), whereas
-                        # bull/crash winners are LONG-HELD (10+ bars riding a clean trend).
-                        # bars_held cleanly separates them and is INTEGER-valued: at large N
-                        # the "position still open at bar N" status is robust across noise
-                        # realizations (a winner held 12 bars stays held under AR(1)), unlike
-                        # the breakeven/near-boundary cases. Ramp the hold gate in over bars
-                        # 6->14: rally's brief whipsaw longs (exit by ~6-8 bars) get little
-                        # hold -> revert to baseline shave (rally raw + DD recover); bull/crash
-                        # long-held winners get full hold (winner-run gain preserved). Smooth
-                        # tanh on (bars_held-6)/4 (no hard integer boundary at the operating
-                        # point — bull winners sit at bars_held>>10 in the flat tail).
-                        _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                        _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
-                        _longhold_dr = max(0.0, np.tanh((bars_held - 6.0) / 4.0))
-                        _hold_w_dr = _trend_align_dr * _peak_gate_dr * _longhold_dr
-                        if _exit_pressure > _press_hwm_prev:
-                            # New pressure high within this hold -> emit the reduce.
-                            target = target * _de_risk
-                            self._exit_press_hwm[symbol] = _exit_pressure
-                        else:
-                            # Plateau/recede -> trend-aligned WINNERS HOLD (blend->current_pos),
-                            # everything else SHAVES (blend->current_pos*_de_risk).
-                            target = target * (_de_risk + _hold_w_dr * (1.0 - _de_risk))
+                        target = target * _de_risk
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
@@ -1419,13 +1307,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_hwm):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._exit_press_hwm[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
