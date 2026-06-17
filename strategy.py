@@ -1049,10 +1049,27 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
+                # Branch step 4: SURGICAL ride-suppression. Steps 1-3 multiplied the WHOLE
+                # soft_max down for clean-trend winners -> crash gained (+0.10) but sideways
+                # COLLAPSED (-0.355) because suppressing soft_max ALSO defers PEAK-PROFIT
+                # giveback protection, and sideways is choppy/mean-reverting (giving back a
+                # peak in chop = the sideways loss). Fix: suppress ONLY the trend-ENDING
+                # pressures (slope-against + time-overstay) for clean-trend winners, leaving
+                # peak-profit (pp), vol-expansion (ve), adverse-recovery (ar), and stop-loss
+                # at FULL strength. Crash rides the sustained decline (slope/time deferred);
+                # sideways keeps its giveback protection (pp intact) -> no longer over-holds
+                # choppy peaks. _ride_supp = R2 x ret_vlong-align x winning (step-3 gate).
+                # New: pressure-SELECTIVE suppression, not blanket soft_max scaling.
+                _exit_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
+                _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.5) / 0.2))
+                _ride_sustained = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
+                _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _ride_supp = 1.0 - 0.40 * _ride_clean * _ride_sustained * _ride_winning
                 _soft_terms = (
-                    _w_slope * _sl_slope_pressure,
+                    _w_slope * _sl_slope_pressure * _ride_supp,
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure,
+                    _w_time * _time_pressure * _ride_supp,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
@@ -1081,35 +1098,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural (Exp2 this session): clean-trend ride-suppression of soft
-                # exit pressure. The ONLY proven raw lever ever found (de-risk floor,
-                # sideways +0.022) fires on LOW-R2 choppy holds; bull/crash exits (HIGH-R2
-                # clean trends) have never been perturbed by it. NEW orthogonal exit gate:
-                # when the recent path is highly LINEAR (R2 of OLS log(HL2,16)), the
-                # position is TREND-ALIGNED, and it is WINNING, multiply soft_max down (let
-                # clean-trend winners RIDE rather than exit on transient slope/giveback
-                # noise). R2 (path linearity) is orthogonal to slope direction (walled) and
-                # magnitude (already used) - same orthogonality the R2 entry-size keep
-                # (de412448) established. Stop-loss (_sl_pressure) and voter_bias are NOT
-                # suppressed (risk + reversal evidence intact). CHURN-GATED OFF in rally
-                # (_tq_calm via prior-bar churn) so rally exits stay byte-identical ->
-                # isolates whether bull/crash CLEAN-TREND exits respond at all (untouched
-                # territory: de-risk floor never fired there). Stateless (recomputed R2 on
-                # current window reflects current path linearity). New data dep at fusion.
-                # Branch step 3: step-2's deep |ret_long|>0.05 gate KILLED crash's gain
-                # (crash 0.883->0.758) and the multi-day-sustained gate fired HARDEST in
-                # bull (most-sustained uptrend -> bull 0.728->0.607). Revert to step-1's
-                # LOOSE R2 (recovers crash's moderate-trend rides) but swap the 20-bar align
-                # for 96-bar ret_vlong-align: sideways has near-ZERO multi-day move
-                # (ret_vlong~0 -> gate off -> sideways fast-exits preserved) while crash bear
-                # legs have large aligned ret_vlong. 3 gates only (drop _ride_deep).
-                _exit_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.5) / 0.2))
-                _ride_sustained = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
-                _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 1.0 - 0.40 * _ride_clean * _ride_sustained * _ride_winning
-                _soft_max = _soft_max * _ride_supp
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
