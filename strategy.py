@@ -1221,7 +1221,26 @@ class Strategy:
                         _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                         _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
                         _longhold_dr = max(0.0, np.tanh((bars_held - 6.0) / 4.0))
-                        _hold_w_dr = _trend_align_dr * _peak_gate_dr * _longhold_dr
+                        # Architectural: PATH-EFFICIENCY gate on the plateau-HOLD (new data
+                        # dependency in the de-risk-emission decision, previously only
+                        # ret_long/peak_pnl/bars_held). The ratchet HOLD is what LOWERED rally
+                        # stab 0.809->0.760 at the abfb9591 keep: rally's trend-aligned, peaked,
+                        # long-held LONGS also satisfy the 3 existing gates (~1) and so HOLD
+                        # through CHOPPY pressure plateaus — and a choppy plateau-hold is exactly
+                        # the noise-sensitive (low-stability) decision. bull/crash winners ride a
+                        # CLEAN trend (efficient path) where holding is robust. Kaufman efficiency
+                        # ratio ER = |net move| / sum(|bar moves|) over the last 12 smoothed bars
+                        # separates them: clean trend -> high ER, chop -> low ER. Multiplying ER
+                        # into _hold_w_dr makes the plateau-HOLD engage ONLY on efficient paths
+                        # (bull/crash kept) and revert rally's choppy holds to the baseline
+                        # every-bar shave (rally stab recovers toward 0.809). Continuous tanh on
+                        # ER (no decision boundary). smoothed_closes already noise-attenuated.
+                        _er_w_dr = 12
+                        _er_path_dr = np.sum(np.abs(np.diff(smoothed_closes[-_er_w_dr - 1:])))
+                        _er_net_dr = abs(smoothed_closes[-1] - smoothed_closes[-_er_w_dr - 1])
+                        _er_dr = _er_net_dr / max(_er_path_dr, 1e-10)
+                        _er_gate_dr = max(0.0, min(1.0, np.tanh((_er_dr - 0.22) / 0.14)))
+                        _hold_w_dr = _trend_align_dr * _peak_gate_dr * _longhold_dr * _er_gate_dr
                         if _exit_pressure > _press_hwm_prev:
                             # New pressure high within this hold -> emit the reduce.
                             target = target * _de_risk
