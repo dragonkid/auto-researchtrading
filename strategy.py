@@ -1088,6 +1088,25 @@ class Strategy:
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # Architectural: HIGH-VOL relaxation of the harvest suppressor (new
+                    # data dep: vol_ratio into the take-profit decision). _ts_supp pins
+                    # _tp_scale~0 for trend-aligned deep-peak winners — this is why crash
+                    # shorts ride the bear with 0 full closes / few trades (sample_factor
+                    # ~0.95 < 1) and lumpy give-back-prone returns (Sharpe 1.32 despite
+                    # 100% WR = return-vol-bound, the flagged un-explored angle). In HIGH
+                    # vol the bear's sharp counter-rally bounces give back deep peaks, so
+                    # locking partial profit on a deep peak both SMOOTHS realized returns
+                    # (lower return-vol -> higher Sharpe) and ADDS partial-close trades
+                    # (sample_factor toward 1.0). Relax the suppressor proportional to a
+                    # high-vol gate so trend-aligned deep winners harvest partially when
+                    # vol is elevated. RALLY-INERT BY CONSTRUCTION: rally vol_ratio ~1
+                    # (lowest ret-vol regime) sits BELOW the 1.2 gate and stays there
+                    # across the AR(1) ensemble (24-bar realized vol barely moves under
+                    # 4-5bps noise), so the gate never flips for rally — distinct from the
+                    # trend/price-gated harvest attempts that flipped under rally noise.
+                    # Continuous tanh (no boundary); only crash's high-vol bars engage.
+                    _hv_harvest = max(0.0, np.tanh((vol_ratio - 1.2) / 0.3))  # 0 at vol<=1.2 (rally/sideways), ramps in crash
+                    _ts_supp = _ts_supp * (1.0 - 0.7 * _hv_harvest)
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
