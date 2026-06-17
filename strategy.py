@@ -726,10 +726,33 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural: vol-EXPANSION-at-entry quality shrink, churn-gated.
+                # NEW signal orthogonal to every existing entry-size filter, which all
+                # measure the SHAPE of the price PATH (R2=linearity, ER=12-bar efficiency,
+                # _consensus=multi-window slope, conv/quality=voter state). Vol-expansion
+                # measures the TEMPORAL ACCELERATION of realized vol (6-bar vol / 18-bar
+                # vol) — an axis none of them touch. An entry taken as vol is expanding
+                # sits at a volatility-acceleration point (regime shift / news spike) where
+                # fills are worse and an immediate adverse leg is more likely. SELECTIVE by
+                # construction: the RATIO normalizes to ~1.0 when vol is steady (sustained-
+                # vol crash and calm rally both have vol_6~=vol_18), firing only at
+                # acceleration ONSETS — so it shifts AVERAGE entry quality rather than
+                # uniformly shrinking (a uniform shrink is Sharpe-neutral; only selective
+                # down-weighting of worse entries moves Sharpe). Same vol_6/vol_18 statistic
+                # proven meaningful as a regime-shift detector in the EXIT path (_vol_expansion).
+                # Continuous tanh (no zero-crossing pass/fail) -> safe SIZE family. Churn-
+                # gated by the SAME noise-immune _tq_calm: full shrink at low entry-churn
+                # (sparse crash/bull/sideways bank the quality gain) -> OFF at high churn
+                # (bursty rally entries un-attenuated, its 0.801 stability preserved).
+                _ve_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+                _ve_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+                _ve_ratio_entry = _ve_6 / _ve_18
+                _ve_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_ve_ratio_entry - 1.3) / 0.4)))
+                _ve_atten = 1.0 - (1.0 - _ve_atten) * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _ve_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _ve_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
