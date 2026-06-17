@@ -233,18 +233,7 @@ class Strategy:
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
-            _lr_hl2_log = np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0)
-            _lr_slope = _fast_slope(_lr_hl2_log)
-            # Architectural: trend-cleanliness (regression R^2) admission-relaxation signal.
-            # R^2 of the OLS log-HL2 fit over LINREG_PERIOD measures how LINEAR the recent
-            # path is, in [0,1], orthogonal to trend MAGNITUDE (rsi_trend_str/ret_long use
-            # |ret|): a strong-magnitude move can be choppy (low R^2) and a modest move can
-            # be clean (high R^2). A clean linear trend is a high-quality trend-following
-            # environment. _r2_clean ramps 0->1 above R^2=0.5; consumed at the admission gate
-            # below to loosen the TREND-ALIGNED strong-sum threshold only when the trend is
-            # both present (ret_long) AND clean. New data dependency at the admission gate.
-            _adm_r2 = _fast_r2(_lr_hl2_log)
-            _r2_clean = max(0.0, np.tanh((_adm_r2 - 0.5) / 0.20))  # 0 below R^2=0.5, ~1 by R^2~0.7
+            _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
@@ -395,18 +384,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Architectural: clean-trend admission relaxation (R^2-gated, trend-aligned).
-            # Loosen the trend-aligned strong-sum threshold ONLY in clean linear trends
-            # (high _r2_clean) — bull side in uptrends, bear side in downtrends. Targets the
-            # sample_factor haircut on clean-trend regimes (bull 43 / crash 45 trades < 50,
-            # factor 0.93/0.95): admitting more high-quality trend-aligned entries when the
-            # path is linear lifts trade count toward the sample_factor=1.0 floor without
-            # adding chop entries (low R^2 -> factor 1.0, no relaxation). One-sided (relax
-            # only, never tighten); orthogonal to the existing magnitude-based relaxation.
-            _bull_r2_relax = 1.0 - 0.12 * _r2_clean * max(0.0, np.tanh(ret_long / 0.04))
-            _bear_r2_relax = 1.0 - 0.12 * _r2_clean * max(0.0, np.tanh(-ret_long / 0.04))
-            _bull_strong_min = _strong_min * _freq_factor * _bull_r2_relax * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * _bear_r2_relax * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
