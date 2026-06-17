@@ -404,13 +404,7 @@ class Strategy:
             # already has multiple vol-conditioning channels (vol_ratio direct, calm_boost,
             # sideways_boost) — adding a near-constant volume multiplier added LOC without
             # orthogonal signal. Removing eliminates redundant near-constant size scaling.
-            # Architectural SUBSYSTEM REDESIGN (sizing pipeline): the three chop-boosts
-            # (calm_boost, sideways_boost, cross_asset) previously MULTIPLIED, compounding
-            # to extremes in chop (1.8*1.5*1.15=3.1x). Redesign: sum their deviations-from-1
-            # additively (1+0.8+0.5+0.15=2.45x) so boosts no longer compound multiplicatively.
-            # Core vol_term * strength_scale unchanged. Tests whether the multiplicative
-            # cascade STRUCTURE (vs additive) is load-bearing, beyond individual multipliers.
-            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * (1.0 + (calm_boost - 1.0) + (sideways_boost - 1.0) + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
+            combined_mult = max(0.3, min(2.5, (TARGET_VOL / realized_vol) ** 0.85)) * strength_scale * calm_boost * sideways_boost * (1.0 + CROSS_ASSET_FIXED_BOOST * (1.0 - cooldown_trend_strength))
             # Architectural simplification: removed _xa_boost (post-cap chop-only +8% boost).
             # Redundant with sideways_boost (max +50% in chop) and CROSS_ASSET_FIXED_BOOST
             # (already in combined_mult, max +15% in chop). Three chop-amplifying multipliers
