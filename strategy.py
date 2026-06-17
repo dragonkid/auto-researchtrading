@@ -76,6 +76,13 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Exp: sample-sufficiency scale-out trim. A small, spaced partial reduce on a
+# winning established trend hold is a PnL-realizing event -> counts toward
+# num_trades (prepare.py counts partial reduces), lifting sample_factor in the
+# sample-limited regimes (bull/crash at 43/45<50 trades). ~1 trim per hold.
+TRIM_FRAC = 0.04             # reduce 4% of the position per trim (minimal bleed)
+TRIM_PROFIT_MIN_ATR = 1.0    # only trim once pos_pnl >= 1*ATR (established profit)
+TRIM_COOLDOWN = 10           # bars between trims (so each hold trims ~once)
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -160,6 +167,9 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Exp: per-symbol last scale-out trim bar (spaces profit-milestone trims so
+        # each winning hold realizes ~1 extra completed-trade event for sample_factor).
+        self._last_trim_bar = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1186,6 +1196,30 @@ class Strategy:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
+
+                # Exp: sample-sufficiency scale-out trim. The strong regimes (bull/crash)
+                # are sample-limited (43/45<50 trades -> sample_factor 0.93/0.95) NOT because
+                # admission blocks entries (prior sessions: loosening adds 0 entries, calm
+                # positions held long) but because long clean-trend holds realize few
+                # COMPLETED-trade events. prepare.py counts a partial REDUCE as a completed
+                # trade. So take one small, spaced trim per winning established hold: this
+                # adds a realizing event (raising sample_factor) and locks a small profit
+                # (each trim is a win -> helps win_rate / loss-streak) while bleeding only
+                # ~4% of exposure once per hold (minimal Sharpe cost). Churn-gated OFF in
+                # bursty rally (_calm_trim, the de412448-proven noise-immune integer churn
+                # gate) so rally's stability seed is undisturbed. Only fires on a genuine
+                # hold (target still ~= current_pos, same sign, not already exiting) in
+                # established profit, spaced by TRIM_COOLDOWN. New control flow + state.
+                if (target != 0 and (target > 0) == (current_pos > 0)
+                        and abs(target) >= 0.90 * abs(current_pos)
+                        and bars_held > _entry_full_bars_dyn
+                        and pos_pnl > TRIM_PROFIT_MIN_ATR * _atr_pct
+                        and self.bar_count - self._last_trim_bar.get(symbol, -999) >= TRIM_COOLDOWN):
+                    _calm_trim = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 bursty
+                    _trim = TRIM_FRAC * _calm_trim
+                    if _trim > 0.0:
+                        target = target * (1.0 - _trim)
+                        self._last_trim_bar[symbol] = self.bar_count
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
