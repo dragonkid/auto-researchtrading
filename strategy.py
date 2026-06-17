@@ -527,18 +527,21 @@ class Strategy:
                 # as zero (avoids cutting size on legitimate but marginal entries near
                 # the gate boundary). New data dependency: first-bar size depends on
                 # conviction margin for cold entries (was independent before).
-                # Architectural: counter-trend SCALE-IN attenuator on cold entry path.
-                # When a fresh entry is taken AGAINST the long-window trend (bear entry
-                # in uptrend, bull entry in downtrend), attenuate first-bar position
-                # size via a smooth tanh on the trend disagreement magnitude. Unlike
-                # admission asymmetry (discarded — blocked legitimate pullback signals),
-                # this admits the entry but with reduced commitment. Gated above
-                # |ret_long|>0.03 to avoid firing in chop. Max attenuation 0.30 (counter-
-                # trend entries take 0.70x size in strong trend). New cross-timescale
-                # data dependency: cold-entry first-bar size depends on trend disagreement.
-                _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
-                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
-                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural simplification: removed the 20-bar counter-trend
+                # first-bar SIZE attenuator (_ct_gate / _bull_ct_atten / _bear_ct_atten).
+                # The 20-bar _ct_gate (gated above |ret_long|>0.03) is ~0 during rally
+                # pullbacks (the moment a counter-trend short opens, the LOCAL 20-bar
+                # return is flat/negative) — which is exactly why the multi-day
+                # _ct_vlong term was added later to actually shrink rally's shorts. So
+                # the 20-bar term does NOT fire where counter-trend protection matters
+                # (rally), and where it DOES fire (strong 20-bar trends) it overlaps
+                # the admission trend gate (_bull_admit/_bear_admit on TREND_GATE_DEADZONE)
+                # and the multi-day _ct_vlong attenuator. Hypothesis: it is redundant
+                # — removing it holds score while cutting a cross-timescale dependency
+                # and 3 lines. If a regime regresses, it is load-bearing somewhere and
+                # this is a discard. Code-structure removal (functional, not cosmetic).
+                _bull_ct_atten = 1.0
+                _bear_ct_atten = 1.0
                 # Architectural: multi-day counter-trend SIZE attenuator (layered on the
                 # 20-bar term above). The 20-bar _ct_gate is ~0 during a rally pullback
                 # (the local 20-bar return is flat/negative at the moment a pullback short
