@@ -149,10 +149,6 @@ class Strategy:
         # NEW pressure highs, not every bar pressure sits in the band. Reset on
         # entry/flip, popped on exit. Monotone within a hold (like peak_pnl).
         self._exit_press_hwm = {}
-        # Architectural: per-symbol rolling history of the position-size MULTIPLIER
-        # (combined_mult). Used to FIR-smooth (trailing K-bar mean) the size scale
-        # before it is applied to entry/scale-in sizing — see size= site.
-        self._mult_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -430,24 +426,6 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            # Architectural: FIR trailing-mean smoothing of the position-size multiplier.
-            # The documented rally-instability channel is per-bar SIZE WOBBLE: combined_mult
-            # (strength_scale * calm_boost * sideways_boost * vol terms) reacts to noisy
-            # ret_short / realized_vol every bar, so under AR(1) noise the entry/scale-in
-            # position size differs across the ensemble -> equity diverges -> low rally stab.
-            # Replace the instantaneous mult with a trailing K-bar MEAN (FIR, finite memory)
-            # of combined_mult. FIR is deliberately NOT EMA: the codebase already found IIR
-            # state-propagation amplifies noise (trend_avg note); a flat trailing mean simply
-            # averages out the high-frequency size wobble (~1/sqrt(K) variance reduction)
-            # without runaway state. New per-symbol state + new control flow on the sizing
-            # pipeline; continuous (no decision boundary), distinct from the walled equity-
-            # return-vol-ratio IIR feedback. NOTE: smoothing is on the magnitude only; the
-            # entry DIRECTION and admission gates are untouched.
-            _mh = self._mult_hist.setdefault(symbol, [])
-            _mh.append(combined_mult)
-            if len(_mh) > 3:
-                _mh.pop(0)
-            combined_mult = float(np.mean(_mh))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
