@@ -726,10 +726,40 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural: close-location-value (CLV) intrabar-conviction entry
+                # quality shrink, churn-gated. NEW orthogonal signal: every existing
+                # entry-size filter reads the close-PATH SHAPE (R2 linearity, ER 12-bar
+                # efficiency, slope consensus) or voter state — none read WHERE the close
+                # lands WITHIN each bar's high-low range. CLV_bar=(close-low)/(high-low) in
+                # [0,1]: >0.5 closed upper-half (buyers in control intrabar), <0.5 lower-half
+                # (sellers). Averaged over 6 bars -> _clv_mean. DIRECTION-SPECIFIC quality:
+                # a BULL entry is high-quality when recent closes land near bar HIGHS (high
+                # _clv_mean = intrabar follow-through confirms the up-move); low-quality when
+                # closes land near lows despite an up-move (distribution/rejection absorbing
+                # the rally). Symmetric for bears. Shrink the low-quality side. Unlike vol-
+                # expansion (row612: ratio-normalizes to INERT in sustained-vol crash), CLV
+                # FIRES and discriminates IN crash (trend bars close near lows -> no shrink on
+                # shorts; dead-cat-bounce bars close near highs -> shrink shorts taken into a
+                # bounce) and IN sideways chop. Uses only high/low/close (all AR(1)-perturbed
+                # by the noise test -> no `open` noise-immunity artifact). Continuous tanh (no
+                # zero-crossing pass/fail) -> safe SIZE family, not admission. Churn-gated by
+                # the SAME noise-immune _tq_calm: full shrink at low entry-churn (sparse
+                # crash/bull/sideways bank the gain) -> OFF at high churn (bursty rally
+                # un-attenuated, its 0.801 stability preserved).
+                _clv_h6 = bd.history["high"].values[-6:]
+                _clv_l6 = bd.history["low"].values[-6:]
+                _clv_c6 = closes[-6:]
+                _clv_rng6 = _clv_h6 - _clv_l6
+                _clv_bars = np.where(_clv_rng6 > 1e-10, (_clv_c6 - _clv_l6) / np.maximum(_clv_rng6, 1e-10), 0.5)
+                _clv_mean = float(np.mean(_clv_bars))
+                _clv_bull_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((0.5 - _clv_mean) / 0.25)))
+                _clv_bear_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((_clv_mean - 0.5) / 0.25)))
+                _clv_bull_atten = 1.0 - (1.0 - _clv_bull_atten) * _tq_calm
+                _clv_bear_atten = 1.0 - (1.0 - _clv_bear_atten) * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _clv_bull_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _clv_bear_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
