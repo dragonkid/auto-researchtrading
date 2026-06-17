@@ -76,13 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Counter-trend exit accelerator: positions opposing the multi-day (96-bar)
-# trend get amplified soft exit pressure (cut counter-trend losers faster).
-# Symmetric exit-side counterpart to the entry-side _bear_ct_vlong size shrink.
-# ret_vlong is a smooth 96-bar OLS slope (noise-immune), so the saturation is
-# on a stable quantity. Trend-aligned positions are untouched (max(0,.)).
-CT_EXIT_VLONG_SCALE = 0.02
-CT_EXIT_ACCEL = 0.5
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1088,15 +1081,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: multi-day counter-trend exit accelerator. When the
-                # position opposes the 96-bar trend (ret_vlong), amplify soft exit
-                # pressure so counter-trend losers de-risk faster. Trend-aligned
-                # positions (rally dip-buy longs, crash trend shorts) are untouched
-                # since max(0, .) zeroes the aligned side. New cross-timescale data
-                # dependency: exit pressure depends on (ret_vlong, position direction).
-                _pos_dir_ctv = 1.0 if current_pos > 0 else -1.0
-                _ct_vlong_exit = max(0.0, np.tanh(-ret_vlong * _pos_dir_ctv / CT_EXIT_VLONG_SCALE))
-                _soft_max = _soft_max * (1.0 + CT_EXIT_ACCEL * _ct_vlong_exit)
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
