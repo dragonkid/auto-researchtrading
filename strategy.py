@@ -1204,7 +1204,18 @@ class Strategy:
                         # stab AND sideways raw). Scale = 0.5*|STOP| (a position that peaked
                         # half a stop in profit is a real winner). Combined with the trend-
                         # align gate (bull/crash strong-trend winners get both ~1 -> HOLD).
-                        _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                        # Branch step 5: TIGHTEN the trend-align scale 0.04 -> 0.07
+                        # (require a STRONGER trend for the plateau-hold). Both bull and
+                        # rally are "long in uptrend"; the difference is trend STRENGTH —
+                        # bull's uptrend is strong+clean (|ret_long|~0.06-0.10), rally's is
+                        # moderate+choppy (|ret_long|~0.02-0.04). At scale 0.04 rally's
+                        # moderate trend triggered significant hold (tanh 0.46-0.76) of its
+                        # whipsaw longs (the rally-raw drag). At scale 0.07 rally drops to
+                        # tanh 0.28-0.57 (less hold -> reverts toward baseline shave, the
+                        # rally-raw fix) while bull stays tanh 0.85-0.97 (winner-run gain
+                        # preserved). Exploits the trend-STRENGTH gap; still saturated at
+                        # each regime's operating point (noise-immune).
+                        _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.07))
                         _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
                         _hold_w_dr = _trend_align_dr * _peak_gate_dr
                         if _exit_pressure > _press_hwm_prev:
