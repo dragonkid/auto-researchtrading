@@ -1086,30 +1086,6 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                # Architectural: AGE-gated profit harvest — the row-440-flagged UNTESTED
-                # separator (integer bars_held), attacking the confirmed-real crash
-                # sample_factor + return-smoothing lever (D4: crash 45 trades sample_factor
-                # 0.949; 100% WR rides the bear the WHOLE regime, never fully closing ->
-                # lumpy-return-bound Sharpe). Prior harvest vehicles ALL failed via their
-                # SEPARATOR not their action: row534 _cm churn-gate leaks rally-SOL
-                # (cumulative-max never bursts there), row534/440 %K cadence fires inside
-                # rally's active short-hold range. The UNTESTED separator: crash/sideways/
-                # bull hold winners LONG, rally CHURNS fast (68 trades, short holds) -> a
-                # harvest gated on HIGH bars_held fires on calm aged winners but is
-                # STRUCTURALLY ~0 in rally (positions rarely survive that long there).
-                # bars_held is entry-anchored INTEGER (noise-immune, far from any price
-                # boundary). Fires only in PROFIT (locks a realized gain = one completed
-                # trade toward the sample_factor knee AND smooths crash's lumpy returns).
-                # Small magnitude (max 10%) bounds per-trade Sharpe dilution; smooth tanh
-                # ramp (no discrete trigger). SL-dominant exempt. New control flow: a 4th
-                # exit size-decision path keyed on position AGE, orthogonal to peak-giveback
-                # (_pp_pressure), tp-ratio harvest (_tp_scale), and de-risk graduation.
-                if target != 0 and pos_pnl > 0 and _sl_pressure < 0.5:
-                    _age_gate = max(0.0, np.tanh((bars_held - 14.0) / 6.0))  # ~0 to bar 14, ~1 by bar 26
-                    _age_profit = max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
-                    _age_harvest = 0.10 * _age_gate * _age_profit
-                    target = target * (1.0 - _age_harvest)
-
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
                 # full-exit path AND de-risk ramp (which produces target=0 at boundary).
