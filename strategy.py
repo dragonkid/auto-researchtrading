@@ -1105,7 +1105,7 @@ class Strategy:
                     # 4-5bps noise), so the gate never flips for rally — distinct from the
                     # trend/price-gated harvest attempts that flipped under rally noise.
                     # Continuous tanh (no boundary); only crash's high-vol bars engage.
-                    _hv_harvest = max(0.0, np.tanh((vol_ratio - 1.2) / 0.3))  # 0 at vol<=1.2 (rally/sideways), ramps in crash
+                    _hv_harvest = max(0.0, np.tanh((vol_ratio - 1.5) / 0.3))  # branch step2: 1.2->1.5, push rally's low vol_ratio into the flat tail (noise-immune); high-vol bull/crash/sideways spikes still engage
                     _ts_supp = _ts_supp * (1.0 - 0.7 * _hv_harvest)
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
