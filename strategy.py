@@ -59,12 +59,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Noise-immune min-hold: soft exit pressure (NOT stop-loss, NOT opp-gate reversal)
-# is suppressed for the first MIN_HOLD_BARS bars via a clock ramp on bars_held.
-# bars_held is a clock (integer, not price-derived) so the gate boundary cannot
-# flip under AR(1) close noise — the only confirmed noise-immune lever family.
-MIN_HOLD_BARS = 5.0
-MIN_HOLD_FLOOR = 0.35
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1037,15 +1031,7 @@ class Strategy:
                 # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
-                # Noise-immune min-hold clock ramp: suppress soft exits early in the
-                # hold (bars_held is a clock, not price-derived -> the boundary cannot
-                # flip under AR(1) noise). Stop-loss (_sl_pressure) and opp-gate
-                # reversal are NOT gated by this (they max/branch separately), so risk
-                # exits still fire. Mechanism: cut churn from single-bar pullback soft
-                # exits + re-entries in the grind-up (rally), raising both raw (less fee
-                # drag) and the rally stability floor (fewer noise-sensitive exit boundaries).
-                _minhold_ramp = MIN_HOLD_FLOOR + (1.0 - MIN_HOLD_FLOOR) * max(0.0, min(1.0, bars_held / MIN_HOLD_BARS))
-                _soft_max = _soft_max * _soft_atten * _minhold_ramp
+                _soft_max = _soft_max * _soft_atten
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
