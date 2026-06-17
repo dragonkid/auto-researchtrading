@@ -693,13 +693,7 @@ class Strategy:
                 # a continuous price-derived quantity like Exp1 trend-gate proximity which
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
-                # Architectural simplification (EXP2): removed _churn_size_atten (older
-                # churn-gated first-bar size shrink, 1-0.25*tanh((len(_eh)-1.5)/1.5)).
-                # Hypothesis: redundant with the de412448-keep _tq_calm churn-gating, which
-                # already blends the R2 shrink toward 1.0 as churn rises on the SAME
-                # noise-immune integer churn count. Two churn-gated first-bar size shrinks
-                # double-count the same entry-density signal. Test whether the older one is
-                # still load-bearing or inert at this baseline.
+                _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
@@ -733,9 +727,9 @@ class Strategy:
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
