@@ -42,22 +42,34 @@ def parse_custom_providers(path):
             break
     if start is None:
         return None
-    provs, cur = {}, None
+    # Each list item is a mapping whose keys may appear in ANY order (the
+    # config serializer sorts them alphabetically, so "name" is usually LAST,
+    # not first). So we collect every key of the current item into a dict and
+    # only key it by its "name" field once the item is complete.
+    items, cur = [], None
     for ln in lines[start:]:
         # The block ends at the next top-level mapping key (e.g. "image_gen:").
-        # List items ("- name: ...") start with "-" which is also non-space,
-        # so we must NOT treat a leading "-" as the block terminator.
+        # List items start with "-" which is also non-space, so we must NOT
+        # treat a leading "-" as the block terminator.
         if re.match(r"^\S", ln) and not ln.lstrip().startswith("-"):
             break
-        m = re.match(r"^- name:\s*(.+?)\s*$", ln)
+        # New list item: "- key: value" (the dash may precede any key).
+        m = re.match(r"^-\s+(\w+):\s*(.+?)\s*$", ln)
         if m:
-            cur = m.group(1)
-            provs[cur] = {}
+            cur = {}
+            items.append(cur)
+            cur[m.group(1)] = m.group(2)
             continue
+        # Continuation line of the current item: "  key: value".
         if cur is not None:
-            m2 = re.match(r"^\s+(base_url|api_key|model):\s*(.+?)\s*$", ln)
+            m2 = re.match(r"^\s+(\w+):\s*(.+?)\s*$", ln)
             if m2:
-                provs[cur][m2.group(1)] = m2.group(2)
+                cur[m2.group(1)] = m2.group(2)
+    provs = {}
+    for it in items:
+        nm = it.get("name")
+        if nm:
+            provs[nm] = it
     return provs
 
 
