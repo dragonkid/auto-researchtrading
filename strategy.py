@@ -1065,7 +1065,7 @@ class Strategy:
                 _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.5) / 0.2))
                 _ride_sustained = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
                 _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 1.0 - 0.40 * _ride_clean * _ride_sustained * _ride_winning
+                _ride_supp = 1.0 - 0.55 * _ride_clean * _ride_sustained * _ride_winning
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure * _ride_supp,
                     _w_pp * _pp_pressure,
