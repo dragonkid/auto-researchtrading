@@ -709,26 +709,7 @@ class Strategy:
                 # so bull's 0.806 noise-removal gain is preserved). Single structural change
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
-                # Architectural: counter-trend scale-in PACE modulation (timing axis,
-                # not size). The scale-in subsystem currently paces only on rsi_trend_str
-                # (long-window trend MAGNITUDE) — it is blind to whether the position
-                # agrees with the multi-day trend DIRECTION. Diagnostics show rally's
-                # losing trades are counter-trend pullback shorts in a grinding uptrend:
-                # they scale in at the same fast pace as trend-aligned winners, accumulating
-                # adverse exposure quickly before exit logic engages. NEW cross-timescale
-                # dependency: slow the scale-in of entries that oppose the multi-day trend
-                # (ret_vlong) so their full-size accumulation is spread over more bars
-                # (up to +1.5 bars), delaying adds until the pullback resolves. Trend-aligned
-                # entries (rally longs, crash shorts) keep the fast pace untouched. This is a
-                # TIMING change (alters add-prices / temporal exposure profile -> Sharpe-
-                # affecting, the one productive rally-raw axis per 9d730c7), NOT a size cut.
-                # Gated on ret_vlong via fast-saturation tanh (scale 0.01): rally's operating
-                # range (|ret_vlong|~0.02-0.04) sits in the FLAT saturated tail, so _ct_pace
-                # is a near-constant ~1 for counter-trend / ~0 for aligned -> noise-immune
-                # (same profile that made the 26f4b23d ct-size attenuator rally-stable).
-                _pos_dir_sc = 1.0 if current_pos > 0 else -1.0
-                _ct_pace = max(0.0, np.tanh(-ret_vlong * _pos_dir_sc / 0.01))
-                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str) + 1.5 * _ct_pace)  # [2.0, 4.5]
+                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
