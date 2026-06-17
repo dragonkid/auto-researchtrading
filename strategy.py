@@ -84,7 +84,7 @@ BASE_POSITION_SIZE = 0.065
 # denominator) on otherwise-zero-return bars while adding ~zero tracking error
 # (ret_vlong is a smooth 96-bar OLS slope). CORE_WEIGHT = core size as a fraction
 # of a base position at full trend; CORE_VLONG_SCALE = trend-strength saturation.
-CORE_WEIGHT = 0.30
+CORE_WEIGHT = 0.08
 CORE_VLONG_SCALE = 0.03
 # Coarse deadband on the passive core: only resize the core when it deviates from
 # the held position by more than this fraction of the core's max magnitude. Makes
