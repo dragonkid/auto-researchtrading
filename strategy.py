@@ -89,6 +89,10 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
+# Order-emission layer: snap-to-hold deadband fraction for the bursty-quiet-stretch
+# churn partition (resizes on a symbol that has burst but is currently quiet).
+GAP_DEADBAND_FRAC = 0.13
+
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -1394,6 +1398,25 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
+            # Architectural: snap-to-hold deadband for the UNCOVERED churn partition.
+            # The two existing grids partition resizes by churn: the HIGH-churn fine
+            # grid fires at instantaneous len(_eh)>=2 (_churn_dz>0, symbol bursting
+            # NOW); the LOW-churn coarse grid fires at cumulative _cm<=2 (never-bursting
+            # symbols, crash/sideways). A symbol that HAS burst at least once
+            # (_cm>=3 -> rally/bull) but is CURRENTLY in a quiet stretch (len(_eh)<=1 ->
+            # rally's long gaps BETWEEN entry clusters) falls through BOTH gates: its
+            # lone scale-in / mult-driven micro-resizes stay un-quantized, so the
+            # continuous price-derived target wobbles bar-to-bar under AR(1) noise ->
+            # distinct position values across the noise ensemble = residual rally-stab
+            # drag the grids never reach. round()-grid is WALLED on this partition
+            # (row 535: a round boundary flips on rally's lone-entry resizes). Use the
+            # GENTLER snap-to-hold instead: suppress only resizes whose DELTA is below
+            # a fraction of current_pos (monotone, no zero-crossing boundary — proven
+            # safe at ef027049). Gate is purely INTEGER (cumulative _cm + instantaneous
+            # len), both noise-immune; entries/exits/flips already excluded via _is_resize.
+            _gap_gate = 1.0 if (_cm >= 3 and len(_eh) <= 1) else 0.0
+            if _is_resize and _gap_gate > 0.0 and abs(target - current_pos) < GAP_DEADBAND_FRAC * abs(current_pos):
+                target = current_pos  # snap-to-hold: suppress micro-resize in quiet stretch
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
