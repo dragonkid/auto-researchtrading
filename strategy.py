@@ -62,7 +62,6 @@ PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
-PYRAMID_MAX = 0.25  # max fractional position growth above `size` for confirmed deep-profit trend-aligned winners
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -734,34 +733,6 @@ class Strategy:
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
                         target = current_pos
-
-                # Architectural: PROFIT-PYRAMID winner-growth (NEW sizing axis, never
-                # tried — every prior sizing layer CAPS target at `size`). The entire
-                # documented rally wall is that rally raw is INVARIANT: counter-trend
-                # SIZE shrink is Sharpe-scale-invariant (raw-neutral) and changing the
-                # trade SET hits a price-noise boundary (stability death). Pyramiding
-                # is the one lever that is NOT scale-invariant: it grows the equity-
-                # curve contribution of CONFIRMED WINNERS (deep-profit, trend-aligned)
-                # relative to the counter-trend-short LOSERS that bind rally Sharpe —
-                # reweighting two distinct trade populations, which moves raw, not just
-                # its scale. STABILITY-SAFE BY CONSTRUCTION: the growth is a RESIZE on
-                # an already-open position (bars_held>=ENTRY_FULL_BARS, len(_eh) stable
-                # — NOT the entry-bar increment that killed churn-ENTRY quantization),
-                # so the existing execution grid (the proven rally-resize-safe zone)
-                # quantizes the pyramid wobble. Gated on BOTH deep profit (tanh pos_pnl)
-                # AND trend-alignment (tanh ret_long*pos_dir) so it fires ONLY on
-                # genuine trend-following winners; counter-trend shorts (pos_pnl<0 or
-                # anti-trend) get ZERO growth. Continuous, no decision boundary, applied
-                # only after scale-in has reached `size` (does not disturb scale-in pace).
-                if bars_held > _entry_full_bars_dyn and pos_pnl > 0:
-                    _pos_dir_py = 1.0 if current_pos > 0 else -1.0
-                    _py_profit = max(0.0, np.tanh(pos_pnl / (1.5 * abs(STOP_LOSS_PCT))))  # deep profit
-                    _py_trend = max(0.0, np.tanh(ret_long * _pos_dir_py / 0.04))           # trend-aligned only
-                    _py_grow = 1.0 + PYRAMID_MAX * _py_profit * _py_trend
-                    _py_target = (size * _py_grow) if current_pos > 0 else -(size * _py_grow)
-                    # Grow only — never shrink an existing position via this path.
-                    if (current_pos > 0 and _py_target > target) or (current_pos < 0 and _py_target < target):
-                        target = _py_target
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
