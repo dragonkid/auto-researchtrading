@@ -1008,23 +1008,30 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Subsystem redesign of the soft-pressure FUSION: replace the
-                # element-wise MAX + post-hoc agreement-attenuator (max, then shave up
-                # to 25% when single-source in chop) with a CONFIRMATION-WEIGHTED BLEND
-                # that builds the 2-source requirement INTO the operative pressure.
-                # In chop the operative soft pressure is the TOP-2 MEAN — a lone
-                # dominant source is pulled halfway toward its runner-up, so a real
-                # exit needs genuine 2-source agreement (a single-source chop spike of
-                # magnitude M operates at only M/2). In trend it is the TOP-1 MAX — a
-                # single slope-break alone is a real trend reversal there. Continuous
-                # interp by chop strength (same tanh(|ret_long|/0.04) axis the prior
-                # attenuator used). Structurally distinct from the tried hierarchical /
-                # min-group / flat-OR fusions: this is a rank-blend (top1<->top2-mean)
-                # gated by trend, a stronger chop noise-filter than the 25% shave.
+                _soft_max = max(_soft_terms)
+                # Architectural: multi-source agreement attenuator on soft_max.
+                # When only ONE source contributes meaningfully (top-2 ratio low,
+                # i.e. dominant single source), attenuate up to 25% — single-source
+                # spikes are more often noise than real reversal. When TWO+ sources
+                # agree (top-2 ratio high), no attenuation. Continuous via tanh on
+                # second-highest/highest ratio. Multi-source CONFIRMATION as a
+                # noise filter is structurally different from EMA smoothing (time-
+                # axis) and threshold raising (boundary-axis) — operates on the
+                # pressure-source dimension. Top exit decision: 2nd-highest term
+                # ratio gates the strength of the MAX. New cross-source data dep.
                 _sorted_terms = sorted(_soft_terms, reverse=True)
-                _top2_mean = 0.5 * (_sorted_terms[0] + _sorted_terms[1])
-                _chop_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 chop, 0 trend
-                _soft_max = _sorted_terms[0] * (1.0 - _chop_w) + _top2_mean * _chop_w
+                _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
+                # Confirmation strength: 0 at single-source, 1 at full agreement
+                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
+                # Branch step 2: chop-only gating. In trends (high abs(ret_long)),
+                # single-source pressure signals are real (slope reversal alone =
+                # genuine trend break). Mute the attenuator's effect by trend strength
+                # so it operates only in chop where single-source spikes ARE noise.
+                _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
+                # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
+                # in trend approaches 1.0x always (no attenuation)
+                _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
+                _soft_max = _soft_max * _soft_atten
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
