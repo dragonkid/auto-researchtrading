@@ -143,11 +143,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Exp2 (execution-layer): per-symbol last-emitted calm-grid CELL (int) for the
-        # Schmitt-trigger hysteresis on the low-churn coarse grid. Suppresses ±0.5-cell
-        # boundary oscillation that plain round() permits -> fewer calm-regime resize
-        # emissions (fee saving). Reset on position close.
-        self._grid_cell = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1303,35 +1298,16 @@ class Strategy:
             if _is_resize and _calm_gate > 0.0:
                 _grid_c = 0.06 * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
-                    # Exp2: grid-level HYSTERESIS (Schmitt trigger). Plain round() snaps
-                    # the resize target to the nearest cell every bar, so a target hovering
-                    # near an (n+0.5) boundary oscillates between cells n and n+1 under
-                    # AR(1) noise -> emits a resize each crossing. Instead, hold the LAST
-                    # emitted cell unless the raw cell index moves more than 0.5+H past it
-                    # (H=0.25): a wider deadband at the boundary kills the ±1-cell chatter.
-                    # Same stable lattice + same calm (_cm<=2) gate + same resize-only
-                    # exemptions + same snap-toward-current direction guard as the round-grid.
-                    _cell_raw = target / _grid_c
-                    _last_cell = self._grid_cell.get(symbol)
-                    if _last_cell is None:
-                        _cell = round(_cell_raw)
-                    elif _cell_raw > _last_cell + 0.75:
-                        _cell = round(_cell_raw)
-                    elif _cell_raw < _last_cell - 0.75:
-                        _cell = round(_cell_raw)
-                    else:
-                        _cell = _last_cell
-                    _qt_c = _cell * _grid_c
+                    _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
-                        self._grid_cell[symbol] = _cell
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._grid_cell):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
