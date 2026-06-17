@@ -160,6 +160,11 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Branch step 5: per-symbol entry-time trend-quality attenuator (R^2 at the bar the
+        # trade opened). Frozen at entry so the multi-bar scale-in builds to a size scaled by
+        # the trade's BIRTH cleanliness, not by the mid-scale-in R^2 (which reflects the stale
+        # pre-entry window and wrongly shrank clean-trend builds — branch step 4 failure).
+        self._entry_tq = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -765,7 +770,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = (size if current_pos > 0 else -size) * _tq_atten
+                    full_target = (size if current_pos > 0 else -size) * self._entry_tq.get(symbol, 1.0)
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1344,12 +1349,13 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_tq):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._entry_tq[symbol] = _tq_atten
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
