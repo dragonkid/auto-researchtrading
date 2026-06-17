@@ -1187,8 +1187,19 @@ class Strategy:
                     # the overfit hold-longer ratchet. Churn-gated OFF in high-churn rally
                     # (rally de-risk unchanged -> stab protected). Direction-agnostic (R2 has
                     # no zero-crossing). Max floor drop 0.15, hard-floored at 0.30.
+                    # Branch step 2: CUMULATIVE-MAX churn gate (replaces instantaneous
+                    # len(_eh)). At EXIT time the entry burst may have aged out of the
+                    # 30-bar window so instantaneous len(_eh) under-protects rally (its
+                    # holds de-risk at low live churn -> rally raw moved + stab re-seeded).
+                    # Use the baseline calm-grid's noise-immune cumulative-max gate: fire
+                    # ONLY for never-bursting symbols (_cm<=2: crash max len=1, sideways
+                    # max=2) and turn OFF permanently for ever-bursting rally/bull (_cm
+                    # reaches >=3). Monotonic integer max = no AR(1)-flippable boundary.
+                    # Read-only max (the execution-layer _churn_hist update at bar end
+                    # uses the same len(_eh), so this matches what it will store).
                     _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                    _dr_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                    _dr_cm = max(self._churn_hist.get(symbol, 0), len(_eh))
+                    _dr_calm = 1.0 if _dr_cm <= 2 else 0.0
                     _de_floor -= 0.15 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.25))
                     _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
