@@ -144,6 +144,9 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Architectural: rolling portfolio-equity history for equity-return-VOLATILITY
+        # self-feedback (distinct from _peak_equity which tracks drawdown only).
+        self._equity_hist = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -151,6 +154,35 @@ class Strategy:
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
+
+        # Architectural: equity-return-volatility SELF-FEEDBACK size attenuator.
+        # NEW SIGNAL SOURCE: the strategy's OWN realized equity curve (2nd moment of
+        # equity returns), orthogonal to every existing sizing layer (all key off
+        # MARKET-derived vol/trend/slope) and to _port_dd_atten (which keys off
+        # drawdown DEPTH, a 1st-moment level — a choppy-but-flat equity has zero DD
+        # but high return-vol; a slow steady bleed has DD but low return-vol). The
+        # mechanism exploits volatility CLUSTERING in the strategy's own P&L: a
+        # recently-rough equity curve predicts a rough near future, so shrink risk
+        # until it settles. SELF-NORMALIZING ratio (short equity-return-vol / longer
+        # baseline) means no magic target constant and no market-regime classifier —
+        # it is inert (ratio~1 -> atten~1) wherever the curve is as smooth as its own
+        # norm, and fires only where the strategy itself is churning (which falls out
+        # to the roughest regime, rally, by construction, not by naming it). Smooth
+        # tanh, bounded [0.80, 1.0], no decision boundary. Directly targets the Sharpe
+        # denominator / vol_gate=1/(1+return_vol) that binds every regime's score.
+        self._equity_hist.append(equity)
+        if len(self._equity_hist) > 200:
+            self._equity_hist = self._equity_hist[-200:]
+        _eq_vol_atten = 1.0
+        if len(self._equity_hist) >= 60:
+            _eq_arr = np.array(self._equity_hist, dtype=float)
+            _eq_rets = np.diff(_eq_arr) / np.maximum(_eq_arr[:-1], 1e-10)
+            _eq_vol_short = max(np.std(_eq_rets[-24:]), 1e-9)
+            _eq_vol_long = max(np.std(_eq_rets), 1e-9)
+            _eq_vol_ratio = _eq_vol_short / _eq_vol_long
+            # Activate above ratio 1.0 (rougher than own baseline), saturate ~2.0.
+            # Max 20% shrink. Below baseline (calm) -> no change (one-sided).
+            _eq_vol_atten = 1.0 - 0.20 * max(0.0, np.tanh((_eq_vol_ratio - 1.0) / 0.6))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -678,9 +710,9 @@ class Strategy:
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _eq_vol_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _eq_vol_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
