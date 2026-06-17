@@ -1049,23 +1049,16 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Branch step 4: SURGICAL ride-suppression. Steps 1-3 multiplied the WHOLE
-                # soft_max down for clean-trend winners -> crash gained (+0.10) but sideways
-                # COLLAPSED (-0.355) because suppressing soft_max ALSO defers PEAK-PROFIT
-                # giveback protection, and sideways is choppy/mean-reverting (giving back a
-                # peak in chop = the sideways loss). Fix: suppress ONLY the trend-ENDING
-                # pressures (slope-against + time-overstay) for clean-trend winners, leaving
-                # peak-profit (pp), vol-expansion (ve), adverse-recovery (ar), and stop-loss
-                # at FULL strength. Crash rides the sustained decline (slope/time deferred);
-                # sideways keeps its giveback protection (pp intact) -> no longer over-holds
-                # choppy peaks. _ride_supp = R2 x ret_vlong-align x winning (step-3 gate).
-                # New: pressure-SELECTIVE suppression, not blanket soft_max scaling.
-                _exit_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.5) / 0.2))
-                _ride_sustained = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
+                # Branch step 6: BROAD winner-ride test (drop the clean-sustained gate).
+                # Tests two things at once: (1) is the R2 x ret_vlong gating NECESSARY for
+                # the strong-regime gains, or is "defer slope/time for any winner" enough?
+                # (2) does deferring slope+time exits BROADLY reduce rally's EXIT CHURN ->
+                # fewer noise-sensitive exit decisions -> higher rally stability (the only
+                # path to make this mechanism rally-ROBUST instead of rally-seed-hostage)?
+                # Suppress slope+time by up to 0.30 for ALL winning positions (gate on
+                # _ride_winning only). pp/ve/ar/SL still full (sideways giveback protected).
                 _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 1.0 - 0.55 * _ride_clean * _ride_sustained * _ride_winning
+                _ride_supp = 1.0 - 0.30 * _ride_winning
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure * _ride_supp,
                     _w_pp * _pp_pressure,
