@@ -686,6 +686,20 @@ class Strategy:
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                # Architectural: integer minimum-hold floor for SOFT/de-risk/harvest exits.
+                # NEW control flow keyed on the noise-immune entry-anchored integer bars_held
+                # (proven-safe family ef027049/9d730c7 — no price boundary that flips under
+                # AR(1)). Diagnostic D2: rally OVER-TRADES ($638k notional/$383 fees for $1679
+                # net, 2.4x churn for <half bull's return) — soft-pressure micro-exits churn
+                # positions that recover. This DEFERS the graduated soft de-risk AND tp-harvest
+                # paths until bars_held >= floor, so early exits cannot fire on single-bar soft-
+                # pressure noise spikes. CRITICAL exemptions preserved: stop-loss (binary
+                # _sl_pressure path) and opp-gate reversal (genuine flip = alpha) ALWAYS fire —
+                # only the SOFT/HARVEST shrink paths are floored. Scale-in growth (bars<=full)
+                # is UNAFFECTED (separate branch above). Distinct from row-7 (soft grace RAMP
+                # on the pressure value at an OLD pre-26f4b23d baseline that blocked valid
+                # signal exits) — this floors ONLY the soft-shrink emission, hard integer gate.
+                _MIN_SOFT_HOLD = 3
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -1072,7 +1086,7 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5 and bars_held >= _MIN_SOFT_HOLD:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
                     # rare AND likely mean-reverting — disable harvest to let small
@@ -1096,7 +1110,7 @@ class Strategy:
                 # identical exit behavior via de-risk ramp (de_risk=0 at pressure=thresh).
                 if _sl_pressure >= 0.95 and _exit_pressure >= 1.0 and target != 0:
                     target = 0.0
-                elif target != 0 and bars_held >= 2:
+                elif target != 0 and bars_held >= _MIN_SOFT_HOLD:
                     # Architectural: PnL-conditioned partial-exit floor (replaces
                     # vol-conditioning). New cross-subsystem data dep at exit
                     # graduation: floor depends on whether position is currently
