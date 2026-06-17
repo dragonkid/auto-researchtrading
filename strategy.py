@@ -496,22 +496,6 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                # Architectural (SELECTION): post-loss re-entry persistence tightening.
-                # Re-entries shortly after a LOSING exit are disproportionately whipsaws —
-                # re-entering into the same chop that just produced the stop-out. Require MORE
-                # sustained conviction (raise the persistence floor) for entries taken soon
-                # after a loss, decaying with bars since exit. _loss_only in [0,1] (1 = prior
-                # exit was a full-stop loss), recency = max(0, 1 - bars_since_exit/8). Smooth
-                # (continuous via existing _loss_only tanh + linear recency) -> modulates the
-                # PRE-EXISTING persistence gate threshold, no new hard boundary. New cross-
-                # state data dep: re-entry persistence depends on PRIOR-EXIT OUTCOME + recency
-                # (not just current conviction). Targets consecutive-loss streak (streak_gate)
-                # + whipsaw Sharpe drag in volatile regimes (crash dead-cat re-entries).
-                # Direction-agnostic. This is a SELECTION change (which re-entries admit) —
-                # the only lever that alters strong-regime TRADES (entry-size/exit-fusion are
-                # byte-identical there per this session's rows 612/615/618).
-                _post_loss_recency = _loss_only * max(0.0, 1.0 - _bars_since_exit / 8.0)
-                _entry_persist_factor = _entry_persist_factor + 0.20 * _post_loss_recency
                 if len(_hist) >= 2:
                     _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
                     _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
