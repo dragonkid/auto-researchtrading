@@ -511,18 +511,8 @@ class Strategy:
                 # softening actually functional.
                 _bull_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bull_margin - 0.3) / 0.3))
                 _bear_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bear_margin - 0.3) / 0.3))
-                # Architectural SUBSYSTEM REDESIGN (entry-admission gate): convert the
-                # hard trend-gate admission BOOLEAN into a SMOOTH trend-alignment SIZE
-                # factor. The old gate cut entries hard at _trend_biased = -deadzone*relax
-                # (a noise-sensitive decision boundary that re-flips under AR(1) noise).
-                # New: a continuous linear ramp 0->1 over one deadzone width above that
-                # boundary. Trend-aligned entries (_trend_biased >= ~0) keep full size;
-                # trend-marginal entries get reduced size; wrong-sign-trend entries ramp
-                # to 0 size (= not entered, but SMOOTHLY rather than a hard cut). Removes
-                # the hard admission boundary entirely. Multi-variable: both bull and bear
-                # admission move from hard boolean to soft size factor (coupled redesign).
-                _bull_trend_size = max(0.0, min(1.0, (_trend_biased + TREND_GATE_DEADZONE * _bull_relax) / TREND_GATE_DEADZONE))
-                _bear_trend_size = max(0.0, min(1.0, (TREND_GATE_DEADZONE * _bear_relax - _trend_biased) / TREND_GATE_DEADZONE))
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _bull_relax
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * _bear_relax
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
                 # count gate since both derive from the same _bull_confs values. Removing the count
@@ -687,10 +677,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                if _bull_strong >= _bull_strong_min and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _bull_trend_size
-                elif _bear_strong >= _bear_strong_min and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _bear_trend_size
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
