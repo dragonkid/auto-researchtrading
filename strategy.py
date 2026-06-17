@@ -214,17 +214,6 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
-            # Architectural: multi-day price LEVEL (mid vs 96-bar HL2 mean) for a
-            # DEEP-extension exit harvest. A position >9% above (or below) its
-            # 4-day mean is extremely over-extended in ANY market — high mean-
-            # reversion risk — so peeling there is a general mechanism, not regime
-            # detection. The DEEP onset (0.09) keeps the harvest in the FLAT pre-
-            # onset region for shallow trends/ranges (sensitivity 0 = those books
-            # untouched) and past the onset only for strong sustained trends that
-            # actually reach that depth. Noise-immune at depth (LEVEL dominated by
-            # trend magnitude, evaluated far from its zero boundary).
-            _sma_vlong = _hl2_vl.mean()
-            _md_level = (mid - _sma_vlong) / _sma_vlong
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -1096,25 +1085,6 @@ class Strategy:
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
-
-                # Architectural: DEEP multi-day-extension harvest. Exp3 this session
-                # proved peeling trend-aligned winners into over-extension gives a
-                # GENUINE raw gain (bull Sharpe 1.54->1.60, +0.052 score, stability
-                # intact) — but a SHALLOW 5% onset fired in rally (rally longs reach
-                # >5% above their 4-day mean -> noisy onset -> stab collapse) and
-                # over-fired in sideways (frequent mild >5% extensions). FIX: deepen
-                # the onset to 9%. Only a STRONG sustained trend reaches +9% above its
-                # 4-day mean; the 2024 grind-up and 2023 range stay in the FLAT pre-
-                # onset region (tanh of negative -> 0, those books byte-untouched).
-                # Trend-aligned + winning only; gentle slope (0.03) past the deep
-                # onset. Distinct trigger from _tp_scale (peak_pnl-ratio gated): a
-                # slow grind to deep extension accumulates _md_level without a sharp
-                # peak, so _tp_scale under-fires there.
-                _pos_dir_ext = 1.0 if current_pos > 0 else -1.0
-                _md_extension = _md_level * _pos_dir_ext  # >0 when winner is trend-extended
-                if target != 0 and pos_pnl > 0 and _sl_pressure < 0.5:
-                    _ext_harvest = 0.25 * max(0.0, min(1.0, np.tanh((_md_extension - 0.09) / 0.03)))
-                    target = target * (1.0 - _ext_harvest)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
