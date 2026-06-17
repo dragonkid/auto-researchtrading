@@ -214,6 +214,15 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
+            # Architectural: multi-day price LEVEL (mid vs 96-bar HL2 mean). Used
+            # below as a DEEP-extension cadence-harvest gate. Distinct from the
+            # walled ret_vlong slope: a LEVEL far from its zero boundary is noise-
+            # immune (deviation dominated by trend magnitude, not noise). The DEEP-
+            # NEGATIVE region (price >5% below 4-day mean) is structurally near-
+            # absent in a grind-up rally (never sits that far under its own mean)
+            # and far from the boundary in deep-bear = rally-safe by construction.
+            _sma_vlong = _hl2_vl.mean()
+            _md_level = (mid - _sma_vlong) / _sma_vlong
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -1085,6 +1094,28 @@ class Strategy:
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
+
+                # Architectural: deep multi-day-extension harvest (sample_factor lever).
+                # When a trend-aligned WINNER is held while price is deeply extended
+                # from its 4-day mean (|_md_level| > 5%), mean-reversion risk is high —
+                # peel a smooth fraction proportional to extension depth. Distinct
+                # trigger from _tp_scale (peak_pnl-ratio gated): a SLOW grind to deep
+                # extension accumulates _md_level without a sharp peak, so _tp_scale
+                # under-fires there. Mechanism: (1) realizes gains into over-extension
+                # (Sharpe-neutral-to-positive — sells the stretch before the bounce),
+                # (2) each peel crossing the $1 emission gate adds a realized trade,
+                # lifting crash (45 trades, sample_factor 0.949) toward the 50 floor.
+                # RALLY-SAFE BY CONSTRUCTION: a grind-up rally never sits >5% below its
+                # own 4-day mean and rarely >5% above mid-grind, so the deep-extension
+                # zone is structurally near-absent in rally (unlike the leaky churn
+                # gates of rows 533/534). Continuous tanh in _md_level (noise-immune
+                # LEVEL far from its zero boundary) — no integer cadence / open-status
+                # boundary (the row-534 failure mode). Trend-aligned + winning only.
+                _pos_dir_ext = 1.0 if current_pos > 0 else -1.0
+                _md_extension = _md_level * _pos_dir_ext  # >0 when winner is trend-extended
+                if target != 0 and pos_pnl > 0 and _sl_pressure < 0.5:
+                    _ext_harvest = 0.25 * max(0.0, min(1.0, np.tanh((_md_extension - 0.05) / 0.03)))
+                    target = target * (1.0 - _ext_harvest)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
