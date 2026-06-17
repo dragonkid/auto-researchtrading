@@ -105,6 +105,15 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Architectural: bear-only portfolio-drawdown entry-skip threshold. Block SHORT entries
+# when the existing portfolio-DD attenuator _port_dd_atten falls below this (portfolio in
+# deep drawdown ~>1.1pct). L7 (this session): in the rally regime the WINNING entries are
+# bull dip-buys taken during pullbacks (= portfolio DD); the consecutive-loss cluster is the
+# counter-trend SHORTS opened in those same pullbacks. Skipping only bear entries during
+# portfolio DD cuts those losing shorts (lowering max_consecutive_losses, the streak_gate
+# input) while preserving the bull dip-buy alpha. Crash is unaffected (shorts profit in a
+# downtrend so the portfolio is in profit, not DD).
+PORT_DD_ENTRY_SKIP = 0.15
 
 
 def ema(values, span):
@@ -726,9 +735,13 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Bear-only portfolio-drawdown entry skip (see PORT_DD_ENTRY_SKIP): block
+                # SHORT entries while the portfolio is in deep drawdown (correlated pullback);
+                # bull dip-buys (rally's edge) remain admitted.
+                _dd_bear_ok = _port_dd_atten >= PORT_DD_ENTRY_SKIP
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and _dd_bear_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
