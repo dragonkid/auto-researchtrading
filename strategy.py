@@ -1197,10 +1197,22 @@ class Strategy:
                     # reaches >=3). Monotonic integer max = no AR(1)-flippable boundary.
                     # Read-only max (the execution-layer _churn_hist update at bar end
                     # uses the same len(_eh), so this matches what it will store).
+                    # Branch step 3: FAST-SATURATE the R2 gate (scale 0.25 -> 0.05). Steps
+                    # 1-2 had the de-risk floor TRACK per-bar R2 (continuous /0.25 ramp): on
+                    # rally's pre-burst holds R2 re-rolls every bar under AR(1) noise ->
+                    # floor wobbles -> position wobbles -> stab collapse (the documented
+                    # per-bar-position-dependence wall). Mirror the prior-session fix: with
+                    # scale 0.05 the tanh saturates by R2~0.40, so a choppy hold (R2 well
+                    # below 0.5) gets a near-CONSTANT -0.15 floor shift (noise-FREE, like a
+                    # fixed lower floor) instead of an R2-tracking one, while clean holds
+                    # (R2>0.55) still get ~0. Constant-where-fires removes the new noise-
+                    # sensitive quantity; the only residual sensitivity is the narrow R2~0.5
+                    # transition band. Keeps choppy-vs-clean selectivity (sideways gain) but
+                    # stops the floor from tracking noise (rally stab protected).
                     _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                     _dr_cm = max(self._churn_hist.get(symbol, 0), len(_eh))
                     _dr_calm = 1.0 if _dr_cm <= 2 else 0.0
-                    _de_floor -= 0.15 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.25))
+                    _de_floor -= 0.15 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
                     _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
