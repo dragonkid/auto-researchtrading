@@ -1189,9 +1189,24 @@ class Strategy:
                         # Rally whipsaw longs (near breakeven) + sideways chop (small pnl):
                         # profit~0 -> revert to baseline every-bar shave -> restore rally/
                         # sideways. Rally counter-trend shorts: trend_align~0 already -> shave.
+                        # Branch step 4: swap the profit gate from INSTANTANEOUS pos_pnl
+                        # to the NOISE-IMMUNE high-water peak_pnl. Step 3 proved the profit
+                        # gate is the right rally-RAW fix (rally raw 0.340->0.401) but the
+                        # instantaneous pos_pnl gate sits AT breakeven — exactly where rally
+                        # whipsaw longs live — so the hold/shave decision flips under AR(1)
+                        # noise (rally stab 0.731->0.611). peak_pnl is a confirmed high-water
+                        # mark (monotone within a hold, only updates upward on rising bars —
+                        # the same smooth mechanic the ratchet itself relies on), so gating on
+                        # it removes the breakeven boundary noise. A position that has PEAKED
+                        # meaningfully above entry is a confirmed winner -> HOLD through the
+                        # plateau; rally whipsaw longs and sideways chop never peak far ->
+                        # _peak_gate~0 -> revert to baseline every-bar shave (restores rally
+                        # stab AND sideways raw). Scale = 0.5*|STOP| (a position that peaked
+                        # half a stop in profit is a real winner). Combined with the trend-
+                        # align gate (bull/crash strong-trend winners get both ~1 -> HOLD).
                         _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                        _profit_gate_dr = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                        _hold_w_dr = _trend_align_dr * _profit_gate_dr
+                        _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
+                        _hold_w_dr = _trend_align_dr * _peak_gate_dr
                         if _exit_pressure > _press_hwm_prev:
                             # New pressure high within this hold -> emit the reduce.
                             target = target * _de_risk
