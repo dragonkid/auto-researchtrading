@@ -687,14 +687,14 @@ class Strategy:
                 # get small conviction-weighted size (low noise impact); deep entries
                 # (comfortably past all gates) get full size (alpha preserved). Replaces
                 # _bull_conv_atten/_bear_conv_atten entirely.
-                _conv_band = 0.40  # margin band over which conviction ramps 0->1 (matches old conv_atten reach)
+                _conv_band = 1.20  # branch step2: widened 0.40->1.20 to engage deeper-conviction entries (rally probe)
                 _bull_conv_soft = max(0.0, min(1.0, _bull_margin / _conv_band))
                 _bear_conv_soft = max(0.0, min(1.0, _bear_margin / _conv_band))
                 _bull_admit_band = TREND_GATE_DEADZONE * _bull_relax
                 _bear_admit_band = TREND_GATE_DEADZONE * _bear_relax
                 _bull_admit_soft = max(0.0, min(1.0, (_trend_biased + _bull_admit_band) / max(_bull_admit_band, 1e-9)))
                 _bear_admit_soft = max(0.0, min(1.0, (_bear_admit_band - _trend_biased) / max(_bear_admit_band, 1e-9)))
-                _persist_band = 0.30  # fractional band above persist threshold over which persist ramps 0->1
+                _persist_band = 0.60  # branch step2: widened 0.30->0.60
                 _bull_persist_thresh = _entry_persist_factor * _bull_strong_min
                 _bear_persist_thresh = _entry_persist_factor * _bear_strong_min
                 _bull_persist_soft = max(0.0, min(1.0, (_min_bull_2 - _bull_persist_thresh) / max(_bull_persist_thresh * _persist_band, 1e-9)))
