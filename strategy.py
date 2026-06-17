@@ -160,6 +160,13 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Architectural: per-symbol CONSECUTIVE losing-exit counter (reset on a winning
+        # exit). Drives the consecutive-loss admission escalator below — after a run of
+        # losses the strong-sum admission threshold rises to skip marginal entries and
+        # BREAK the loss cluster, directly targeting max_consecutive_losses (the streak_gate
+        # input). Changes only on exits (not per-bar), so it adds no per-bar price noise to
+        # the admission boundary.
+        self._loss_streak = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -384,8 +391,20 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Architectural: consecutive-loss admission escalator (anti-streak breaker).
+            # After 3+ consecutive losing exits on a symbol, raise BOTH bull/bear strong-sum
+            # admission thresholds (smooth ramp, +40% by streak>=5) so marginal entries fail
+            # and the losing cluster is broken before it grows. Directly targets the
+            # streak_gate input (max_consecutive_losses): rally carries ~7 consecutive losses
+            # (streak_gate 0.79, a 21pct haircut) from pullback-whipsaw clusters; the other
+            # regimes carry ~0-2 (escalator stays ~inert there). Naturally rally-concentrated
+            # via a pure outcome signal — NOT a regime classifier. Counter changes only on
+            # exits, so no per-bar price noise is added to the admission boundary. Gated above
+            # streak 2 so single/double-loss noise does not trigger it.
+            _streak_f = max(0.0, min(1.0, (self._loss_streak.get(symbol, 0) - 2) / 3.0))
+            _streak_adm = 1.0 + 0.40 * _streak_f
+            _bull_strong_min = _strong_min * _freq_factor * _streak_adm * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * _streak_adm * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -1355,7 +1374,11 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
+                        _exit_pnl_signed = -_ep if current_pos < 0 else _ep
+                        self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Consecutive-loss accumulator: increment on a losing exit, reset on
+                        # a winning one. Feeds the admission escalator (anti-streak breaker).
+                        self._loss_streak[symbol] = self._loss_streak.get(symbol, 0) + 1 if _exit_pnl_signed < 0 else 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
