@@ -897,6 +897,22 @@ class Strategy:
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
+                # Architectural: ATR(vol)-relative trailing FLOOR on the trailing pressure
+                # (tightening-only, additive to the peak-profit-relative pp above). Exp
+                # eb4614d0 showed that a vol-consistent trail (give back ~K*ATR before
+                # exiting, independent of peak magnitude) RAISES crash+sideways Sharpe
+                # (1.31->1.33, 1.94->2.07) — but REPLACING the peak-relative trail collapsed
+                # bull (1.56->1.09). Here the peak-relative pp is KEPT (load-bearing for
+                # bull) and the ATR trail is layered as a max(): it can only TIGHTEN the
+                # exit where it is the more pressing signal (crash/sideways), never loosen
+                # bull's working trail. Smooth activation (tanh, no binary boundary —
+                # eb4614d0's binary peak>=K*ATR gate added stability noise). New data dep:
+                # a second, vol-normalized trailing term feeding the same pp slot.
+                _pp_trail_widen = 1.0 + 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # [1,1.7]
+                _pp_trail = 0.8 * _atr_pct * _pp_trail_widen
+                _pp_atr_act = max(0.0, min(1.0, np.tanh((self.peak_pnl[symbol] / max(0.8 * _atr_pct, 1e-9) - 0.6) / 0.4)))
+                _pp_atr_raw = max(0.0, min(1.0, (_giveback - 0.5 * _pp_trail) / max(0.6 * _pp_trail, 1e-9)))
+                _pp_pressure = max(_pp_pressure, _pp_atr_raw * _pp_atr_act)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
