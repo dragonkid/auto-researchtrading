@@ -1175,6 +1175,22 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Architectural: trend-QUALITY-gated de-risk floor (NEW exit-graduation
+                    # dep on hold-path linearity). In low-R2 (choppy/whipsaw) holds, LOWER
+                    # the de-risk floor so the graduated partial-exit ramp engages EARLIER
+                    # and shrinks MORE at a given pressure — cut choppy holds faster before
+                    # they mean-revert. In high-R2 (clean trend) holds, floor unchanged (let
+                    # winners run). The de-risk ramp is the proven-ENGAGEABLE exit lever (it
+                    # is active in every regime's holds, unlike the pp-giveback term that
+                    # Exp2 found non-binding); gating its floor by R2 is risk-REDUCTION
+                    # (faster exit on bad holds) = the GENERALIZING direction, opposite of
+                    # the overfit hold-longer ratchet. Churn-gated OFF in high-churn rally
+                    # (rally de-risk unchanged -> stab protected). Direction-agnostic (R2 has
+                    # no zero-crossing). Max floor drop 0.15, hard-floored at 0.30.
+                    _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
+                    _dr_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                    _de_floor -= 0.15 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.25))
+                    _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
