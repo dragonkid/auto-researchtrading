@@ -818,18 +818,9 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Branch step 4: time-underwater stop tightening (REFORMULATION of the
-                # stale-loss bleeder-cut — folded into the EXISTING stop boundary
-                # instead of a new MAX term, to inject fewer new noise-sensitive exit
-                # boundaries -> aim for a more robust rally stability). A position
-                # still in loss after several bars gets a progressively tighter
-                # effective stop, cutting slow bleeders earlier. Winners (pos_pnl>0)
-                # have _loss<=0 so _sl_pressure stays 0 regardless — untouched.
-                _stale_tighten = 1.0 - 0.40 * max(0.0, min(1.0, (bars_held - 4.0) / 8.0))  # up to 40% tighter, bar 4 -> 12
-                _stop_eff = _stop_abs * _stale_tighten
                 _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_eff
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_eff - _band_half)) / (2.0 * _band_half)))
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
@@ -1061,9 +1052,9 @@ class Strategy:
                 # removes their noise-sensitive late-life equity footprint (stability).
                 # Winners (bull/crash/sideways 86-100% WR) rarely sit underwater, so
                 # untouched. Continuous (smooth ramps), no regime label.
-                _stale_age = 0.0  # branch step 4: stale-loss bleeder-cut MOVED to the time-tightened stop above
-                _stale_adv = 0.0
-                _stale_pressure = 0.0  # (no longer a MAX-fusion term; kept as 0 no-op to localize the diff)
+                _stale_age = max(0.0, min(1.0, (bars_held - 6.0) / 6.0))      # branch step5: noise-immune timing, wide
+                _stale_adv = max(0.0, min(1.0, -pos_pnl / (0.80 * _stop_abs))) # branch step5: wide/soft loss ramp (smoother boundary)
+                _stale_pressure = _stale_age * _stale_adv
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1077,7 +1068,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _stale_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
