@@ -89,13 +89,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
-# Directional loss-streak skip-window (streak_gate lever). After this many
-# consecutive realized losses in the SAME direction on a symbol, that direction
-# is held out of fresh entry for LOSS_SKIP_BARS bars, breaking the loss cluster
-# that inflates max_consecutive_losses (rally streak_gate 0.79 = 21% haircut).
-LOSS_STREAK_ARM = 3
-LOSS_SKIP_BARS = 4
-
 
 def ema(values, span):
     alpha = 2.0 / (span + 1)
@@ -126,19 +119,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Per-symbol DIRECTIONAL realized-loss streak: (dir, count) where dir in
-        # {+1 long, -1 short} and count = consecutive realized LOSSES in that same
-        # direction. Armed at exit (a discrete event far from any per-bar noise
-        # boundary). Drives a directional skip-window: after >= LOSS_STREAK_ARM
-        # same-direction losses, that ONE direction is briefly held out of fresh
-        # entry — directly cutting the max_consecutive_losses that feeds streak_gate.
-        # Self-targeting: only rally accumulates same-direction loss runs (bull/
-        # crash/sideways win 86-100% so their counter never arms), so no regime
-        # detection needed. Opposite (trend-aligned) side stays fully open.
-        self._dir_loss_streak = {}
-        # Per-symbol bar at which the directional skip-window was last (re)armed,
-        # plus the held-out direction. Skip applies for LOSS_SKIP_BARS after.
-        self._dir_skip = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -697,27 +677,9 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Directional loss-streak skip-window (streak_gate lever). After
-                # LOSS_STREAK_ARM consecutive same-direction realized losses, hold
-                # ONLY that direction out of fresh entry for LOSS_SKIP_BARS bars.
-                # This forces a gap into the loss cluster -> cuts max_consecutive_losses
-                # -> raises streak_gate (rally's largest single drag: 0.79 = -21%).
-                # row515 (symmetric admission tightening) proved rally's losing shorts
-                # are HIGH-CONVICTION (pass even 1.25x threshold) -> a threshold NUDGE
-                # cannot block them; a hard skip-window can. row515 also broke bull by
-                # tightening BOTH sides indiscriminately -> here only the just-lost
-                # direction is held, and the counter only ARMS in rally (bull/crash/
-                # sideways win 86-100% so their streak never reaches ARM). Self-
-                # targeting via realized outcomes, no regime detection. Trigger is a
-                # discrete exit event (far from per-bar noise boundaries that sank
-                # Exp2's trend-deadzone counter). New per-symbol state + control flow.
-                _skip_dir, _skip_bar = self._dir_skip.get(symbol, (0, -999))
-                _skip_active = (self.bar_count - _skip_bar) < LOSS_SKIP_BARS
-                _bull_skip = _skip_active and _skip_dir > 0
-                _bear_skip = _skip_active and _skip_dir < 0
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok and not _bull_skip:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok and not _bear_skip:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -1344,24 +1306,7 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        _realized = -_ep if current_pos < 0 else _ep
-                        self._last_exit_pnl[symbol] = _realized
-                        # Directional loss-streak bookkeeping (streak_gate lever).
-                        _exit_dir = 1 if current_pos > 0 else -1
-                        _ds_dir, _ds_cnt = self._dir_loss_streak.get(symbol, (0, 0))
-                        if _realized < 0:
-                            if _ds_dir == _exit_dir:
-                                _ds_cnt += 1
-                            else:
-                                _ds_dir, _ds_cnt = _exit_dir, 1
-                            # Arm/refresh the skip-window once the run reaches ARM.
-                            if _ds_cnt >= LOSS_STREAK_ARM:
-                                self._dir_skip[symbol] = (_exit_dir, self.bar_count)
-                        else:
-                            # A win in this direction clears its loss run.
-                            if _ds_dir == _exit_dir:
-                                _ds_dir, _ds_cnt = 0, 0
-                        self._dir_loss_streak[symbol] = (_ds_dir, _ds_cnt)
+                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
