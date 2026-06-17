@@ -726,10 +726,32 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural: churn-gated multi-day OVER-EXTENSION entry-size shrink.
+                # NEW orthogonal entry-quality signal: how far price sits ABOVE (bull) or
+                # BELOW (bear) the 96-bar (multi-day) HL2 mean — i.e. CHASING an extended
+                # move vs entering near the multi-day anchor. Distinct from R2 (path
+                # linearity), slope (direction/magnitude), counter-trend (ret_long/ret_vlong
+                # SIGN): this measures DISPLACEMENT from the multi-day mean, not trend shape
+                # or direction. Prior sessions found selling deep over-extension gives a
+                # genuine bull RAW gain, but every prior capture hit the rally-stab wall
+                # because the un-gated signal fires on rally's extended legs too, and the
+                # exit-side z-score variant was bull-inert (bull never reaches 2-std). Apply
+                # the de412448 unlock: a SIZE shrink, churn-gated OFF in high-churn (rally
+                # bursts) and FULL at low churn (sparse bull/crash/sideways entries). Smooth
+                # tanh, shrink-only (<=1.0); onset at 5pct so the no-op region covers the
+                # _md_ext zero-crossing (no admission-boundary flip near price==mean — the
+                # documented zero-crossing wall is avoided because this is a size multiplier
+                # that is exactly 1.0 for |ext|<5pct). New cross-timescale data dep:
+                # first-bar size depends on displacement from the multi-day mean.
+                _md_mean = _hl2_vl.mean()
+                _md_ext = (mid - _md_mean) / max(_md_mean, 1e-10)
+                _ext_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                _bull_ext_atten = 1.0 - 0.30 * _ext_calm * max(0.0, np.tanh((_md_ext - 0.05) / 0.03))
+                _bear_ext_atten = 1.0 - 0.30 * _ext_calm * max(0.0, np.tanh((-_md_ext - 0.05) / 0.03))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _bull_ext_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _bear_ext_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
