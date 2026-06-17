@@ -726,28 +726,10 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Architectural: conviction-confirmed entry-size AMPLIFICATION. This is the
-                # FIRST amplification in the first-bar size pipeline — every existing quality
-                # term (conv, consensus, ct, quality, R^2) only SHRINKS (capped at 1.0). When
-                # an entry has high conviction margin AND high multi-window slope consensus AND
-                # high path linearity (R^2) — the best trend-following setups — commit MORE
-                # first-bar size, concentrating capital in the highest-expected-value trades.
-                # Sharpe is invariant to UNIFORM scaling, but SELECTIVELY up-weighting the best
-                # trades reshapes the PnL stream toward them (raises Sharpe iff conviction is
-                # predictive of per-trade risk-adjusted return). Calm-churn-gated by _tq_calm
-                # so it is OFF in bursty rally entries (same proven-safe gate as the baseline
-                # R^2 size attenuator) — rally's noise-immune position values are preserved;
-                # amplification active in the calm clean-trend regimes whose Sharpe is the
-                # binding lever. Capped +20%. New data dep: first-bar size amplified by
-                # composite entry quality (conviction x consensus x linearity).
-                _bull_qual = max(0.0, np.tanh(_bull_margin / 0.40)) * ((_bull_consensus_atten - 0.40) / 0.60) * max(0.0, np.tanh(_tq_r2 / 0.30))
-                _bear_qual = max(0.0, np.tanh(_bear_margin / 0.40)) * ((_bear_consensus_atten - 0.40) / 0.60) * max(0.0, np.tanh(_tq_r2 / 0.30))
-                _bull_amp = 1.0 + 0.20 * _bull_qual * _tq_calm
-                _bear_amp = 1.0 + 0.20 * _bear_qual * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _bull_amp
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _bear_amp
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
