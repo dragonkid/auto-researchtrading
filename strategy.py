@@ -76,12 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exit-subsystem redesign: ATR(volatility)-relative trailing constants.
-# Trailing distance scales with current ATR rather than with peak-profit magnitude.
-PP_TRAIL_ATR_K = 0.8       # trail distance (abs pnl) = K * ATR_pct * trend-widen
-PP_TRAIL_ACT_K = 0.8       # activate trailing once peak_pnl >= K * ATR_pct
-PP_TRAIL_LOWER_FRAC = 0.5  # pressure begins once giveback >= LOWER_FRAC * trail
-PP_TRAIL_BAND_FRAC = 0.6   # pressure saturates over BAND_FRAC * trail above lower
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -857,25 +851,51 @@ class Strategy:
                 # protection via the heavier-in-loss weight inversion not the trend-align
                 # multiplier. Code-structure removal: 11 lines + cross-timescale data dep.
 
-                # Exit-subsystem redesign: ATR(volatility)-RELATIVE trailing, replacing
-                # the peak-profit-RELATIVE giveback normalization. Old mechanism trailed
-                # as a fraction of the peak profit reached (giveback/peak), coupling exit
-                # timing to how far the trade ran (tight on small peaks, loose on big
-                # peaks). New mechanism: the trail distance is a volatility-consistent
-                # absolute pnl band, K*ATR_pct, independent of peak magnitude — a price
-                # gives back K*ATR before trailing fires regardless of trade size. This
-                # is a structurally different normalization of the trailing subsystem
-                # (new data dependency: trail distance on ATR, not peak profit). peak_pnl
-                # high-water mark unchanged. Strong-trend WIDEN preserves the prior intent
-                # of letting winning trend positions run (wider trail in strong |ret_long|).
+                # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
+                # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
+                # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
-                _pp_trail_widen = 1.0 + 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # [1, 1.7]
-                _pp_trail = PP_TRAIL_ATR_K * _atr_pct * _pp_trail_widen
-                _pp_lower = PP_TRAIL_LOWER_FRAC * _pp_trail
-                _pp_band_abs = max(PP_TRAIL_BAND_FRAC * _pp_trail, 1e-9)
-                _pp_activation = 1.0 if self.peak_pnl[symbol] >= PP_TRAIL_ACT_K * _atr_pct else 0.0
-                _pp_raw = max(0.0, min(1.0, (_giveback - _pp_lower) / _pp_band_abs))
+                _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
+                # Architectural: profit-magnitude-aware giveback amplification
+                # with trend-strength attenuation. In strong long-window trends
+                # (|ret_long| > 0.06), amplification attenuates toward 0 to let
+                # winning trend positions run longer (prevents premature trailing
+                # in rally/crash). In chop/moderate trend, full amplification
+                # preserves sideways/bull tight-trailing benefit. New cross-
+                # timescale data dependency: pp amplification depends on
+                # long-window trend magnitude. Continuous via tanh.
+                _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
+                _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
+                _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                # Architectural: smooth pp-activation ramp replacing hard binary gate.
+                # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
+                # boundary at peak == _pp_min creates noise discontinuity in stab tests.
+                # Replace with smooth tanh activation (peak_pnl/_pp_min - 1.0) scaled by 0.5,
+                # giving 0.5 at peak == _pp_min and saturating to 1.0 at peak == 1.5*_pp_min.
+                # This is a primitive change to pp_pressure activation: was binary gate,
+                # now continuous mixture between unconditional pp_pressure and zero.
+                # Trend-gated smooth activation: smooth ramp only in trending regimes
+                # (rsi_trend_str high, where bull/crash benefits manifest), near-binary
+                # in chop where the smoothing destabilizes peak-protection. cooldown_trend_strength
+                # is bounded [0,1] and equals min(|ret_long|/0.06, 1) — well-aligned for this.
+                # Narrow boundary smoothing only: linear ramp in [0.95, 1.04]*_pp_min.
+                # Slightly narrower upper bound — restores baseline pp_pressure faster
+                # at peak ratios above 1.04, recovering raw revenue while keeping the
+                # bull-boosting smoothing in the [0.95, 1.04] band.
+                # Architectural simplification: removed smooth pp-activation ramp.
+                # The 9%-wide boundary smoothing [0.95, 1.04] interpolated _pp_activation
+                # to bridge a binary on/off at peak == _pp_min. Since peak_pnl is itself a
+                # high-water mark (only updates upward, confirmed by 2 rising bars), it is
+                # already smooth — additional boundary smoothing is redundant. Replace with
+                # binary activation at _pp_ratio >= 1.0. Code-structure removal: 6 lines
+                # → 1 line; eliminates the interpolation table that duplicates smoothing
+                # already provided by peak_pnl's high-water-mark mechanic.
+                _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
