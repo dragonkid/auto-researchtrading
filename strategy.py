@@ -124,13 +124,6 @@ ENTRY_INITIAL_FRAC_BASE = 0.43
 ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
-# Persistent entry-conviction size cap: extends the first-bar conviction
-# attenuation (_bull_conv_atten) to persist over the ENTIRE hold. The stored
-# entry-conviction multiplier caps the scale-in ceiling, so marginal (noise-
-# sensitive) entries are held smaller their whole life. Same floor/scale as the
-# first-bar atten for a smooth extension.
-ENTRY_CONV_CAP_FLOOR = 0.70
-ENTRY_CONV_CAP_SCALE = 0.40
 
 
 class Strategy:
@@ -167,10 +160,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol stored entry-conviction multiplier. Captured
-        # at entry from the admitted side's conviction margin; caps the scale-in
-        # ceiling for the whole trade so marginal entries stay smaller throughout.
-        self._entry_conv = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -788,16 +777,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Architectural: persistent entry-conviction cap on the
-                    # scale-in ceiling. The stored entry-conviction multiplier
-                    # (captured at entry) shrinks the full-position target so a
-                    # marginal entry never grows to full size — it stays at its
-                    # entry-conviction fraction for the whole trade. High-conviction
-                    # entries keep ~full size. Reduces the tracking-error impact of
-                    # noise-flipped marginal entries (rally's dip-buys) over their
-                    # entire hold, not just the first bar.
-                    _conv_cap = self._entry_conv.get(symbol, 1.0)
-                    full_target = size * _conv_cap if current_pos > 0 else -size * _conv_cap
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1376,17 +1356,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_conv):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    # Architectural: capture entry-conviction multiplier from the
-                    # admitted side's margin (same floor/scale as first-bar atten).
-                    # Persists as the scale-in ceiling cap for the whole trade.
-                    _conv_m = _bull_margin if target > 0 else _bear_margin
-                    self._entry_conv[symbol] = ENTRY_CONV_CAP_FLOOR + (1.0 - ENTRY_CONV_CAP_FLOOR) * max(0.0, min(1.0, _conv_m / ENTRY_CONV_CAP_SCALE))
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
