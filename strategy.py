@@ -672,35 +672,8 @@ class Strategy:
                 # neutral-to-positive. Continuous (no decision-boundary flip — unlike a
                 # gated weight); same safe family as _bull_quality_atten. New data dep:
                 # first-bar size depends on conviction margin above floor.
-                # Subsystem redesign (entry-admission layer): continuous admission strength
-                # replaces the hard 3-gate boolean (strong>=min AND trend-admit AND persist)
-                # + the floored conv_atten (0.70..1.0). Each of the three gates becomes a
-                # smooth [0,1] factor that is ZERO exactly at its original hard boundary and
-                # ramps to 1.0 across a band above it; their product is a continuous
-                # admission strength that SCALES first-bar entry size. Because each factor is
-                # 0 at its boundary, the admitted SET is identical to baseline (entry iff
-                # strength>0 <=> all three hard gates pass), but entry SIZE now ramps
-                # continuously from 0 at each boundary instead of jumping to 0.70*frac. This
-                # removes the entry-size DISCONTINUITY that AR(1) noise flips across — the
-                # dominant noise-sensitivity source in the two uptrend regimes (bull & rally
-                # stability both sit at the 0.80 knee). Marginal entries (near a boundary)
-                # get small conviction-weighted size (low noise impact); deep entries
-                # (comfortably past all gates) get full size (alpha preserved). Replaces
-                # _bull_conv_atten/_bear_conv_atten entirely.
-                _conv_band = 0.10  # branch step3: narrowed 1.20->0.10 (boost low-conviction entries; step2 showed rally edge is low-conviction)
-                _bull_conv_soft = max(0.0, min(1.0, _bull_margin / _conv_band))
-                _bear_conv_soft = max(0.0, min(1.0, _bear_margin / _conv_band))
-                _bull_admit_band = TREND_GATE_DEADZONE * _bull_relax
-                _bear_admit_band = TREND_GATE_DEADZONE * _bear_relax
-                _bull_admit_soft = max(0.0, min(1.0, (_trend_biased + _bull_admit_band) / max(_bull_admit_band, 1e-9)))
-                _bear_admit_soft = max(0.0, min(1.0, (_bear_admit_band - _trend_biased) / max(_bear_admit_band, 1e-9)))
-                _persist_band = 0.15  # branch step3: narrowed 0.60->0.15
-                _bull_persist_thresh = _entry_persist_factor * _bull_strong_min
-                _bear_persist_thresh = _entry_persist_factor * _bear_strong_min
-                _bull_persist_soft = max(0.0, min(1.0, (_min_bull_2 - _bull_persist_thresh) / max(_bull_persist_thresh * _persist_band, 1e-9)))
-                _bear_persist_soft = max(0.0, min(1.0, (_min_bear_2 - _bear_persist_thresh) / max(_bear_persist_thresh * _persist_band, 1e-9)))
-                _bull_admit_strength = _bull_conv_soft * _bull_admit_soft * _bull_persist_soft
-                _bear_admit_strength = _bear_conv_soft * _bear_admit_soft * _bear_persist_soft
+                _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
+                _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
@@ -753,10 +726,10 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                if _bull_admit_strength > 1e-9:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_admit_strength * _churn_size_atten * _tq_atten
-                elif _bear_admit_strength > 1e-9:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_admit_strength * _churn_size_atten * _tq_atten
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
