@@ -1174,15 +1174,32 @@ class Strategy:
                         # rally's counter-trend shorts (ret_long>0,pos_dir<0) -> noise-immune
                         # there (same flat-tail property as the 26f4b23d ct-size keep); in
                         # sideways |ret_long| is small so _trend_align~0 -> baseline shave.
+                        # Branch step 3: PROFIT-gate the plateau-hold (multiply trend-align
+                        # by a profit gate). Diagnostic D3 (prior session): rally PnL by
+                        # side = SHORT +2379 / LONG -380 -> rally's trend-aligned LONGS are
+                        # net drag (grinding/whipsaw uptrend), whereas bull's trend-aligned
+                        # longs WIN (clean uptrend). Trend-alignment alone cannot separate
+                        # them (both are long-in-uptrend). The separator is PROFIT: holding
+                        # a position through a pressure plateau pays off only when the
+                        # position is WINNING (continuation likely); a near-breakeven or
+                        # losing position at a plateau is a whipsaw/reversal -> shave it.
+                        # _profit_gate = max(0,tanh(pos_pnl/|STOP|)) (same accepted smooth
+                        # gate used by the opp-gate at the graduated-exit path). Bull/crash
+                        # winners: trend_align~1 AND profit~1 -> HOLD (keep winner-run gain).
+                        # Rally whipsaw longs (near breakeven) + sideways chop (small pnl):
+                        # profit~0 -> revert to baseline every-bar shave -> restore rally/
+                        # sideways. Rally counter-trend shorts: trend_align~0 already -> shave.
                         _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                        _profit_gate_dr = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                        _hold_w_dr = _trend_align_dr * _profit_gate_dr
                         if _exit_pressure > _press_hwm_prev:
                             # New pressure high within this hold -> emit the reduce.
                             target = target * _de_risk
                             self._exit_press_hwm[symbol] = _exit_pressure
                         else:
-                            # Plateau/recede -> trend-aligned HOLDS (blend->current_pos),
-                            # counter-trend/chop SHAVES (blend->current_pos*_de_risk).
-                            target = target * (_de_risk + _trend_align_dr * (1.0 - _de_risk))
+                            # Plateau/recede -> trend-aligned WINNERS HOLD (blend->current_pos),
+                            # everything else SHAVES (blend->current_pos*_de_risk).
+                            target = target * (_de_risk + _hold_w_dr * (1.0 - _de_risk))
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
