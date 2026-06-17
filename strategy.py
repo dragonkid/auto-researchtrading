@@ -1081,6 +1081,28 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Architectural (Exp2 this session): clean-trend ride-suppression of soft
+                # exit pressure. The ONLY proven raw lever ever found (de-risk floor,
+                # sideways +0.022) fires on LOW-R2 choppy holds; bull/crash exits (HIGH-R2
+                # clean trends) have never been perturbed by it. NEW orthogonal exit gate:
+                # when the recent path is highly LINEAR (R2 of OLS log(HL2,16)), the
+                # position is TREND-ALIGNED, and it is WINNING, multiply soft_max down (let
+                # clean-trend winners RIDE rather than exit on transient slope/giveback
+                # noise). R2 (path linearity) is orthogonal to slope direction (walled) and
+                # magnitude (already used) - same orthogonality the R2 entry-size keep
+                # (de412448) established. Stop-loss (_sl_pressure) and voter_bias are NOT
+                # suppressed (risk + reversal evidence intact). CHURN-GATED OFF in rally
+                # (_tq_calm via prior-bar churn) so rally exits stay byte-identical ->
+                # isolates whether bull/crash CLEAN-TREND exits respond at all (untouched
+                # territory: de-risk floor never fired there). Stateless (recomputed R2 on
+                # current window reflects current path linearity). New data dep at fusion.
+                _exit_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
+                _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.5) / 0.2))
+                _ride_aligned = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _ride_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                _ride_supp = 1.0 - 0.40 * _ride_clean * _ride_aligned * _ride_winning * _ride_calm
+                _soft_max = _soft_max * _ride_supp
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
