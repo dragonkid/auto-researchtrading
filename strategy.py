@@ -591,9 +591,16 @@ class Strategy:
                 # stability is no longer damaged while the bull gain (its shorts also past
                 # the saturation knee) is preserved. New mechanism: near-binary saturated
                 # ct-shrink profile (vs step-3's mid-slope linear region).
-                _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
+                # Exp (this session, architectural simplification): REMOVED the
+                # multi-day counter-trend entry-size shrink. A direction-split PnL
+                # diagnostic (this session) showed the "counter-trend" entries this
+                # term shrinks are NET WINNERS in our regimes (rally shorts in a
+                # multi-day uptrend: +2381 / 77% WR; crash longs in a multi-day
+                # downtrend: +4367 / 100% WR). Shrinking the winning counter-trend
+                # side tilts the directional mix toward the losing side and caps the
+                # edge. Disabled (set to 1.0); removes _calm_ct (now unused).
+                _bull_ct_vlong = 1.0
+                _bear_ct_vlong = 1.0
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
