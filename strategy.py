@@ -86,6 +86,10 @@ BASE_POSITION_SIZE = 0.065
 # of a base position at full trend; CORE_VLONG_SCALE = trend-strength saturation.
 CORE_WEIGHT = 0.30
 CORE_VLONG_SCALE = 0.03
+# Coarse deadband on the passive core: only resize the core when it deviates from
+# the held position by more than this fraction of the core's max magnitude. Makes
+# the core STICKY (a few resizes per regime, not per-bar) to avoid fee churn.
+CORE_DEADBAND_FRAC = 0.35
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -1375,6 +1379,13 @@ class Strategy:
             _core_target = CORE_WEIGHT * equity * BASE_POSITION_SIZE * _core_dir
             # Active target when trading/managing; passive core when active is flat.
             _emit = target if target != 0 else _core_target
+            # Coarse deadband: hold the core steady unless it deviates from the held
+            # position by more than CORE_DEADBAND_FRAC of the core's max magnitude.
+            # Prevents per-bar core churn (fee death). Applies only in core mode.
+            if target == 0:
+                _core_max_mag = CORE_WEIGHT * equity * BASE_POSITION_SIZE
+                if abs(_core_target - _real_pos) < CORE_DEADBAND_FRAC * _core_max_mag:
+                    _emit = _real_pos
             if abs(_emit - _real_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=_emit))
                 if _active_open and target == 0:
