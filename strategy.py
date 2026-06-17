@@ -1042,6 +1042,19 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Exp (this session, architectural): NEW "stale-loss" soft exit term.
+                # Distinct from _time_pressure (fires on age regardless of PnL) and
+                # _ar_pressure (fires on RECOVERY from MAE): this fires only on
+                # positions that have been UNDERWATER for many bars without recovering
+                # — slow bleeders. Direction-split PnL (this session) shows rally's
+                # drag is its losing longs (40% WR slow bleeders); cutting non-
+                # recovering losers earlier shrinks loss magnitude (Sharpe up) and
+                # removes their noise-sensitive late-life equity footprint (stability).
+                # Winners (bull/crash/sideways 86-100% WR) rarely sit underwater, so
+                # untouched. Continuous (smooth ramps), no regime label.
+                _stale_age = max(0.0, min(1.0, (bars_held - 8.0) / 6.0))      # ramps bar 8 -> 14
+                _stale_adv = max(0.0, min(1.0, -pos_pnl / (0.6 * _stop_abs))) # 0 at breakeven, 1 at 0.6*stop loss
+                _stale_pressure = _stale_age * _stale_adv
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1055,7 +1068,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _stale_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
