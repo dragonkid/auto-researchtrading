@@ -152,36 +152,6 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
-        # Architectural: cross-symbol MARKET-VOL de-risk overlay (NEW pre-pass + new
-        # cross-symbol data dependency: each symbol's entry/scale-in size now depends on
-        # the OTHER symbols' volatility). Compute a market-wide vol regime = mean over
-        # active symbols of (short realized vol / long baseline vol). When the WHOLE book
-        # is in an elevated-vol regime (correlated turbulence), shrink every symbol's size.
-        # One-sided (caps at 1.0, never boosts): in calm regimes the scalar is ~1.0 ->
-        # near-inert; only correlated-turbulence regimes get de-risked. Mechanism: classic
-        # risk-off in turbulence -> smaller positions in high-vol bars cut drawdown directly
-        # (raises dd_gate) and reduce return-vol faster than return (Sharpe up). This is a
-        # GENERAL vol-regime response (not a regime label) — the regime effects fall out of
-        # the backtest. KEY: the 3 symbols are ~0.85 correlated so they SHARE a vol regime,
-        # making the cross-symbol AVERAGE a robust market-vol signal — the same correlation
-        # that KILLS directional cross-sectional momentum (proven dead) HELPS vol aggregation
-        # (vol-level, direction-free). Stateless (each symbol's vols from its own price
-        # history); no equity-history state, no decision boundary (smooth tanh).
-        _mvr_list = []
-        for _sym in ACTIVE_SYMBOLS:
-            if _sym not in bar_data:
-                continue
-            _bdh = bar_data[_sym].history
-            if len(_bdh) < 120:
-                continue
-            _cl = _bdh["close"].values
-            _rv = max(np.std(np.diff(np.log(_cl[-VOL_LOOKBACK - 1:-1]))), 1e-6)
-            _bv = max(np.std(np.diff(np.log(_cl[-101:-1]))), 1e-6)
-            _mvr_list.append(_rv / _bv)
-        _market_vol_ratio = float(np.mean(_mvr_list)) if _mvr_list else 1.0
-        # Activate above 1.3x market baseline, saturate near 1.8x; max 35% shrink.
-        _market_derisk = 1.0 - 0.35 * max(0.0, np.tanh((_market_vol_ratio - 1.3) / 0.5))
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -451,7 +421,7 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
-            size = equity * BASE_POSITION_SIZE * combined_mult * _market_derisk
+            size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
