@@ -1049,20 +1049,10 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Branch step 6: BROAD winner-ride test (drop the clean-sustained gate).
-                # Tests two things at once: (1) is the R2 x ret_vlong gating NECESSARY for
-                # the strong-regime gains, or is "defer slope/time for any winner" enough?
-                # (2) does deferring slope+time exits BROADLY reduce rally's EXIT CHURN ->
-                # fewer noise-sensitive exit decisions -> higher rally stability (the only
-                # path to make this mechanism rally-ROBUST instead of rally-seed-hostage)?
-                # Suppress slope+time by up to 0.30 for ALL winning positions (gate on
-                # _ride_winning only). pp/ve/ar/SL still full (sideways giveback protected).
-                _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 1.0 - 0.30 * _ride_winning
                 _soft_terms = (
-                    _w_slope * _sl_slope_pressure * _ride_supp,
+                    _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure * _ride_supp,
+                    _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
