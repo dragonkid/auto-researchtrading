@@ -1175,57 +1175,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Architectural: trend-QUALITY-gated de-risk floor (NEW exit-graduation
-                    # dep on hold-path linearity). In low-R2 (choppy/whipsaw) holds, LOWER
-                    # the de-risk floor so the graduated partial-exit ramp engages EARLIER
-                    # and shrinks MORE at a given pressure — cut choppy holds faster before
-                    # they mean-revert. In high-R2 (clean trend) holds, floor unchanged (let
-                    # winners run). The de-risk ramp is the proven-ENGAGEABLE exit lever (it
-                    # is active in every regime's holds, unlike the pp-giveback term that
-                    # Exp2 found non-binding); gating its floor by R2 is risk-REDUCTION
-                    # (faster exit on bad holds) = the GENERALIZING direction, opposite of
-                    # the overfit hold-longer ratchet. Churn-gated OFF in high-churn rally
-                    # (rally de-risk unchanged -> stab protected). Direction-agnostic (R2 has
-                    # no zero-crossing). Max floor drop 0.15, hard-floored at 0.30.
-                    # Branch step 2: CUMULATIVE-MAX churn gate (replaces instantaneous
-                    # len(_eh)). At EXIT time the entry burst may have aged out of the
-                    # 30-bar window so instantaneous len(_eh) under-protects rally (its
-                    # holds de-risk at low live churn -> rally raw moved + stab re-seeded).
-                    # Use the baseline calm-grid's noise-immune cumulative-max gate: fire
-                    # ONLY for never-bursting symbols (_cm<=2: crash max len=1, sideways
-                    # max=2) and turn OFF permanently for ever-bursting rally/bull (_cm
-                    # reaches >=3). Monotonic integer max = no AR(1)-flippable boundary.
-                    # Read-only max (the execution-layer _churn_hist update at bar end
-                    # uses the same len(_eh), so this matches what it will store).
-                    # Branch step 3: FAST-SATURATE the R2 gate (scale 0.25 -> 0.05). Steps
-                    # 1-2 had the de-risk floor TRACK per-bar R2 (continuous /0.25 ramp): on
-                    # rally's pre-burst holds R2 re-rolls every bar under AR(1) noise ->
-                    # floor wobbles -> position wobbles -> stab collapse (the documented
-                    # per-bar-position-dependence wall). Mirror the prior-session fix: with
-                    # scale 0.05 the tanh saturates by R2~0.40, so a choppy hold (R2 well
-                    # below 0.5) gets a near-CONSTANT -0.15 floor shift (noise-FREE, like a
-                    # fixed lower floor) instead of an R2-tracking one, while clean holds
-                    # (R2>0.55) still get ~0. Constant-where-fires removes the new noise-
-                    # sensitive quantity; the only residual sensitivity is the narrow R2~0.5
-                    # transition band. Keeps choppy-vs-clean selectivity (sideways gain) but
-                    # stops the floor from tracking noise (rally stab protected).
-                    # Branch step 8: COMBINE all three noise-immune separators for MAXIMAL
-                    # rally exclusion (churn cum-max AND bars_held long-hold AND chop). Each
-                    # alone leaked rally (rally holds that are post-burst-low-churn, long, or
-                    # transiently-trending slip through one gate but not all three). A
-                    # sideways choppy overstay passes all three (calm symbol + long hold +
-                    # range-bound); a rally hold fails at least one (bursty OR short OR
-                    # trending). Product of the three pushes rally toward byte-identical ->
-                    # its higher BASELINE stab distribution, while sideways keeps the faster-
-                    # exit gain. All three gates are noise-immune (int churn max, int
-                    # bars_held, fast-saturated |ret_long| tail).
-                    _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                    _dr_cm = max(self._churn_hist.get(symbol, 0), len(_eh))
-                    _dr_calm = 1.0 if _dr_cm <= 2 else 0.0
-                    _dr_longhold = max(0.0, np.tanh((bars_held - 6.0) / 4.0))
-                    _dr_chop = 1.0 - max(0.0, np.tanh((abs(ret_long) - 0.015) / 0.008))
-                    _de_floor -= 0.15 * _dr_calm * _dr_longhold * _dr_chop * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
-                    _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
