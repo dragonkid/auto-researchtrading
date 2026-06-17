@@ -1008,7 +1008,36 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                _soft_max = max(_soft_terms)
+                # Architectural subsystem redesign: HIERARCHICAL two-family fusion
+                # replaces the flat element-wise MAX over all 6 soft terms. The flat
+                # MAX was adopted (vs the older flat SUM) because all 6 terms share
+                # vol_ratio/HL2/pnl_scale inputs, so SUM added correlated noise. But
+                # flat MAX has the opposite failure: when two GENUINELY ORTHOGONAL
+                # pressures co-fire mildly (e.g. slope-against 0.5 AND vol-expansion
+                # 0.5 = a real regime shift), MAX reports only 0.5 and under-exits.
+                # Middle path: partition the terms into two families by WHAT THEY
+                # MEASURE, MAX within each family (preserves the intra-family
+                # noise-robustness that motivated MAX — within a family the terms
+                # share inputs), then combine the two family-maxes with a BOUNDED
+                # soft-OR (probabilistic union a+b-a*b). soft-OR degenerates to MAX
+                # when one family is silent (single-source behavior unchanged) but
+                # escalates on genuine CROSS-FAMILY co-firing, and is bounded <=1.
+                # The two families are decorrelated BY CONSTRUCTION (trajectory =
+                # direction/momentum/regime-shift; giveback = realized-P&L erosion),
+                # so combining them does NOT reintroduce the flat-SUM correlated-noise
+                # problem. New fusion TOPOLOGY (grouped, two-level), not a new term
+                # and not a flat reaggregation. Term order: (0)slope (1)pp (2)time
+                # (3)ve (4)ep (5)ar.
+                _traj_max = max(_soft_terms[0], _soft_terms[2], _soft_terms[3])  # slope, time, vol-expansion
+                _give_max = max(_soft_terms[1], _soft_terms[4], _soft_terms[5])  # pp, early-profit, adverse-recovery
+                # Soft-OR on the [0,1]-clamped family maxes (probabilistic union),
+                # then add back any excess of the dominant family above 1.0 so the
+                # result NEVER drops below the old flat max (weighted terms can reach
+                # ~1.2). Net: _soft_max >= max(_soft_terms) always -> the redesign
+                # can only exit EARLIER on cross-family co-firing, never weaker.
+                _a = min(1.0, _traj_max)
+                _b = min(1.0, _give_max)
+                _soft_max = (_a + _b - _a * _b) + max(0.0, max(_traj_max, _give_max) - 1.0)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
