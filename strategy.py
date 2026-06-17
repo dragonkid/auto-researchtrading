@@ -152,6 +152,22 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
+        # Exp3 (cross-sectional relative-strength concentration): precompute each
+        # symbol's 20-bar trend so each symbol's entry can be sized by how strongly it
+        # LEADS its peers in the trade direction. KEY NOISE PROPERTY: cross-symbol noise
+        # is correlated ~0.85 (noise_test CROSS_SYMBOL_CORR), so the DIFFERENCE
+        # (my_trend - peer_mean) cancels most of the common-noise component — far more
+        # noise-robust than the ABSOLUTE peer gross-exposure that collapsed rally before.
+        # Mechanism: cross-sectional momentum (overweight the leader, underweight the
+        # laggard) is a generalizable factor; concentrating the correlated-beta book into
+        # the strongest mover raises portfolio return per unit risk in trends. Symmetric
+        # (reallocation, ~net-exposure-neutral) to avoid net-leverage / DD blowup.
+        _trends = {}
+        for _s in ACTIVE_SYMBOLS:
+            if _s in bar_data and len(bar_data[_s].history) > LONG_WINDOW:
+                _c = bar_data[_s].history["close"].values
+                _trends[_s] = (_c[-1] - _c[-LONG_WINDOW]) / _c[-LONG_WINDOW]
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -677,10 +693,21 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+                # Exp3: cross-sectional relative-strength concentration multiplier.
+                # _rs_diff = this symbol's 20-bar trend minus the mean of its peers'
+                # (correlated-noise-cancelling difference). Signed by trade DIRECTION:
+                # a bull entry is boosted when this symbol's UPTREND leads peers and
+                # shrunk when it lags; a bear entry is boosted when its DOWNTREND leads.
+                # Continuous tanh, symmetric (+-0.20 -> reallocation, ~net-neutral), so
+                # the correlated-beta book concentrates into the strongest mover.
+                _peers_rs = [_trends[_p] for _p in ACTIVE_SYMBOLS if _p != symbol and _p in _trends]
+                _rs_diff = _trends.get(symbol, 0.0) - (sum(_peers_rs) / len(_peers_rs) if _peers_rs else 0.0)
+                _bull_rs = 1.0 + 0.20 * np.tanh(_rs_diff / 0.04)
+                _bear_rs = 1.0 + 0.20 * np.tanh(-_rs_diff / 0.04)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _bull_rs
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _bear_rs
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
