@@ -171,10 +171,10 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol active-trade state flag. False = flat or holding
-        # only the passive trend-core (active logic sees flat, can enter). True =
-        # active strategy is managing a real trade.
-        self._active_open = {}
+        # Architectural: per-symbol passive trend-core component currently held in
+        # the real position. The active logic operates on (real - core), so it
+        # always sees a true-flat baseline; the emitted target is active + core.
+        self._core_pos = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -456,10 +456,11 @@ class Strategy:
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             _real_pos = portfolio.positions.get(symbol, 0.0)
-            _active_open = self._active_open.get(symbol, False)
-            # Active logic sees flat when only the passive trend-core is held (so it
-            # can take fresh entries); sees the real position when managing a trade.
-            current_pos = _real_pos if _active_open else 0.0
+            _core_held = self._core_pos.get(symbol, 0.0)
+            # Active component = real minus the passive core currently held. The
+            # active logic operates on this (sees true flat when only core is held),
+            # so it never thrashes against the core.
+            current_pos = _real_pos - _core_held
             target = current_pos
 
             # Architectural: vol-conditioned initial commit fraction. Continuous tanh
@@ -1375,40 +1376,31 @@ class Strategy:
             # both summed. The core is a small noise-immune multi-day trend position
             # (smooth ret_vlong), so on otherwise-flat bars it raises clean_vol (the
             # stability denominator) while adding ~zero tracking error.
+            # Passive trend-core overlay (ADDITIVE, separate accounting). A small
+            # noise-immune multi-day-trend position ADDED on top of the active
+            # component. Sticky via coarse deadband (avoids per-bar churn). Raises
+            # clean_vol (stability denominator) on otherwise-flat bars.
             _core_dir = np.tanh(ret_vlong / CORE_VLONG_SCALE)  # smooth [-1, 1]
-            _core_target = CORE_WEIGHT * equity * BASE_POSITION_SIZE * _core_dir
-            # Active target when trading/managing; passive core when active is flat.
-            _emit = target if target != 0 else _core_target
-            # Coarse deadband: hold the core steady unless it deviates from the held
-            # position by more than CORE_DEADBAND_FRAC of the core's max magnitude.
-            # Prevents per-bar core churn (fee death). Applies only in core mode.
-            if target == 0:
-                _core_max_mag = CORE_WEIGHT * equity * BASE_POSITION_SIZE
-                if abs(_core_target - _real_pos) < CORE_DEADBAND_FRAC * _core_max_mag:
-                    _emit = _real_pos
-            if abs(_emit - _real_pos) > 1.0:
-                signals.append(Signal(symbol=symbol, target_position=_emit))
-                if _active_open and target == 0:
-                    # Active exit bookkeeping (position falls back to core).
+            _core_want = CORE_WEIGHT * equity * BASE_POSITION_SIZE * _core_dir
+            _core_max_mag = CORE_WEIGHT * equity * BASE_POSITION_SIZE
+            _core_new = _core_held if abs(_core_want - _core_held) < CORE_DEADBAND_FRAC * _core_max_mag else _core_want
+            _emit_total = target + _core_new
+            if abs(_emit_total - _real_pos) > 1.0:
+                signals.append(Signal(symbol=symbol, target_position=_emit_total))
+                self._core_pos[symbol] = _core_new
+                if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
-                    self._active_open[symbol] = False
-                elif (not _active_open) and target != 0:
-                    # Active entry fires, taking over from the core.
+                elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
-                    self._active_open[symbol] = True
-                elif _active_open and ((target > 0 and current_pos < 0) or (target < 0 and current_pos > 0)):
-                    # Sign change within an active trade (re-anchor).
-                    self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
-                    self._mae[symbol] = 0.0
-                    _h = self._entry_bar_history.setdefault(symbol, [])
-                    _h.append(self.bar_count)
+            else:
+                self._core_pos[symbol] = _core_held
 
         return signals
