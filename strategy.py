@@ -214,19 +214,6 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
-            # Architectural: multi-day price LEVEL (not slope) vs its 96-bar mean.
-            # Distinct vehicle from ret_vlong (96-bar OLS slope, walled across 4
-            # prior vehicles because its sign flips under AR(1) noise near zero).
-            # _md_level = (mid - mean(HL2_96)) / mean is a LEVEL: in a grinding
-            # rally price sits persistently +5-15% above its 4-day mean, so the
-            # signal is dominated by trend magnitude (±5-15%), not noise (±0.05%)
-            # — it never crosses zero during a sustained trend = noise-immune.
-            # Crucially, during a multi-hour rally PULLBACK the 20-bar ret_long
-            # goes flat/negative (so the existing ret_long counter-trend tighten
-            # relaxes exactly when pullback shorts arrive — the documented rally
-            # killer), but _md_level stays clearly positive (4-day uptrend intact).
-            _sma_vlong = _hl2_vl.mean()
-            _md_level = (mid - _sma_vlong) / _sma_vlong
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -380,15 +367,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Multi-day LEVEL counter-trend tightening (new, noise-immune vehicle):
-            # tighten bear admission when price is far ABOVE its 4-day mean (rally
-            # pullback shorts), tighten bull admission when far BELOW (crash dead-cat
-            # longs). _md_level/0.05 saturates around 5% deviation; max +15% tighten.
-            # This fires during pullbacks where the ret_long term goes silent.
-            _md_bear_tighten = 1.0 + 0.15 * max(0.0, np.tanh(_md_level / 0.05))
-            _md_bull_tighten = 1.0 + 0.15 * max(0.0, np.tanh(-_md_level / 0.05))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * _md_bull_tighten
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * _md_bear_tighten
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
