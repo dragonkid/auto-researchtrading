@@ -1209,22 +1209,22 @@ class Strategy:
                     # sensitive quantity; the only residual sensitivity is the narrow R2~0.5
                     # transition band. Keeps choppy-vs-clean selectivity (sideways gain) but
                     # stops the floor from tracking noise (rally stab protected).
-                    # Branch step 7: replace the (neutral) bars_held gate with a fast-
-                    # saturated LOW-TREND-STRENGTH chop gate. Steps 2/6 showed churn-cum-max
-                    # and bars_held both LEAK rally (rally's de-risked holds are long and at
-                    # low live-churn). Orthogonal separator: rally_2024 is a directional
-                    # UPTREND (high |ret_long|) while sideways_2023 is RANGE-BOUND (low
-                    # |ret_long|). _dr_chop = 1 - tanh((|ret_long|-0.015)/0.008) FAST-saturates
-                    # to ~1 in deep chop (sideways) and ~0 in trends (rally/bull), so the
-                    # de-risk floor change fires on sideways chop and is OFF for trending
-                    # rally holds. Fast saturation keeps _dr_chop near-CONSTANT in each
-                    # regime's operating |ret_long| band (the flat tanh tail) -> no per-bar
-                    # ret_long tracking (avoids the documented ret_vlong-style per-bar wall).
+                    # Branch step 8: COMBINE all three noise-immune separators for MAXIMAL
+                    # rally exclusion (churn cum-max AND bars_held long-hold AND chop). Each
+                    # alone leaked rally (rally holds that are post-burst-low-churn, long, or
+                    # transiently-trending slip through one gate but not all three). A
+                    # sideways choppy overstay passes all three (calm symbol + long hold +
+                    # range-bound); a rally hold fails at least one (bursty OR short OR
+                    # trending). Product of the three pushes rally toward byte-identical ->
+                    # its higher BASELINE stab distribution, while sideways keeps the faster-
+                    # exit gain. All three gates are noise-immune (int churn max, int
+                    # bars_held, fast-saturated |ret_long| tail).
                     _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                     _dr_cm = max(self._churn_hist.get(symbol, 0), len(_eh))
                     _dr_calm = 1.0 if _dr_cm <= 2 else 0.0
+                    _dr_longhold = max(0.0, np.tanh((bars_held - 6.0) / 4.0))
                     _dr_chop = 1.0 - max(0.0, np.tanh((abs(ret_long) - 0.015) / 0.008))
-                    _de_floor -= 0.15 * _dr_calm * _dr_chop * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
+                    _de_floor -= 0.15 * _dr_calm * _dr_longhold * _dr_chop * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
                     _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
