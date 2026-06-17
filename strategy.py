@@ -439,7 +439,15 @@ class Strategy:
             # linear trajectory — ER measures path efficiency. Continuous tanh modulation
             # of _entry_frac_dyn: low ER attenuates, high ER amplifies (range -0.04..+0.04).
             # 12-bar window over smoothed_closes (already noise-attenuated for input parity).
-            _entry_frac_dyn = min(0.55, _entry_frac_dyn)
+            _er_window = 12
+            _er_path = np.sum(np.abs(np.diff(smoothed_closes[-_er_window - 1:])))
+            _er_net = abs(smoothed_closes[-1] - smoothed_closes[-_er_window - 1])
+            _er = _er_net / max(_er_path, 1e-10)
+            # One-sided deep-chop suppression: only fire on very low ER (<0.15),
+            # smaller magnitude to avoid uniform size-attenuation across regimes.
+            # tanh activates as ER drops below 0.15 toward 0; max attenuation -0.025.
+            _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
+            _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
