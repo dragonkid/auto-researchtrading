@@ -76,12 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Counter-trend winner-ride: WINNING positions opposing the multi-day (96-bar)
-# trend get REDUCED soft exit pressure so mean-reversion plays can complete.
-# Profit-gated (losing counter-trend positions still cut fast). ret_vlong is a
-# smooth 96-bar OLS slope (noise-immune). General mechanism; regime effects emerge.
-CT_RIDE_VLONG_SCALE = 0.02
-CT_RIDE_RELAX = 0.35
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1087,17 +1081,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: multi-day counter-trend WINNER-RIDE. WINNING
-                # positions opposing the 96-bar trend (ret_vlong) get REDUCED soft
-                # exit pressure so mean-reversion plays (rally's winning pullback
-                # shorts) can complete instead of being trimmed early. Profit-gated:
-                # losing counter-trend positions keep full exit pressure (cut fast).
-                # Trend-aligned positions untouched (max(0,.) zeroes the aligned side).
-                # New cross-timescale dep: exit pressure depends on (ret_vlong, pos_dir, pnl).
-                _pos_dir_ctr = 1.0 if current_pos > 0 else -1.0
-                _ct_vlong_ride = max(0.0, np.tanh(-ret_vlong * _pos_dir_ctr / CT_RIDE_VLONG_SCALE))
-                _ct_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _soft_max = _soft_max * (1.0 - CT_RIDE_RELAX * _ct_vlong_ride * _ct_profit_gate)
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
