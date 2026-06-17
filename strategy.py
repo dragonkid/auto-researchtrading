@@ -677,10 +677,28 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+                # EXPERIMENT (architectural fusion redesign of the entry-size chain):
+                # the two VOTER-CONVICTION attenuators measure the SAME underlying
+                # quantity — entry conviction decisiveness — from two correlated angles:
+                #   _quality_atten: bilateral opp/own strong-sum SPLIT (voters disagree)
+                #   _conv_atten:    strong-sum MARGIN above its admission floor (just-admitted)
+                # Currently they MULTIPLY (product compounds to ~0.49x on entries where
+                # both fire), double-counting one underlying weakness. Replace the product
+                # within this conviction-quality GROUP with min(): apply only the single
+                # BINDING conviction penalty, not the compounded pair. Counter-trend
+                # (_ct_atten/_ct_vlong) and slope-consensus groups are LEFT multiplicative
+                # (distinct signals — trend alignment, not conviction). Hypothesis: admitted-
+                # but-marginal entries (high WR in bull/crash/sideways) are over-shrunk by the
+                # correlated double-penalty; the binding-only fusion gives them more size.
+                # New fusion STRUCTURE at the size chain — restructures existing inputs only
+                # (no new price signal, no outcome feedback). rally's marginal entries still
+                # receive the binding _conv shrink (min picks it when it is the lower).
+                _bull_convq = min(_bull_quality_atten, _bull_conv_atten)
+                _bear_convq = min(_bear_quality_atten, _bear_conv_atten)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_convq * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_convq * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
