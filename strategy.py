@@ -993,6 +993,23 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: STALE-LOSER exit pressure (7th soft source, new data dep
+                # on bars_held x pos_pnl). A position held MANY bars while STILL underwater
+                # is a confirmed wrong-side bet — the expected reversion/trend-resumption did
+                # not arrive within the hold, so the position is bleeding fee + carry. Cut it.
+                # Distinct from: time_pressure (fires on hold age REGARDLESS of pnl, exits
+                # winners too), ar_pressure (fires on RECOVERED losers near breakeven), slope
+                # (momentum reversal). This targets the specific "old + still losing + not
+                # recovering" quadrant the other terms under-serve. Gated to LONG-held via a
+                # smooth age ramp (start 12 bars) so rally's short-held counter-trend whipsaws
+                # (resolve <8 bars, the documented rally-safe bars_held separator) rarely
+                # trigger it; bull/crash/sideways slow-bleeders are the target. Loss-depth
+                # ramp via tanh so it scales with how underwater the position is. Generalizable
+                # risk principle (don't hold confirmed wrong-side bets), exit-timing channel.
+                _stale_age = max(0.0, min(1.0, (bars_held - 12.0) / 8.0))
+                _stale_loss = max(0.0, np.tanh(-pos_pnl / (0.5 * abs(STOP_LOSS_PCT))))
+                _stale_pressure = 0.6 * _stale_age * _stale_loss
+                _w_stale = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1006,7 +1023,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _w_stale * _stale_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
