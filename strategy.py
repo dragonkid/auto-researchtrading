@@ -384,8 +384,22 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Architectural (Exp1 this session): persistent-churn admission throttle.
+            # Tests the central hypothesis from the no-op diagnostic (rally stability
+            # swings 0.51-0.80 on BYTE-IDENTICAL trades = pure seed): is rally's low
+            # stability driven by TRADE COUNT (reducible) or pure seed noise? Mechanism:
+            # symbols that have demonstrated BURSTING (cumulative-max churn _cm >= 3,
+            # read from prior-bar _churn_hist) get a PERSISTENT admission tightening that
+            # ramps to +30% at _cm>=5. Bursty symbols (rally) shed their most marginal
+            # counter-trend entries -> fewer noise-sensitive decisions -> rally stability
+            # should draw HIGHER if the count-hypothesis holds. Never-bursting symbols
+            # (bull/crash/sideways, _cm<=2) get factor 1.0 -> trades byte-identical.
+            # Noise-IMMUNE (integer _cm, NOT price-derived -> distinct from the L2
+            # price-at-admission-boundary wall). New cross-bar data dep at admission.
+            _pc_churn = self._churn_hist.get(symbol, 0)
+            _persist_tighten = 1.0 + 0.30 * max(0.0, min(1.0, (_pc_churn - 2.0) / 3.0))
+            _bull_strong_min = _strong_min * _freq_factor * _persist_tighten * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * _persist_tighten * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
