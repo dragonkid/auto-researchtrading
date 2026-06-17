@@ -1204,23 +1204,24 @@ class Strategy:
                         # stab AND sideways raw). Scale = 0.5*|STOP| (a position that peaked
                         # half a stop in profit is a real winner). Combined with the trend-
                         # align gate (bull/crash strong-trend winners get both ~1 -> HOLD).
-                        # Branch step 8: add a TREND-MAGNITUDE DEADZONE to the hold gate to
-                        # recover sideways. Step 4 regressed sideways (0.930->0.886) because
-                        # chop has small-but-nonzero ret_long that triggered partial plateau-
-                        # holds (tanh(0.01/0.04)~0.24) of sideways positions better off fast-
-                        # harvesting. Sideways is genuinely LOW-TREND (|ret_long| mostly
-                        # <0.015); bull/rally trend-aligned holds operate at |ret_long|>0.02.
-                        # Subtract a 0.015 deadzone from the trend magnitude so chop gives
-                        # ZERO hold (full baseline shave -> sideways recovers) and the gate
-                        # ramps in above it. The deadzone edge sits in chop's flat-noise band
-                        # (a magnitude threshold on |ret_long|, kept smooth via tanh after the
-                        # shift — not a hard regime switch).
-                        _td_mag = max(0.0, abs(ret_long) - 0.015)
-                        _trend_dir_dr = 1.0 if ret_long > 0 else -1.0
-                        _pos_dir_dr = 1.0 if current_pos > 0 else -1.0
-                        _trend_align_dr = (1.0 if _trend_dir_dr == _pos_dir_dr else 0.0) * np.tanh(_td_mag / 0.04)
+                        # Branch step 9: add a LONG-HOLD (bars_held) gate to step-4's gate.
+                        # The remaining rally drag is rally's trend-ALIGNED whipsaw longs —
+                        # which are SHORT-LIVED (rally's grinding uptrend produces brief
+                        # pullback-recovery longs that resolve within a few bars), whereas
+                        # bull/crash winners are LONG-HELD (10+ bars riding a clean trend).
+                        # bars_held cleanly separates them and is INTEGER-valued: at large N
+                        # the "position still open at bar N" status is robust across noise
+                        # realizations (a winner held 12 bars stays held under AR(1)), unlike
+                        # the breakeven/near-boundary cases. Ramp the hold gate in over bars
+                        # 6->14: rally's brief whipsaw longs (exit by ~6-8 bars) get little
+                        # hold -> revert to baseline shave (rally raw + DD recover); bull/crash
+                        # long-held winners get full hold (winner-run gain preserved). Smooth
+                        # tanh on (bars_held-6)/4 (no hard integer boundary at the operating
+                        # point — bull winners sit at bars_held>>10 in the flat tail).
+                        _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                         _peak_gate_dr = max(0.0, np.tanh(self.peak_pnl.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT))))
-                        _hold_w_dr = _trend_align_dr * _peak_gate_dr
+                        _longhold_dr = max(0.0, np.tanh((bars_held - 6.0) / 4.0))
+                        _hold_w_dr = _trend_align_dr * _peak_gate_dr * _longhold_dr
                         if _exit_pressure > _press_hwm_prev:
                             # New pressure high within this hold -> emit the reduce.
                             target = target * _de_risk
