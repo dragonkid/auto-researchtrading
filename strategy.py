@@ -710,7 +710,7 @@ class Strategy:
                 # R^2 (no zero-crossing -> not the walled admission-boundary family); shrink
                 # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
                 _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-                _tq_atten = 0.65 + 0.35 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
+                _tq_atten = 0.40 + 0.60 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
