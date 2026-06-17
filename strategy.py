@@ -160,11 +160,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Branch step 5: per-symbol entry-time trend-quality attenuator (R^2 at the bar the
-        # trade opened). Frozen at entry so the multi-bar scale-in builds to a size scaled by
-        # the trade's BIRTH cleanliness, not by the mid-scale-in R^2 (which reflects the stale
-        # pre-entry window and wrongly shrank clean-trend builds — branch step 4 failure).
-        self._entry_tq = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -471,26 +466,6 @@ class Strategy:
             _er_adj = -0.025 * max(0.0, np.tanh((0.15 - _er) / 0.10))
             _entry_frac_dyn = min(0.55, _entry_frac_dyn + _er_adj)
 
-            # Architectural: trend-QUALITY (regression R^2) size attenuator [hoisted above
-            # the entry/scale-in branches so BOTH the first-bar entry AND the multi-bar
-            # scale-in build use it — R^2 is position-independent]. NEW orthogonal signal:
-            # none of the existing attenuators (conv-margin, voter-quality, multi-window
-            # consensus, churn) measure the LINEARITY of the recent price path. R^2 of the
-            # OLS fit of log(HL2) over LINREG_PERIOD is a continuous [0,1] cleanliness
-            # statistic, distinct from slope DIRECTION (boundary-walled) and slope MAGNITUDE
-            # (_consensus uses tanh(slope)): a clean one-directional move has R^2~1 whether
-            # up or down; a choppy whipsaw path has low R^2 even if net slope is large.
-            # Mechanism: choppy (low-R^2) trades are whipsaw-prone; shrinking their committed
-            # size (first bar AND scale-in build) down-weights their Sharpe drag and shrinks
-            # their noisy position footprint -> clean-trend regimes' raw rises AND the choppy
-            # regime's noise-driven position wobble (its stability binding constraint) drops.
-            # Branch step 4: applied PERSISTENTLY through scale-in (was first-bar only, which
-            # the scale-in then rebuilt to full size, undoing the shrink mid-hold). Continuous
-            # tanh on R^2 (no zero-crossing -> not the walled admission-boundary family);
-            # shrink only (caps at 1.0). Direction-agnostic (same scalar both sides).
-            _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-            _tq_atten = 0.25 + 0.75 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
-
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
                 # The 20-bar high/low range-position adjustment in [-0.04, +0.04] was a
@@ -719,6 +694,38 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+                # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
+                # attenuator. NEW orthogonal signal: none of the existing attenuators
+                # (conv-margin, voter-quality, multi-window consensus, churn) measure
+                # the LINEARITY of the recent price path. R^2 of the OLS fit of log(HL2)
+                # over LINREG_PERIOD is a continuous [0,1] cleanliness statistic, distinct
+                # from slope DIRECTION (boundary-walled) and slope MAGNITUDE (_consensus
+                # uses tanh(slope)): a clean one-directional move has R^2~1 regardless of
+                # whether it is up or down; a choppy whipsaw path has low R^2 even if its
+                # net slope is large. Mechanism: choppy (low-R^2) entries are whipsaw-prone
+                # losers; shrink their first-bar commitment so their clean/perturbed
+                # tracking error and Sharpe drag are down-weighted, while clean-trend
+                # entries (high R^2, e.g. grinding bull/crash legs) keep full size and stay
+                # ~inert. Direction-agnostic (same scalar both sides). Continuous tanh on
+                # R^2 (no zero-crossing -> not the walled admission-boundary family); shrink
+                # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
+                _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+                _tq_atten = 0.25 + 0.75 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
+                # Branch step 6: CHURN-GATE the R^2 shrink (active in low-churn, OFF in
+                # high-churn bursts). The R^2 atten's raw gains live in sparse-entry regimes
+                # (low len(_eh)) but its noise COST falls on the bursty-entry regime whose
+                # stability is the binding constraint — R^2-dependent sizing on bursty
+                # entries adds a noise-sensitive quantity to the choppy regime's positions,
+                # dropping its stability below baseline. Gate the shrink by the SAME
+                # noise-immune integer churn count the baseline grids use: _tq_calm ~1 at
+                # len(_eh)<=1 (sparse-entry regimes get the full R^2 shrink -> raw gains kept)
+                # fading to ~0 at len(_eh)>=3 (bursty entries get NO shrink -> positions
+                # revert to un-attenuated size, sparing the choppy regime's stability).
+                # Self-measured behavioral gate (NOT a regime label) — same family as the
+                # baseline's churn-gated grids/deadband; regime effects fall out of realized
+                # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
+                _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
@@ -770,7 +777,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    full_target = (size if current_pos > 0 else -size) * self._entry_tq.get(symbol, 1.0)
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1349,13 +1356,12 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_tq):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._entry_tq[symbol] = _tq_atten
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
