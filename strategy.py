@@ -214,15 +214,6 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
-            # Architectural: multi-day price LEVEL (mid vs 96-bar HL2 mean) for an
-            # anti-chase first-bar entry attenuator. A LEVEL is noise-immune when
-            # used in its FLAT-SATURATED tail (deviation dominated by trend
-            # magnitude, not noise). Used below ONLY through the proven-safe
-            # first-bar-size channel (26f4b23d: first-bar shrink is overwritten by
-            # scale-in, so it dampens first-bar variance without a multi-bar
-            # trajectory change — the one channel where rally stability survives).
-            _sma_vlong = _hl2_vl.mean()
-            _md_level = (mid - _sma_vlong) / _sma_vlong
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -686,25 +677,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: anti-chase first-bar entry-size attenuator. A
-                # trend-aligned entry opened when price is ALREADY far-extended from
-                # its 4-day mean (bull entry with price >4% above mean; bear entry
-                # with price >4% below) is a CHASE — worse fill, lower forward
-                # Sharpe. Shrink its first-bar commitment via a FAST-SATURATING tanh
-                # in _md_level so the steep region sits below the operating range:
-                # at scale 0.015 with onset 0.04, a 5%+ extension lands in the FLAT
-                # saturated tail (sensitivity ~0, noise-free — the 26f4b23d rally-
-                # safety property), giving a near-constant 0.80x shrink rather than
-                # a noise-tracking one. First-bar-only (overwritten by scale-in) =
-                # the proven channel where rally stability survives. Distinct from
-                # every existing attenuator (counter-trend / conviction / consensus /
-                # quality / churn) — none key on trend-ALIGNED over-extension.
-                _bull_chase_atten = 1.0 - 0.20 * max(0.0, np.tanh((_md_level - 0.04) / 0.015))
-                _bear_chase_atten = 1.0 - 0.20 * max(0.0, np.tanh((-_md_level - 0.04) / 0.015))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _bull_chase_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _bear_chase_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
