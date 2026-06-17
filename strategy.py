@@ -218,10 +218,30 @@ class Strategy:
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
-            adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
-
-            # 5-bar median signal (maximum noise immunity, returns sacrificed for stability)
-            _med_ref_med = np.median(smoothed_closes[-adaptive_med - 2: -adaptive_med + 3])
+            # Architectural: CONTINUOUS-interpolated adaptive median window (removes the
+            # int(round()) noise boundary while PRESERVING vol-adaptivity). Prior session
+            # (row 530) proved the int(round()) step IS a real rally noise source (365
+            # discrete window jumps / 4.3% of bars; fixing window->10 gave rally stab
+            # 0.809->1.000) BUT removing adaptivity collapsed rally Sharpe 0.735->-0.064
+            # (the vol-adaptive window carries rally clean alpha — window lengthens ~16 in
+            # calm rally for a better trend reference, shortens ~8 in chop). That session
+            # tried only the two EXTREMES (discrete-adaptive vs fixed-constant). This is the
+            # untried MIDDLE: keep the continuous vol-adaptive window VALUE (alpha intact)
+            # but interpolate the 5-bar median reference LINEARLY between the two adjacent
+            # integer offsets instead of hard-rounding to one. Under AR(1) noise the window
+            # value now varies CONTINUOUSLY (no discrete jump) so the median reference no
+            # longer steps across rounding boundaries -> the 365-jump noise source is
+            # removed WITHOUT removing the adaptivity. New control flow: two median
+            # computations + fractional blend replace one discrete median.
+            _med_w = MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5
+            _med_w = max(float(MED_WINDOW_MIN), min(float(MED_WINDOW_MAX), _med_w))
+            _w_lo = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX - 1, int(np.floor(_med_w))))
+            _w_hi = _w_lo + 1
+            _med_frac = max(0.0, min(1.0, _med_w - _w_lo))
+            # 5-bar median reference at each adjacent integer window, blended continuously.
+            _med_lo = np.median(smoothed_closes[-_w_lo - 2: -_w_lo + 3])
+            _med_hi = np.median(smoothed_closes[-_w_hi - 2: -_w_hi + 3])
+            _med_ref_med = (1.0 - _med_frac) * _med_lo + _med_frac * _med_hi
             ret_short = (smoothed_closes[-1] - _med_ref_med) / _med_ref_med
 
             _ef, _es = ema(closes[-(EMA_SLOW+10):], EMA_FAST)[-1], ema(closes[-(EMA_SLOW+10):], EMA_SLOW)[-1]
