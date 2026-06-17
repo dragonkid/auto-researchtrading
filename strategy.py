@@ -367,29 +367,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Architectural: low-volume admission TIGHTENING (one-sided, self-normalizing).
-            # MECHANISM (honest, not a stability-test exploit): a bar whose volume is far
-            # below its own recent norm is illiquid / information-poor — its price move is
-            # more likely microstructure noise than a real directional signal, so an entry
-            # admitted on such a bar is lower-quality. Raise the strong-sum admission floor
-            # when current volume sits below its 20-bar median, so only HIGHER-conviction
-            # signals clear the bar on thin volume; normal/high-volume bars are unaffected.
-            # This is the FIRST volume-LEVEL admission gate (distinct from the discarded
-            # volume-FLOW voter which ADDED to the vote sum, and from the removed volume
-            # SIZE attenuators which were Sharpe-scale-invariant = raw-neutral). Because it
-            # CHANGES THE TRADE SET (drops marginal thin-volume entries) it can move raw —
-            # the only lever that can — while being one-sided (can only remove low-quality
-            # trades, never add). Self-normalizing ratio (no magic constant), continuous
-            # tanh (no hard boundary), symmetric across bull/bear (no regime/trend
-            # targeting — regime effects fall out of each period's own volume profile).
-            _vol_med_n = 20
-            _vol_recent = bd.history["volume"].values[-_vol_med_n:]
-            _vol_med = max(np.median(_vol_recent), 1e-10)
-            _vol_level_ratio = bd.history["volume"].values[-1] / _vol_med
-            # Below median (ratio<1) -> tighten up to +15%; at/above median -> no change.
-            _lowvol_tighten = 1.0 + 0.15 * max(0.0, np.tanh((1.0 - _vol_level_ratio) / 0.4))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * _lowvol_tighten
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * _lowvol_tighten
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
