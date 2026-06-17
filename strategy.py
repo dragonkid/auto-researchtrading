@@ -1042,6 +1042,31 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: churn-gated over-extension exit pressure (7th soft term).
+                # Captures the DOCUMENTED-REAL over-extension alpha (prior sessions: selling
+                # DEEP over-extension gives bull raw +0.054, Sh 1.54->1.61, DD improves) which
+                # was "walled to rally" — but ONLY when applied UN-gated (the noise ensemble
+                # crossed the price-z boundary the clean rally path did not -> rally stab
+                # collapse, row568 conclusion B). Here the over-extension pressure is MULTIPLIED
+                # by the noise-IMMUNE integer churn count gate (=0 in bursty rally, ~1 in sparse
+                # crash/sideways/bull): 0 * (noisy z term) = 0 ROBUSTLY across the entire noise
+                # ensemble in rally -> the z-boundary crossing is irrelevant where the gate is 0.
+                # This is the "churn-gating unlocks a previously-rally-walled mechanism" pattern
+                # that de412448 conclusion (b) explicitly predicted. _oe_z = (mid - mean(HL2,24))
+                # / std(HL2,24), signed to position direction; deep extension in the position's
+                # OWN direction (over-extended winner ripe for mean reversion) adds smooth
+                # pressure above z=2.0. Uses HL2 (AR(1)-perturbed, no open artifact). Distinct
+                # from take-profit harvest (_tp_scale fires on PROFIT magnitude; this on PRICE
+                # extension — a late entry into an extended move has high z but low profit,
+                # caught here, missed by _tp). Profit-side amplified weight.
+                _oe_hl2 = (bd.history["high"].values[-24:] + bd.history["low"].values[-24:]) / 2.0
+                _oe_mean = _oe_hl2.mean()
+                _oe_std = max(np.std(_oe_hl2), 1e-6)
+                _oe_z = (mid - _oe_mean) / _oe_std
+                _oe_aligned = _oe_z if current_pos > 0 else -_oe_z
+                _oe_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # noise-immune, ~0 in bursty rally
+                _oe_pressure = 0.5 * max(0.0, np.tanh((_oe_aligned - 2.0) / 1.0)) * _oe_gate
+                _w_oe = 0.5 + 0.5 * max(0.0, _pnl_scale)  # base + profit-side amp
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1055,7 +1080,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _w_oe * _oe_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
