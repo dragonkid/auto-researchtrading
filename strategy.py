@@ -1212,7 +1212,7 @@ class Strategy:
                     _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                     _dr_cm = max(self._churn_hist.get(symbol, 0), len(_eh))
                     _dr_calm = 1.0 if _dr_cm <= 2 else 0.0
-                    _de_floor -= 0.15 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
+                    _de_floor -= 0.15 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.03))
                     _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
