@@ -1008,26 +1008,31 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Architectural subsystem redesign (exit-pressure fusion layer):
-                # probabilistic-union (noisy-OR) replaces element-wise MAX + the
-                # bolted-on sorted()/ratio_2nd agreement-attenuator + chop-gate stack.
-                # Each soft term p_i in [0,1] is the probability that source i says
-                # "exit". The union P(>=1 source fires) = 1 - prod(1 - p_i) intrinsically
-                # rewards MULTI-SOURCE AGREEMENT (two 0.4 terms -> 0.64 > 0.4) while a
-                # lone source keeps its own magnitude (single 0.4 -> 0.4) — the exact
-                # preference the hand-rolled attenuator was approximating, but achieved
-                # SMOOTHLY: a pure product of continuous terms has no argmax-swap point
-                # (MAX) and no sorted()/ratio decision boundary, so it removes two
-                # noise-sensitive control-flow constructs from the hottest exit path.
-                # Terms clamped to [0,1] before the union (weights can exceed 1). The
-                # MAX threw away agreement info (requiring the patch); the old weighted
-                # SUM accumulated unbounded correlated noise — noisy-OR keeps agreement
-                # info while staying bounded in [0,1] (products of (1-p) self-attenuate).
-                _po = 1.0
-                for _t in _soft_terms:
-                    _po *= 1.0 - max(0.0, min(1.0, _t))
-                _soft_fused = 1.0 - _po
-                _exit_pressure = max(_sl_pressure, _soft_fused) + _voter_bias
+                _soft_max = max(_soft_terms)
+                # Architectural: multi-source agreement attenuator on soft_max.
+                # When only ONE source contributes meaningfully (top-2 ratio low,
+                # i.e. dominant single source), attenuate up to 25% — single-source
+                # spikes are more often noise than real reversal. When TWO+ sources
+                # agree (top-2 ratio high), no attenuation. Continuous via tanh on
+                # second-highest/highest ratio. Multi-source CONFIRMATION as a
+                # noise filter is structurally different from EMA smoothing (time-
+                # axis) and threshold raising (boundary-axis) — operates on the
+                # pressure-source dimension. Top exit decision: 2nd-highest term
+                # ratio gates the strength of the MAX. New cross-source data dep.
+                _sorted_terms = sorted(_soft_terms, reverse=True)
+                _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
+                # Confirmation strength: 0 at single-source, 1 at full agreement
+                _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
+                # Branch step 2: chop-only gating. In trends (high abs(ret_long)),
+                # single-source pressure signals are real (slope reversal alone =
+                # genuine trend break). Mute the attenuator's effect by trend strength
+                # so it operates only in chop where single-source spikes ARE noise.
+                _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
+                # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
+                # in trend approaches 1.0x always (no attenuation)
+                _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
+                _soft_max = _soft_max * _soft_atten
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
