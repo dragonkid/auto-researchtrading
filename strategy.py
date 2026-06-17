@@ -150,7 +150,7 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
-        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
+        _port_dd_atten = 1.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
