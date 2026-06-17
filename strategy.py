@@ -11,6 +11,23 @@ def _fast_slope(y):
     slope = ((np.arange(n) - x_mean) * (y - y_mean)).sum() / (n * x_var)
     return slope
 
+
+def _fast_r2(y):
+    """Coefficient of determination (R^2) of the OLS linear fit of y vs 0..len(y)-1.
+    Equals squared Pearson correlation between y and a straight line — measures how
+    LINEAR (clean-trend) the series is, in [0, 1], independent of trend DIRECTION and
+    SLOPE magnitude. Pure shape statistic; no zero-crossing (always >= 0)."""
+    n = len(y)
+    x = np.arange(n)
+    x_mean = (n - 1) / 2.0
+    y_mean = y.mean()
+    xd = x - x_mean
+    yd = y - y_mean
+    cov = (xd * yd).sum()
+    vx = (xd * xd).sum()
+    vy = (yd * yd).sum()
+    return (cov * cov) / max(vx * vy, 1e-20)
+
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -677,10 +694,27 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+                # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
+                # attenuator. NEW orthogonal signal: none of the existing attenuators
+                # (conv-margin, voter-quality, multi-window consensus, churn) measure
+                # the LINEARITY of the recent price path. R^2 of the OLS fit of log(HL2)
+                # over LINREG_PERIOD is a continuous [0,1] cleanliness statistic, distinct
+                # from slope DIRECTION (boundary-walled) and slope MAGNITUDE (_consensus
+                # uses tanh(slope)): a clean one-directional move has R^2~1 regardless of
+                # whether it is up or down; a choppy whipsaw path has low R^2 even if its
+                # net slope is large. Mechanism: choppy (low-R^2) entries are whipsaw-prone
+                # losers; shrink their first-bar commitment so their clean/perturbed
+                # tracking error and Sharpe drag are down-weighted, while clean-trend
+                # entries (high R^2, e.g. grinding bull/crash legs) keep full size and stay
+                # ~inert. Direction-agnostic (same scalar both sides). Continuous tanh on
+                # R^2 (no zero-crossing -> not the walled admission-boundary family); shrink
+                # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
+                _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+                _tq_atten = 0.65 + 0.35 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
