@@ -861,15 +861,7 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                # Exp5 (exit-timing, vol-gated): shorten max-hold in HIGH volatility.
-                # In crash (vol_ratio>>1) profit givebacks are violent and fast, so holding
-                # to the full time budget exposes winners to sharp dead-cat reversals;
-                # shorten the budget by up to 2 bars as vol_ratio rises past 1.2. Continuous
-                # tanh on vol_ratio (the allowed smooth regime indicator), ~0 in rally's
-                # low-vol grind (vol_ratio<1 -> tanh negative -> max(0,.)=0 => rally-INERT),
-                # active in crash. Tests whether a VOL-GATED exit-timing change spares rally.
-                _vol_hold_cut = 2.0 * max(0.0, np.tanh((vol_ratio - 1.2) / 0.4))
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - _vol_hold_cut
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
