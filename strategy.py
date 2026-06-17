@@ -1161,12 +1161,28 @@ class Strategy:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         _press_hwm_prev = self._exit_press_hwm.get(symbol, 0.0)
+                        # Branch step 2: TREND-ALIGNED-gated ratchet. The ungated ratchet
+                        # (step 1) revealed the asymmetry: holding through pressure plateaus
+                        # is excellent for TREND-ALIGNED winners (bull +0.153, crash +0.063)
+                        # but harmful for COUNTER-TREND positions (rally's 50pct-short book in
+                        # a grinding uptrend) and chop (sideways). Gate the plateau-HOLD by
+                        # trend-alignment: trend-aligned positions HOLD through plateaus (keep
+                        # the winner-run gain); counter-trend/chop positions revert to the
+                        # baseline every-bar shave (current_pos*_de_risk) -> restore rally/
+                        # sideways. At a NEW pressure high both behaviors agree (full reduce).
+                        # _trend_align = max(0,tanh(ret_long*pos_dir/0.04)) SATURATES AT 0 for
+                        # rally's counter-trend shorts (ret_long>0,pos_dir<0) -> noise-immune
+                        # there (same flat-tail property as the 26f4b23d ct-size keep); in
+                        # sideways |ret_long| is small so _trend_align~0 -> baseline shave.
+                        _trend_align_dr = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                         if _exit_pressure > _press_hwm_prev:
                             # New pressure high within this hold -> emit the reduce.
                             target = target * _de_risk
                             self._exit_press_hwm[symbol] = _exit_pressure
-                        # else: pressure below within-hold high -> HOLD (no new reduce),
-                        # target stays at current_pos (avoids the tiny-loss cascade).
+                        else:
+                            # Plateau/recede -> trend-aligned HOLDS (blend->current_pos),
+                            # counter-trend/chop SHAVES (blend->current_pos*_de_risk).
+                            target = target * (_de_risk + _trend_align_dr * (1.0 - _de_risk))
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
