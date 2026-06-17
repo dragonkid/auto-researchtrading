@@ -1,19 +1,58 @@
 #!/usr/bin/env bash
 set -uo pipefail
 # NOTE: removed 'set -e' — it caused silent exits when subcommands
-# (codemax, git, awk pipelines) returned non-zero unexpectedly.
+# (claude, git, awk pipelines) returned non-zero unexpectedly.
 # Errors are handled explicitly via || clauses.
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TAG="${1:?Usage: ./autoresearch.sh <tag> [max_rounds] [council_threshold]}"
+TAG="${1:?Usage: ./autoresearch.sh <tag> [max_rounds] [council_threshold] [provider] [model]}"
 BRANCH="autotrader/${TAG}"
 RESULTS="results.tsv"
 MAX_ROUNDS="${2:-0}"
 COUNCIL_THRESHOLD="${3:-5}"
+# Provider/model are optional. When PROVIDER is set, credentials (base_url +
+# api_key + default model) are resolved at runtime from the Hermes profile
+# config via scripts/hermes_provider.py — keys are NEVER stored in this
+# (git-tracked) script. MODEL overrides the provider's default model.
+#   provider names live under custom_providers: in
+#   ~/.hermes/profiles/quant-trading/config.yaml  (currently: skyapi, litellm, litellmqa)
+# Default (no provider arg): preserve historical behaviour — skyapi + opus 1M.
+PROVIDER="${4:-skyapi}"
+# MODEL: explicit 5th arg wins; else the provider's configured default model.
+# Special-case: default skyapi run keeps the historical 1M-context opus tag.
+MODEL_OVERRIDE="${5:-}"
 ROUND_COUNT=0
 COUNCIL_COUNT=0
 
 cd "$PROJECT_DIR"
+
+# ── Resolve provider credentials from Hermes config (no secrets in this file) ──
+HERMES_CONFIG="${HERMES_CONFIG:-$HOME/.hermes/profiles/quant-trading/config.yaml}"
+_resolved=$(python3 "$PROJECT_DIR/scripts/hermes_provider.py" "$PROVIDER" --config "$HERMES_CONFIG") || {
+  echo "ERROR: could not resolve provider '$PROVIDER' from $HERMES_CONFIG" >&2
+  exit 1
+}
+PROVIDER_BASE_URL=$(printf '%s' "$_resolved" | cut -f1)
+PROVIDER_API_KEY=$(printf '%s' "$_resolved" | cut -f2)
+PROVIDER_MODEL=$(printf '%s' "$_resolved" | cut -f3)
+unset _resolved
+# Anthropic SDK appends /v1/messages itself; strip a trailing /v1 from base_url.
+PROVIDER_BASE_URL="${PROVIDER_BASE_URL%/v1}"
+# CLI model arg: explicit override wins, else the provider's configured default.
+# Special-case: a default skyapi run (no model arg) keeps the historical
+# 1M-context opus tag "claude-opus-4-8[1m]" that this loop has always used.
+MODEL="${MODEL_OVERRIDE:-$PROVIDER_MODEL}"
+if [ -z "$MODEL_OVERRIDE" ] && [ "$PROVIDER" = "skyapi" ] && [ "$PROVIDER_MODEL" = "claude-opus-4-8" ]; then
+  MODEL="claude-opus-4-8[1m]"
+fi
+if [ -z "$MODEL" ]; then
+  echo "ERROR: no model resolved for provider '$PROVIDER' and none given" >&2
+  exit 1
+fi
+if [ -z "$PROVIDER_BASE_URL" ] || [ -z "$PROVIDER_API_KEY" ]; then
+  echo "ERROR: provider '$PROVIDER' missing base_url or api_key in $HERMES_CONFIG" >&2
+  exit 1
+fi
 
 # Ensure Ctrl+C stops the entire script
 trap 'echo ""; echo "Interrupted. Cleaning up..."; git checkout -- strategy.py 2>/dev/null; exit 130' INT TERM
@@ -31,6 +70,8 @@ if [ ! -f "$RESULTS" ]; then
 fi
 
 echo "Branch: $BRANCH"
+echo "Provider: $PROVIDER  (base_url: $PROVIDER_BASE_URL)"
+echo "Model: $MODEL"
 echo "Max rounds: ${MAX_ROUNDS:-unlimited} (each round = up to 20 experiments, exits on 5 consecutive discards)"
 echo "Council threshold: $COUNCIL_THRESHOLD consecutive discards"
 echo ""
@@ -59,9 +100,12 @@ run_council() {
   echo ""
 
   local council_output
-  council_output=$(CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
+  council_output=$(ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL" \
+    ANTHROPIC_AUTH_TOKEN="$PROVIDER_API_KEY" \
+    ANTHROPIC_MODEL="$MODEL" \
+    CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
     --dangerously-skip-permissions \
-    --model opus \
+    --model "$MODEL" \
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-council.md" \
     --allowedTools "Read,Edit,Write,Bash(git:*),Bash(uv run:*),Bash(grep:*),Bash(tail:*),Bash(head:*),Bash(cat:*),Bash(echo:*),Grep,Glob" \
@@ -113,11 +157,13 @@ while true; do
 
 echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 
-#ANTHROPIC_BASE_URL=https://litellm.qa1fdg.net ANTHROPIC_AUTH_TOKEN=sk-OZ7H_GmEFV3nOlf2PFZBBA ANTHROPIC_MODEL=deepseek-v4-pro MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
-MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
-  CLAUDE_CONFIG_DIR=~/.claude-autoresearch codemax claude -p \
+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL" \
+  ANTHROPIC_AUTH_TOKEN="$PROVIDER_API_KEY" \
+  ANTHROPIC_MODEL="$MODEL" \
+  MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
+  CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
     --dangerously-skip-permissions \
-    --model claude-opus-4-8[1m] \
+    --model "$MODEL" \
     --effort max \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
@@ -127,7 +173,7 @@ MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
       echo "Claude exited with error (code $?), continuing after cooldown..."
       sleep 5
     }
-  echo "[DEBUG] Round $ROUND_COUNT completed (post-codemax), looping..."
+  echo "[DEBUG] Round $ROUND_COUNT completed (post-claude), looping..."
 
   # Ensure results.tsv ends with a newline (agent sometimes uses Write/Edit tool which strips it)
   if [ -f "$RESULTS" ] && [ -n "$(tail -c1 "$RESULTS")" ]; then
