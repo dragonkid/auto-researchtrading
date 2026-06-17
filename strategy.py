@@ -782,6 +782,36 @@ class Strategy:
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
                         target = current_pos
+                else:
+                    # Architectural: trend-confirmation PYRAMIDING (within-trade hold-size
+                    # growth). NEW position-management channel distinct from scale-in
+                    # (which only builds to full size) and from entry-size attenuators
+                    # (which act once at the first bar). Once an established hold (past the
+                    # scale-in window) is WINNING and the MULTI-DAY trend strongly confirms
+                    # the position direction, grow the position BEYOND full size — concentrate
+                    # exposure into the part of a sustained trend where the edge is highest
+                    # (confirmed + already-winning). The strong-regime "byte-identical to
+                    # size changes" wall is about ENTRY-time and EXIT-time decisions; the
+                    # steady-state HOLD size is a separate, un-probed channel. Inputs:
+                    #   _py_trend  = multi-day (96-bar) slope aligned with position (tanh)
+                    #   _py_profit = current pos_pnl in profit (tanh, only winners grow)
+                    #   _py_calm   = churn gate (the de412448-proven noise-immune integer
+                    #                len(_eh) gate): FULL growth in low-churn holds (crash,
+                    #                sideways, calm bull stretches), OFF in bursty rally/bull
+                    #                so rally's stability seed is not disturbed.
+                    # Max +40% size, continuous (no decision boundary that flips under noise),
+                    # grow-only (exits still shrink afterward). Gridded for low-churn symbols
+                    # by the existing order-emission quantization. New control flow + new
+                    # cross-timescale data dep (hold size depends on ret_vlong * pos_dir).
+                    _pos_dir_py = 1.0 if current_pos > 0 else -1.0
+                    _py_trend = max(0.0, np.tanh(ret_vlong * _pos_dir_py / 0.05))   # [0,~1]
+                    _py_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))     # [0,~1]
+                    _py_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))       # ~1 low churn, ~0 bursty
+                    _pyramid = 0.40 * _py_trend * _py_profit * _py_calm              # [0, 0.40]
+                    if _pyramid > 0.0:
+                        _full_target_py = (size if current_pos > 0 else -size) * (1.0 + _pyramid)
+                        if (current_pos > 0 and _full_target_py > current_pos) or (current_pos < 0 and _full_target_py < current_pos):
+                            target = _full_target_py
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
