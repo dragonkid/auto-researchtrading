@@ -1209,10 +1209,21 @@ class Strategy:
                     # sensitive quantity; the only residual sensitivity is the narrow R2~0.5
                     # transition band. Keeps choppy-vs-clean selectivity (sideways gain) but
                     # stops the floor from tracking noise (rally stab protected).
+                    # Branch step 6: add a noise-immune bars_held LONG-HOLD gate (abfb9591
+                    # separator). Param re-rolls (steps 4-5) confirmed rally stab is re-seed
+                    # dominated; the cumulative-max churn gate leaks rally's PRE-burst holds.
+                    # rally's drag holds resolve SHORT (<8 bars) while crash/sideways choppy
+                    # overstays run longer, so gate the de-risk floor change on bars_held via
+                    # tanh((bars_held-6)/4): ~0 for short holds (rally's pre-burst leak gets
+                    # ~no change -> rally toward byte-identical -> its higher baseline stab
+                    # distribution), ~1 for long holds (crash/sideways overstays keep the
+                    # faster-exit gain). bars_held is an integer counter = noise-immune (no
+                    # AR(1)-flippable boundary). Restores step3 scale 0.05 / mag 0.15.
                     _dr_hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                     _dr_cm = max(self._churn_hist.get(symbol, 0), len(_eh))
                     _dr_calm = 1.0 if _dr_cm <= 2 else 0.0
-                    _de_floor -= 0.10 * _dr_calm * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
+                    _dr_longhold = max(0.0, np.tanh((bars_held - 6.0) / 4.0))
+                    _de_floor -= 0.15 * _dr_calm * _dr_longhold * max(0.0, np.tanh((0.5 - _dr_hold_r2) / 0.05))
                     _de_floor = max(0.30, _de_floor)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
