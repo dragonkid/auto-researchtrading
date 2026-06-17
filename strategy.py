@@ -1096,12 +1096,24 @@ class Strategy:
                 # isolates whether bull/crash CLEAN-TREND exits respond at all (untouched
                 # territory: de-risk floor never fired there). Stateless (recomputed R2 on
                 # current window reflects current path linearity). New data dep at fusion.
+                # Branch step 2: NARROW the ride-suppression to DEEP + MULTI-DAY-SUSTAINED
+                # + CLEAN trends. Step-1 (20-bar align + churn-gate) helped crash (+0.115)
+                # but over-held bull's shallow pullback-grind (bull -0.053) and fired on
+                # sideways' brief high-R2 sub-trends (sideways -0.354); the churn-gate leaked
+                # rally. Replace the loose 20-bar align with a 4-way AND that only a deep
+                # sustained clean trend satisfies: R2>0.55 (clean) x |ret_long|>0.05 (DEEP
+                # 20-bar move, bull grind is shallower per-window) x ret_vlong-aligned
+                # (96-bar multi-day slope agrees - crash legs are multi-day sustained, bull
+                # pullbacks/sideways sub-trends are NOT) x winning. No churn-gate: the strict
+                # 4-way trend gate naturally rarely fires in rally's pullback-heavy grind
+                # (ret_long flat/negative during pullbacks) -> rally near-byte-identical.
                 _exit_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.5) / 0.2))
-                _ride_aligned = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ride_clean = max(0.0, np.tanh((_exit_r2 - 0.55) / 0.15))
+                _ride_deep = max(0.0, np.tanh((abs(ret_long) - 0.05) / 0.04))
+                _ride_sustained = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
                 _ride_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
-                _ride_supp = 1.0 - 0.40 * _ride_clean * _ride_aligned * _ride_winning * _ride_calm
+                _ride_supp = 1.0 - 0.40 * _ride_clean * _ride_deep * _ride_sustained * _ride_winning
                 _soft_max = _soft_max * _ride_supp
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
