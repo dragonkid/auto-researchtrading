@@ -726,10 +726,26 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural: wide-range-bar (intrabar HL-range / ATR) entry-size
+                # attenuator. NEW orthogonal signal: every existing size attenuator and
+                # the vol_ratio scaler measure CLOSE-to-close return volatility or trend
+                # geometry; NONE measure the CURRENT bar's INTRABAR high-low range. A bar
+                # whose H-L span greatly exceeds the trailing 14-bar ATR is a volatility-
+                # spike/whipsaw bar — an entry committed on such a bar is more likely a
+                # noise/exhaustion fill than a clean signal fill (the close can sit
+                # anywhere inside a wide bar, so the entry price is itself high-variance).
+                # Direction-agnostic (same scalar both sides): pure intrabar-noise risk
+                # reduction, NOT a directional view. Continuous tanh on (range/ATR - 1.5),
+                # shrink only (<=1.0), max 25%. Uses high/low (HL2 noise-tested, no open).
+                # Size-DOWN only = the confirmed rally-safe channel. New data dep: first-bar
+                # size depends on the current bar's intrabar range relative to ATR.
+                _cur_range = (bd.history["high"].values[-1] - bd.history["low"].values[-1]) / mid
+                _wrb_ratio = _cur_range / max(_atr_pct_e, 1e-6)
+                _wrb_atten = 1.0 - 0.25 * max(0.0, np.tanh((_wrb_ratio - 1.5) / 0.7))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _wrb_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _wrb_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
