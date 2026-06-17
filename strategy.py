@@ -100,9 +100,9 @@ TREND_GATE_DEADZONE = 0.018
 # Vote / cooldown (6 voters, soft tanh contributions)
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
-STRONG_WEIGHT_MIN = 2.00  # required sum of margin-above-0.5 voter contributions (EXP3: rescaled 1.75*8/7 for 8 voters)
-MIN_VOTES = 3.34  # EXP3: rescaled 2.92*8/7 for 8 voters
-FLIP_MIN_VOTES = 3.20  # EXP3: rescaled 2.80*8/7 for 8 voters
+STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
+MIN_VOTES = 2.92  # scaled for 7 voters
+FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -267,19 +267,6 @@ class Strategy:
             _tp_arr = (bd.history["high"].values[-_vwap_n:] + bd.history["low"].values[-_vwap_n:] + closes[-_vwap_n:]) / 3.0
             _vwap = (_tp_arr * _vol_arr).sum() / max(_vol_arr.sum(), 1e-10)
             _vwap_dev = (mid - _vwap) / mid  # positive = above VWAP, bull bias
-            # Architectural (EXP3): 8th voter — OBV (on-balance-volume) momentum.
-            # Cumulative signed volume slope over 16 bars, normalized by mean volume.
-            # Distinct from the VWAP voter (a price LEVEL vs vwap) and orthogonal to the
-            # 6 price-momentum voters: OBV accumulates volume on up-bars minus down-bars,
-            # so rising OBV = buying pressure CONFIRMED BY VOLUME even when price momentum
-            # is ambiguous. Flagged direction: strong regimes are voter-saturated (trade
-            # count <50 = sample_factor drag) and need a NEW voter SIGNAL to change their
-            # trade SET. Thresholds rescaled 7->8 voters to preserve admission level.
-            _obv_n = 16
-            _obv_dc = np.sign(np.diff(closes[-_obv_n - 1:]))
-            _obv_vol = bd.history["volume"].values[-_obv_n:]
-            _obv_cum = np.cumsum(_obv_dc * _obv_vol)
-            _obv_slope = _fast_slope(_obv_cum) / max(np.mean(_obv_vol), 1e-6)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -288,7 +275,6 @@ class Strategy:
                 (_lr_slope - 0.00015) / 0.00010,
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
-                _obv_slope / 0.30,   # 8th voter: OBV momentum (volume-confirmed direction)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -315,7 +301,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.7)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -343,7 +329,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(7)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
