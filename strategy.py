@@ -1052,8 +1052,8 @@ class Strategy:
                 # removes their noise-sensitive late-life equity footprint (stability).
                 # Winners (bull/crash/sideways 86-100% WR) rarely sit underwater, so
                 # untouched. Continuous (smooth ramps), no regime label.
-                _stale_age = max(0.0, min(1.0, (bars_held - 8.0) / 6.0))      # ramps bar 8 -> 14
-                _stale_adv = max(0.0, min(1.0, -pos_pnl / (0.6 * _stop_abs))) # 0 at breakeven, 1 at 0.6*stop loss
+                _stale_age = max(0.0, min(1.0, (bars_held - 5.0) / 5.0))      # ramps bar 5 -> 10 (branch step 2: earlier)
+                _stale_adv = max(0.0, min(1.0, -pos_pnl / (0.45 * _stop_abs))) # branch step 2: shallower loss trigger
                 _stale_pressure = _stale_age * _stale_adv
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
