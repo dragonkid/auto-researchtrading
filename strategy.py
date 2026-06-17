@@ -868,21 +868,6 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
-                # Architectural: trend-QUALITY-gated giveback trailing (NEW exit-side dep on
-                # hold-path linearity). R2 of the OLS fit of log(HL2) over LINREG_PERIOD
-                # measures how LINEAR the recent path is. In low-R2 (choppy / trend-
-                # exhausting) holds, amplify the giveback ratio so the peak-profit trail
-                # fires SOONER — lock gains before a choppy move mean-reverts. In high-R2
-                # (clean trend) holds, no amplification (let winners run). This MODULATES the
-                # already-active pp trailing (not a new MAX-fusion term that strong regimes
-                # never reach), so it actually changes choppy-hold exits. Risk-REDUCTION
-                # (faster exit on low-quality holds) = the GENERALIZING direction, opposite of
-                # the overfit hold-through-plateau ratchet. Churn-gated OFF in high-churn
-                # rally (rally exits unchanged -> stab protected); active in sparse-entry
-                # crash/sideways. Direction-agnostic (R2 has no zero-crossing).
-                _hold_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                _r2_exit_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
-                _giveback_ratio = _giveback_ratio * (1.0 + 0.30 * _r2_exit_calm * max(0.0, np.tanh((0.5 - _hold_r2) / 0.25)))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
