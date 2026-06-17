@@ -259,11 +259,37 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
             ]
+            # Architectural subsystem redesign: ROLLING-DISPERSION STANDARDIZED voter
+            # confidence transform. Each of the 7 voter signals is currently divided by a
+            # hand-tuned FIXED divisor (lines above) before tanh — a constant that assumes a
+            # stationary "natural scale" for each signal. In reality each signal's dispersion
+            # varies (a MACD-diff that is ±0.0001 in calm chop is ±0.0005 in a trend), so a
+            # fixed divisor mis-calibrates the tanh sharpness across regimes: in a strong
+            # trend genuine signals saturate identically to marginal ones (loses gradient),
+            # in chop tiny signals get over-amplified. This redesign rescales each signal by
+            # its OWN recent rolling dispersion (mean-abs over the last K bars, already stored
+            # in _voter_sign_history) blended 50/50 with the fixed scale (denominator floor
+            # prevents tiny-dispersion blow-up + graceful degradation when history is short).
+            # Confidence then reflects how LARGE the current signal is vs the voter's own
+            # recent typical magnitude — a regime-adaptive, self-normalizing sharpness.
+            # Distinct from row-93 (vol_ratio-scaled divisors, an EXTERNAL vol proxy) and from
+            # all voter-AGGREGATION redesigns (this changes the per-voter conf VALUES, which
+            # could de-saturate the headroom regimes that aggregation changes left byte-flat).
+            # Reuses existing _sig_hist state (computed below) — minimal new AST footprint.
+            _zh = self._voter_sign_history.get(symbol, [])
+            if len(_zh) >= 4:
+                _zarr = np.abs(np.array(_zh))  # (K,7) magnitudes of recent divided signals
+                _zdisp = _zarr.mean(axis=0)    # per-voter recent mean-abs magnitude
+                # blend rolling dispersion with fixed scale (1.0 in divided-units); floor 0.5
+                _zscale = np.maximum(0.5, 0.5 * _zdisp + 0.5 * 1.0)
+                _voter_signals_std = [s / sc for s, sc in zip(_voter_signals_bull, _zscale)]
+            else:
+                _voter_signals_std = _voter_signals_bull
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
             # A noise-flipped voter shifts _bull_strong by at most ~0.8 (was ~2.0).
-            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_bull]
-            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_bull]
+            _bull_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(s)) for s in _voter_signals_std]
+            _bear_confs = [0.1 + 0.8 * 0.5 * (1.0 + np.tanh(-s)) for s in _voter_signals_std]
             bull_votes = sum(_bull_confs)
             bear_votes = sum(_bear_confs)
             # Quintic-ramp strong-sum with per-voter noise-sensitivity weights.
