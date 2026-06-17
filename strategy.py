@@ -143,11 +143,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Per-symbol trend-age: (sign, count) of consecutive bars the smoothed_trend
-        # held one sign. Noise-immune integer statistic (like _churn_hist) — measures
-        # trend DURATION, orthogonal to ret_long/ret_vlong MAGNITUDE. Drives a
-        # counter-trend entry-size attenuator.
-        self._trend_age = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -383,24 +378,6 @@ class Strategy:
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
-            # Trend-age update: integer count of consecutive bars trend_avg held its
-            # sign. Uses a small deadzone (TREND_GATE_DEADZONE, the same band the
-            # admission gate treats as "no trend") so near-zero chop bars reset the
-            # age toward 0 rather than incrementing on noise. Noise-immune: the count
-            # increments on the SIGN of a smoothed quantity that is already far from
-            # zero in genuine trends, so AR(1) close-noise rarely flips it.
-            _ta_sign = 1 if trend_avg > TREND_GATE_DEADZONE else (-1 if trend_avg < -TREND_GATE_DEADZONE else 0)
-            _ta_prev_sign, _ta_count = self._trend_age.get(symbol, (0, 0))
-            if _ta_sign == 0:
-                _ta_count = max(0, _ta_count - 1)  # decay toward 0 in chop
-            elif _ta_sign == _ta_prev_sign:
-                _ta_count = min(_ta_count + 1, 96)  # cap to bound the statistic
-            else:
-                _ta_count = 1  # sign flip: fresh trend
-                _ta_prev_sign = _ta_sign
-            if _ta_sign != 0:
-                _ta_prev_sign = _ta_sign
-            self._trend_age[symbol] = (_ta_prev_sign, _ta_count)
 
             # Smooth cooldown_factor (tanh decay over trend-scaled window) +
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
@@ -700,30 +677,10 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: trend-AGE counter-trend entry-size attenuator (new
-                # state dep). A fresh entry AGAINST a long-established directional run
-                # is lower quality — an aged trend is more likely to continue than to
-                # reverse, so a counter-trend entry into it faces higher continuation
-                # risk. Trend-age is the noise-IMMUNE integer sign-streak _ta_count
-                # (consecutive bars trend_avg held one sign), measuring trend DURATION
-                # — structurally orthogonal to the saturated ret_long/ret_vlong
-                # MAGNITUDE family (which fails because position VALUE tracks a
-                # continuous price quantity near a tanh boundary -> rally stab
-                # collapse). An INTEGER count has no boundary that AR(1) close-noise
-                # flips (same safety property that makes the churn-count load-bearing).
-                # Fires only when the entry side OPPOSES the aged trend sign; symmetric
-                # (bull-in-aged-downtrend and bear-in-aged-uptrend both shrink), not
-                # regime-targeted. Smooth tanh in the AGE dimension (age 0->no shrink,
-                # age>=~30 bars->saturated 0.30x reduction). New data dep: first-bar
-                # size depends on integer trend-age when counter to the aged trend.
-                _ta_s, _ta_c = self._trend_age.get(symbol, (0, 0))
-                _ta_factor = max(0.0, np.tanh((_ta_c - 6.0) / 12.0))  # 0 at fresh trend, ~1 at aged
-                _bull_age_atten = 1.0 - 0.30 * _ta_factor if _ta_s < 0 else 1.0  # bull entry vs aged downtrend
-                _bear_age_atten = 1.0 - 0.30 * _ta_factor if _ta_s > 0 else 1.0  # bear entry vs aged uptrend
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _bull_age_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _bear_age_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
