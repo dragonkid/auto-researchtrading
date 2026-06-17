@@ -79,17 +79,6 @@ PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
-# Passive multi-day trend core: a small noise-immune trend-following position held
-# on bars where the active strategy is flat. Raises clean_vol (the stability
-# denominator) on otherwise-zero-return bars while adding ~zero tracking error
-# (ret_vlong is a smooth 96-bar OLS slope). CORE_WEIGHT = core size as a fraction
-# of a base position at full trend; CORE_VLONG_SCALE = trend-strength saturation.
-CORE_WEIGHT = 0.08
-CORE_VLONG_SCALE = 0.03
-# Coarse deadband on the passive core: only resize the core when it deviates from
-# the held position by more than this fraction of the core's max magnitude. Makes
-# the core STICKY (a few resizes per regime, not per-bar) to avoid fee churn.
-CORE_DEADBAND_FRAC = 0.35
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -171,10 +160,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol passive trend-core component currently held in
-        # the real position. The active logic operates on (real - core), so it
-        # always sees a true-flat baseline; the emitted target is active + core.
-        self._core_pos = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -455,12 +440,7 @@ class Strategy:
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
-            _real_pos = portfolio.positions.get(symbol, 0.0)
-            _core_held = self._core_pos.get(symbol, 0.0)
-            # Active component = real minus the passive core currently held. The
-            # active logic operates on this (sees true flat when only core is held),
-            # so it never thrashes against the core.
-            current_pos = _real_pos - _core_held
+            current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
 
             # Architectural: vol-conditioned initial commit fraction. Continuous tanh
@@ -1370,24 +1350,8 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
-            # Passive trend-core overlay at the emission layer. The emitted target
-            # is EXCLUSIVE: either the active position (when the active strategy is
-            # trading/managing) or the passive core (when active is flat) — never
-            # both summed. The core is a small noise-immune multi-day trend position
-            # (smooth ret_vlong), so on otherwise-flat bars it raises clean_vol (the
-            # stability denominator) while adding ~zero tracking error.
-            # Passive trend-core overlay (ADDITIVE, separate accounting). A small
-            # noise-immune multi-day-trend position ADDED on top of the active
-            # component. Sticky via coarse deadband (avoids per-bar churn). Raises
-            # clean_vol (stability denominator) on otherwise-flat bars.
-            _core_dir = np.tanh(ret_vlong / CORE_VLONG_SCALE)  # smooth [-1, 1]
-            _core_want = CORE_WEIGHT * equity * BASE_POSITION_SIZE * _core_dir
-            _core_max_mag = CORE_WEIGHT * equity * BASE_POSITION_SIZE
-            _core_new = _core_held if abs(_core_want - _core_held) < CORE_DEADBAND_FRAC * _core_max_mag else _core_want
-            _emit_total = target + _core_new
-            if abs(_emit_total - _real_pos) > 1.0:
-                signals.append(Signal(symbol=symbol, target_position=_emit_total))
-                self._core_pos[symbol] = _core_new
+            if abs(target - current_pos) > 1.0:
+                signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -1400,7 +1364,5 @@ class Strategy:
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
-            else:
-                self._core_pos[symbol] = _core_held
 
         return signals
