@@ -384,14 +384,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Exp (this session, architectural): REMOVED the counter-trend admission
-            # tightening (the +0.15*tanh terms). Direction-split PnL (this session)
-            # shows counter-trend entries are the WINNERS in our regimes (rally
-            # shorts in uptrend +2381/77%WR, crash longs in downtrend +4367/100%WR),
-            # so tightening their admission suppresses the edge. Kept the bull
-            # trend-following relaxation in uptrends.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
