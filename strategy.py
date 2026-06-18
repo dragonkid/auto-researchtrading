@@ -179,6 +179,7 @@ class Strategy:
         # trend-aligned holds (bull longs, crash shorts) are byte-identical (alpha=0).
         # Reset on full exit.
         self._exit_press_ema = {}
+        self._voter_bias_ema = {}  # Exp2: counter-trend EMA of additive _voter_bias term
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1154,6 +1155,16 @@ class Strategy:
                 _prev_soft = self._exit_press_ema.get(symbol, _soft_max)
                 _soft_max = (1.0 - _exit_ema_alpha) * _soft_max + _exit_ema_alpha * _prev_soft
                 self._exit_press_ema[symbol] = _soft_max
+                # Architectural (Exp2): extend the counter-trend EMA smoothing to the
+                # SECOND noise-injecting exit component, the additive _voter_bias term
+                # (voter-margin-derived -> noisy). It is added to exit pressure AFTER the
+                # SL max, so smoothing it (same ct gate, same alpha) further reduces the
+                # exit-timing jitter of counter-trend positions (rally pullback shorts)
+                # without touching SL. Trend-aligned (bull/crash) spared by construction
+                # (alpha=0 -> byte-identical). Second per-symbol EMA state _voter_bias_ema.
+                _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
+                _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
+                self._voter_bias_ema[symbol] = _voter_bias
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1429,7 +1440,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
