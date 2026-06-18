@@ -1408,6 +1408,12 @@ class Strategy:
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
+                    # Branch step2: reset readiness accumulator on full exit so re-entry
+                    # must REBUILD conviction from scratch (mimics the baseline 2-bar fresh
+                    # persist requirement). Kills the cross-position EMA memory that carried
+                    # high conviction through a hold and enabled immediate post-exit re-entry
+                    # — the churn source behind the step1 bull raw regression (-0.222).
+                    self._entry_accum[symbol] = (0.0, 0.0)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
