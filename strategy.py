@@ -1102,7 +1102,7 @@ class Strategy:
                 # (rally/bull uptrend → losing shorts; crash downtrend → losing longs;
                 # ~0 in sideways where ret_vlong≈0) — NOT a regime label.
                 _pos_dir_ctv = 1.0 if current_pos > 0 else -1.0
-                _ctv_strength = max(0.0, np.tanh(-_pos_dir_ctv * ret_vlong / 0.010))
+                _ctv_strength = max(0.0, np.tanh(-_pos_dir_ctv * ret_vlong / 0.015))
                 # Branch step 3: noise-robust loss-gate. Step 1 used instantaneous
                 # tanh(-pos_pnl/|STOP|) — steepest at shallow loss (pos_pnl≈0), exactly
                 # where rally's counter-trend shorts hover, so close-noise perturbed the
@@ -1115,7 +1115,7 @@ class Strategy:
                 # noise-free, so it should keep the loser-cutting raw gain without the
                 # stability damage.
                 _ctv_hold = max(0.0, np.tanh((bars_held - 4.0) / 3.0))
-                _ctv_bias = 0.25 * _ctv_strength * _ctv_hold
+                _ctv_bias = 0.18 * _ctv_strength * _ctv_hold
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias + _ctv_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
