@@ -657,10 +657,8 @@ class Strategy:
                 # contributions decrease with each cycle stacked (TOD +0.0001 -> DOW +0.0006
                 # -> MOM +0.0003 -> QUARTER +0.0001). +0 LOC fused into single expression.
                 _ts_h = bd.timestamp // 3600000
-                # Exp5 (architectural simplification): neutralize the 6-cycle TOD/DOW/MOM/
-                # quarter/semi-annual/annual seasonal entry-size modulator. Tests whether
-                # the elaborate stacked-cosine seasonal sizing is load-bearing or overfit.
-                _tod_atten = 1.0
+                _activity = 0.5 * (1.0 + np.cos(2.0 * np.pi * (_ts_h % 24 - 16.0) / 24.0)) * (0.6 + 0.4 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24 + 4) % 7 - 3.0) / 7.0))) * (0.7 + 0.3 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 30 - 15.0) / 30.0))) * (0.8 + 0.2 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 91 - 45.0) / 91.0))) * (0.85 + 0.15 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 180 - 90.0) / 180.0))) * (0.9 + 0.1 * 0.5 * (1.0 + np.cos(2.0 * np.pi * ((_ts_h // 24) % 365 - 182.0) / 365.0)))
+                _tod_atten = 0.85 + 0.30 * _activity
                 # Architectural: conviction-margin first-bar SIZE attenuator (shrink,
                 # don't block). Exp2 this session proved marginal-conviction entries
                 # drive rally instability — but blocking them (raising admission)
@@ -1257,17 +1255,7 @@ class Strategy:
             # while sparing crash/sideways (their churn keeps the gate near 0). Snap-
             # to-hold (Zeno-free). Symmetric growth/shrink. Entries/exits/flips exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
-            # Branch: cumulative-max churn moved up so the bursted-quiet (gap) state is
-            # available to both the deadband and the grids below.
-            _cm = max(self._churn_hist.get(symbol, 0), len(_eh))
-            self._churn_hist[symbol] = _cm
-            # Branch step 2: gap state = bursted symbol (_cm>2) currently in a quiet stretch
-            # (len(_eh)<=1 -> _churn_dz<0.5). Both the base deadband and the high-churn grid
-            # are OFF here, leaving rally's quiet-stretch resizes ungridded.
-            _gap_quiet = 1.0 if (_cm > 2 and _churn_dz < 0.5) else 0.0
-            # Branch step 3: add a gap-state deadband (base is 0 at low churn) to suppress
-            # noise-only micro-resizes in the quiet stretch, complementing step-2's gap grid.
-            _deadband_frac = 0.13 * _churn_dz + 0.13 * _gap_quiet
+            _deadband_frac = 0.13 * _churn_dz
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
@@ -1352,6 +1340,9 @@ class Strategy:
             # noise-immune (no boundary that flips under AR(1)). Behavioral self-
             # measurement ("has this symbol ever churned"), NOT a date/market-state
             # classifier — generalizes to any persistently-calm vs bursty symbol.
+            _cm = self._churn_hist.get(symbol, 0)
+            _cm = max(_cm, len(_eh))
+            self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
                 _grid_c = 0.06 * equity * BASE_POSITION_SIZE
@@ -1359,19 +1350,6 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
-            # Branch step 2: rally QUIET-stretch resize grid (fills the documented coverage
-            # gap). rally's BURST resizes are gridded (high-churn grid + deadband) and the
-            # calm grid covers never-bursting symbols (crash/sideways), but a BURSTED symbol's
-            # QUIET-stretch resizes (_gap_quiet) fall through BOTH gates -> ungridded noise-
-            # sensitive resizes that cap rally stability. With the +0.011 rally-raw buffer from
-            # TOD removal, grid them on the same stable lattice. Resizes only; snap toward
-            # current_pos.
-            if _is_resize and _gap_quiet > 0.0:
-                _grid_g = 0.06 * equity * BASE_POSITION_SIZE
-                if _grid_g > 0:
-                    _qt_g = round(target / _grid_g) * _grid_g
-                    if (_qt_g > 0) == (target > 0) and _qt_g != 0:
-                        target = _qt_g
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
