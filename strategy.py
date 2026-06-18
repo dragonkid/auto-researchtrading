@@ -188,6 +188,22 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
+        # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
+        # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
+        # first-bar entry size: an alt entry that DISAGREES with BTC's multi-day trend is a
+        # lower-quality, idiosyncratic, counter-market trade. NEW cross-symbol data source
+        # (BTC trend feeds ETH/SOL sizing — orthogonal to every within-symbol primitive).
+        # Computed once per bar on BTC's 96-bar OLS log-HL2 slope (very smooth -> averages
+        # ~96 bars of AR(1) noise, ~1/sqrt(96) attenuation, so it adds negligible noise to
+        # alt position values). Converted to net-window-return scale (slope*n) to match the
+        # within-symbol ret_vlong tanh scales. Falls to 0 (no effect) if BTC absent/short.
+        _btc_trend = 0.0
+        if "BTC" in bar_data and len(bar_data["BTC"].history) > 9:
+            _btc_closes = bar_data["BTC"].history["close"].values
+            _btc_n = min(VLONG_WINDOW, len(_btc_closes) - 1)
+            _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
+            _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -782,10 +798,25 @@ class Strategy:
                 # max(curr,prev) anti-dip admission + min-over-2 persist co-gate. Trend
                 # admit gate (_bull_admit/_bear_admit) retained (orthogonal, not a rally
                 # noise source per 8b7df8fa). Both ready + admit required to open.
+                # Architectural (Exp3): cross-asset BTC-trend confirmation SHRINK (ETH/SOL
+                # only; BTC self-referential -> 1.0 byte-identical). Smooth tanh on BTC's
+                # multi-day trend, shrink-only (caps at 1.0): an alt entry whose direction
+                # opposes BTC's multi-day trend gets up to 0.25x first-bar size. Falls out
+                # naturally per regime: bull/crash alts trade WITH BTC (agree -> ~no shrink),
+                # rally alt counter-trend SHORTS oppose BTC's uptrend (-> shrunk), sideways
+                # BTC~flat (-> ~no shrink). Direction-agnostic GENERAL principle (no regime
+                # label). Shrinking low-quality counter-market entries is Sharpe-neutral-to-
+                # positive (proven size-shrink axis) + cuts alt idiosyncratic tracking error.
+                if symbol == "BTC":
+                    _xasset_bull = 1.0
+                    _xasset_bear = 1.0
+                else:
+                    _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
+                    _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
