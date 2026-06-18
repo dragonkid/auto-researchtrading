@@ -129,15 +129,17 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # Spreads counter-trend position-building over more bars to reduce the per-bar
 # position jump from entry-timing jitter under noise (rally-stability lever).
 CT_PACE_STRETCH = 1.0
-# Mild-drift gate for the counter-trend pace stretch: spreading a counter-trend entry
-# is low-cost only when the opposing multi-day drift is MILD (|ret_vlong| small) — the
-# price barely moves during the slower build. Against a STEEP drift each delayed bar
-# fills at a much worse price, so the stretch is faded out. Smooth tanh band on
-# |ret_vlong|; direction-symmetric and continuous (no regime label). vol_ratio could
-# NOT serve this role: it is regime-normalized by the adaptive baseline (~1.0 in both
-# calm and violent regimes), so it cannot distinguish a mild from a steep multi-day drift.
-CT_MILD_KNEE = 0.045
-CT_MILD_WIDTH = 0.030
+# Drift-sign gate for the counter-trend pace stretch. Spreading a counter-trend entry
+# over more bars helps only against a SLOW-grinding drift; against a FAST one each
+# delayed bar fills at a much worse price. In crypto, upward multi-day drifts are slow
+# accumulation grinds while downward drifts are fast liquidation-driven cascades, so the
+# stretch is weighted toward counter-trend entries opposing an UP drift (ret_vlong>0,
+# i.e. pullback shorts in a grind-up) and faded for those opposing a DOWN drift
+# (dead-cat longs in a cascade). Smooth tanh through ret_vlong=0 (no hard switch); the
+# regime effect (helps the grind-up regimes, spares the cascade regime) falls out of the
+# backtest. Neither vol_ratio (regime-normalized -> inert) nor |ret_vlong| (crash bounces
+# occur at a momentarily-flat 96-bar slope, so magnitude separated the wrong way) worked.
+CT_DRIFT_WIDTH = 0.03
 # Scale for converting ret_vlong (multi-day net-return proxy) into counter-trend
 # strength via tanh; matches the gentle end of the _ct_vlong size-attenuator scale.
 CT_PACE_VLONG_SCALE = 0.02
@@ -1457,18 +1459,17 @@ class Strategy:
                     # entry in a multi-day uptrend (rally pullback short) or a bull entry in
                     # a multi-day downtrend (crash dead-cat-bounce long) scores high (~1);
                     # trend-aligned entries score ~0. Frozen for the trade's life.
-                    # Branch step4: GATE the stretch by MILD multi-day drift |ret_vlong|.
-                    # Spreading a counter-trend entry is cheap only when the opposing drift
-                    # is mild (price barely moves over the slower build); against a steep
-                    # drift each delayed bar fills at a much worse price, so fade the stretch.
-                    # Direction-symmetric, continuous (no regime label). The helps-rally /
-                    # spares-crash effect falls out because rally's counter-trend shorts
-                    # oppose a gentle uptrend (small |ret_vlong|) while crash's dead-cat longs
-                    # oppose a steep downtrend (large |ret_vlong|). Replaces the inert vol gate
-                    # (vol_ratio is regime-normalized so it could not separate the two).
+                    # Branch step5: GATE the stretch by the SIGN of the multi-day drift.
+                    # Upward crypto drifts grind slowly (spreading a counter-trend short into
+                    # them is cheap and cuts timing jitter); downward drifts cascade fast
+                    # (spreading a counter-trend long misses the bounce and worsens fills).
+                    # _ct_raw is already nonzero only for counter-trend entries (shorts in an
+                    # uptrend OR longs in a downtrend); the uptrend gate keeps the former and
+                    # fades the latter. Smooth tanh through ret_vlong=0 (no hard switch); the
+                    # helps-grind-up / spares-cascade regime effect falls out of the backtest.
                     _new_dir = 1.0 if target > 0 else -1.0
                     _ct_raw = max(0.0, float(np.tanh(-ret_vlong * _new_dir / CT_PACE_VLONG_SCALE)))
-                    _mild_gate = 0.5 * (1.0 - float(np.tanh((abs(ret_vlong) - CT_MILD_KNEE) / CT_MILD_WIDTH)))
-                    self._entry_ct[symbol] = _ct_raw * _mild_gate
+                    _uptrend_gate = 0.5 * (1.0 + float(np.tanh(ret_vlong / CT_DRIFT_WIDTH)))
+                    self._entry_ct[symbol] = _ct_raw * _uptrend_gate
 
         return signals
