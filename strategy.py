@@ -136,12 +136,6 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
-        # Architectural: per-symbol rolling window of recent REALIZED (closed-trade)
-        # PnL outcomes. Drives a one-sided realized-streak de-risk on entry size —
-        # distinct from _port_dd_atten (unrealized intra-bar equity drawdown). Realized
-        # closed PnL is a lower-noise signal (historical, not perturbed by the current
-        # bar's price), so the de-risk reacts to the strategy's own recent track record.
-        self._realized_hist = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -732,20 +726,10 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Architectural: realized-streak de-risk (one-sided, entry-size). Mean of
-                # the symbol's last realized closed-trade PnLs; when recently net-negative
-                # (a losing streak), shrink the next entry up to 25% to cut DD during bad
-                # stretches. No up-side boost (avoids raising return-vol). Lower-noise than
-                # the unrealized _port_dd_atten because closed PnLs are historical.
-                _rh = self._realized_hist.get(symbol, [])
-                _streak_atten = 1.0
-                if len(_rh) >= 3:
-                    _mean_realized = sum(_rh) / len(_rh)
-                    _streak_atten = 1.0 - 0.25 * max(0.0, -np.tanh(_mean_realized / 0.015))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _streak_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _streak_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1372,10 +1356,6 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                        _rhx = self._realized_hist.setdefault(symbol, [])
-                        _rhx.append(self._last_exit_pnl[symbol])
-                        if len(_rhx) > 5:
-                            del _rhx[0]
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
