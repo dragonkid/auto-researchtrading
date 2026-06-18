@@ -1159,18 +1159,19 @@ class Strategy:
                 _sme = self._soft_max_ema.get(symbol, _soft_max)
                 _sme = _rho_eff * _sme + (1.0 - _rho_eff) * _soft_max
                 self._soft_max_ema[symbol] = _sme
-                # Branch step 3: keep the PROFIT-LOCK giveback term responsive. Step2
-                # (gating RHO by the noisy continuous abs(ret_long)) BACKFIRED — bull
-                # 0.640->0.410: making the EMA memory depend on a bar-to-bar noisy price
-                # quantity added erraticness (same lesson as the prior-session _er-gated
-                # deadband collapse). Instead do NOT gate RHO at all; floor the smoothed
-                # pressure at the RAW peak-giveback term so the EMA can never DELAY a
-                # giveback exit below its instantaneous level. In a strong, sharply-
-                # correcting uptrend (bull) winning positions then lock gains fast
-                # (giveback responsive -> raw protected); the noisier slope/time/ve
-                # momentum terms still benefit from smoothing when THEY dominate the MAX
-                # (chop sideways / grinding rally). Noise-immune (no new continuous gate).
-                _soft_max = max(_sme, _w_pp * _pp_pressure)
+                # Branch step 4: gate the giveback-floor by PEAK DEPTH. Step3's flat floor
+                # at raw pp recovered bull (0.640->0.731) but removed the smoothing gain on
+                # sideways (1.092->0.984) and rally — because those regimes ALSO exit on
+                # pp-giveback and a flat floor made ALL giveback responsive. Decouple by
+                # peak magnitude: deep-profit peaks (bull trend winners) keep giveback
+                # fully responsive (fast gain-lock -> bull raw protected); shallow peaks
+                # (sideways chop, grinding rally) let the giveback smooth (recover their
+                # gain). peak_pnl is a high-water mark (only updates upward on confirmed
+                # rising bars) so gating the floor by it is noise-immune — NOT the step2
+                # continuous-noise (abs(ret_long)) backfire. _pp_min aligns the ramp with
+                # the giveback-activation threshold (pp_pressure is 0 below _pp_min anyway).
+                _pp_floor_w = max(0.0, min(1.0, np.tanh((self.peak_pnl[symbol] - _pp_min) / _pp_min)))
+                _soft_max = max(_sme, _pp_floor_w * _w_pp * _pp_pressure)
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
