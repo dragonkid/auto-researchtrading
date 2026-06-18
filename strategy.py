@@ -173,6 +173,12 @@ class Strategy:
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
         self._entry_accum = {}
+        # Architectural (Exp1 this session): per-symbol counter-trend exit-pressure EMA.
+        # Temporally smooths the fused SOFT exit pressure ONLY while a position is
+        # counter-trend to the multi-day (96-bar) trend (rally's pullback shorts);
+        # trend-aligned holds (bull longs, crash shorts) are byte-identical (alpha=0).
+        # Reset on full exit.
+        self._exit_press_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1130,6 +1136,24 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Architectural (Exp1): counter-trend-DIRECTION-gated temporal EMA
+                # smoothing of the fused soft exit pressure. Rally's noise-sensitive
+                # positions are its counter-trend shorts (pos opposite the multi-day
+                # uptrend, ret_vlong>0 & pos<0); bull (trend-aligned longs) and crash
+                # (trend-aligned shorts) are NOT counter-trend, so a SIGNED
+                # ret_vlong*pos_dir gate spares them BY CONSTRUCTION (alpha->0) —
+                # directly addressing the bull-regression blocker that sank the
+                # churn-gated exit-EMA (bull churns -> churn gate caught bull). This
+                # smooths exit TIMING (the rally TE source) rather than modulating
+                # exit-pressure MAGNITUDE (the discarded ct exit accel/winner-ride).
+                # SL pressure stays raw (protective, applied below). New per-symbol
+                # state _exit_press_ema; reset on full exit. Sideways spared too
+                # (low ret_vlong -> gate ~0).
+                _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
+                _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
+                _prev_soft = self._exit_press_ema.get(symbol, _soft_max)
+                _soft_max = (1.0 - _exit_ema_alpha) * _soft_max + _exit_ema_alpha * _prev_soft
+                self._exit_press_ema[symbol] = _soft_max
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1405,7 +1429,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
