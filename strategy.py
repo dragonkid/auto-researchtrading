@@ -131,7 +131,7 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # memory (noise-robustness vs entry-lag trade-off); THRESH is the smoothed-margin
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
-ENTRY_ACCUM_THRESH = 0.03
+ENTRY_ACCUM_THRESH = 0.0
 
 
 class Strategy:
