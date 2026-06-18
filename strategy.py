@@ -129,6 +129,12 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # Spreads counter-trend position-building over more bars to reduce the per-bar
 # position jump from entry-timing jitter under noise (rally-stability lever).
 CT_PACE_STRETCH = 1.0
+# Vol gate for the counter-trend pace stretch: full stretch at/below CT_PACE_VOL_LO
+# (calm — a slow build still captures the move), ramping to zero at/above
+# CT_PACE_VOL_HI (elevated vol — the counter-trend move is a fast short-lived bounce
+# that over-slowing the entry would miss). Continuous, evaluated at entry.
+CT_PACE_VOL_LO = 0.9
+CT_PACE_VOL_HI = 1.4
 # Scale for converting ret_vlong (multi-day net-return proxy) into counter-trend
 # strength via tanh; matches the gentle end of the _ct_vlong size-attenuator scale.
 CT_PACE_VLONG_SCALE = 0.02
@@ -1448,7 +1454,16 @@ class Strategy:
                     # entry in a multi-day uptrend (rally pullback short) or a bull entry in
                     # a multi-day downtrend (crash dead-cat-bounce long) scores high (~1);
                     # trend-aligned entries score ~0. Frozen for the trade's life.
+                    # Branch step3: GATE the stretch by LOW vol_ratio at entry. The pace
+                    # stretch helps only when a slower build still captures the move — i.e.
+                    # when volatility is low (the move unfolds slowly). In high vol the
+                    # counter-trend move is a fast, short-lived bounce (over-slowing the
+                    # entry misses it), so the stretch is gated off. Continuous vol gate
+                    # (no regime label); the helps-rally / spares-crash effect falls out
+                    # because calm counter-trend entries are the timing-jitter-dominated ones.
                     _new_dir = 1.0 if target > 0 else -1.0
-                    self._entry_ct[symbol] = max(0.0, float(np.tanh(-ret_vlong * _new_dir / CT_PACE_VLONG_SCALE)))
+                    _ct_raw = max(0.0, float(np.tanh(-ret_vlong * _new_dir / CT_PACE_VLONG_SCALE)))
+                    _vol_gate_ct = max(0.0, min(1.0, (CT_PACE_VOL_HI - vol_ratio) / (CT_PACE_VOL_HI - CT_PACE_VOL_LO)))
+                    self._entry_ct[symbol] = _ct_raw * _vol_gate_ct
 
         return signals
