@@ -128,7 +128,7 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # counter-trend entry (entry direction opposing the multi-day ret_vlong trend).
 # Spreads counter-trend position-building over more bars to reduce the per-bar
 # position jump from entry-timing jitter under noise (rally-stability lever).
-CT_PACE_STRETCH = 2.5
+CT_PACE_STRETCH = 1.0
 # Scale for converting ret_vlong (multi-day net-return proxy) into counter-trend
 # strength via tanh; matches the gentle end of the _ct_vlong size-attenuator scale.
 CT_PACE_VLONG_SCALE = 0.02
