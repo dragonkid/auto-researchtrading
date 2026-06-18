@@ -160,6 +160,14 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Experiment: per-symbol 3-bar rolling history of combined_mult for temporal
+        # MEDIAN smoothing of the position-size multiplier. Targets the binding penalty
+        # (stability) by systematically reducing bar-to-bar size noise — like the
+        # load-bearing value-quantization grids, but on the multiplier's TIME axis. A
+        # windowed median (not EMA) is robust to single-bar spikes and is NOT state-
+        # propagating (no recursive dependence), avoiding the noise-amplification that
+        # prior sessions found with EMA-smoothed series.
+        self._cmult_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -438,6 +446,17 @@ class Strategy:
             _cap_high_smooth = _cap_high_t * _cap_high_t * (3.0 - 2.0 * _cap_high_t)
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
+            # Experiment: temporal MEDIAN smoothing of combined_mult (3-bar rolling).
+            # Filters single-bar size spikes (transient vol_ratio / boost noise) so the
+            # position-size multiplier — and hence first-bar entry + scale-in targets —
+            # tracks noise less. Systematic tracking-error reduction (robust stability
+            # lift, not a re-seed lottery). Median over 3 bars, recomputed each bar
+            # (windowed, non-recursive -> no state propagation).
+            _cm_hist = self._cmult_hist.setdefault(symbol, [])
+            _cm_hist.append(combined_mult)
+            if len(_cm_hist) > 3:
+                _cm_hist.pop(0)
+            combined_mult = float(np.median(_cm_hist))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
