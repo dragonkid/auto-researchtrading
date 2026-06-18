@@ -180,10 +180,6 @@ class Strategy:
         # Reset on full exit.
         self._exit_press_ema = {}
         self._voter_bias_ema = {}  # Exp2: counter-trend EMA of additive _voter_bias term
-        # Exp (this session): per-symbol counter-trend EMA of the opposite-side conviction
-        # margin, used to smooth the opp_gate reversal-exit TRIGGER timing for counter-trend
-        # positions (the one major exit decision not yet timing-smoothed). Reset on exit.
-        self._opp_ready_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1293,26 +1289,8 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                # Architectural (Exp2 this session): counter-trend-gated EMA smoothing of
-                # the opp_gate reversal-exit TRIGGER. The opp_gate is the one major exit
-                # decision still firing on an INSTANTANEOUS hard strong-sum crossing
-                # (_opp_strong >= _opp_strong_min, i.e. _opp_margin >= 0); for counter-trend
-                # positions (rally pullback shorts) that crossing flips under AR(1) noise ->
-                # reversal-exit TIMING divergence (the binding rally-stab axis). Replace the
-                # instantaneous strong-sum condition with an EMA-smoothed effective margin:
-                # _opp_margin_eff blends raw->EMA by the SAME signed ct gate the exit-pressure
-                # EMA keep (51f9645d) uses, so trend-aligned positions (bull longs/crash
-                # shorts, ct=0) keep the raw instantaneous condition -> BYTE-IDENTICAL by
-                # construction, while counter-trend positions get a noise-robust EMA crossing.
-                # Pure TIMING smoothing (raw-neutral vein: averages early+late noise flips,
-                # does not bias faster/slower), unlike the discarded ct exit-accel/winner-ride.
-                # votes + trend_avg conditions unchanged. New per-symbol EMA state; reset on exit.
-                _opp_acc = self._opp_ready_ema.get(symbol, _opp_margin)
-                _opp_acc = ENTRY_ACCUM_RHO * _opp_acc + (1.0 - ENTRY_ACCUM_RHO) * _opp_margin
-                self._opp_ready_ema[symbol] = _opp_acc
-                _opp_margin_eff = (1.0 - _ct_pos_str) * _opp_margin + _ct_pos_str * _opp_acc
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _opp_margin_eff >= 0.0 and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _opp_margin_eff >= 0.0 and trend_avg > 0)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
@@ -1462,7 +1440,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._opp_ready_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
