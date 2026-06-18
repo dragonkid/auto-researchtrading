@@ -160,10 +160,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol previous-bar attenuated soft-exit pressure, used by
-        # the winner-protective anti-noise-spike (min-over-2 sustained soft pressure for
-        # winning positions) — the exit-side analog of the Exp2 entry anti-dip.
-        self._soft_max_prev = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1102,23 +1098,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: winner-protective anti-noise-spike on SOFT exit pressure
-                # (exit-side analog of the Exp2 entry anti-dip). Exp2 cut rally ENTRY-timing
-                # divergence via max-over-2 admission; the symmetric remaining rally tracking-
-                # error source is EXIT-timing divergence — a single-bar AR(1) spike in soft
-                # pressure (slope/pp/time/ve/ar) fires an exit/de-risk in the perturbed run
-                # but not the clean run, diverging the equity paths. For WINNING positions
-                # (pos_pnl>0) require the soft pressure to be SUSTAINED across 2 bars
-                # (min-over-2) before it counts, so a single-bar noise spike no longer fires
-                # a premature winner exit. Stop-loss (_sl_pressure) and reversal evidence
-                # (_voter_bias) stay INSTANTANEOUS so loss-cutting and genuine reversals are
-                # never delayed (protective paths unchanged); losing positions also keep
-                # instantaneous soft pressure (noise-vulnerable losers must exit fast).
-                # New per-symbol state (_soft_max_prev) + control flow at the exit fusion.
-                _soft_max_raw = _soft_max
-                if pos_pnl > 0 and _sl_pressure < 0.95:
-                    _soft_max = min(_soft_max, self._soft_max_prev.get(symbol, _soft_max))
-                self._soft_max_prev[symbol] = _soft_max_raw
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1394,7 +1373,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._soft_max_prev):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
