@@ -1081,7 +1081,31 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
+                # Architectural: multi-day counter-trend exit acceleration (NEW
+                # cross-timescale data dep in the EXIT subsystem). ret_vlong (96-bar
+                # OLS slope) currently feeds ONLY entry-size shrink — it has never
+                # entered the exit subsystem. The 20-bar ret_long used by every
+                # existing exit trend-gate is flat/negative during a grinding-uptrend
+                # pullback (exactly when counter-trend shorts open), so ret_long-based
+                # exit logic does NOT recognize those positions as counter-trend.
+                # ret_vlong stays positive through pullbacks → it correctly flags
+                # multi-day-counter-trend holds. Mechanism: a position held AGAINST the
+                # multi-day trend that is currently LOSING is cut faster (the multi-day
+                # trend tends to reassert, so these losers rarely recover). This changes
+                # the exit-timing of losers (the one lever that can move rally RAW —
+                # entry-size shrink is Sharpe-invariant per prior sessions). Fast-
+                # saturation tanh (scale 0.015) puts the trending regimes' operating
+                # range in the near-flat tail → the bias is a near-constant noise-free
+                # additive nudge there, not a noise-tracking quantity. PnL-gated to
+                # losers only (counter-trend winners catching a real pullback are not
+                # cut early). GENERAL mechanism: cuts counter-trend losers in any trend
+                # (rally/bull uptrend → losing shorts; crash downtrend → losing longs;
+                # ~0 in sideways where ret_vlong≈0) — NOT a regime label.
+                _pos_dir_ctv = 1.0 if current_pos > 0 else -1.0
+                _ctv_strength = max(0.0, np.tanh(-_pos_dir_ctv * ret_vlong / 0.015))
+                _ctv_loss = max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT)))
+                _ctv_bias = 0.25 * _ctv_strength * _ctv_loss
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias + _ctv_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
