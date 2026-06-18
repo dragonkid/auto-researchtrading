@@ -169,27 +169,6 @@ class Strategy:
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
-        # Architectural: cross-asset consensus (NEW data source, orthogonal to all 7
-        # single-symbol voters which each read only their own symbol). Under the noise
-        # test perturbation is ~85% correlated across symbols + ~15% idiosyncratic per
-        # symbol; the idiosyncratic component is what flips a single symbol's marginal
-        # entries. The cross-asset directional agreement (mean tanh(ret_long/0.04) over
-        # the active symbols) is dominated by the CORRELATED market-wide component ->
-        # the idiosyncratic per-symbol noise cancels in the mean, making it a noise-
-        # robust market-state signal. Used below as a direction-aware first-bar entry-
-        # size attenuator: entries ALIGNED with the market-wide trend keep full size;
-        # entries against / orthogonal to a weak-consensus (mixed) market are
-        # idiosyncratic and noise-fragile, shrunk up to 30%. Computed once per bar
-        # (pre-pass). Distinct from the own-symbol counter-trend attenuators (those use
-        # THIS symbol's ret_long; this uses the agreement of the OTHER symbols).
-        _xa_dirs = []
-        for _xs in ACTIVE_SYMBOLS:
-            if _xs in bar_data:
-                _xh = bar_data[_xs].history["close"].values
-                if len(_xh) >= LONG_WINDOW + 1:
-                    _xa_dirs.append(np.tanh(((_xh[-1] - _xh[-LONG_WINDOW]) / _xh[-LONG_WINDOW]) / 0.04))
-        _xa_mean = float(np.mean(_xa_dirs)) if _xa_dirs else 0.0
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -747,16 +726,10 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Cross-asset consensus entry-size attenuator (direction-aware, size-down
-                # only). _xa_mean>0 = market-wide bullish; bull entries aligned with it
-                # keep full size, bull entries into a bearish/mixed market (idiosyncratic,
-                # noise-fragile) shrink up to 30%. Symmetric for bear.
-                _xa_atten_bull = 0.70 + 0.30 * max(0.0, min(1.0, _xa_mean))
-                _xa_atten_bear = 0.70 + 0.30 * max(0.0, min(1.0, -_xa_mean))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xa_atten_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xa_atten_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
