@@ -160,12 +160,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol EXIT-bar history (rolling list of bar_count at
-        # which positions closed). Used by the exit-density-gated first-bar ENTRY-size
-        # quantization to detect ongoing entry-exit churn bursts (rally signature)
-        # at the moment a fresh entry opens — the entry-COUNT gate (len(_eh)) misses
-        # these because the entry itself is what increments the count.
-        self._exit_bar_history = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1356,43 +1350,12 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
-            # Architectural: EXIT-density-gated first-bar ENTRY-size quantization.
-            # Rally's residual tracking error lives largely in the FIRST entry of each
-            # churn burst, which opens at low entry-churn (len(_eh)<2) so the existing
-            # churn-gated grids do NOT fire on it — the first-bar entry SIZE is an
-            # un-quantized continuous price-derived value that AR(1) noise perturbs
-            # bar-to-bar across the ensemble (the entry-COUNT gate misses these because
-            # the entry itself is what increments len(_eh)). Gate instead on recent EXIT
-            # density: a fresh entry following >=2 exits within 30 bars is part of an
-            # ongoing entry-exit churn burst (the rally signature), distinct from sparse
-            # bull/crash/sideways entries (rare recent exits -> gate ~0). Quantize the
-            # entry target onto the SAME stable lattice (0.06*equity*BASE, slow-moving =
-            # noise-stable lines) so clean and perturbed first-bar entry sizes collapse
-            # onto identical grid cells -> lower first-bar return-tracking error -> higher
-            # rally stability. PURE ROUNDING (not price-derived sizing, which prior
-            # sessions found ADDS rally noise); integer exit-count gate is noise-immune
-            # (same property as len(_eh)). Does NOT change the enter/no-enter decision or
-            # direction (risk transition preserved) — only first-bar size magnitude;
-            # round-to-nearest with non-zero/same-sign guard so a tiny entry is never
-            # zeroed (trade-set preserved). New per-symbol state + control flow.
-            _xh = self._exit_bar_history.setdefault(symbol, [])
-            while _xh and self.bar_count - _xh[0] > 30:
-                _xh.pop(0)
-            _exit_gate = max(0.0, np.tanh((len(_xh) - 1.5) / 0.6))
-            _is_entry = current_pos == 0 and target != 0
-            if _is_entry and _exit_gate > 0.0:
-                _grid_e = 0.06 * equity * BASE_POSITION_SIZE
-                if _grid_e > 0:
-                    _qt_e = round(target / _grid_e) * _grid_e
-                    if _qt_e != 0 and (_qt_e > 0) == (target > 0):
-                        target = _qt_e
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                        self._exit_bar_history.setdefault(symbol, []).append(self.bar_count)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
