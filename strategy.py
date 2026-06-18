@@ -128,18 +128,10 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # counter-trend entry (entry direction opposing the multi-day ret_vlong trend).
 # Spreads counter-trend position-building over more bars to reduce the per-bar
 # position jump from entry-timing jitter under noise (rally-stability lever).
-CT_PACE_STRETCH = 1.0
-# Drift-sign gate for the counter-trend pace stretch. Spreading a counter-trend entry
-# over more bars helps only against a SLOW-grinding drift; against a FAST one each
-# delayed bar fills at a much worse price. In crypto, upward multi-day drifts are slow
-# accumulation grinds while downward drifts are fast liquidation-driven cascades, so the
-# stretch is weighted toward counter-trend entries opposing an UP drift (ret_vlong>0,
-# i.e. pullback shorts in a grind-up) and faded for those opposing a DOWN drift
-# (dead-cat longs in a cascade). Smooth tanh through ret_vlong=0 (no hard switch); the
-# regime effect (helps the grind-up regimes, spares the cascade regime) falls out of the
-# backtest. Neither vol_ratio (regime-normalized -> inert) nor |ret_vlong| (crash bounces
-# occur at a momentarily-flat 96-bar slope, so magnitude separated the wrong way) worked.
-CT_DRIFT_WIDTH = 0.03
+CT_PACE_STRETCH = 0.5
+# (drift-sign gate removed in branch step6 — see entry-emission comment; the
+# regime-directional split is not separable by any per-bar feature without a
+# regime classifier, so the lever is a gentler global stretch magnitude.)
 # Scale for converting ret_vlong (multi-day net-return proxy) into counter-trend
 # strength via tanh; matches the gentle end of the _ct_vlong size-attenuator scale.
 CT_PACE_VLONG_SCALE = 0.02
@@ -1459,17 +1451,17 @@ class Strategy:
                     # entry in a multi-day uptrend (rally pullback short) or a bull entry in
                     # a multi-day downtrend (crash dead-cat-bounce long) scores high (~1);
                     # trend-aligned entries score ~0. Frozen for the trade's life.
-                    # Branch step5: GATE the stretch by the SIGN of the multi-day drift.
-                    # Upward crypto drifts grind slowly (spreading a counter-trend short into
-                    # them is cheap and cuts timing jitter); downward drifts cascade fast
-                    # (spreading a counter-trend long misses the bounce and worsens fills).
-                    # _ct_raw is already nonzero only for counter-trend entries (shorts in an
-                    # uptrend OR longs in a downtrend); the uptrend gate keeps the former and
-                    # fades the latter. Smooth tanh through ret_vlong=0 (no hard switch); the
-                    # helps-grind-up / spares-cascade regime effect falls out of the backtest.
+                    # Branch step6: drift-sign gating REMOVED (steps 3-5 proved the
+                    # helped[rally,bull] / hurt[crash] split is regime-directional, NOT
+                    # separable by any per-bar feature: vol_ratio is regime-normalized,
+                    # |ret_vlong| separates backwards, drift-sign keeps crash's mixed-drift
+                    # counter-trend trades, and rally's beneficial shorts sit at the same
+                    # near-zero drift as crash's harmful trades). The crash cost is a
+                    # trade-count artifact (slower build merges a few round-trips, dropping
+                    # crash below the 50-trade sample_factor knee), so the lever is a GENTLER
+                    # stretch that keeps most of the rally-stability gain while disturbing
+                    # fewer crash trades. Ungated counter-trend strength, smaller magnitude.
                     _new_dir = 1.0 if target > 0 else -1.0
-                    _ct_raw = max(0.0, float(np.tanh(-ret_vlong * _new_dir / CT_PACE_VLONG_SCALE)))
-                    _uptrend_gate = 0.5 * (1.0 + float(np.tanh(ret_vlong / CT_DRIFT_WIDTH)))
-                    self._entry_ct[symbol] = _ct_raw * _uptrend_gate
+                    self._entry_ct[symbol] = max(0.0, float(np.tanh(-ret_vlong * _new_dir / CT_PACE_VLONG_SCALE)))
 
         return signals
