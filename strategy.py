@@ -124,6 +124,14 @@ ENTRY_INITIAL_FRAC_BASE = 0.43
 ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
+# Counter-trend scale-in pace stretch: extra scale-in bars added for a fully
+# counter-trend entry (entry direction opposing the multi-day ret_vlong trend).
+# Spreads counter-trend position-building over more bars to reduce the per-bar
+# position jump from entry-timing jitter under noise (rally-stability lever).
+CT_PACE_STRETCH = 2.5
+# Scale for converting ret_vlong (multi-day net-return proxy) into counter-trend
+# strength via tanh; matches the gentle end of the _ct_vlong size-attenuator scale.
+CT_PACE_VLONG_SCALE = 0.02
 
 # Architectural (Exp2): entry-readiness EMA accumulator parameters. The admission
 # decision fires on an exponentially-smoothed conviction margin rather than an
@@ -173,6 +181,13 @@ class Strategy:
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
         self._entry_accum = {}
+        # Per-symbol counter-trend strength CACHED at entry (entry direction vs the
+        # multi-day ret_vlong trend), in [0,1]. Drives a noise-immune scale-in PACE
+        # stretch: counter-trend entries (the timing-sensitive rally pullback shorts)
+        # build position over more bars so a 1-bar entry-timing jitter under noise
+        # moves the position by a smaller per-bar fraction. Cached at entry (not
+        # recomputed per bar) so the scale-in pace is deterministic for the trade's life.
+        self._entry_ct = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -807,7 +822,16 @@ class Strategy:
                 # so bull's 0.806 noise-removal gain is preserved). Single structural change
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
-                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
+                # Architectural: counter-trend scale-in PACE stretch (cached at entry).
+                # The base pace depends only on smooth long-window rsi_trend_str ([2.0,3.0]).
+                # Counter-trend entries (rally pullback shorts, crash dead-cat longs) are the
+                # timing-sensitive trades whose 1-bar entry-jitter under noise dominates the
+                # rally equity-return tracking error; spreading their position-build over more
+                # bars shrinks the per-bar position step a timing shift produces. _entry_ct is
+                # frozen at entry (not recomputed per bar) so the pace is deterministic for the
+                # trade's life — no per-bar price-derived term to add boundary noise.
+                _ct_pace = self._entry_ct.get(symbol, 0.0)
+                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str) + CT_PACE_STRETCH * _ct_pace)  # [2.0, ~5.5]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
@@ -1419,5 +1443,12 @@ class Strategy:
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
+                    # Cache counter-trend strength of THIS entry (direction vs multi-day
+                    # ret_vlong trend) for the noise-immune scale-in pace stretch. A bear
+                    # entry in a multi-day uptrend (rally pullback short) or a bull entry in
+                    # a multi-day downtrend (crash dead-cat-bounce long) scores high (~1);
+                    # trend-aligned entries score ~0. Frozen for the trade's life.
+                    _new_dir = 1.0 if target > 0 else -1.0
+                    self._entry_ct[symbol] = max(0.0, float(np.tanh(-ret_vlong * _new_dir / CT_PACE_VLONG_SCALE)))
 
         return signals
