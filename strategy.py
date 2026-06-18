@@ -1352,6 +1352,21 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
+            # Branch step 2: rally QUIET-stretch resize grid (fills the documented coverage
+            # gap). rally's BURST resizes are gridded (high-churn grid + deadband) and the
+            # calm grid covers never-bursting symbols (crash/sideways), but a BURSTED symbol's
+            # QUIET-stretch resizes (between bursts: _cm>2 yet len(_eh)<=1 so _churn_dz<0.5)
+            # fall through BOTH gates -> ungridded noise-sensitive resizes that cap rally
+            # stability. With the +0.011 rally-raw buffer from TOD removal, grid them on the
+            # same stable lattice. Noise-immune integer-churn gate (len(_eh)/_cm are price-
+            # independent integers); resizes only; snap toward current_pos.
+            _gap_gate = 1.0 if (_cm > 2 and _churn_dz < 0.5) else 0.0
+            if _is_resize and _gap_gate > 0.0:
+                _grid_g = 0.06 * equity * BASE_POSITION_SIZE
+                if _grid_g > 0:
+                    _qt_g = round(target / _grid_g) * _grid_g
+                    if (_qt_g > 0) == (target > 0) and _qt_g != 0:
+                        target = _qt_g
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
