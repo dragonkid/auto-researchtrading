@@ -823,7 +823,17 @@ class Strategy:
                 # crash's position trajectory and trade count are left byte-identical
                 # (gate=0 at len<=1). Smooth fast-saturating tanh; multiplies _entry_full_bars_dyn.
                 _churn_pace_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 at len<=1, ~1 at len>=3
-                _entry_full_bars_dyn = max(1.5, (2.0 + 1.0 * (1.0 - rsi_trend_str)) * (1.0 + SCALE_IN_CHURN_STRETCH * _churn_pace_gate))  # [2.0, 3.0] base * stretch
+                # Branch step 2: AND a counter-trend gate. Exp1 (churn-only) raised rally
+                # stability (+0.037) but hurt RAW (bull -0.135, rally raw -0.087) because it
+                # slowed trend-aligned bursty entries that favor a fast build. Prior session's
+                # counter-trend-only stretch raised rally/bull RAW but dropped crash trades.
+                # Multiply the two gates: stretch fires ONLY on counter-trend AND high-churn
+                # entries — trend-aligned bursty entries (rally/bull momentum) keep fast build
+                # (raw preserved), crash stays off (churn gate ~0 at len<=1), and counter-trend
+                # bursty entries (the noise-sensitive ones) get spread (the rally-stab lever).
+                _pos_dir_pace = 1.0 if current_pos > 0 else -1.0
+                _ct_pace_gate = max(0.0, np.tanh(-ret_long * _pos_dir_pace / 0.04))  # counter-trend: pos opposes 20-bar trend
+                _entry_full_bars_dyn = max(1.5, (2.0 + 1.0 * (1.0 - rsi_trend_str)) * (1.0 + SCALE_IN_CHURN_STRETCH * _churn_pace_gate * _ct_pace_gate))  # [2.0, 3.0] base * stretch
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
