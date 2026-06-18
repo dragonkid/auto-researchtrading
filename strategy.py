@@ -1159,19 +1159,21 @@ class Strategy:
                 _sme = self._soft_max_ema.get(symbol, _soft_max)
                 _sme = _rho_eff * _sme + (1.0 - _rho_eff) * _soft_max
                 self._soft_max_ema[symbol] = _sme
-                # Branch step 4: gate the giveback-floor by PEAK DEPTH. Step3's flat floor
-                # at raw pp recovered bull (0.640->0.731) but removed the smoothing gain on
-                # sideways (1.092->0.984) and rally — because those regimes ALSO exit on
-                # pp-giveback and a flat floor made ALL giveback responsive. Decouple by
-                # peak magnitude: deep-profit peaks (bull trend winners) keep giveback
-                # fully responsive (fast gain-lock -> bull raw protected); shallow peaks
-                # (sideways chop, grinding rally) let the giveback smooth (recover their
-                # gain). peak_pnl is a high-water mark (only updates upward on confirmed
-                # rising bars) so gating the floor by it is noise-immune — NOT the step2
-                # continuous-noise (abs(ret_long)) backfire. _pp_min aligns the ramp with
-                # the giveback-activation threshold (pp_pressure is 0 below _pp_min anyway).
-                _pp_floor_w = max(0.0, min(1.0, np.tanh((self.peak_pnl[symbol] - _pp_min) / _pp_min)))
-                _soft_max = max(_sme, _pp_floor_w * _w_pp * _pp_pressure)
+                # Branch step 5: gate the giveback-floor by TREND-ALIGNMENT, not peak depth
+                # (step4 peak-gate did NOT recover sideways/rally: sideways 0.987~=step3,
+                # their peaks are not shallow enough to separate from bull). The clean
+                # decoupling axis is trend-alignment (pos_dir * ret_long): bull's HARM is
+                # delayed giveback on TREND-ALIGNED longs (sharp real corrections in a
+                # strong uptrend need fast gain-lock); rally/sideways BENEFIT is smoothing
+                # giveback on counter-trend / chop positions (noise pullbacks that mean-
+                # revert -> false giveback exits avoided -> rally raw + sideways raw up).
+                # Floor pp (responsive) only when trend-aligned; let it smooth when counter-
+                # trend or in chop (low |ret_long| -> gate ~0). Gates the FLOOR weight (a
+                # max() operand), NOT the EMA RHO, so it avoids the step2 erratic-memory
+                # backfire (RHO stays constant; only giveback responsiveness varies smoothly).
+                _pos_dir_pf = 1.0 if current_pos > 0 else -1.0
+                _trend_align_pf = max(0.0, np.tanh(ret_long * _pos_dir_pf / 0.05))
+                _soft_max = max(_sme, _trend_align_pf * _w_pp * _pp_pressure)
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
