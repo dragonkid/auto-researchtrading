@@ -756,28 +756,6 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Architectural: churn-gated voter-DISPERSION first-bar entry-size
-                # attenuator. NEW orthogonal signal: the within-side dispersion (std)
-                # of the 7 own-side voter confidences measures whether the aggregate
-                # _strong rests on BROAD agreement (all confs similar) or a FEW dominant
-                # voters (some near 0.9, some near 0.1). High dispersion = noise-FRAGILE:
-                # the aggregate is carried by a handful of marginal voters that an AR(1)
-                # perturbation can flip; low dispersion = robust consensus. Distinct from
-                # every existing attenuator: _quality uses CROSS-side (bull vs bear) ratio,
-                # _consensus uses multi-window SLOPE agreement, _tq uses path R^2 — none
-                # measure agreement AMONG the 7 heterogeneous voters themselves. Gate by
-                # the SAME noise-immune integer churn count len(_eh) the proven stability
-                # attenuators/grids use: fires in high-churn rally bursts (where fast
-                # re-entries are the marginal split-vote noise-fragile ones), ~0 in
-                # low-churn regimes (bull/crash/sideways entries left BYTE-IDENTICAL, raw
-                # preserved). Shrinks the most noise-fragile bursty re-entries so their
-                # clean/perturbed Sharpe drag is down-weighted -> rally stability up.
-                # Direction-agnostic, continuous tanh, shrink-only (caps at 1.0).
-                _disp_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 len<=1, ~1 len>=3
-                _bull_disp = float(np.std(_bull_confs))
-                _bear_disp = float(np.std(_bear_confs))
-                _bull_agree_atten = 1.0 - 0.30 * _disp_churn * max(0.0, min(1.0, np.tanh((_bull_disp - 0.22) / 0.12)))
-                _bear_agree_atten = 1.0 - 0.30 * _disp_churn * max(0.0, min(1.0, np.tanh((_bear_disp - 0.22) / 0.12)))
                 # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
                 # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
                 # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
@@ -798,9 +776,9 @@ class Strategy:
                 # admit gate (_bull_admit/_bear_admit) retained (orthogonal, not a rally
                 # noise source per 8b7df8fa). Both ready + admit required to open.
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _bull_agree_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _bear_agree_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
