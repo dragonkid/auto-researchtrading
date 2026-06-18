@@ -76,10 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp2 (this session): max EMA memory for the CHURN-GATED soft-exit-pressure
-# smoother. The EMA only engages where the integer entry-churn count is high
-# (rally bursts); in sparse-entry regimes RHO scales to ~0 so exits stay raw.
-EXIT_EMA_RHO = 0.5
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -177,11 +173,6 @@ class Strategy:
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
         self._entry_accum = {}
-        # Exp2 (this session): per-symbol temporal-EMA of the fused soft exit
-        # pressure, smoothed ONLY when churn is high (rally bursts) via a churn-
-        # gated effective RHO. Reset on every full exit / flip so a fresh position
-        # starts with no carried exit pressure.
-        self._soft_max_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1139,41 +1130,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Exp2 (this session): CHURN-GATED temporal-EMA smoothing of the fused
-                # soft exit pressure. Exp1 this session smoothed the soft pressure
-                # UNIFORMLY (RHO=0.5): it lifted rally stability (0.672->0.705) but
-                # DELAYED exits everywhere, wrecking the tight-exit alpha of the mean-
-                # reverting regimes (bull -27pct, sideways -45pct). The smoothing
-                # benefit is real but must NOT fire where tight exits are the alpha.
-                # Gate the EMA strength by the SAME noise-immune integer churn count
-                # len(_eh) the order-emission grids use: high local entry density
-                # (rally bursts, len>=3) -> RHO up to EXIT_EMA_RHO (smooth out exit-
-                # timing jitter that caps rally stability); low churn (bull/sideways/
-                # crash sparse entries, len<=1) -> RHO~0 so _sme == _soft_max (raw
-                # exits preserved, those regimes byte-identical to baseline). The hard
-                # stop-loss path (max with _sl_pressure below) stays on RAW pressure so
-                # protective exits remain instant. Behavioral self-gate, not a regime
-                # classifier — the regime effects fall out of realized entry density.
-                _exit_ema_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 at len<=1, ~1 at len>=3
-                _rho_eff = EXIT_EMA_RHO * _exit_ema_gate
-                _sme = self._soft_max_ema.get(symbol, _soft_max)
-                _sme = _rho_eff * _sme + (1.0 - _rho_eff) * _soft_max
-                self._soft_max_ema[symbol] = _sme
-                # Branch step 5: gate the giveback-floor by TREND-ALIGNMENT, not peak depth
-                # (step4 peak-gate did NOT recover sideways/rally: sideways 0.987~=step3,
-                # their peaks are not shallow enough to separate from bull). The clean
-                # decoupling axis is trend-alignment (pos_dir * ret_long): bull's HARM is
-                # delayed giveback on TREND-ALIGNED longs (sharp real corrections in a
-                # strong uptrend need fast gain-lock); rally/sideways BENEFIT is smoothing
-                # giveback on counter-trend / chop positions (noise pullbacks that mean-
-                # revert -> false giveback exits avoided -> rally raw + sideways raw up).
-                # Floor pp (responsive) only when trend-aligned; let it smooth when counter-
-                # trend or in chop (low |ret_long| -> gate ~0). Gates the FLOOR weight (a
-                # max() operand), NOT the EMA RHO, so it avoids the step2 erratic-memory
-                # backfire (RHO stays constant; only giveback responsiveness varies smoothly).
-                _pos_dir_pf = 1.0 if current_pos > 0 else -1.0
-                _trend_align_pf = max(0.0, np.tanh(ret_long * _pos_dir_pf / 0.05))
-                _soft_max = max(_sme, _trend_align_pf * _w_pp * _pp_pressure)
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1449,7 +1405,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._soft_max_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -1461,7 +1417,6 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._soft_max_ema.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
