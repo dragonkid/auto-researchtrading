@@ -818,6 +818,20 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural: counter-trend-conditional stop tightness (new cross-
+                # timescale data dep on the exit-side stop). Positions held AGAINST the
+                # multi-day trend (ret_vlong) — rally pullback shorts, crash dead-cat-
+                # bounce longs — are more likely to be real adverse moves than trend-
+                # aligned pullback noise, so tighten their stop (cut the loss tail faster
+                # -> raise Sharpe). Trend-aligned positions keep a slightly WIDER stop to
+                # survive pullback noise and let the trend resume. Gated on ret_vlong
+                # (96-bar OLS slope = slow, noise-robust) and applied to the entry-
+                # anchored stop (noise-immune per design), so it changes captured PnL
+                # without introducing an entry-boundary noise source. Multiplier ~[0.80, 1.10].
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _ct_vlong_sl = max(0.0, np.tanh(-_pos_dir_sl * ret_vlong / 0.02))  # counter to multi-day trend
+                _ta_vlong_sl = max(0.0, np.tanh(_pos_dir_sl * ret_vlong / 0.02))   # aligned with multi-day trend
+                _stop_abs = _stop_abs * (1.0 - 0.20 * _ct_vlong_sl + 0.10 * _ta_vlong_sl)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
