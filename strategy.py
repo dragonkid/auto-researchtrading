@@ -1049,13 +1049,14 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
+                # Exp4 (architectural simplification, exit-source-set subsystem redesign):
+                # drop the vol-expansion (_ve) and adverse-recovery (_ar) soft sources from
+                # the MAX fusion, reducing the active soft set to slope+pp+time. Tests
+                # whether _ve and _ar are load-bearing or redundant with the core three.
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
-                    _w_ve * _ve_pressure,
-                    _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
