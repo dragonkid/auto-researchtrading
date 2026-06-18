@@ -726,24 +726,10 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                # Subsystem redesign (position-sizing pipeline): MIN-bottleneck replaces
-                # the multiplicative PRODUCT of the first-bar size attenuators. In the
-                # product, each attenuator contributes independent multiplicative noise,
-                # so the position-size log-variance under AR(1) perturbation is the SUM of
-                # ~12 attenuator log-noise sources -> size wobbles with the accumulated
-                # noise of every gate. The MIN takes only the single BINDING constraint
-                # (the smallest attenuator), so the size tracks ONE noise source at a time
-                # -> if rally's tracking error is driven by compounding sizing-noise, this
-                # collapses it. Each attenuator is independently a [0,1]-ish size cap, so
-                # MIN preserves their protective intent (the tightest cap still binds) while
-                # discarding the noise-compounding of stacking them. New control flow:
-                # size = base * min(attenuators) instead of base * product(attenuators).
-                _bull_attens = (_cooldown_factor, _bull_ct_atten, _bull_ct_vlong, _bull_consensus_atten, _bull_quality_atten, _vol_entry_atten, _outcome_size_mult, _port_dd_atten, _tod_atten, _bull_conv_atten, _churn_size_atten, _tq_atten)
-                _bear_attens = (_cooldown_factor, _bear_ct_atten, _bear_ct_vlong, _bear_consensus_atten, _bear_quality_atten, _vol_entry_atten, _outcome_size_mult, _port_dd_atten, _tod_atten, _bear_conv_atten, _churn_size_atten, _tq_atten)
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * min(_bull_attens)
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * min(_bear_attens)
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
