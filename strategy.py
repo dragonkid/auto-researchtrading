@@ -124,6 +124,7 @@ ENTRY_INITIAL_FRAC_BASE = 0.43
 ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
+SCALE_IN_CHURN_STRETCH = 1.0  # churn-gated scale-in pace stretch magnitude (fires in bursty-entry regimes)
 
 # Architectural (Exp2): entry-readiness EMA accumulator parameters. The admission
 # decision fires on an exponentially-smoothed conviction margin rather than an
@@ -807,7 +808,22 @@ class Strategy:
                 # so bull's 0.806 noise-removal gain is preserved). Single structural change
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
-                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
+                # Architectural: churn-gated scale-in PACE stretch (new cross-component
+                # data dep at the position-build layer). Prior session validated that
+                # stretching the scale-in pace MOVES rally stability up (0.672->0.709) by
+                # spreading the entry build over more bars — cutting the per-bar position
+                # step that 1-bar AR(1) entry-timing jitter perturbs. Its keep blocker was
+                # crash: the ungated/counter-trend-gated stretch dropped crash 45->41 trades
+                # (below the 50 sample_factor knee). That split was NOT gate-able by
+                # vol_ratio (inert), |ret_vlong| (backwards), or abs-vol (failed). This gates
+                # the stretch on the noise-IMMUNE integer churn count len(_eh) — the SAME
+                # signal the order-emission grids use — which fires in rally/bull bursts
+                # (len reaches 3-5) and stays ~0 in crash (max len=1) and sideways (max
+                # len=2). So rally's entry build is spread (the stability lever) while
+                # crash's position trajectory and trade count are left byte-identical
+                # (gate=0 at len<=1). Smooth fast-saturating tanh; multiplies _entry_full_bars_dyn.
+                _churn_pace_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 at len<=1, ~1 at len>=3
+                _entry_full_bars_dyn = max(1.5, (2.0 + 1.0 * (1.0 - rsi_trend_str)) * (1.0 + SCALE_IN_CHURN_STRETCH * _churn_pace_gate))  # [2.0, 3.0] base * stretch
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
