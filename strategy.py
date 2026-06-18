@@ -125,6 +125,14 @@ ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 
+# Architectural (Exp2): entry-readiness EMA accumulator parameters. The admission
+# decision fires on an exponentially-smoothed conviction margin rather than an
+# instantaneous strong-sum threshold + anti-dip + persist stack. RHO sets the EMA
+# memory (noise-robustness vs entry-lag trade-off); THRESH is the smoothed-margin
+# crossing level (0.0 == the old _strong_min admission boundary).
+ENTRY_ACCUM_RHO = 0.5
+ENTRY_ACCUM_THRESH = 0.0
+
 
 class Strategy:
     def __init__(self):
@@ -161,6 +169,10 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
+        # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
+        # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
+        self._entry_accum = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -390,6 +402,27 @@ class Strategy:
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
             _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
+            # Architectural subsystem redesign (Exp2, entry-admission gate): entry-readiness
+            # EMA accumulator. Replaces three coupled instantaneous mechanisms — the
+            # strong-sum threshold crossing, the a5c60e3a max(curr,prev) anti-dip stickiness,
+            # and the min-over-2 persist co-gate — with ONE exponentially-smoothed
+            # conviction-margin readiness signal. The margin is already threshold-normalized
+            # (0.0 == old strong_min boundary); EMA-smoothing it integrates single-bar AR(1)
+            # noise OUT of the entry DECISION (crossing of a smooth EMA is far less
+            # noise-sensitive than crossing of the instantaneous margin), directly targeting
+            # rally entry-TIMING divergence — the binding constraint's root cause and the one
+            # axis the persist catch-22 (Exp1: loosening persist admits noise-sensitive
+            # trades) could not reach. Distinct from the dead-end size temporal-smoothing
+            # (combined_mult is a MINOR input): the conviction margin drives the entry timing
+            # that IS the dominant rally tracking-error source. Sustained-conviction filtering
+            # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
+            # after margin has been positive ~2 bars. New per-symbol state.
+            _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
+            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            self._entry_accum[symbol] = (_acc_b, _acc_s)
+            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
+            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -494,16 +527,13 @@ class Strategy:
                 # protective in fast crashes). Continuous tanh on abs(ret_long).
                 # New cross-timescale data dependency: entry gate strictness on
                 # long-window trend strength.
-                _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
-                _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
-                else:
-                    _min_bull_2 = _bull_strong
-                    _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Exp2 redesign: the entry-persistence (min-over-2) gate AND the
+                # max(curr,prev) anti-dip admission are both SUBSUMED by the EMA-of-margin
+                # readiness gate (_bull_ready/_bear_ready, computed near the margins above).
+                # The EMA crosses its threshold only after conviction has been sustained
+                # ~2 bars (preserving the persist gate's spike-filtering purpose) while
+                # smoothing single-bar dips/spikes out of the decision (the anti-dip role),
+                # so the two former gates collapse into one continuous noise-robust signal.
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -741,11 +771,13 @@ class Strategy:
                 # requires sustained conviction -> clean trades unchanged). Hypothesis: anti-
                 # dip admission reduces the entry-TIMING divergence that drives rally tracking
                 # error (the binding constraint), raising rally stability at byte-identical raw.
-                _bull_strong_adm = max(_bull_strong, _hist[-2][0]) if len(_hist) >= 2 else _bull_strong
-                _bear_strong_adm = max(_bear_strong, _hist[-2][1]) if len(_hist) >= 2 else _bear_strong
-                if _bull_strong_adm >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Exp2 subsystem redesign: readiness gate (EMA-of-margin) replaces the
+                # max(curr,prev) anti-dip admission + min-over-2 persist co-gate. Trend
+                # admit gate (_bull_admit/_bear_admit) retained (orthogonal, not a rally
+                # noise source per 8b7df8fa). Both ready + admit required to open.
+                if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
-                elif _bear_strong_adm >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
