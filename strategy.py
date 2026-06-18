@@ -394,9 +394,6 @@ class Strategy:
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
-            # Exp4: capture previous-bar trend_avg (self.smoothed_trend persists across bars,
-            # never popped) BEFORE overwriting, for the anti-noise trend-admit gate below.
-            _prev_trend = self.smoothed_trend.get(symbol, trend_avg)
             self.smoothed_trend[symbol] = trend_avg
 
             # Smooth cooldown_factor (tanh decay over trend-scaled window) +
@@ -531,23 +528,8 @@ class Strategy:
                 # softening actually functional.
                 _bull_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bull_margin - 0.3) / 0.3))
                 _bear_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bear_margin - 0.3) / 0.3))
-                # Architectural: anti-noise robustness on the TREND-ADMIT gate (Exp2-analog,
-                # second entry boundary). Exp2 made the strong-sum gate anti-dip; the trend
-                # gate (_trend_biased vs the deadzone) is the OTHER admission boundary that
-                # flips under noise — binding specifically for rally PULLBACK-SHORT (bear)
-                # entries, where _trend_biased hovers near the deadzone during pullbacks so a
-                # single-bar AR(1) trend spike cancels a bear entry in the perturbed run but
-                # not the clean run (entry-timing divergence = the binding rally tracking
-                # error). Use the 2-bar extreme that PRESERVES admission: bull-admit takes
-                # max(curr,prev) trend (robust to a downward dip), bear-admit takes min(curr,
-                # prev) trend (robust to an upward spike). Co-gated by the (anti-dip) strong-
-                # sum + min-over-2 persist gates which both require sustained conviction, so a
-                # prev-bar trend crossing that already entered or was blocked leaves CLEAN
-                # trades unchanged (same byte-identical property Exp2 had). NOT a delay (no
-                # winner-exit profit-locking to wall, unlike Exp3) — purely makes the entry
-                # ADMISSION decision noise-robust. New per-symbol state (_prev_trend) reuse.
-                _bull_admit = max(_trend_biased, _prev_trend) > -TREND_GATE_DEADZONE * _bull_relax
-                _bear_admit = min(_trend_biased, _prev_trend) < TREND_GATE_DEADZONE * _bear_relax
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _bull_relax
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * _bear_relax
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
                 # count gate since both derive from the same _bull_confs values. Removing the count
