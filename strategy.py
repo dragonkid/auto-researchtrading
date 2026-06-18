@@ -496,14 +496,30 @@ class Strategy:
                 # long-window trend strength.
                 _trend_str_persist = max(0.0, np.tanh(abs(ret_long) / 0.05))  # [0,~1]
                 _entry_persist_factor = 0.95 - 0.30 * _trend_str_persist  # 0.95 in chop, 0.65 in strong trend
-                if len(_hist) >= 2:
-                    _min_bull_2 = min(_hist[-2][0], _hist[-1][0])
-                    _min_bear_2 = min(_hist[-2][1], _hist[-1][1])
+                # Architectural: noise-robust 2-of-3 MAJORITY persistence gate (completes
+                # the a5c60e3a anti-dip admission work on the persist co-gate). The primary
+                # admission gate already fires on max(curr,prev-bar) strong-sum (single-bar
+                # dip immune), but the persist co-gate still used min(curr,prev) >=
+                # factor*strong_min — which cancels an otherwise-sustained entry the moment
+                # a SINGLE bar dips below threshold under AR(1) noise, leaving residual
+                # rally entry-TIMING divergence on exactly the entries anti-dip protects.
+                # Replace unanimity-of-2 with MAJORITY-of-3: count how many of the last 3
+                # strong-sum bars cleared the persist threshold, require >= 2. A single-bar
+                # DIP -> still 2 of 3 clear -> persist HOLDS (anti-dip, both sides). A
+                # single-bar SPIKE -> only 1 of 3 clears -> persist FAILS (spike-filtering,
+                # the gate's original purpose, preserved). Majority needs ~1.5 bars to flip
+                # vs 1 bar for min -> structurally less noise-sensitive near the boundary.
+                _thr_bull_p = _entry_persist_factor * _bull_strong_min
+                _thr_bear_p = _entry_persist_factor * _bear_strong_min
+                if len(_hist) >= 3:
+                    _bull_persist_ok = sum(1 for _h3 in _hist[-3:] if _h3[0] >= _thr_bull_p) >= 2
+                    _bear_persist_ok = sum(1 for _h3 in _hist[-3:] if _h3[1] >= _thr_bear_p) >= 2
+                elif len(_hist) >= 2:
+                    _bull_persist_ok = min(_hist[-2][0], _hist[-1][0]) >= _thr_bull_p
+                    _bear_persist_ok = min(_hist[-2][1], _hist[-1][1]) >= _thr_bear_p
                 else:
-                    _min_bull_2 = _bull_strong
-                    _min_bear_2 = _bear_strong
-                _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
-                _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                    _bull_persist_ok = _bull_strong >= _thr_bull_p
+                    _bear_persist_ok = _bear_strong >= _thr_bear_p
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
