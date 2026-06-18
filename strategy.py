@@ -160,16 +160,6 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
-        # Architectural: per-symbol entry-conviction multiplier persisted through the
-        # full hold. The 12 first-bar entry attenuators (conv/quality/consensus/ct/...)
-        # only shrink bar 0; the scale-in path then grows the position back to the raw
-        # `size` asymptote within 2-3 bars, UNDOING the conviction shrink. Storing the
-        # conviction-margin attenuator at entry and applying it to the scale-in asymptote
-        # keeps a marginal (low-conviction) entry small for its ENTIRE life — so a
-        # take/no-take flip under AR(1) noise diverges the equity curve by a smaller,
-        # consistently-sized position (targets the rally-stability mechanism, not just
-        # the first-bar size which prior sessions proved rally-invariant).
-        self._entry_conv_mult = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -737,10 +727,8 @@ class Strategy:
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    self._entry_conv_mult[symbol] = _bull_conv_atten
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    self._entry_conv_mult[symbol] = _bear_conv_atten
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -789,12 +777,7 @@ class Strategy:
                     _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
-                    # Architectural: conviction-capped scale-in asymptote. Was raw
-                    # `size` (full position regardless of entry conviction); now the
-                    # asymptote is scaled by the entry-bar conviction multiplier so a
-                    # marginal entry stays small for its whole life (see __init__ note).
-                    _conv_cap = self._entry_conv_mult.get(symbol, 1.0)
-                    full_target = size * _conv_cap if current_pos > 0 else -size * _conv_cap
+                    full_target = size if current_pos > 0 else -size
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -1373,7 +1356,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_conv_mult):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
