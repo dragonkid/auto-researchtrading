@@ -1057,24 +1057,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
                 )
-                # Subsystem redesign (exit-fusion aggregator): smooth-max (softmax-
-                # weighted average) replaces the hard element-wise MAX. The hard max
-                # selects ONE dominant soft term; under AR(1) noise the ARGMAX flips
-                # between terms bar-to-bar (a source-switching discontinuity that is
-                # itself a tracking-error source — the exit decision's identity, not
-                # just its magnitude, jitters under noise). The softmax-weighted average
-                # sum(t*exp(b*t))/sum(exp(b*t)) -> max as b->inf, but at finite b it
-                # blends the top contributors CONTINUOUSLY (no argmax flip), so a noise
-                # tick that swaps which term is largest moves the fused pressure
-                # smoothly instead of stepping. Stays <= max (weighted average) so it
-                # never over-exits. Stable form subtracts the max before exp. The chop
-                # single-source attenuator below is PRESERVED and now applied to the
-                # smooth-max. New data dep: fused exit pressure depends on the full
-                # soft-term distribution (softmax weights), not only the argmax.
-                _st_arr = np.asarray(_soft_terms)
-                _beta = 8.0
-                _ew = np.exp(_beta * (_st_arr - _st_arr.max()))
-                _soft_max = float((_st_arr * _ew).sum() / _ew.sum())
+                _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
