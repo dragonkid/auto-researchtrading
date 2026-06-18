@@ -504,6 +504,23 @@ class Strategy:
                     _min_bear_2 = _bear_strong
                 _bull_persist_ok = _min_bull_2 >= _entry_persist_factor * _bull_strong_min
                 _bear_persist_ok = _min_bear_2 >= _entry_persist_factor * _bear_strong_min
+                # Architectural: admission STICKINESS via max-over-2-bars strong-sum.
+                # Replaces the single-bar primary admission gate (_bull_strong >= min)
+                # with max(current, prev-bar) >= min. A genuinely-marginal entry whose
+                # conviction momentarily dips under AR(1) noise on the current bar stays
+                # admitted if the previous bar crossed — reducing take/no-take flips of
+                # marginal entries across the noise ensemble (the documented rally-
+                # stability root cause) WITHOUT raising the threshold (admits MORE
+                # robustly; opposite of the persistence min-gate, which still co-gates
+                # via the recent trough). Entry SIZE still uses current-bar conviction,
+                # so a sticky-but-weak admission enters small. New control flow at the
+                # admission decision: decision variable is window-max, not instantaneous.
+                if len(_hist) >= 2:
+                    _bull_strong_adm = max(_hist[-2][0], _hist[-1][0])
+                    _bear_strong_adm = max(_hist[-2][1], _hist[-1][1])
+                else:
+                    _bull_strong_adm = _bull_strong
+                    _bear_strong_adm = _bear_strong
                 # Architectural simplification: removed _avg_signal bias from trend gate.
                 # _avg_signal is the mean of the same 6 voter signals that drive _bull_strong/
                 # _bear_strong (via _bull_confs/_bear_confs). Adding _avg_signal bias to the
@@ -726,9 +743,9 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                if _bull_strong_adm >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong_adm >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
