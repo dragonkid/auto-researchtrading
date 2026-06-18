@@ -726,9 +726,26 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
+                # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
+                # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
+                # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
+                # entered or co-gated by persist/admit) but was DISCARDED only because the
+                # OLD per-strategy AST-hash stability seed "re-seeded" rally 0.8008->0.7063
+                # vs the baseline's LUCKY single 0.80 draw. The avg5 re-baseline (12d6c5f9)
+                # replaced that single-seed lottery with 5 FIXED shared seeds, so a raw-inert
+                # edit no longer re-rolls a different seed — baseline and candidate are scored
+                # on the SAME 100 noise realizations, making the old re-seed objection
+                # obsolete. Mechanism: the primary entry gate fires on max(current, previous-
+                # bar) strong-sum so a single-bar AR(1) dip below the admission floor does NOT
+                # cancel an otherwise-sustained entry (the min-over-2 persist gate still co-
+                # requires sustained conviction -> clean trades unchanged). Hypothesis: anti-
+                # dip admission reduces the entry-TIMING divergence that drives rally tracking
+                # error (the binding constraint), raising rally stability at byte-identical raw.
+                _bull_strong_adm = max(_bull_strong, _hist[-2][0]) if len(_hist) >= 2 else _bull_strong
+                _bear_strong_adm = max(_bear_strong, _hist[-2][1]) if len(_hist) >= 2 else _bear_strong
+                if _bull_strong_adm >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
-                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
+                elif _bear_strong_adm >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
