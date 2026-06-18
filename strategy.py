@@ -28,26 +28,6 @@ def _fast_r2(y):
     vy = (yd * yd).sum()
     return (cov * cov) / max(vx * vy, 1e-20)
 
-
-def _robust_std(x, k=4.0):
-    """MAD-winsorized standard deviation. Clips each element of x to
-    median +/- k*1.4826*MAD before taking np.std, so single-bar outliers
-    (flash spikes/pullback gaps) cannot inflate the estimate. For data that
-    is uniformly dispersed (no isolated outliers — e.g. a sustained high-vol
-    selloff where every bar is large) MAD is large and almost nothing is
-    clipped, so the estimate matches plain std. For calm-with-spikes data
-    (a few large bars among small ones) the spikes are clipped and the
-    estimate reflects the underlying calm dispersion. 1.4826 makes MAD a
-    consistent estimator of sigma under normality; k=4 only touches genuine
-    ~4-sigma outliers. Beyond the clip boundary an element's contribution is
-    insensitive to further perturbation (derivative 0) -> more noise-robust."""
-    med = np.median(x)
-    mad = np.median(np.abs(x - med))
-    if mad < 1e-12:
-        return np.std(x)
-    lim = k * 1.4826 * mad
-    return np.std(np.clip(x, med - lim, med + lim))
-
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -198,7 +178,7 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            realized_vol = max(_robust_std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
             # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
             # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
             # 0.5 weight. Long-window vol is each symbol's structural baseline (BTC ~0.012,
