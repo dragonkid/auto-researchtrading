@@ -76,11 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Architectural (Exp1): temporal-EMA memory for the fused SOFT exit pressure.
-# Symmetric counterpart to the entry-readiness EMA admission gate (ENTRY_ACCUM_RHO):
-# the entry DECISION is already noise-smoothed, but the exit DECISION still fires on
-# instantaneous soft pressure. RHO sets the smoothing memory (0.5 == same as entry).
-EXIT_EMA_RHO = 0.5
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -178,12 +173,6 @@ class Strategy:
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
         self._entry_accum = {}
-        # Architectural (Exp1, this session): per-symbol temporal-EMA of the fused soft
-        # exit pressure. Smooths single-bar AR(1) noise out of the exit DECISION (which
-        # currently fires on instantaneous _soft_max), symmetric to _entry_accum on the
-        # entry side. Seeded at the current _soft_max on the first held bar; reset on
-        # every full exit / flip so a fresh position starts with no carried exit pressure.
-        self._soft_max_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1141,19 +1130,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural (Exp1): temporal-EMA smoothing of the fused soft exit
-                # pressure, mirroring the entry-readiness EMA admission gate. Single-bar
-                # AR(1) pressure spikes (slope/pp/time/ve all share vol_ratio + HL2/closes
-                # as inputs, so noise propagates to the MAX) currently move the exit
-                # decision bar-to-bar; smoothing the soft pressure integrates that noise
-                # OUT of the exit timing so the trade set is less noise-sensitive. The
-                # hard stop-loss path (_sl_pressure in the max + the >=0.95 binary
-                # exemption) stays on RAW pressure so protective exits remain responsive;
-                # only the discretionary soft-pressure fusion is smoothed.
-                _sme = self._soft_max_ema.get(symbol, _soft_max)
-                _sme = EXIT_EMA_RHO * _sme + (1.0 - EXIT_EMA_RHO) * _soft_max
-                self._soft_max_ema[symbol] = _sme
-                _soft_max = _sme
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
@@ -1429,7 +1405,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._soft_max_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -1441,7 +1417,6 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._soft_max_ema.pop(symbol, None)
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
