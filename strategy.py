@@ -1155,6 +1155,16 @@ class Strategy:
                 # protective exits remain instant. Behavioral self-gate, not a regime
                 # classifier — the regime effects fall out of realized entry density.
                 _exit_ema_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 at len<=1, ~1 at len>=3
+                # Branch step 2: attenuate the exit-EMA in STRONG trends. Step1 regressed
+                # bull raw -18pct while rally (moderate trend) + sideways (chop) GAINED:
+                # bull's churn bursts let the EMA delay pullback/giveback exits in a
+                # strong, sharply-correcting uptrend (giveback Sharpe drag). Back the
+                # smoothing off as abs(ret_long) rises past a moderate-trend deadzone so
+                # the strongest-trend regime keeps near-raw (responsive) exits, while
+                # moderate-trend rally and chop sideways (below the deadzone) retain the
+                # full smoothing that lifted them. Continuous tanh, no decision boundary.
+                _trend_ema_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.06) / 0.05))
+                _exit_ema_gate = _exit_ema_gate * _trend_ema_atten
                 _rho_eff = EXIT_EMA_RHO * _exit_ema_gate
                 _sme = self._soft_max_ema.get(symbol, _soft_max)
                 _sme = _rho_eff * _sme + (1.0 - _rho_eff) * _soft_max
