@@ -553,9 +553,15 @@ class Strategy:
                 # |ret_long|>0.03 to avoid firing in chop. Max attenuation 0.30 (counter-
                 # trend entries take 0.70x size in strong trend). New cross-timescale
                 # data dependency: cold-entry first-bar size depends on trend disagreement.
-                _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
-                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
-                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Architectural simplification: removed the 20-bar counter-trend
+                # first-bar SIZE attenuator (_ct_gate / _bull_ct_atten / _bear_ct_atten).
+                # The de412448 keep established the 96-bar _ct_vlong as the load-bearing
+                # counter-trend size mechanism; the 20-bar term fires only when 20-bar
+                # |ret_long|>0.03 AND counter-trend, which is ~0 during rally pullbacks
+                # (so inert in rally) and overlaps _ct_vlong in sustained 20-bar trends
+                # (bull/crash). Test: is the 20-bar term redundant dead-weight, or does
+                # it cut genuinely-bad counter-trend exposure in bull/crash? Removing a
+                # multiplicative size factor + its cross-timescale data dependency.
                 # Architectural: multi-day counter-trend SIZE attenuator (layered on the
                 # 20-bar term above). The 20-bar _ct_gate is ~0 during a rally pullback
                 # (the local 20-bar return is flat/negative at the moment a pullback short
@@ -727,9 +733,9 @@ class Strategy:
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
