@@ -341,23 +341,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            # Subsystem redesign (voter aggregation): replace the one-sided QUINTIC
-            # strong-sum with weighted LOG-ODDS (Bayesian) evidence pooling. Each voter
-            # conf in [0.1,0.9] is a probability; its evidence = log(conf/(1-conf)) in
-            # [-2.197,+2.197]. Pool POSITIVE evidence weighted by voter weight, rescaled
-            # so the calibrated admission thresholds (STRONG_WEIGHT_MIN etc) still apply.
-            # STRUCTURAL contrast: the quintic (conf-0.5)^5 is ~flat near conf=0.5 then
-            # ramps steeply (FEW-STRONG philosophy: needs ~2 saturated voters, ignores
-            # marginal ones), whereas log-odds is ~linear in evidence (BROAD-WEAK
-            # philosophy: many mildly-confident voters can sum to admission). Tests
-            # whether broad consensus or concentrated conviction is the better entry
-            # filter — and whether broad agreement adds quality trades in the
-            # sample_factor-starved bull/crash regimes (43/45 trades < 50 knee).
-            # Per-voter scale match at conf=0.9: quintic (0.4)^5*97.66=1.0; log-odds
-            # log(9)=2.197 -> multiply by 1/2.197=0.4552.
-            _LO_SCALE = 0.4552
-            _bull_strong = sum(max(0.0, np.log(c / (1.0 - c))) * w for c, w in zip(_bull_confs, _voter_weights)) * _LO_SCALE
-            _bear_strong = sum(max(0.0, np.log(c / (1.0 - c))) * w for c, w in zip(_bear_confs, _voter_weights)) * _LO_SCALE
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
