@@ -910,7 +910,21 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Branch step 6: multi-day counter-trend max-hold reduction. Route the
+                # counter-trend signal through the EXISTING smooth _time_pressure ramp
+                # (already in the MAX fusion and stability-tuned) instead of an additive
+                # term on the fused _exit_pressure. Steps 1/3/5 added _ctv_bias directly
+                # to _exit_pressure, which parked counter-trend positions in the
+                # SENSITIVE zone near the de-risk/exit thresholds — where noisy OTHER
+                # pressures (slope/pp) decide the outcome inconsistently (rally stab
+                # 0.70, non-monotonic in magnitude: 0.25 ok but 0.18 collapsed raw).
+                # Here a position held AGAINST the 96-bar trend gets up to 3 fewer hold
+                # bars, so the smooth time ramp lifts it out earlier. ret_vlong (96-bar,
+                # low noise) + integer bars_held only -> noise-robust; the MAX fusion is
+                # gentler than addition. ~0 in sideways (ret_vlong≈0).
+                _pos_dir_ctv = 1.0 if current_pos > 0 else -1.0
+                _ctv_strength = max(0.0, np.tanh(-_pos_dir_ctv * ret_vlong / 0.015))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 3.0 * _ctv_strength
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
@@ -1081,42 +1095,10 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural: multi-day counter-trend exit acceleration (NEW
-                # cross-timescale data dep in the EXIT subsystem). ret_vlong (96-bar
-                # OLS slope) currently feeds ONLY entry-size shrink — it has never
-                # entered the exit subsystem. The 20-bar ret_long used by every
-                # existing exit trend-gate is flat/negative during a grinding-uptrend
-                # pullback (exactly when counter-trend shorts open), so ret_long-based
-                # exit logic does NOT recognize those positions as counter-trend.
-                # ret_vlong stays positive through pullbacks → it correctly flags
-                # multi-day-counter-trend holds. Mechanism: a position held AGAINST the
-                # multi-day trend that is currently LOSING is cut faster (the multi-day
-                # trend tends to reassert, so these losers rarely recover). This changes
-                # the exit-timing of losers (the one lever that can move rally RAW —
-                # entry-size shrink is Sharpe-invariant per prior sessions). Fast-
-                # saturation tanh (scale 0.015) puts the trending regimes' operating
-                # range in the near-flat tail → the bias is a near-constant noise-free
-                # additive nudge there, not a noise-tracking quantity. PnL-gated to
-                # losers only (counter-trend winners catching a real pullback are not
-                # cut early). GENERAL mechanism: cuts counter-trend losers in any trend
-                # (rally/bull uptrend → losing shorts; crash downtrend → losing longs;
-                # ~0 in sideways where ret_vlong≈0) — NOT a regime label.
-                _pos_dir_ctv = 1.0 if current_pos > 0 else -1.0
-                _ctv_strength = max(0.0, np.tanh(-_pos_dir_ctv * ret_vlong / 0.015))
-                # Branch step 3: noise-robust loss-gate. Step 1 used instantaneous
-                # tanh(-pos_pnl/|STOP|) — steepest at shallow loss (pos_pnl≈0), exactly
-                # where rally's counter-trend shorts hover, so close-noise perturbed the
-                # de-risk amount bar-to-bar -> rally stability collapse (0.80->0.62).
-                # Replace with a bars_held time ramp (integer, noise-immune) ANDed with
-                # counter-trend strength (96-bar slope, low noise): a position held
-                # AGAINST the multi-day trend for more than ~4 bars is escalated toward
-                # exit — counter-trend trades get less time to work (the trend
-                # reasserts). No instantaneous pos_pnl -> the additive bias is near
-                # noise-free, so it should keep the loser-cutting raw gain without the
-                # stability damage.
-                _ctv_hold = max(0.0, np.tanh((bars_held - 4.0) / 3.0))
-                _ctv_bias = 0.18 * _ctv_strength * _ctv_hold
-                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias + _ctv_bias
+                # Branch step 6: counter-trend signal now routed through the
+                # _max_hold/_time_pressure channel above (was an additive _ctv_bias on
+                # _exit_pressure in steps 1/3/5 — removed for being threshold-fragile).
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
