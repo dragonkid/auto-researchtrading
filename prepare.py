@@ -70,7 +70,39 @@ class BarData:
     close: float
     volume: float
     funding_rate: float
-    history: pd.DataFrame  # last LOOKBACK_BARS bars
+    history: object  # _HistoryView (numpy-backed; preserves history["col"].values + len())
+
+
+class _ColView:
+    """Lazy column view: .values returns the numpy slice (no copy)."""
+    __slots__ = ("_arr",)
+    def __init__(self, arr):
+        self._arr = arr
+    @property
+    def values(self):
+        return self._arr
+
+
+class _HistoryView:
+    """Numpy-backed stand-in for the per-bar history DataFrame slice.
+
+    Preserves the only two access patterns the strategy uses:
+      len(history)            -> window length
+      history["col"].values   -> numpy view of that column over the window
+    Eliminates the per-bar DataFrame .iloc slice + pandas column boxing
+    (measured ~19% of single-backtest wall on rally). Byte-identical because
+    the underlying float64 arrays are the same values, just unboxed.
+    """
+    __slots__ = ("_cols", "_start", "_stop")
+    def __init__(self, cols, start, stop):
+        self._cols = cols      # dict: col name -> full-length numpy array
+        self._start = start
+        self._stop = stop
+    def __len__(self):
+        return self._stop - self._start
+    def __getitem__(self, col):
+        return _ColView(self._cols[col][self._start:self._stop])
+
 
 @dataclass
 class Signal:
@@ -326,10 +358,15 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
     sym_dfs = {}
     sym_ts_set = {}
     sym_pos = {}
+    sym_cols = {}  # symbol -> {col: full numpy array} for zero-boxing history views
+    _OHLCV_COLS = ["timestamp", "open", "high", "low", "close", "volume", "funding_rate"]
     for symbol, df in data.items():
-        sym_dfs[symbol] = df[["timestamp", "open", "high", "low", "close", "volume", "funding_rate"]].reset_index(drop=True)
+        sym_dfs[symbol] = df[_OHLCV_COLS].reset_index(drop=True)
         sym_ts_set[symbol] = set(df["timestamp"].tolist())
         sym_pos[symbol] = 0
+        # Pre-extract each column as a numpy array ONCE per symbol (not per bar).
+        # _HistoryView slices these directly, eliminating per-bar .iloc + pandas boxing.
+        sym_cols[symbol] = {c: sym_dfs[symbol][c].to_numpy() for c in _OHLCV_COLS}
 
     # Portfolio state
     portfolio = PortfolioState(
@@ -370,22 +407,23 @@ def run_backtest(strategy, data: dict) -> BacktestResult:
             pos = sym_pos[symbol]
             sym_pos[symbol] += 1
 
-            row = sym_dfs[symbol].iloc[pos]
+            cols = sym_cols[symbol]
             start = max(0, pos - LOOKBACK_BARS + 1)
-            hist_df = sym_dfs[symbol].iloc[start:pos + 1]
+            stop = pos + 1
+            close_val = float(cols["close"][pos])
 
             bar_data[symbol] = BarData(
                 symbol=symbol,
                 timestamp=ts,
-                open=row["open"],
-                high=row["high"],
-                low=row["low"],
-                close=row["close"],
-                volume=row["volume"],
-                funding_rate=row["funding_rate"],
-                history=hist_df,
+                open=float(cols["open"][pos]),
+                high=float(cols["high"][pos]),
+                low=float(cols["low"][pos]),
+                close=close_val,
+                volume=float(cols["volume"][pos]),
+                funding_rate=float(cols["funding_rate"][pos]),
+                history=_HistoryView(cols, start, stop),
             )
-            last_close[symbol] = row["close"]
+            last_close[symbol] = close_val
 
         if not bar_data:
             continue
