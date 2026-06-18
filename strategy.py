@@ -726,10 +726,25 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural: portfolio-concentration-aware first-bar size reduction.
+                # When OTHER active symbols already hold a SAME-direction position, the
+                # new entry adds CORRELATED (redundant) risk -> raises portfolio return
+                # variance with no proportional return. Attenuate first-bar size by a
+                # smooth function of the same-direction concurrent count among the other
+                # symbols. This is NON-uniform (only fires in correlated-position windows
+                # -> broad crash legs, broad rally legs), so unlike a uniform size scale
+                # (Sharpe-invariant) it reshapes the equity curve: trimming exposure in
+                # high-concentration (high-variance) windows while keeping full size in
+                # low-concentration windows is a risk-parity-like variance reduction that
+                # raises portfolio Sharpe. New cross-symbol data dep at entry size.
+                _other_bull = sum(1 for _s in ACTIVE_SYMBOLS if _s != symbol and portfolio.positions.get(_s, 0.0) > 0)
+                _other_bear = sum(1 for _s in ACTIVE_SYMBOLS if _s != symbol and portfolio.positions.get(_s, 0.0) < 0)
+                _conc_atten_bull = 1.0 - 0.18 * max(0.0, np.tanh(_other_bull / 1.0))
+                _conc_atten_bear = 1.0 - 0.18 * max(0.0, np.tanh(_other_bear / 1.0))
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _conc_atten_bull
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _conc_atten_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
