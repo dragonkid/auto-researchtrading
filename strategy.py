@@ -1115,14 +1115,20 @@ class Strategy:
                 # noise-free, so it should keep the loser-cutting raw gain without the
                 # stability damage.
                 _ctv_hold = max(0.0, np.tanh((bars_held - 4.0) / 3.0))
-                # Branch step 7: DECISIVE magnitude (0.25->0.40). At 0.25 the additive
-                # bias parked counter-trend holds in the de-risk RAMP zone (partial
-                # exit), where noisy slope/pp terms tip the position size bar-to-bar. A
-                # larger bias pushes a held counter-trend position DECISIVELY past the
-                # full-exit threshold so it closes cleanly on the noise-robust trigger
-                # (96-bar slope sign + integer bars_held) instead of hovering in the
-                # noise-sensitive partial zone — testing decisive > marginal for stab.
-                _ctv_bias = 0.40 * _ctv_strength * _ctv_hold
+                # Branch step 8: noise-robust MAE selectivity. Steps showed a magnitude
+                # frontier where decisive (mag 0.40) lifts rally stab 0.70->0.78 but
+                # also cuts winners (raw 0.438->0.419) and leaks into bull (stab 0.68).
+                # The cost is that the bias acts on EVERY long-held counter-trend hold,
+                # winners included, perturbing many trades. Add an MAE gate so the bias
+                # fires ONLY on CONFIRMED-underwater holds: _mae (low-water mark of
+                # pos_pnl, ratcheting — far more noise-robust than instantaneous pnl).
+                # Triple-confirmation (counter-trend × held-long × went-underwater), each
+                # individually robust, fires only on unambiguous losers far from
+                # boundaries -> fewer trades perturbed (better stab) AND targets the
+                # actual losers (preserves raw). Gate ramps in as MAE passes -0.5*|STOP|.
+                _ctv_mae = self._mae.get(symbol, 0.0)
+                _ctv_mae_gate = max(0.0, np.tanh(-_ctv_mae / (0.5 * abs(STOP_LOSS_PCT))))
+                _ctv_bias = 0.25 * _ctv_strength * _ctv_hold * _ctv_mae_gate
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias + _ctv_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
