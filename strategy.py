@@ -456,7 +456,7 @@ class Strategy:
             _cm_hist.append(combined_mult)
             if len(_cm_hist) > 3:
                 _cm_hist.pop(0)
-            combined_mult = float(np.median(_cm_hist))
+            combined_mult = float(np.mean(_cm_hist))
             size = equity * BASE_POSITION_SIZE * combined_mult
 
             current_pos = portfolio.positions.get(symbol, 0.0)
