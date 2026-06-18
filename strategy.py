@@ -160,6 +160,16 @@ class Strategy:
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
         self._churn_hist = {}
+        # Experiment: per-symbol entry-context churn tag = len(_eh) at the bar the
+        # position opened, FROZEN for the trade. Gates a hold-time choppy-exit by the
+        # entry-time churn density rather than the CURRENT count: rally entries always
+        # cluster in bursts (high entry-churn) so rally positions are tagged burst-open
+        # and the exit change is OFF for them (rally byte-identical), while sparse-entry
+        # regimes (bull/crash/sideways, entry-churn ~0-1) receive the faster choppy-hold
+        # de-risk. Distinct from the current-churn gate (which leaks: holds extend into
+        # low-churn windows post-burst). The de412448 keep proved this same entry-time
+        # len(_eh) gate keeps rally byte-identical on the ENTRY-SIZE side.
+        self._entry_churn = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
 
     def on_bar(self, bar_data, portfolio):
@@ -1175,6 +1185,23 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Experiment: entry-churn-gated faster choppy-hold de-risk. Lower the
+                    # de-risk floor (widen the graduated-exit ramp -> de-risk sooner/more)
+                    # when the CURRENT hold's price path is choppy (low R2 of log(HL2) over
+                    # LINREG_PERIOD) AND the position opened in a low-churn context. The
+                    # reverted R2-de-risk branch proved faster exit on choppy holds raises
+                    # sideways Sharpe (1.94->2.01, +0.022 raw) but its current-churn /
+                    # bars_held / chop gates leaked into rally (holds extend into low-churn
+                    # windows -> rally stab re-seed). Gating by the ENTRY-TIME churn tag
+                    # (frozen at open) is tight: rally opens in bursts (entry_calm~0 -> no
+                    # change -> rally byte-identical); sideways/crash/bull open sparse
+                    # (entry_calm~1 -> full choppy-exit). New per-position state dep; exit
+                    # complement of the de412448 entry-size R2 keep.
+                    _ec = self._entry_churn.get(symbol, 0)
+                    _entry_calm = 1.0 - max(0.0, np.tanh((_ec - 1.5) / 0.6))  # ~1 sparse-open, ~0 burst-open
+                    _hold_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+                    _hold_chop = 1.0 - max(0.0, min(1.0, np.tanh(_hold_r2 / 0.30)))  # ~1 choppy, ~0 clean
+                    _de_floor -= 0.15 * _hold_chop * _entry_calm
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -1356,13 +1383,14 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._entry_churn):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
+                    self._entry_churn[symbol] = len(_h)  # entry-context churn (pre-append), frozen for this trade
                     _h.append(self.bar_count)
 
         return signals
