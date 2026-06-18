@@ -132,6 +132,12 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
+# Continuous-admission entry-size ramp scale: first-bar size scales linearly from 0
+# at the admission boundary (_acc == THRESH) up to full size at _acc == THRESH +
+# ENTRY_RAMP_SCALE. Replaces the old 0.70-floored conviction attenuator so there is
+# no first-bar size STEP at the entry boundary (the step made marginal entries flicker
+# 0<->0.70*full under noise, capping rally stability).
+ENTRY_RAMP_SCALE = 0.40
 
 
 class Strategy:
@@ -702,8 +708,22 @@ class Strategy:
                 # neutral-to-positive. Continuous (no decision-boundary flip — unlike a
                 # gated weight); same safe family as _bull_quality_atten. New data dep:
                 # first-bar size depends on conviction margin above floor.
-                _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
-                _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
+                # Architectural (continuous-admission redesign): first-bar entry SIZE
+                # now ramps continuously from 0 as the EMA-of-margin readiness signal
+                # (_acc_b/_acc_s) rises above the admission boundary, REPLACING the old
+                # floor-0.70 conviction attenuator. The prior conv_atten opened a marginal
+                # entry at 0.70*full the instant the gate crossed, so a boundary entry
+                # flickering in/out under AR(1) noise changed the position by ~0.70*full on
+                # that bar -> large equity-return tracking error -> the rally stability cap.
+                # Sizing proportional to how far the SMOOTHED margin sits above the
+                # admission point dissolves that step: a boundary noise-flicker now changes
+                # size by ~ramp'*noise (small) rather than 0.70*full. Marginal entries are
+                # NOT blocked (raw alpha kept, at reduced first-bar weight); the ramp
+                # saturates to full at _acc >= ENTRY_RAMP_SCALE so high-conviction entries
+                # are unchanged. Uses the EMA margin (already noise-smoothed), completing
+                # the EMA-readiness redesign by removing its residual first-bar size step.
+                _bull_conv_atten = max(0.0, min(1.0, _acc_b / ENTRY_RAMP_SCALE))
+                _bear_conv_atten = max(0.0, min(1.0, _acc_s / ENTRY_RAMP_SCALE))
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
