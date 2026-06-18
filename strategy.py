@@ -726,10 +726,35 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural: voter-dispersion (boundary-proximity) entry-size
+                # attenuator. NEW orthogonal signal: none of the existing attenuators
+                # (conv-margin, voter-quality, multi-window consensus, churn, R2) measure
+                # how many individual VOTERS sit near their own decision midpoint
+                # (signal~0 = one noise tick from flipping conf across 0.5). The strong-
+                # sum's quintic ramp (c-0.5)^5 weights FAR-from-midpoint voters and is
+                # ~blind to near-midpoint swing voters, so a high strong-sum (high
+                # conviction) entry can still be FRAGILE (e.g. 3 decisive + 4 midpoint
+                # voters). Fragility = mean Lorentzian 1/(1+(signal/0.5)^2) over the 7
+                # voter signals: ~1 when a voter is at its flip point, ~0 when decisive
+                # (|signal|>=1). Shrink first-bar size by up to 35% proportional to
+                # fragility: noise-fragile entries (rally's marginal swing-vote entries)
+                # take a smaller INITIAL commitment so their clean/perturbed equity
+                # divergence (the tracking error that caps rally stability) is down-
+                # weighted, while decisive entries (strong regimes' deep-conviction
+                # entries, all voters far from midpoint) keep full size and stay byte-
+                # identical. Genuine signals still scale IN over 2-3 bars (only
+                # un-persisting noise spikes stay small) -> alpha preserved, only
+                # leverage-on-fragile-bars reduced. Direction-agnostic (|signal|
+                # symmetric across the flip point). Continuous (no boundary). Size-down
+                # only (rally-safe channel). New data dep: first-bar size depends on
+                # per-voter signal dispersion, distinct from the strong-sum aggregate.
+                _sig_arr = np.asarray(_voter_signals_bull)
+                _frag = float(np.mean(1.0 / (1.0 + (_sig_arr / 0.5) ** 2)))
+                _frag_atten = 1.0 - 0.35 * _frag
                 if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _frag_atten
                 elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _frag_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
