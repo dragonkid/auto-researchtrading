@@ -124,7 +124,6 @@ ENTRY_INITIAL_FRAC_BASE = 0.43
 ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
-SCALE_IN_CHURN_STRETCH = 1.0  # churn-gated scale-in pace stretch magnitude (fires in bursty-entry regimes)
 
 # Architectural (Exp2): entry-readiness EMA accumulator parameters. The admission
 # decision fires on an exponentially-smoothed conviction margin rather than an
@@ -808,38 +807,7 @@ class Strategy:
                 # so bull's 0.806 noise-removal gain is preserved). Single structural change
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
-                # Architectural: churn-gated scale-in PACE stretch (new cross-component
-                # data dep at the position-build layer). Prior session validated that
-                # stretching the scale-in pace MOVES rally stability up (0.672->0.709) by
-                # spreading the entry build over more bars — cutting the per-bar position
-                # step that 1-bar AR(1) entry-timing jitter perturbs. Its keep blocker was
-                # crash: the ungated/counter-trend-gated stretch dropped crash 45->41 trades
-                # (below the 50 sample_factor knee). That split was NOT gate-able by
-                # vol_ratio (inert), |ret_vlong| (backwards), or abs-vol (failed). This gates
-                # the stretch on the noise-IMMUNE integer churn count len(_eh) — the SAME
-                # signal the order-emission grids use — which fires in rally/bull bursts
-                # (len reaches 3-5) and stays ~0 in crash (max len=1) and sideways (max
-                # len=2). So rally's entry build is spread (the stability lever) while
-                # crash's position trajectory and trade count are left byte-identical
-                # (gate=0 at len<=1). Smooth fast-saturating tanh; multiplies _entry_full_bars_dyn.
-                # Branch step 3: soften churn gate center 1.5->1.0, width 0.6->0.5. At len=1
-                # (crash max) tanh(0)=0 EXACTLY so crash stays byte-identical; at len=2 the
-                # gate now fires 0.96 (was 0.68), catching more of rally's counter-trend
-                # bursty entries at near-full stretch. Step2's ct-only stretch at the weaker
-                # len=2 gate (0.68) gave rally raw -0.009; firing harder at len=2 aims to
-                # recover toward the prior session's counter-trend rally raw gain (+0.0127).
-                _churn_pace_gate = max(0.0, np.tanh((len(_eh) - 1.0) / 0.5))  # =0 at len<=1 (crash), ~0.96 at len=2, ~1 at len>=3
-                # Branch step 2: AND a counter-trend gate. Exp1 (churn-only) raised rally
-                # stability (+0.037) but hurt RAW (bull -0.135, rally raw -0.087) because it
-                # slowed trend-aligned bursty entries that favor a fast build. Prior session's
-                # counter-trend-only stretch raised rally/bull RAW but dropped crash trades.
-                # Multiply the two gates: stretch fires ONLY on counter-trend AND high-churn
-                # entries — trend-aligned bursty entries (rally/bull momentum) keep fast build
-                # (raw preserved), crash stays off (churn gate ~0 at len<=1), and counter-trend
-                # bursty entries (the noise-sensitive ones) get spread (the rally-stab lever).
-                _pos_dir_pace = 1.0 if current_pos > 0 else -1.0
-                _ct_pace_gate = max(0.0, np.tanh(-ret_long * _pos_dir_pace / 0.04))  # counter-trend: pos opposes 20-bar trend
-                _entry_full_bars_dyn = max(1.5, (2.0 + 1.0 * (1.0 - rsi_trend_str)) * (1.0 + SCALE_IN_CHURN_STRETCH * _churn_pace_gate * _ct_pace_gate))  # [2.0, 3.0] base * stretch
+                _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
