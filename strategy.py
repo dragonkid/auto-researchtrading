@@ -1292,32 +1292,6 @@ class Strategy:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
                         target = _qt
-            # Architectural: churn-gated FIRST-BAR ENTRY-size grid quantization.
-            # Entries (current_pos==0 -> nonzero target) are EXEMPT from the resize
-            # grids/deadband above (risk transitions must fire), so a rally burst's
-            # first-bar entry SIZE is an un-quantized product of ~12 continuous
-            # price-derived attenuators that AR(1) noise wobbles bar-to-bar -> a
-            # residual entry-size tracking-error source NOT covered by the resize
-            # grids (Exp1 this session ruled out individual-voter midpoint fragility:
-            # rally entries are voter-decisive, so the residual must be size-level).
-            # Quantize the first-bar entry SIZE onto the SAME stable lattice the
-            # resize grids use (0.06*equity*BASE_POSITION_SIZE; equity slow + BASE
-            # const = noise-stable lines), gated on the noise-IMMUNE integer churn
-            # count _churn_dz (fires in rally bursts len(_eh)>=2, ~0 in low-churn
-            # crash/bull-quiet = byte-identical there). The entry STILL fires:
-            # round-to-nearest never zeroes a meaningful entry (skip if it rounds to
-            # 0), snap stays on the same side -> this quantizes SIZE only, never
-            # blocks the entry (distinct from the snap-to-hold deadband which
-            # suppresses micro-resizes). Reduces rally entry-size noise sensitivity
-            # DETERMINISTICALLY (robust across seeds, not a re-seed), same proven
-            # family as the resize-grid rally-stab lever. New control flow at the
-            # order-emission layer: a quantization branch on the entry path.
-            if current_pos == 0 and target != 0 and _churn_dz > 0.0:
-                _grid_e = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
-                if _grid_e > 0:
-                    _qt_e = round(target / _grid_e) * _grid_e
-                    if (_qt_e > 0) == (target > 0) and _qt_e != 0:
-                        target = _qt_e
             # Architectural: COMPLEMENTARY low-churn-gated coarse grid (inverse-churn
             # partition of the order-emission layer). The existing grid above fires
             # ONLY in high churn (_churn_dz>0 at len>=2 = rally bursts); low-churn
