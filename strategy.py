@@ -1059,6 +1059,25 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
+                # Architectural: stale-loss exit term (NEW soft source, rally-RAW lever).
+                # Direction-split (prior measured) shows rally's drag is its losing-LONG
+                # bleeders (LONG ~40%WR) — positions that go underwater and SLOWLY bleed
+                # while the existing soft terms (slope/pp/time) fail to fire decisively.
+                # This term cuts positions that are BOTH (a) held past ~bar 6 AND (b) clearly
+                # underwater, proportional to adversity. Surgical by construction: bull/crash/
+                # sideways winners (86-100% WR) are never underwater so the term is inert
+                # there (others byte-identical); only rally's losing longs are cut. UNLIKE
+                # the Exp3 winner anti-spike (which DELAYED winner profit-locking -> walled),
+                # this ACCELERATES loser exits (losers should be cut -> raw-improving, not
+                # raw-destroying). Noise-robustness: the trigger is gated on INTEGER bars_held
+                # (noise-immune, the most stability-robust gate per prior counter-trend-exit
+                # work) and the adversity magnitude uses a BAND away from breakeven
+                # (activates only when loss > 0.2*stop) so it does NOT flip on the pos_pnl=0
+                # zero-boundary. Added to the MAX fusion as a loser-weighted soft term.
+                _stale_gate = max(0.0, min(1.0, (bars_held - 6.0) / 4.0))  # integer bars_held ramp 0->1 over bars 6-10
+                _stale_uw = max(0.0, min(1.0, (-pos_pnl - 0.2 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT))))
+                _stale_loss = 0.6 * _stale_gate * _stale_uw
+                _w_stale = max(0.0, -_pnl_scale)  # loser-only (in [0,1])
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1072,7 +1091,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _w_stale * _stale_loss
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
