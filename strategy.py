@@ -454,7 +454,7 @@ class Strategy:
             # (windowed, non-recursive -> no state propagation).
             _cm_hist = self._cmult_hist.setdefault(symbol, [])
             _cm_hist.append(combined_mult)
-            if len(_cm_hist) > 3:
+            if len(_cm_hist) > 2:
                 _cm_hist.pop(0)
             combined_mult = float(np.mean(_cm_hist))
             size = equity * BASE_POSITION_SIZE * combined_mult
