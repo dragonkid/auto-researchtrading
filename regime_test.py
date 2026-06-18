@@ -31,8 +31,14 @@ HOLDOUT_REGIMES = [
 # Consistency penalty weight: higher k = stricter consistency requirement
 CONSISTENCY_K = 0.5
 
-# Per-regime timeout: accounts for clean + N_TRIALS perturbed backtests
-REGIME_TIMEOUT = TIME_BUDGET * 3 + 60
+# Per-regime timeout: accounts for clean + len(FIXED_STABILITY_SEEDS)*N_TRIALS
+# perturbed backtests (avg5 stability = 5 seeds x 20 trials = 100 perturbations,
+# run STABILITY_WORKERS-way parallel). Measured 2026-06: full 4-regime parallel
+# re-baseline run wall = 673s, which bounds the slowest single regime from above;
+# 1020s = ~1.5x margin absorbs production CPU contention while still catching a
+# pathological strategy (TIME_BUDGET=120s caps each backtest -> 100+ slow ones
+# would far exceed this).
+REGIME_TIMEOUT = TIME_BUDGET * 8 + 60
 
 
 def annualize_return(total_return_pct: float, hours: int) -> float:

@@ -27,13 +27,26 @@ from scipy.stats import trim_mean
 
 from prepare import run_backtest, BacktestResult
 
-N_TRIALS = 20
+N_TRIALS = 20  # perturbation trials PER SEED (one per AC1 difficulty level)
 STABILITY_THRESHOLD = 0.80  # no-penalty zone starts at 0.80
+
+# Fixed shared seeds for stability measurement. Using a FIXED set (identical for
+# EVERY strategy) instead of a per-strategy AST hash makes seed-luck a constant
+# offset that cancels in candidate-vs-baseline comparison — killing the ratchet
+# where a baseline frozen on a lucky right-tail draw systematically beats honest
+# candidates (measured: AST-hash single-draw inflated rally stability +0.22 over
+# the true fixed-seed mean ~0.58). Averaging 5 seeds (5 x N_TRIALS = 100 noise
+# realizations) also restores the anti-overfit property the AST hash provided: a
+# strategy cannot tune its decision boundary to one frozen realization when it is
+# scored against 100. Seeds are spaced > N_TRIALS apart so seed+trial ranges never
+# overlap. (Validated on baseline de412448: cross-seed-set std 0.069 single-seed
+# -> 0.037 avg5, a 47% variance reduction.)
+FIXED_STABILITY_SEEDS = (10_000_019, 20_000_003, 30_000_001, 40_000_003, 50_000_021)
 STABILITY_WORKERS = 4  # parallel trial workers inside one regime (nested under
 # regime_test's 4-regime pool; total ~16 procs on a 14-core box, but only score>0
 # regimes trigger stability so rarely all 4 run it at once). Parallelism does NOT
-# change stability values: seeds are deterministic (base_seed+trial) and the
-# trimmed mean is order-independent. Set to 1 to force serial.
+# change stability values: each (seed, trial) work unit is deterministic via
+# seed+trial and the per-seed trimmed mean is order-independent. Set to 1 to force serial.
 
 # Empirical parameters: demeaned cross-source random std (basis removed).
 # Measured 2026-06: cached source ≈ Binance/OKX perp; demeaned random dispersion
@@ -141,52 +154,67 @@ _W_DATA = None
 _W_CLEAN_EQ = None
 _W_CLEAN_RET = None
 _W_CLEAN_VOL = None
-_W_BASE_SEED = None
 
 
-def _stability_init(data, clean_eq, clean_ret, clean_vol, base_seed):
+def _stability_init(data, clean_eq, clean_ret, clean_vol):
     """ProcessPoolExecutor initializer: stash shared, read-only trial inputs."""
-    global _W_DATA, _W_CLEAN_EQ, _W_CLEAN_RET, _W_CLEAN_VOL, _W_BASE_SEED
+    global _W_DATA, _W_CLEAN_EQ, _W_CLEAN_RET, _W_CLEAN_VOL
     _W_DATA = data
     _W_CLEAN_EQ = clean_eq
     _W_CLEAN_RET = clean_ret
     _W_CLEAN_VOL = clean_vol
-    _W_BASE_SEED = base_seed
 
 
-def _stability_trial(trial: int):
-    """Run one perturbation trial -> tracking error (or None to skip).
+def _stability_trial(work: tuple) -> tuple:
+    """Run one perturbation trial -> (seed, tracking_error_or_None).
 
-    Pure function of (trial, worker-global inputs). Deterministic via
-    base_seed+trial, so result is independent of execution order.
+    work = (seed, trial). `trial` selects the AC1 difficulty level (fixed grid);
+    `seed + trial` seeds the noise realization. Pure function of (work,
+    worker-global inputs) — deterministic, so the result is independent of
+    execution order. Returns the seed alongside the TE so the caller can group
+    trials back into per-seed stabilities for the 5-seed average.
     """
     from strategy import Strategy
 
-    rng = np.random.default_rng(_W_BASE_SEED + trial)
+    seed, trial = work
+    rng = np.random.default_rng(seed + trial)
     perturbed_data = _perturb_data(_W_DATA, rng, trial)
     pert_result = run_backtest(Strategy(), perturbed_data)
     pert_eq = np.array(pert_result.equity_curve)
 
     if len(pert_eq) < 0.8 * len(_W_CLEAN_EQ):
-        return 3.0 * _W_CLEAN_VOL
+        return (seed, 3.0 * _W_CLEAN_VOL)
 
     n = min(len(_W_CLEAN_EQ), len(pert_eq))
     if n < 10:
-        return None
+        return (seed, None)
 
     pert_ret = np.diff(pert_eq[:n]) / np.where(pert_eq[: n - 1] > 0, pert_eq[: n - 1], 1.0)
     diff = _W_CLEAN_RET[: n - 1] - pert_ret
-    return float(diff.std())
+    return (seed, float(diff.std()))
+
+
+def _stability_from_tes(tracking_errors: list, clean_vol: float) -> float:
+    """One seed's stability = 1 - normalized 10%-trimmed-mean tracking error."""
+    if not tracking_errors:
+        return 1.0
+    te_array = np.array(tracking_errors)
+    mean_te = float(trim_mean(te_array, proportiontocut=TRIM_FRACTION))
+    normalized_te = mean_te / clean_vol
+    return max(0.0, min(1.0, 1.0 - normalized_te))
 
 
 def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
     """Stability = 1 - normalized tracking error under AR(1) correlated noise.
 
-    Seeding is derived from strategy.py AST hash to prevent overfitting to
-    fixed noise realizations across iterations.
+    Averages stability over FIXED_STABILITY_SEEDS (shared across every strategy).
+    Each seed runs N_TRIALS perturbations (one per AC1 difficulty level); the seed's
+    stability is 1 - normalized trimmed-mean tracking error, and the final value is
+    the mean across seeds. The fixed shared seed set makes seed-luck a constant that
+    cancels in candidate-vs-baseline comparison (kills the ratchet), and averaging
+    5 x N_TRIALS = 100 noise realizations restores anti-overfit robustness: a
+    strategy cannot tune its boundary to one frozen realization.
     """
-    from strategy import Strategy
-
     clean_eq = np.array(clean_result.equity_curve)
     if len(clean_eq) < 10:
         return 1.0
@@ -196,10 +224,10 @@ def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
     if clean_vol < 1e-10:
         return 1.0
 
-    # Seed from strategy AST hash — same logic = same trials, different logic = different trials
-    base_seed = _strategy_hash()
+    # Work units: every (seed, trial) pair across the fixed shared seed set.
+    work = [(seed, trial) for seed in FIXED_STABILITY_SEEDS for trial in range(N_TRIALS)]
 
-    init_args = (data, clean_eq, clean_ret, clean_vol, base_seed)
+    init_args = (data, clean_eq, clean_ret, clean_vol)
     raw = None
     if STABILITY_WORKERS > 1:
         try:
@@ -210,21 +238,24 @@ def compute_signal_stability(data: dict, clean_result: BacktestResult) -> float:
             ) as ex:
                 # map preserves order; trials are independent + deterministic so
                 # the result is identical to the serial loop regardless of order.
-                raw = list(ex.map(_stability_trial, range(N_TRIALS)))
+                raw = list(ex.map(_stability_trial, work))
         except Exception:
             raw = None  # nested-pool / spawn failure -> fall back to serial
 
     if raw is None:
         _stability_init(*init_args)
-        raw = [_stability_trial(t) for t in range(N_TRIALS)]
+        raw = [_stability_trial(w) for w in work]
 
-    tracking_errors = [te for te in raw if te is not None]
+    # Group tracking errors by seed, compute per-seed stability, then average.
+    by_seed: dict = {seed: [] for seed in FIXED_STABILITY_SEEDS}
+    for seed, te in raw:
+        if te is not None:
+            by_seed[seed].append(te)
 
-    if not tracking_errors:
+    per_seed_stabilities = [
+        _stability_from_tes(tes, clean_vol) for tes in by_seed.values() if tes
+    ]
+    if not per_seed_stabilities:
         return 1.0
 
-    # 10% trimmed mean: robust to extreme favorable/unfavorable noise alignments
-    te_array = np.array(tracking_errors)
-    mean_te = float(trim_mean(te_array, proportiontocut=TRIM_FRACTION))
-    normalized_te = mean_te / clean_vol
-    return max(0.0, min(1.0, 1.0 - normalized_te))
+    return float(np.mean(per_seed_stabilities))
