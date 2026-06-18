@@ -822,7 +822,13 @@ class Strategy:
                 # len=2). So rally's entry build is spread (the stability lever) while
                 # crash's position trajectory and trade count are left byte-identical
                 # (gate=0 at len<=1). Smooth fast-saturating tanh; multiplies _entry_full_bars_dyn.
-                _churn_pace_gate = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 at len<=1, ~1 at len>=3
+                # Branch step 3: soften churn gate center 1.5->1.0, width 0.6->0.5. At len=1
+                # (crash max) tanh(0)=0 EXACTLY so crash stays byte-identical; at len=2 the
+                # gate now fires 0.96 (was 0.68), catching more of rally's counter-trend
+                # bursty entries at near-full stretch. Step2's ct-only stretch at the weaker
+                # len=2 gate (0.68) gave rally raw -0.009; firing harder at len=2 aims to
+                # recover toward the prior session's counter-trend rally raw gain (+0.0127).
+                _churn_pace_gate = max(0.0, np.tanh((len(_eh) - 1.0) / 0.5))  # =0 at len<=1 (crash), ~0.96 at len=2, ~1 at len>=3
                 # Branch step 2: AND a counter-trend gate. Exp1 (churn-only) raised rally
                 # stability (+0.037) but hurt RAW (bull -0.135, rally raw -0.087) because it
                 # slowed trend-aligned bursty entries that favor a fast build. Prior session's
