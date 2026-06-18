@@ -1338,37 +1338,6 @@ class Strategy:
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
-            # Architectural (Exp1 this session): counter-trend MONOTONIC de-risk
-            # ratchet. STRUCTURALLY DISTINCT from the saturated temporal-EMA / pace /
-            # symmetric-deadband / resize-grid family — it is a DIRECTIONAL, ASYMMETRIC
-            # constraint (suppresses re-GROWTH only, allows shrink), not a low-pass
-            # filter or a symmetric hold-zone. After scale-in completes, a held position
-            # re-computes target = ±size every bar, and `size` wobbles bar-to-bar with
-            # combined_mult (strength_scale × calm_boost × sideways_boost × vol terms —
-            # all noisy price-derived inputs). For a position held AGAINST the multi-day
-            # trend (rally pullback shorts: pos_dir opposes ret_vlong sign), this
-            # mult-driven RE-GROWTH is the surviving position-value TE source after the
-            # entry-timing levers were exhausted: the short's magnitude jitters up/down
-            # under AR(1) noise. The ratchet clamps |target| so a counter-trend position
-            # can SHRINK (de-risk) but never RE-GROW past its current magnitude once
-            # scale-in is done -> the noisy up/down wobble collapses to a monotone
-            # step-DOWN staircase -> fewer distinct position values across the noise
-            # ensemble -> lower rally tracking error -> higher rally stability. A prior
-            # GLOBAL position-ratchet (no trend gate) regressed (-0.012) because it
-            # capped re-growth in the trend-aligned regimes where re-growth is genuine
-            # alpha; the signed ct gate removes the ratchet EXACTLY there: trend-aligned
-            # holds (bull longs in uptrend, crash shorts in downtrend) get ct_ratchet=0
-            # -> byte-identical, sideways ret_vlong~0 -> spared. Continuous in ct
-            # strength (smooth blend, no hard clamp boundary) and gated on the
-            # noise-robust 96-bar ret_vlong slope. Fires only on re-growth resizes;
-            # entries (current_pos==0), full exits (target==0), flips (sign change),
-            # and active scale-in (bars_held<=_entry_full_bars_dyn) are all exempt.
-            if current_pos != 0 and target != 0 and (target > 0) == (current_pos > 0) \
-                    and bars_held > _entry_full_bars_dyn and abs(target) > abs(current_pos):
-                _ct_ratchet = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
-                _allowed_mag = abs(current_pos) + (1.0 - _ct_ratchet) * (abs(target) - abs(current_pos))
-                target = (1.0 if target > 0 else -1.0) * _allowed_mag
-
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
             # gate previously fired on any move > 1.0 unit. Small same-sign resizes
