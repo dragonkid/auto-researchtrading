@@ -180,11 +180,6 @@ class Strategy:
         # Reset on full exit.
         self._exit_press_ema = {}
         self._voter_bias_ema = {}  # Exp2: counter-trend EMA of additive _voter_bias term
-        # Exp (this session): per-symbol per-side rolling 3-bar conviction-margin history.
-        # Feeds a counter-trend-gated MEDIAN pre-filter on the entry-readiness EMA input
-        # (impulse-robust spike removal for rally's counter-trend pullback-short entries).
-        self._bull_margin_hist = {}
-        self._bear_margin_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -430,40 +425,8 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            # Architectural (Exp1 this session): counter-trend-gated MEDIAN pre-filter on
-            # the entry-readiness EMA input. The EMA accumulator smooths the per-bar
-            # conviction margin, but an EMA gives a single-bar AR(1) spike weight
-            # (1-RHO)=0.5 -> the smoothed margin can cross the admission threshold one bar
-            # early/late under noise, the dominant rally entry-TIMING divergence source
-            # (e5a4defa proved entry-timing is the big rally-stab lever: 0.573->0.672).
-            # A MEDIAN-of-3 is a non-linear rank filter that removes an isolated single-bar
-            # spike ENTIRELY (1 outlier in 3 -> median unaffected) while preserving
-            # sustained 2+ bar conviction -> strictly more impulse-robust than the EMA
-            # alone. Applied ONLY to counter-trend entries (prospective direction opposed
-            # to the multi-day ret_vlong trend): rally's pullback SHORTS (bear entry in
-            # multi-day uptrend) are exactly the noise-sensitive entries; bull longs in
-            # uptrend / crash shorts in downtrend are trend-aligned -> ct gate ~0 -> raw
-            # margin -> byte-identical by construction (same sparing structure as the
-            # 51f9645d exit-EMA keep). sideways (low |ret_vlong|) spared. Distinct from the
-            # discarded size/resize medians (those smooth the dead-end size channel; this
-            # filters the proven entry-DECISION input). New per-symbol per-side state +
-            # median control flow + cross-timescale (ret_vlong) dep on the entry decision.
-            _bh = self._bull_margin_hist.get(symbol, [])
-            _bh.append(_bull_margin)
-            if len(_bh) > 3:
-                _bh = _bh[-3:]
-            self._bull_margin_hist[symbol] = _bh
-            _sh = self._bear_margin_hist.get(symbol, [])
-            _sh.append(_bear_margin)
-            if len(_sh) > 3:
-                _sh = _sh[-3:]
-            self._bear_margin_hist[symbol] = _sh
-            _ct_entry_bull = max(0.0, np.tanh(-ret_vlong / 0.04))  # long counter to multi-day downtrend
-            _ct_entry_bear = max(0.0, np.tanh(ret_vlong / 0.04))   # short counter to multi-day uptrend (rally)
-            _bull_margin_in = (1.0 - _ct_entry_bull) * _bull_margin + _ct_entry_bull * float(np.median(_bh))
-            _bear_margin_in = (1.0 - _ct_entry_bear) * _bear_margin + _ct_entry_bear * float(np.median(_sh))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin_in
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin_in
+            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
