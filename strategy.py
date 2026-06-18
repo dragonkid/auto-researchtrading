@@ -1257,7 +1257,17 @@ class Strategy:
             # while sparing crash/sideways (their churn keeps the gate near 0). Snap-
             # to-hold (Zeno-free). Symmetric growth/shrink. Entries/exits/flips exempt.
             _churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # FAST saturation: ~0 at len<=1, ~1 at len>=3
-            _deadband_frac = 0.13 * _churn_dz
+            # Branch: cumulative-max churn moved up so the bursted-quiet (gap) state is
+            # available to both the deadband and the grids below.
+            _cm = max(self._churn_hist.get(symbol, 0), len(_eh))
+            self._churn_hist[symbol] = _cm
+            # Branch step 2: gap state = bursted symbol (_cm>2) currently in a quiet stretch
+            # (len(_eh)<=1 -> _churn_dz<0.5). Both the base deadband and the high-churn grid
+            # are OFF here, leaving rally's quiet-stretch resizes ungridded.
+            _gap_quiet = 1.0 if (_cm > 2 and _churn_dz < 0.5) else 0.0
+            # Branch step 3: add a gap-state deadband (base is 0 at low churn) to suppress
+            # noise-only micro-resizes in the quiet stretch, complementing step-2's gap grid.
+            _deadband_frac = 0.13 * _churn_dz + 0.13 * _gap_quiet
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
@@ -1342,9 +1352,6 @@ class Strategy:
             # noise-immune (no boundary that flips under AR(1)). Behavioral self-
             # measurement ("has this symbol ever churned"), NOT a date/market-state
             # classifier — generalizes to any persistently-calm vs bursty symbol.
-            _cm = self._churn_hist.get(symbol, 0)
-            _cm = max(_cm, len(_eh))
-            self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
                 _grid_c = 0.06 * equity * BASE_POSITION_SIZE
@@ -1355,13 +1362,11 @@ class Strategy:
             # Branch step 2: rally QUIET-stretch resize grid (fills the documented coverage
             # gap). rally's BURST resizes are gridded (high-churn grid + deadband) and the
             # calm grid covers never-bursting symbols (crash/sideways), but a BURSTED symbol's
-            # QUIET-stretch resizes (between bursts: _cm>2 yet len(_eh)<=1 so _churn_dz<0.5)
-            # fall through BOTH gates -> ungridded noise-sensitive resizes that cap rally
-            # stability. With the +0.011 rally-raw buffer from TOD removal, grid them on the
-            # same stable lattice. Noise-immune integer-churn gate (len(_eh)/_cm are price-
-            # independent integers); resizes only; snap toward current_pos.
-            _gap_gate = 1.0 if (_cm > 2 and _churn_dz < 0.5) else 0.0
-            if _is_resize and _gap_gate > 0.0:
+            # QUIET-stretch resizes (_gap_quiet) fall through BOTH gates -> ungridded noise-
+            # sensitive resizes that cap rally stability. With the +0.011 rally-raw buffer from
+            # TOD removal, grid them on the same stable lattice. Resizes only; snap toward
+            # current_pos.
+            if _is_resize and _gap_quiet > 0.0:
                 _grid_g = 0.06 * equity * BASE_POSITION_SIZE
                 if _grid_g > 0:
                     _qt_g = round(target / _grid_g) * _grid_g
