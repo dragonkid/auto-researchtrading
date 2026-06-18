@@ -1465,38 +1465,6 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
-            # Architectural: counter-trend-DIRECTION-gated grid quantization of resize
-            # targets (orthogonal partition of the order-emission layer). The two grids
-            # above gate on entry-DENSITY (len(_eh)): the fine grid fires in high-churn
-            # bursts (_churn_dz>0), the coarse _calm_gate grid fires for never-bursting
-            # symbols (_cm<=2). Both MISS rally's LOW-churn counter-trend resizes — rally
-            # bursts somewhere so _calm_gate turns OFF permanently for it (_cm>2), yet its
-            # lone-entry pullback-short scale-in/de-risk resizes sit at len(_eh)<=1 where
-            # _churn_dz~0, so those resizes receive NO quantization and their continuous
-            # price-derived target is perturbed bar-to-bar by AR(1) noise = a surviving
-            # rally-stability drain (the gap noted across the grid branch steps). This adds
-            # a grid gated on the ORTHOGONAL counter-trend DIRECTION signal (signed 96-bar
-            # ret_vlong * pos_dir, the SAME noise-immune gate the ct-EMA exit-smoothing
-            # keeps use): fires only when the held position opposes its multi-day trend
-            # (rally pullback shorts -> _ct_pos_str~1 > 0.5), stays OFF for trend-aligned
-            # holds (bull longs / crash shorts -> _ct_pos_str=0 -> byte-identical) and for
-            # low-ret_vlong sideways (_ct_pos_str < 0.5 -> byte-identical). The 0.5 gate sits
-            # at multi-day net return ~0.022, cleanly separating rally's strong uptrend
-            # (ret_vlong ~0.02-0.04) from sideways (~0.005); the gate quantity is the 96-bar
-            # OLS slope (~1/96 noise attenuation) so the boundary itself is noise-immune.
-            # Same stable lattice (0.06 * equity * BASE_POSITION_SIZE; equity slow + BASE
-            # const = noise-stable lines), same resize-only exemption (entries/full-exits/
-            # flips always hit exact targets), same nearest-grid snap with sign preservation.
-            # Unbiased rounding -> raw-neutral; noise-driven sub-grid wobble collapses onto
-            # the same level -> fewer distinct rally position values across the ensemble ->
-            # rally stability up. New control flow at the order-emission layer.
-            _ct_pos_str_grid = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04)) if current_pos != 0 else 0.0
-            if _is_resize and _ct_pos_str_grid > 0.5:
-                _grid_ct = 0.06 * equity * BASE_POSITION_SIZE
-                if _grid_ct > 0:
-                    _qt_ct = round(target / _grid_ct) * _grid_ct
-                    if (_qt_ct > 0) == (target > 0) and _qt_ct != 0:
-                        target = _qt_ct
             if abs(target - current_pos) > 1.0:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
