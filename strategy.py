@@ -161,14 +161,6 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Per-symbol last-exit position DIRECTION (sign at close). Pairs with
-        # _last_exit_pnl to drive the post-counter-trend-loss same-side admission
-        # tightening (architectural): after a position that BOTH lost AND was
-        # counter to the long-window trend just closed, the same-side re-entry
-        # threshold is briefly raised (decaying ~6 bars) so the immediate
-        # counter-trend whipsaw re-entry churn is filtered, while the opposite
-        # side and post-decay re-entries are unaffected.
-        self._last_exit_dir = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -394,28 +386,6 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
-            # Architectural: post-counter-trend-loss same-side admission tightening.
-            # New cross-component data dep at the ENTRY gate ONLY (kept off the
-            # global _strong_min so margins/size/exit are unaffected — clean single
-            # mechanism). After a position that BOTH lost AND was counter to the
-            # long-window trend just closed, briefly raise the SAME-side re-entry
-            # threshold (the lost direction), decaying smoothly over ~6 bars. This
-            # filters the immediate counter-trend whipsaw RE-ENTRY churn (re-shorting
-            # the same failing pullback setup) without the blanket counter-trend
-            # admission block that collapses raw — it fires only after LIVE evidence
-            # (a realized counter-trend loss) that the setup is failing now. Opposite
-            # side and post-decay re-entries are untouched; trend-aligned losses
-            # (rare shallow trend pullback stops) do NOT suppress (so clean-trend
-            # re-entry into the trend is preserved). Multi-variable: depends on
-            # (recency, loss magnitude, counter-trend-ness of the lost direction).
-            _bars_since_x = self.bar_count - self.exit_bar.get(symbol, -999)
-            _recent_x = max(0.0, 1.0 - _bars_since_x / 6.0)  # smooth decay over 6 bars
-            _loss_mag_x = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))  # 0..1, losses only
-            _last_dir_x = self._last_exit_dir.get(symbol, 0.0)
-            _ct_lost = max(0.0, np.tanh(-_last_dir_x * ret_long / 0.04))  # high when lost dir opposed trend
-            _post_loss_supp = 0.30 * _recent_x * _loss_mag_x * _ct_lost  # max +30% same-side threshold
-            _bull_admit_mult = 1.0 + _post_loss_supp if _last_dir_x > 0 else 1.0
-            _bear_admit_mult = 1.0 + _post_loss_supp if _last_dir_x < 0 else 1.0
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -756,9 +726,9 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
-                if _bull_strong >= _bull_strong_min * _bull_admit_mult and _bull_admit and _bull_persist_ok:
+                if _bull_strong >= _bull_strong_min and _bull_admit and _bull_persist_ok:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten
-                elif _bear_strong >= _bear_strong_min * _bear_admit_mult and _bear_admit and _bear_persist_ok:
+                elif _bear_strong >= _bear_strong_min and _bear_admit and _bear_persist_ok:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
@@ -1386,7 +1356,6 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                        self._last_exit_dir[symbol] = 1.0 if current_pos > 0 else -1.0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
