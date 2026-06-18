@@ -1104,8 +1104,7 @@ class Strategy:
                 _pos_dir_ctv = 1.0 if current_pos > 0 else -1.0
                 _ctv_strength = max(0.0, np.tanh(-_pos_dir_ctv * ret_vlong / 0.015))
                 _ctv_loss = max(0.0, np.tanh(-pos_pnl / abs(STOP_LOSS_PCT)))
-                _ctv_bias = 0.25 * _ctv_strength * _ctv_loss
-                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias + _ctv_bias
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -1210,6 +1209,24 @@ class Strategy:
                         _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
+
+                # Branch step 2: multi-day counter-trend GRADUAL size de-risk
+                # (replaces step-1's additive exit-pressure _ctv_bias, which pushed
+                # rally losers through a threshold-cross — shifting the trade-set under
+                # AR(1) noise and collapsing rally stability 0.80->0.62). Continuous
+                # multiplicative shrink of the held position: a counter-trend (vs the
+                # 96-bar trend) loser bleeds exposure SMOOTHLY as the loss deepens,
+                # rather than via a sharp exit-timing change. A continuous size change
+                # is closer to Sharpe-invariant (the entry-side fast-saturation lesson)
+                # -> stability-friendly, while still cutting loser exposure (raw gain).
+                # Naturally gated: _ctv_strength=0 for trend-aligned holds, _ctv_loss=0
+                # for winners, ret_vlong≈0 in sideways. Geometric per-bar bleed-off
+                # (target recomputed from `size` each bar) — a gradual trailing exit.
+                _ctv_shrink = 0.40 * _ctv_strength * _ctv_loss
+                if target != 0 and _ctv_shrink > 0.0:
+                    _shrunk = target * (1.0 - _ctv_shrink)
+                    if (_shrunk > 0) == (target > 0):
+                        target = _shrunk
 
                 # Architectural simplification: removed in-place flip mechanism.
                 # Flip win rate is ~5% across all regimes vs ~85% entry WR — flips are
