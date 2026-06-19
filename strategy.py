@@ -901,34 +901,10 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                # Exp2 (architectural, indep): range-EXTENSION shrink-only first-bar gate.
-                # A new orthogonal signal: where close sits within the recent 20-bar
-                # high-low range (rng_pos in [0,1], low=0 high=1). Entries taken at the
-                # FAVORABLE extreme (bull long at range-top, bear short at range-bottom)
-                # are over-extended -> higher immediate reversal/giveback risk. Shrink
-                # them (shrink-only, never boosts); mid-range and opposite-extreme entries
-                # keep full size. Distinct from the removed Donchian range-position adj
-                # (bidirectional +/-, trend-correlated): this is symmetric shrink-only on
-                # over-extension, targeting reversal risk not trend bias. Targets rally
-                # raw (over-extended rally longs give back on pullback; over-extended rally
-                # ct shorts lose) WITHOUT an admission boundary (entry still fires, just
-                # smaller -> less loss on the losers, no bull-collapse risk). Continuous
-                # tanh, fires only near the extreme (>0.85 / <0.15). New data dep on
-                # (close, 20-bar high/low) at first-bar sizing.
-                _rng_n = 20
-                _rng_hi = float(np.max(bd.history["high"].values[-_rng_n:]))
-                _rng_lo = float(np.min(bd.history["low"].values[-_rng_n:]))
-                _rng_pos = (mid - _rng_lo) / max(_rng_hi - _rng_lo, 1e-10)  # [0,1]
-                # Bull over-extension: rng_pos near 1 -> shrink. Bear over-extension: rng_pos near 0 -> shrink.
-                _rng_ext_bull = max(0.0, np.tanh((_rng_pos - 0.85) / 0.10))  # 0 below 0.85, ~1 at 0.95
-                _rng_ext_bear = max(0.0, np.tanh((0.15 - _rng_pos) / 0.10))  # 0 above 0.15, ~1 at 0.05
-                _rng_ext_atten_bull = 1.0 - 0.20 * _rng_ext_bull  # max 20% shrink at extreme top
-                _rng_ext_atten_bear = 1.0 - 0.20 * _rng_ext_bear
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _rng_ext_atten_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _rng_ext_atten_bear
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
