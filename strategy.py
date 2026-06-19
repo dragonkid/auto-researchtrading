@@ -1375,10 +1375,22 @@ class Strategy:
             # shorts -> byte-identical by construction; low-ret_vlong sideways spared.
             # Resizes only: full exits (target==0) and sign flips are risk transitions
             # -> never smoothed (must hit exact target). Reset on full exit.
+            # BRANCH step1 (this session): STRENGTHEN the emitted-target EMA (Exp1's
+            # proven stability lever, +0.028 at alpha=0.5). Two coordinated changes:
+            # (1) ct gate linear /0.04 -> FAST-saturating /0.01 (Exp5's validated lesson:
+            #     rally's solidly-positive ret_vlong then sits in the flat tail -> gate is
+            #     a near-CONSTANT, so the smoothing strength does not track noise);
+            # (2) alpha cap 0.5 -> 0.70 (stronger low-pass on the held ct-position LEVEL).
+            # Stronger near-constant smoothing of rally's counter-trend held position
+            # value should push rally stability above the 0.708 baseline toward the 0.80
+            # knee. Trend-aligned (bull/crash) spared by construction (gate 0 -> alpha 0
+            # -> byte-identical); low-ret_vlong sideways spared. Risk: more lag may slow
+            # ct-loser exits -> rally raw cost (tension with Exp5's faster-exit raw gain);
+            # branch iterates to balance.
             if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
                 _pos_dir_te = 1.0 if current_pos > 0 else -1.0
-                _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.04))
-                _te_alpha = 0.5 * _ct_te_str  # 0 trend-aligned, up to 0.5 counter-trend
+                _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
+                _te_alpha = 0.70 * _ct_te_str  # 0 trend-aligned, up to 0.70 counter-trend
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
