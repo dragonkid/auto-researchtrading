@@ -1377,7 +1377,22 @@ class Strategy:
                         # direction-agnostic, PnL-modulated via _pnl_scale. New control
                         # flow: exit-decision function shape changes from linear to
                         # profit-convex.
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale)  # 1.0 loss, up to ~1.6 deep profit
+                        # Branch step3: TREND-ALIGNMENT gate on the convex cushion (replaces
+                        # step2's failed R^2 gate, which killed bull -0.077). Step1 (uniform
+                        # convex in profit) eliminated bull's stability penalty (+0.064) BUT
+                        # regressed rally -0.025: the cushion holds rally's COUNTER-TREND
+                        # shorts (the losing rally trades) longer through giveback. Gate the
+                        # cushion by trend-ALIGNMENT (pos_dir matches ret_long sign): only
+                        # trend-aligned winners (bull longs in uptrend, crash shorts in
+                        # downtrend, rally longs in uptrend) earn the convex cushion;
+                        # counter-trend positions revert to linear fast cut. Preserves bull
+                        # (trend-aligned) AND rally's trend longs while cutting rally's ct
+                        # shorts fast. General principle (no regime label): the cushion is
+                        # earned by trading WITH the long-window trend, not by path shape.
+                        # Continuous tanh on (ret_long * pos_dir / 0.04).
+                        _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
+                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
