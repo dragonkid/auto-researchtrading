@@ -220,11 +220,21 @@ class Strategy:
         # alt position values). Converted to net-window-return scale (slope*n) to match the
         # within-symbol ret_vlong tanh scales. Falls to 0 (no effect) if BTC absent/short.
         _btc_trend = 0.0
+        _btc_near = 0.0  # Exp1 (architectural, indep): BTC NEAR-TERM (8-bar) leading momentum
         if "BTC" in bar_data and len(bar_data["BTC"].history) > 9:
             _btc_closes = bar_data["BTC"].history["close"].values
             _btc_n = min(VLONG_WINDOW, len(_btc_closes) - 1)
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
+            # BTC's 8-bar OLS log-HL2 slope*n — net window return scale. A NEW cross-symbol
+            # data dep distinct from the 96-bar _btc_trend (structural trend) and the 20-bar
+            # partner-alt lead: this is the market leader's INTRADAY/near-term momentum. BTC
+            # frequently LEADS alts on intraday-to-daily moves (alts lag BTC turns). An alt
+            # entry whose direction OPPOSES BTC's fresh near-term momentum is an idiosyncratic
+            # counter-market move at the timescale where BTC leads -> lower quality -> shrink.
+            # 8 bars averages ~8 AR(1) noise samples (1/sqrt(8) attenuation) -> noise-robust.
+            _btc_hl2_near = (bar_data["BTC"].history["high"].values[-8:] + bar_data["BTC"].history["low"].values[-8:]) / 2.0
+            _btc_near = _fast_slope(np.log(_btc_hl2_near)) * 8
 
         # Exp2 (architectural, indep): cross-alt lead-lag short-term momentum. ETH and SOL
         # are correlated alts where ETH frequently LEADS SOL on intraday-to-daily moves. A
@@ -954,6 +964,23 @@ class Strategy:
                     # symbol-pair shrink data dep (Exp2 was boost-only).
                     _xasset_bull *= 1.0 - 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
                     _xasset_bear *= 1.0 - 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
+                    # Exp1 (architectural, indep): BTC NEAR-TERM (8-bar) leading-momentum
+                    # shrink on alt entries. BTC leads alts at the intraday scale: an alt
+                    # entry OPPOSING BTC's fresh 8-bar momentum is a counter-market move at
+                    # the timescale where BTC's lead is strongest (rally: alt pullback SHORTS
+                    # oppose BTC's solid near-term up-momentum; crash: alt dead-cat-bounce
+                    # LONGS oppose BTC's near-term down-momentum) -> lower quality -> shrink
+                    # first-bar commitment. Shrink-only (caps at 1.0, safe family). Deep-
+                    # disagreement gate (/0.012 so only STRONG BTC near-term opposition fires
+                    # -> mild/flat BTC near-term spared, sideways ~no effect). Distinct from
+                    # the 96-bar BTC structural-trend shrink (different timescale: intraday
+                    # lead vs multi-day regime) and the 20-bar partner-alt lead (different
+                    # leader: market leader vs peer alt). New cross-symbol x timescale data
+                    # dep (was 96-bar BTC + 20-bar partner; adds 8-bar BTC). Sharpe-neutral-
+                    # to-positive (proven first-bar-only size-shrink axis) -> targets the
+                    # binding rally Sharpe (1.257) via smaller counter-trend alt losses.
+                    _xasset_bull *= 1.0 - 0.08 * max(0.0, np.tanh(-_btc_near / 0.012))  # alt long vs BTC near-term down
+                    _xasset_bear *= 1.0 - 0.08 * max(0.0, np.tanh(_btc_near / 0.012))   # alt short vs BTC near-term up (rally)
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
