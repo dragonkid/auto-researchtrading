@@ -936,8 +936,8 @@ class Strategy:
                 # The slope-confirmation gate (Exp4) protects bull from over-acceleration
                 # into imminent corrections (gate off when slope weakens). New control
                 # flow: acceleration floor depends on trend strength.
-                _accel_floor = 1.5 - 0.3 * _trend_strength_w  # 1.5 chop, 1.2 strong trend
-                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.5 * _win_accel)
+                _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
