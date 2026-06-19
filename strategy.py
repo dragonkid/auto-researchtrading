@@ -991,21 +991,6 @@ class Strategy:
                     _btc_agree_bear = max(0.0, np.tanh(-_btc_trend / 0.03))  # BTC confirms downtrend
                     _xasset_bull *= 1.0 + 0.05 * _btc_vol_rise * _btc_agree_bull
                     _xasset_bear *= 1.0 + 0.05 * _btc_vol_rise * _btc_agree_bear
-                    # Exp2 (architectural, indep): symmetric DISAGREEMENT shrink counterpart to
-                    # the Exp1 boost. An alt entry whose direction OPPOSES BTC's price trend WHILE
-                    # BTC volume is RISING (leader participating in moving AWAY from the alt) is a
-                    # counter-broad-market idiosyncratic trade -> lower quality -> smaller first-
-                    # bar commitment. Shrink-only (caps at 1.0, safe family). Same deep-saturated
-                    # gates (/0.30 BTC vol, /0.03 BTC trend) -> near-constant, noise-free. First-
-                    # bar-only. Mirrors the validated Exp3 partner-disagreement shrink pattern
-                    # (bilateral completion: Exp1 boost on agree+vol-rise, this shrink on disagree
-                    # +vol-rise). Distinct from the existing /0.06 BTC-trend shrink (price only):
-                    # this adds the leader-VOLUME-participation conjunction (shrink fires STRONGER
-                    # when the leader is moving away WITH participation, not just drifting).
-                    _btc_disagree_bull = max(0.0, np.tanh(-_btc_trend / 0.03))  # BTC downtrend vs alt long
-                    _btc_disagree_bear = max(0.0, np.tanh(_btc_trend / 0.03))   # BTC uptrend vs alt short
-                    _xasset_bull *= 1.0 - 0.05 * _btc_vol_rise * _btc_disagree_bull
-                    _xasset_bear *= 1.0 - 0.05 * _btc_vol_rise * _btc_disagree_bear
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
