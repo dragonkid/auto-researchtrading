@@ -1004,20 +1004,6 @@ class Strategy:
                     _partner_vol_rise = _alt_vol_rise.get(_partner, 0.0)
                     _xasset_bull *= 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
                     _xasset_bear *= 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
-                    # Exp4 (architectural, indep): symmetric DISAGREEMENT shrink counterpart to
-                    # the Exp3 boost. An alt entry whose direction OPPOSES the partner alt's 20-bar
-                    # momentum WHILE the partner alt's volume is RISING (partner participating in
-                    # moving AWAY from this alt) is an idiosyncratic counter-alt-trend trade ->
-                    # lower quality -> smaller first-bar commitment. Shrink-only (caps at 1.0,
-                    # safe family). Same deep-saturated gates (/0.30 partner vol, /0.02 partner
-                    # price) -> near-constant, noise-free. First-bar-only. Mirrors the Exp3
-                    # partner boost (bilateral completion) and the Exp2 BTC-vol disagree shrink
-                    # pattern (which was inert). Distinct from the existing /0.02 partner-price
-                    # disagreement shrink (price only): this adds the partner-VOLUME-participation
-                    # conjunction (shrink fires STRONGER when the partner is moving away WITH
-                    # participation).
-                    _xasset_bull *= 1.0 - 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
-                    _xasset_bear *= 1.0 - 0.05 * _partner_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
                     # Exp1 (architectural, indep): BTC leader-volume-participation x BTC-price-
                     # trend-agreement conjunction boost on alt entries. _btc_vol_rise (deep-
                     # saturated BTC 6/18-bar volume ratio) confirms leader participation is
