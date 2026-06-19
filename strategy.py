@@ -1163,7 +1163,7 @@ class Strategy:
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure * (1.0 - _ride_supp),
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure * (1.0 - _ride_supp),
+                    _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
