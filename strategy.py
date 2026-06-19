@@ -1199,13 +1199,26 @@ class Strategy:
                 # principle, no regime label. _slope_against (computed above) is <0 when the
                 # position is slope-aligned; momentum-intact = tanh(-_slope_against/scale).
                 # Rally still spared by construction (aligned longs lose -> _ride_win=0).
+                # Branch step 8 (kept as comment): momentum-confirmation gate did NOT
+                # separate — crash byte-identical, sideways +0.003 only (both crash bounces
+                # and sideways drift longs have positive agreeing slopes). Fifth failed
+                # separator after ret_vlong-mag / direction / vol / slope-momentum.
+                # Branch step 9: profit-VELOCITY gate (the last genuinely-orthogonal axis).
+                # Crash relief rallies are violent short-squeezes that accumulate profit FAST
+                # (steep peak_pnl per bar); sideways drift-up is a slow grind (low peak_pnl
+                # per bar). Ride past the time-exit only when realized profit VELOCITY is
+                # high. peak_pnl is a confirmed high-water mark (noise-robust) and bars_held
+                # is integer, so velocity = peak_pnl/bars_held is noise-robust (not the
+                # walled instantaneous-pos_pnl-near-breakeven channel — this is a rate among
+                # already-winning holds). General squeeze-velocity principle (fast violent
+                # moves have momentum continuation; slow drifts mean-revert), no regime label.
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
                 _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_mom = max(0.0, np.tanh(-_slope_against / 0.0006))
-                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win * _ride_mom
+                _ride_vel = max(0.0, np.tanh((self.peak_pnl[symbol] / max(bars_held, 1) - 0.0030) / 0.0020))
+                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win * _ride_vel
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
