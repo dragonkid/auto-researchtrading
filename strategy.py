@@ -1166,25 +1166,7 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                # Architectural (Exp3): trend-aligned DEEP-PROFIT max_hold extension.
-                # NEW data dependency: hold DURATION depends on realized-PnL depth (the
-                # existing _hold_adj extends on SLOPE agreement only). A position that
-                # is trend-aligned (ret_long*pos_dir>0) AND in deep realized profit
-                # (pos_pnl >> |stop|) is a confirmed trend winner — extend max_hold so
-                # time pressure does not cut it prematurely. Crash shorts (100% WR, DD
-                # headroom 0.65% vs 10% cap) and bull/rally trend longs run longer ->
-                # capture more trend -> higher Sharpe in the trend regimes (the low-
-                # Sharpe regimes crash 1.27 / rally 1.24 are the binding constraints).
-                # Counter-trend positions (align 0) and shallow-profit positions (pnl 0)
-                # get NO extension -> unaffected (ct losers still cut fast by the
-                # -2.0*_ct_hold_sat term and slope-against pressure). Continuous tanh on
-                # both gates, fast-saturating pnl scale (near-constant once deep in
-                # profit -> hold length does not track AR(1) noise). New control flow:
-                # a third max_hold adjustment term (PnL-based, orthogonal to slope and ct).
-                _deep_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                _deep_pnl = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _deep_profit_hold_ext = MOMENTUM_HOLD_BONUS * _deep_align * _deep_pnl
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat + _deep_profit_hold_ext
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
