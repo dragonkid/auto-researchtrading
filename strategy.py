@@ -766,38 +766,20 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
-                # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
-                # attenuator. NEW orthogonal signal: none of the existing attenuators
-                # (conv-margin, voter-quality, multi-window consensus, churn) measure
-                # the LINEARITY of the recent price path. R^2 of the OLS fit of log(HL2)
-                # over LINREG_PERIOD is a continuous [0,1] cleanliness statistic, distinct
-                # from slope DIRECTION (boundary-walled) and slope MAGNITUDE (_consensus
-                # uses tanh(slope)): a clean one-directional move has R^2~1 regardless of
-                # whether it is up or down; a choppy whipsaw path has low R^2 even if its
-                # net slope is large. Mechanism: choppy (low-R^2) entries are whipsaw-prone
-                # losers; shrink their first-bar commitment so their clean/perturbed
-                # tracking error and Sharpe drag are down-weighted, while clean-trend
-                # entries (high R^2, e.g. grinding bull/crash legs) keep full size and stay
-                # ~inert. Direction-agnostic (same scalar both sides). Continuous tanh on
-                # R^2 (no zero-crossing -> not the walled admission-boundary family); shrink
-                # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
-                _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-                _tq_atten = 0.25 + 0.75 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
-                # Branch step 6: CHURN-GATE the R^2 shrink (active in low-churn, OFF in
-                # high-churn bursts). The R^2 atten's raw gains live in sparse-entry regimes
-                # (low len(_eh)) but its noise COST falls on the bursty-entry regime whose
-                # stability is the binding constraint — R^2-dependent sizing on bursty
-                # entries adds a noise-sensitive quantity to the choppy regime's positions,
-                # dropping its stability below baseline. Gate the shrink by the SAME
-                # noise-immune integer churn count the baseline grids use: _tq_calm ~1 at
-                # len(_eh)<=1 (sparse-entry regimes get the full R^2 shrink -> raw gains kept)
-                # fading to ~0 at len(_eh)>=3 (bursty entries get NO shrink -> positions
-                # revert to un-attenuated size, sparing the choppy regime's stability).
-                # Self-measured behavioral gate (NOT a regime label) — same family as the
-                # baseline's churn-gated grids/deadband; regime effects fall out of realized
-                # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
-                _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
-                _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Architectural simplification (Exp3): removed trend-QUALITY (R^2) first-bar
+                # entry-size attenuator. The R^2 path-linearity shrink (0.25+0.75*tanh(R2/0.30),
+                # churn-gated to fire in low-churn regimes = crash/sideways/bull) was a layered
+                # quality gate atop three existing first-bar quality filters that already
+                # down-weight low-quality entries: _bull_conv_atten (conviction margin),
+                # _bull_quality_atten (bilateral voter split), _bull_consensus_atten (multi-
+                # window slope agreement). In choppy regimes (crash/sideways) even legitimate
+                # trend entries can have low R^2 (the regime's path is choppy by nature), so
+                # the R^2 gate risks OVER-SHRINKING real entries the other gates already
+                # passed — the same over-shrink pattern that made _vol_entry_atten removal a
+                # +0.028 mean keep. Removing eliminates a redundant 4th-layer quality shrink
+                # + the _fast_r2 cross-bar HL2 read. Neutralized to 1.0 (kept in the size
+                # product for minimal diff). Code-structure removal: -16 lines + -1 cross-bar dep.
+                _tq_atten = 1.0
                 # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
                 # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
                 # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
