@@ -1158,18 +1158,29 @@ class Strategy:
                 # BYTE-IDENTICAL to baseline -> slope is never the binding MAX term
                 # for clean winning holds; the whole crash gain + sideways loss came
                 # from suppressing the TIME pressure term. So suppress TIME only.
-                # The crash gain and sideways loss are coupled through time-ride; the
-                # align gate (multi-day trend magnitude) separates them: crash has a
-                # strong multi-day trend (|ret_vlong| large), sideways only weak drift
-                # (|ret_vlong| small). A deadzone-shifted aligned-tanh makes the gate
-                # exactly 0 for weak-drift holds (sideways) while saturating for
-                # strong-trend holds (crash). Aligned magnitude = ret_vlong*pos_dir.
+                # Branch step4 diagnostic: a ret_vlong-magnitude deadzone did NOT
+                # separate crash from sideways (it CUT crash gain to +0.025 without
+                # recovering sideways) -> multi-day-trend MAGNITUDE overlaps between
+                # crash and sideways (both have strong-aligned trending winning holds).
+                # The clean separator is DIRECTION: crash winners are SHORTS, sideways
+                # winners are LONGS, and bull longs are byte-flat under ride-through
+                # (+0.0005). Restrict the time-pressure ride-through to SHORT positions
+                # in a confirmed multi-day DOWNTREND: downtrend momentum persists, so a
+                # winning trend-aligned short rides the move past the time-based exit;
+                # long positions are unaffected (sideways mean-revert longs keep their
+                # tight time-exit, bull longs unchanged). General directional principle
+                # (downtrend momentum persistence), not a regime label. Rally stays
+                # surgical: its winning shorts are COUNTER-trend (ret_vlong>0, pos<0 ->
+                # align=0), so the suppression never fires on rally. Gates: clean (R^2),
+                # multi-day-aligned (ret_vlong*pos_dir>0), winning (pos_pnl>0), and
+                # short (pos<0).
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ride_short = 1.0 if current_pos < 0 else 0.0
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
-                _ride_align = max(0.0, np.tanh((ret_vlong * _ride_pos_dir - 0.06) / 0.05))
+                _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win
+                _ride_supp = 0.75 * _ride_short * _ride_clean * _ride_align * _ride_win
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
