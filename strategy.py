@@ -626,8 +626,23 @@ class Strategy:
                 # trend entries take 0.70x size in strong trend). New cross-timescale
                 # data dependency: cold-entry first-bar size depends on trend disagreement.
                 _ct_gate = max(0.0, np.tanh((abs(ret_long) - 0.03) / 0.04))  # 0..1
-                _bull_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(-ret_long / 0.05))  # bull entry in downtrend
-                _bear_ct_atten = 1.0 - 0.30 * _ct_gate * max(0.0, np.tanh(ret_long / 0.05))   # bear entry in uptrend
+                # Exp5 (architectural simplification, RE-TEST under avg5 methodology + new
+                # baseline): REMOVED the 20-bar _ct_atten first-bar size shrink. Prior tests
+                # (5cf14fe3, 021aaeb1) at the OLD single-AST-seed baseline found it LOAD-BEARING
+                # as an "inadvertent noise-stabilizer" for rally (raw byte-identical but rally
+                # stab 0.81->0.58). Two things changed since: (1) the avg5 re-baseline (12d6c5f9)
+                # replaced the single-seed lottery with 5 FIXED shared seeds (same objection-
+                # voiding rationale that unblocked the anti-dip re-test 45942a93); (2) rally
+                # stability is now 1.0 (above the 0.80 knee, factor 1.0) via later keeps
+                # (_target_ema, churn grids, etc.) — so the 20-bar term's marginal STABILIZATION
+                # role is redundant now that rally is already maxed. The 96-bar _ct_vlong below
+                # is the VALIDATED multi-day ct shrink (catches rally pullback shorts the 20-bar
+                # term structurally misses per line-631 comment) — keeping it. Test: if the 20-bar
+                # term's only value was the now-redundant stabilization, removal is score-neutral
+                # or positive (simpler, less sizing distortion); if it still stabilizes under
+                # avg5, removal regresses rally stab.
+                _bull_ct_atten = 1.0
+                _bear_ct_atten = 1.0
                 # Architectural: multi-day counter-trend SIZE attenuator (layered on the
                 # 20-bar term above). The 20-bar _ct_gate is ~0 during a rally pullback
                 # (the local 20-bar return is flat/negative at the moment a pullback short
