@@ -1126,6 +1126,26 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp1 (architectural, indep): multi-day trend-aligned PROFIT hold extension.
+                # Symmetric exit-side counterpart to _ct_hold_sat (which SHORTENS counter-trend
+                # holds via the noise-immune fast-saturating ret_vlong gate). Here the SAME
+                # gate EXTENDS the hold of positions that are trend-aligned at the multi-day
+                # scale (pos_dir matches ret_vlong sign) AND currently in profit. Mechanism:
+                # rally's grinding uptrend longs repeatedly get cut by time/slope pressure
+                # during short-term slope wobble even while the multi-day trend (ret_vlong,
+                # solidly positive through pullbacks) remains intact — riding them longer
+                # captures more of the trend -> higher Sharpe (rally raw is the binding
+                # constraint, no penalty applied). Fast-saturating /0.01 scale (same as
+                # _ct_hold_sat and the entry ct_vlong shrink): rally/bull/crash's solid
+                # multi-day trend sits in the FLAT saturated tail -> the extension is a near-
+                # CONSTANT (sensitivity ~0.4, not the ~5 of a linear-region gate), so the
+                # exit bar does NOT track AR(1) noise -> stability preserved (same lesson as
+                # branch-step-9 entry ct-shrink + Exp5 ct-hold-shorten). Counter-trend
+                # positions (gate 0) and losers (profit-gated out) are byte-identical.
+                # Sideways ret_vlong~0 -> gate~0 -> spared. New control flow + new data dep
+                # on max_hold (ret_vlong x pos_dir x pos_pnl). Max +3 bars, profit-gated.
+                _ta_hold_ext = 3.0 * max(0.0, np.tanh((1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _max_hold = _max_hold + _ta_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
