@@ -912,6 +912,20 @@ class Strategy:
                 # sideways mean-reverters; ~1 in trend). Max 0.8 bars faster, floored at
                 # 1.5 bars. New control flow on scale-in pace based on realized PnL.
                 _win_accel = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * _trend_strength_w
+                # Exp4 (architectural, indep): slope-confirmation gate on the accelerator.
+                # Exp3 (baseline a73836dc) helped rally +0.021 but cost bull -0.018: the
+                # accelerator grew bull positions right before 2021's sharp corrections.
+                # Add a SHORT-TERM slope-confirmation requirement (16-bar OLS log-HL2 slope
+                # agreeing with position direction): only accelerate when the near-term
+                # slope is still confirming the position. bull's corrections are preceded
+                # by slope weakening -> gate off -> bull spared; rally's grinding uptrend
+                # has persistent positive slope -> gate on -> rally keeps the gain. One-
+                # sided (max(0,...) only reduces accel). New cross-component data dep:
+                # scale-in accel now depends on short-term slope agreement (entry voter
+                # slope reused), layered on the long-window trend gate.
+                _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
+                _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
+                _win_accel = _win_accel * _slope_conf
                 _entry_full_bars_dyn = max(1.5, _entry_full_bars_dyn - 0.8 * _win_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
