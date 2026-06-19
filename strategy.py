@@ -1164,23 +1164,30 @@ class Strategy:
                 # crash and sideways (both have strong-aligned trending winning holds).
                 # The clean separator is DIRECTION: crash winners are SHORTS, sideways
                 # winners are LONGS, and bull longs are byte-flat under ride-through
-                # (+0.0005). Restrict the time-pressure ride-through to SHORT positions
-                # in a confirmed multi-day DOWNTREND: downtrend momentum persists, so a
-                # winning trend-aligned short rides the move past the time-based exit;
-                # long positions are unaffected (sideways mean-revert longs keep their
-                # tight time-exit, bull longs unchanged). General directional principle
-                # (downtrend momentum persistence), not a regime label. Rally stays
-                # surgical: its winning shorts are COUNTER-trend (ret_vlong>0, pos<0 ->
-                # align=0), so the suppression never fires on rally. Gates: clean (R^2),
-                # multi-day-aligned (ret_vlong*pos_dir>0), winning (pos_pnl>0), and
-                # short (pos<0).
+                # (+0.0005).
+                # Branch step 6: the step-5 SHORT-only gate made crash BYTE-IDENTICAL
+                # (gain lost) -> DISPROVES the "crash winners are shorts" hypothesis. The
+                # step-1 crash gain comes from clean+aligned+winning LONGS during bear-
+                # market relief rallies (multi-week bounces where ret_vlong>0 locally), the
+                # SAME position type as sideways drift-up longs -> direction cannot separate
+                # them (step5 fail) and ret_vlong MAGNITUDE cannot either (step4 fail). The
+                # untried orthogonal separator is VOL EXPANSION: crash relief rallies are
+                # violent/high realized-vol (momentum persists -> ride past the time-exit),
+                # while sideways drift-up is calm/low-vol (mean-reverts -> keep the tight
+                # time-exit). Replace the short gate with a smooth vol_ratio gate. General
+                # momentum-persistence principle (high-vol trending moves persist, low-vol
+                # drifts revert), NOT a regime label; crash/sideways effects fall out of the
+                # backtest. Rally stays spared two ways: low-vol grind (_ride_vol~0) AND its
+                # aligned longs lose (_ride_win=0) / winners are counter-trend (align=0).
+                # Gates: clean (R^2), multi-day-aligned (ret_vlong*pos_dir>0), winning
+                # (pos_pnl>0), and vol-expanding (vol_ratio>1).
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _ride_short = 1.0 if current_pos < 0 else 0.0
+                _ride_vol = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
                 _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 0.75 * _ride_short * _ride_clean * _ride_align * _ride_win
+                _ride_supp = 0.75 * _ride_vol * _ride_clean * _ride_align * _ride_win
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
