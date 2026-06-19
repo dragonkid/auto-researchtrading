@@ -1001,7 +1001,24 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Exp5 (this session): FAST-SATURATING counter-trend max_hold shortening.
+                # Re-attempt of Exp3 (which raised rally raw +0.0064 by cutting ct losers
+                # faster via the noise-immune bar-counter, but cost stability -0.0027). The
+                # Exp3 failure mode: its shortening amount 2*tanh(-pos_dir*ret_vlong/0.04)
+                # sat in the LINEAR tanh region, so noisy ret_vlong made the AMOUNT of
+                # shortening — and thus the exit bar — vary across the AR(1) ensemble ->
+                # TE up. The codebase's own branch-step-9 lesson (entry ct-shrink): a
+                # FAST-saturating gate (scale 0.01) puts rally's solidly-positive multi-day
+                # ret_vlong in the FLAT saturated tail of tanh, so the shrink is a near-
+                # CONSTANT (sensitivity ~0.4 vs ~5 at scale 0.04) -> a large but NOISE-FREE
+                # shortening. The exit then fires at a deterministic bars_held (bar counter
+                # is noise-immune; clean and perturbed exit the SAME bar -> zero TE) while
+                # keeping the faster-ct-loser-exit raw gain. Trend-aligned holds (pos_dir*
+                # ret_vlong>0 -> gate 0) keep max_hold unchanged -> byte-identical; low-
+                # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
+                # routing (vs Exp3's mid-slope linear shortening).
+                _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
