@@ -1377,21 +1377,7 @@ class Strategy:
                         # direction-agnostic, PnL-modulated via _pnl_scale. New control
                         # flow: exit-decision function shape changes from linear to
                         # profit-convex.
-                        # Branch step2: PATH-LINEARITY-gate the convex amp. Step1 (uniform
-                        # convex in profit) eliminated bull's stability penalty (+0.064)
-                        # BUT regressed rally -0.025: the cushion holds rally's winners
-                        # longer through choppy giveback that then reverses. Rally is a
-                        # CHOPPY uptrend (low R^2 / path linearity) vs bull-2021's cleaner
-                        # trend. Gate the cushion by the recent path's R^2 (LINREG_PERIOD
-                        # log-HL2 OLS R^2): clean-trend winners (high R^2) get the full
-                        # convex cushion (ride clean pullbacks); choppy-path winners (low
-                        # R^2, rally) revert toward linear (fast cut, no riding choppy
-                        # giveback). General principle (no regime label): the cushion is
-                        # earned by path cleanliness, not by direction or trend magnitude.
-                        # Continuous tanh on R^2. New cross-component data dep at exit.
-                        _dr_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-                        _dr_r2_gate = max(0.0, min(1.0, np.tanh(_dr_r2 / 0.30)))  # 0 chop, 1 clean trend
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_r2_gate  # 1.0 loss/chop, up to ~1.6 clean-trend profit
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale)  # 1.0 loss, up to ~1.6 deep profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
