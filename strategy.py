@@ -901,36 +901,11 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                # Exp3 (architectural, indep): COUNTER-TREND range-extension shrink.
-                # Refines Exp2 (this session), which shrunk ALL over-extended entries and
-                # hurt rally -0.027 because rally's trend-aligned range-TOP longs are
-                # PROFITABLE (grinding uptrend continues) and shrinking them cut winners.
-                # Exp2 data: shrink helped crash +0.0023 / bull +0.0005 (their ct bounce
-                # entries DO reverse) but killed rally's trend longs. Fix: gate the range-
-                # extension shrink to fire ONLY on COUNTER-TREND entries (the losers):
-                #   - bull entry AGAINST a downtrend (ret_long<0) at range-top = dead-cat
-                #     bounce into resistance -> shrink (crash winner),
-                #   - bear entry AGAINST an uptrend (ret_long>0) at range-bottom = rally
-                #     pullback short into support -> shrink (rally ct-loser, the target).
-                # Trend-aligned entries (rally longs, bull longs, crash shorts) get ct_gate=0
-                # -> NO shrink -> preserves Exp2's regression. New cross-component data dep:
-                # range-extension shrink depends on (entry_dir, ret_long). Shrink-only, no
-                # admission boundary. Continuous tanh. New data dep on (close, 20-bar hl).
-                _rng_n = 20
-                _rng_hi = float(np.max(bd.history["high"].values[-_rng_n:]))
-                _rng_lo = float(np.min(bd.history["low"].values[-_rng_n:]))
-                _rng_pos = (mid - _rng_lo) / max(_rng_hi - _rng_lo, 1e-10)  # [0,1]
-                _ct_rng_bull = max(0.0, np.tanh(-ret_long / 0.05))  # 0 uptrend-aligned, ~1 downtrend (ct bull)
-                _ct_rng_bear = max(0.0, np.tanh(ret_long / 0.05))   # 0 downtrend-aligned, ~1 uptrend (ct bear)
-                _rng_ext_bull = max(0.0, np.tanh((_rng_pos - 0.85) / 0.10)) * _ct_rng_bull
-                _rng_ext_bear = max(0.0, np.tanh((0.15 - _rng_pos) / 0.10)) * _ct_rng_bear
-                _rng_ext_atten_bull = 1.0 - 0.20 * _rng_ext_bull  # max 20% shrink, ct+over-extended only
-                _rng_ext_atten_bear = 1.0 - 0.20 * _rng_ext_bear
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _rng_ext_atten_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _rng_ext_atten_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
