@@ -751,20 +751,7 @@ class Strategy:
                 # a continuous price-derived quantity like Exp1 trend-gate proximity which
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
-                # Exp5 (architectural simplification): REMOVED _churn_size_atten (direction-
-                # UNIFORM 0.25 first-bar shrink on all burst entries). It was a prior keep
-                # (cbf4e8c-era, protected rally stability by shrinking fast re-entries). But
-                # Exp1 (this session) added a DIRECTION-AWARE ct shrink (_churn_ct_atten) that
-                # now handles the LOSING burst entries (counter-trend re-entries). The
-                # remaining effect of the uniform shrink is to ALSO shrink the trend-aligned
-                # burst WINNERS (rally longs re-entering a resuming uptrend) by 0.25, capping
-                # their upside -- a potential drag on rally raw (the binding constraint).
-                # Removing lets Exp1 handle ct losers (0.20 shrink) while un-shrinking
-                # trend-aligned burst winners to full size. Risk: ct burst entries also grow
-                # (0.60 -> 0.80 via lost 0.25 uniform), bigger ct losses; net depends on
-                # whether winner un-shrink gain outweighs loser un-shrink loss. If rally
-                # regresses (ct loser effect dominates or stability drops), revert.
-                _churn_size_atten = 1.0
+                _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
@@ -915,10 +902,10 @@ class Strategy:
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
