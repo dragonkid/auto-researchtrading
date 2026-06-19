@@ -729,8 +729,31 @@ class Strategy:
                 # neutral-to-positive. Continuous (no decision-boundary flip — unlike a
                 # gated weight); same safe family as _bull_quality_atten. New data dep:
                 # first-bar size depends on conviction margin above floor.
-                _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
-                _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
+                # Exp4 (this session): counter-trend-DEEPENED conviction-margin floor.
+                # The existing conv_atten shrinks marginal entries to a UNIVERSAL 0.70
+                # floor; its own comment states marginal entries drive rally instability.
+                # But the floor is the same for trend-aligned and counter-trend entries,
+                # even though rally's TE source is specifically its marginal COUNTER-TREND
+                # pullback shorts (a marginal entry that flips in/out across the AR(1)
+                # ensemble contributes pure tracking error proportional to its position
+                # VALUE). Deepen the floor for counter-trend marginal entries only: a bull
+                # entry is counter-trend when ret_vlong<0, a bear entry when ret_vlong>0.
+                # For those, drop the floor from 0.70 toward 0.45 in proportion to ct
+                # strength, so a JUST-admitted ct entry takes ~0.45x size (much smaller
+                # position value -> much smaller clean/perturbed equity divergence ->
+                # stability up) while a DECISIVE ct entry (margin>=0.40) still reaches
+                # full 1.0x (raw preserved, Sharpe scale-invariant). Trend-aligned entries
+                # (bull in uptrend, crash short in downtrend) keep the 0.70 floor ->
+                # byte-identical by construction; low-ret_vlong sideways spared. Same
+                # signed-ct family as the keeps; NEW joint data dep: size floor depends on
+                # ct-strength x margin (the existing _ct_vlong shrink saturates on
+                # ret_vlong MAGNITUDE and ignores margin -> orthogonal point).
+                _bull_ct_floor = max(0.0, np.tanh(-ret_vlong / 0.04))  # bull entry counter-trend in downtrend
+                _bear_ct_floor = max(0.0, np.tanh(ret_vlong / 0.04))   # bear entry counter-trend in uptrend
+                _bull_floor = 0.70 - 0.25 * _bull_ct_floor
+                _bear_floor = 0.70 - 0.25 * _bear_ct_floor
+                _bull_conv_atten = _bull_floor + (1.0 - _bull_floor) * max(0.0, min(1.0, _bull_margin / 0.40))
+                _bear_conv_atten = _bear_floor + (1.0 - _bear_floor) * max(0.0, min(1.0, _bear_margin / 0.40))
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
