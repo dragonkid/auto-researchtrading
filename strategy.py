@@ -444,9 +444,25 @@ class Strategy:
             # that IS the dominant rally tracking-error source. Sustained-conviction filtering
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
+            # Exp2 (this session): counter-trend-adaptive readiness MEMORY (per-side RHO).
+            # The 716 keep names entry-TIMING divergence as the dominant rally tracking-
+            # error source; the readiness EMA crossing IS that timing. A bear entry is
+            # counter-trend when ret_vlong>0 (multi-day uptrend = rally pullback short);
+            # a bull entry is counter-trend when ret_vlong<0 (multi-day downtrend = crash
+            # dead-cat long). For those counter-trend sides ONLY, raise RHO from the base
+            # 0.5 toward 0.78 (more EMA memory) so the readiness crossing integrates more
+            # bars of AR(1) noise -> the entry-timing decision is far less noise-sensitive
+            # exactly where rally's fragile pullback shorts live. Trend-aligned sides
+            # (bull longs in bull, crash shorts in crash) keep RHO=0.5 -> byte-identical
+            # by construction; low-ret_vlong sideways spared. Same signed-ct-gate family
+            # as the two exit-EMA keeps and Exp1, but a NEW point: entry admission timing
+            # (vs Exp1's emitted exit/target LEVEL). Continuous tanh (no decision boundary
+            # on the gate itself). New cross-timescale data dep on the readiness memory.
+            _rho_bull = ENTRY_ACCUM_RHO + 0.28 * max(0.0, np.tanh(-ret_vlong / 0.04))
+            _rho_bear = ENTRY_ACCUM_RHO + 0.28 * max(0.0, np.tanh(ret_vlong / 0.04))
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            _acc_b = _rho_bull * _acc_b + (1.0 - _rho_bull) * _bull_margin
+            _acc_s = _rho_bear * _acc_s + (1.0 - _rho_bear) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
