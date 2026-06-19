@@ -1037,6 +1037,22 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
+                # Exp5 (architectural, indep): multi-day-trend-LEAD scale-in pace boost.
+                # _win_accel above accelerates on REALIZED pos_pnl (a confirmation signal -
+                # it fires only AFTER the position is already in profit). A trend-aligned
+                # entry in a STRONG multi-day uptrend (rally long) is high-quality BEFORE
+                # pos_pnl accumulates; reaching full size faster captures more of the
+                # trend's early move. Add a complementary acceleration on ret_vlong*pos_dir
+                # (the validated multi-day trend-alignment signal used by ct_vlong/ct_hold/
+                # target_ema), gated by the SAME _trend_strength_w (chop spared) AND
+                # _slope_conf (bull protected from accelerating into imminent corrections,
+                # per the Exp4 slope-gate lesson). PACE not SIZE: reaches `size` faster but
+                # does NOT overshoot full_target (avoids the winner-pyramid giveback dead-
+                # end 17484a0e). The _accel_floor caps total acceleration (no sub-1.3 pace).
+                # New cross-timescale data dep on scale-in pace (ret_vlong, complementing
+                # pos_pnl). Trend-aligned only (gate 0 for ct -> byte-identical for ct).
+                _trend_pace = max(0.0, np.tanh(ret_vlong * _pos_dir_acc / 0.03)) * _trend_strength_w * _slope_conf
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 0.6 * _trend_pace)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
