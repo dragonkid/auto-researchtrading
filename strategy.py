@@ -1420,6 +1420,27 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp4 (architectural, indep): partner-alt DIVERGENCE exit pressure (8th soft
+                # source). NEW exit-side data dep on the cross-alt lead-lag signal (Exp2/Exp3
+                # used it entry-side only). A WINNING alt position whose partner alt's 20-bar
+                # momentum OPPOSES the position direction is an idiosyncratic divergence (one
+                # alt running while the other fades) -> more likely to mean-revert than a
+                # broad-alt-trend winner -> harvest before giveback. Distinct from _vc (volume
+                # climax) and _ve (price-vol expansion): this is cross-SYMBOL directional
+                # divergence. Profit-side only (lock gains on divergent winners; losers already
+                # handled by slope-against). BTC has no partner -> 0 (byte-identical for BTC).
+                # Small 0.30 cap, /0.02 deep-divergence gate so only STRONG partner opposition
+                # fires (correlated trend regimes where alts move together -> ~0 -> spares
+                # bull/rally broad trends, avoiding the Exp1 range-expansion over-harvest failure).
+                _pd_pressure = 0.0
+                if symbol in ("ETH", "SOL"):
+                    _partner_ex = "SOL" if symbol == "ETH" else "ETH"
+                    _partner_lead_ex = _alt_lead.get(_partner_ex, 0.0)
+                    _pos_dir_ex = 1.0 if current_pos > 0 else -1.0
+                    # partner momentum opposing position direction
+                    _div = max(0.0, np.tanh(-_partner_lead_ex * _pos_dir_ex / 0.02))
+                    _pd_pressure = 0.30 * _div
+                _w_pd = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1435,6 +1456,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_pd * _pd_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
