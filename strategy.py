@@ -766,6 +766,42 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+                # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
+                # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
+                # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
+                # sessions found the continuous ret_vlong-modulated sizing hurt rally
+                # STABILITY during bursts. So during a rally's choppy-pullback burst (high
+                # entry density), the counter-trend SHORT re-entries (bear entry while the
+                # 96-bar uptrend ret_vlong stays solidly positive) are NOT shrunk by
+                # _ct_vlong -- only by the direction-UNIFORM _churn_size_atten (0.25) and
+                # the scale-in _adv_freeze. Those ct re-entries are exactly rally's losing
+                # trades ("streak is REAL SEPARATE losing trades = burst re-entries during
+                # choppy pullbacks", results.tsv row 792). This adds a DIRECTION-AWARE
+                # complement: an extra shrink (max 0.20) on counter-trend-at-multi-day
+                # entries specifically when churn is HIGH (the burst partition _ct_vlong
+                # leaves alone). Smaller first-bar commitment on the losing ct re-entries
+                # -> smaller realized losses -> higher rally Sharpe (the binding raw
+                # constraint, all stability factors 1.0 so raw IS the score).
+                # Noise-robustness (the lesson that killed continuous burst-time ct sizing):
+                # both gates are near-CONSTANT during a burst -- _churn_ct uses the
+                # noise-IMMUNE integer len(_eh) (fast-saturating /0.6), and _ctmd uses the
+                # validated FAST-saturating /0.01 ret_vlong scale (rally's solidly-positive
+                # ret_vlong sits in the flat tail -> ct indicator is a near-binary 1, not a
+                # noise-tracking quantity). So the shrink is a near-constant 0.20 for burst
+                # ct entries, not a noise-sensitive size wobble -> stability preserved.
+                # Sparing: bull/crash/sideways have low entry density (len(_eh)<=1 the whole
+                # regime) -> _churn_ct ~0 -> byte-identical (same noise-immune integer-churn
+                # gating as the proven grid/deadband/churn_size_atten keeps). First-bar only
+                # (respects the proven winning axis: first-bar-only size changes help rally,
+                # sustained-through-pullback sizing hurts). Shrink-only (safe family). New
+                # cross-component data dep: first-bar size depends on churn x multi-day-ct
+                # interaction (ct_vlong's calm-partition complement, operating on the burst
+                # partition ct_vlong deliberately leaves alone).
+                _churn_ct = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 calm, ~1 bursting (noise-immune integer gate)
+                _bull_ctmd = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull long counter to multi-day downtrend
+                _bear_ctmd = max(0.0, np.tanh(ret_vlong / 0.01))   # bear short counter to multi-day uptrend (rally pullback shorts)
+                _churn_ct_atten_bull = 1.0 - 0.20 * _churn_ct * _bull_ctmd
+                _churn_ct_atten_bear = 1.0 - 0.20 * _churn_ct * _bear_ctmd
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
@@ -880,10 +916,10 @@ class Strategy:
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _conc_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _conc_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
