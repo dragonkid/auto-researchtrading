@@ -802,6 +802,30 @@ class Strategy:
                 _bear_ctmd = max(0.0, np.tanh(ret_vlong / 0.01))   # bear short counter to multi-day uptrend (rally pullback shorts)
                 _churn_ct_atten_bull = 1.0 - 0.20 * _churn_ct * _bull_ctmd
                 _churn_ct_atten_bear = 1.0 - 0.20 * _churn_ct * _bear_ctmd
+                # Exp2 (architectural, indep): trend-aligned BURST first-bar BOOST -- the
+                # direction-aware complement to Exp1's ct-shrink. During a high-churn entry
+                # burst, entries split into counter-trend losers (Exp1 shrinks) and
+                # trend-aligned WINNERS (rally longs re-entering on a pullback that resumes
+                # the uptrend; bull longs re-entering a continuation). The existing uniform
+                # _churn_size_atten shrinks ALL later-in-burst entries 0.25 including these
+                # trend-aligned winners, capping their upside. This restores commitment to
+                # the trend-aligned burst re-entries: a first-bar boost (max +0.15) gated on
+                # churn (burst partition) x trend-aligned-at-multi-day (ret_vlong agrees with
+                # entry direction, fast-saturating /0.01 -> near-constant during a burst,
+                # stability-preserving same as Exp1). More upfront commitment on rally's
+                # winning burst longs -> capture more of the resuming trend -> higher Sharpe
+                # (binding raw constraint). First-bar ONLY (respects the proven winning axis:
+                # first-bar-only size changes help rally; SUSTAINED-through-pullback sizing
+                # hurt rally -0.0145 / bull over-commit, results.tsv Exp4 prior session).
+                # Sparing: calm regimes (bull non-burst / crash / sideways) low churn ->
+                # _churn_ct~0 -> no boost (byte-identical); ct burst entries -> trend-align
+                # gate 0 -> no boost (Exp1 shrinks them instead). New cross-component data
+                # dep: first-bar size depends on churn x trend-alignment interaction (the
+                # winning-side complement to Exp1's losing-side shrink).
+                _bull_align_md = max(0.0, np.tanh(ret_vlong / 0.01))    # bull long aligned with multi-day uptrend (rally)
+                _bear_align_md = max(0.0, np.tanh(-ret_vlong / 0.01))   # bear short aligned with multi-day downtrend (crash)
+                _churn_align_boost_bull = 1.0 + 0.15 * _churn_ct * _bull_align_md
+                _churn_align_boost_bear = 1.0 + 0.15 * _churn_ct * _bear_align_md
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
@@ -916,10 +940,10 @@ class Strategy:
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _churn_align_boost_bull * _tq_atten * _xasset_bull * _conc_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _churn_align_boost_bear * _tq_atten * _xasset_bear * _conc_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
