@@ -1243,7 +1243,17 @@ class Strategy:
                 _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.55) / 0.15))  # fires close near high
                 _cl_bear_conv = max(0.0, np.tanh((0.45 - _close_loc) / 0.15))  # fires close near low
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_bull_trend * _cl_bull_conv
-                _close_conv_boost_bear = 1.0 + 0.05 * _cl_bear_trend * _cl_bear_conv
+                # Branch step3: DROP the bear-side close-loc boost (set to 1.0). Step1/2
+                # measured the bear boost ONLY fires in crash (rally pullback shorts are
+                # ct at ret_vlong -> bear gate ~0) and it HURTS crash (-0.000669 at step2):
+                # in crash a bar closing near its low is a CAPITULATION signature followed by
+                # a V-bounce, so boosting shorts on low-close bars over-commits to the bounce
+                # bottom. close_loc is a CONTINUATION signal for grinding uptrends (rally
+                # bars close high then continue) but a REVERSAL signal at crash capitulation
+                # lows. The asymmetry is structural (crash has violent V-bounces off
+                # exhaustion lows; rally grinds), so the bear boost is net-negative. Keep
+                # only the bull boost (rally +0.000561 continuation; bull-2021 neutral).
+                _close_conv_boost_bear = 1.0
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
