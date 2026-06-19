@@ -411,15 +411,19 @@ class Strategy:
                 _sk_num = (_sk_sig * _fwd[:, None]).sum(axis=0)
                 _sk_den = np.maximum((np.abs(_sk_sig) * np.abs(_fwd)[:, None]).sum(axis=0), 1e-12)
                 _skill = _sk_num / _sk_den  # in [-1, 1]
-                # Branch step3: GENTLER SYMMETRIC amplitude (0.30->0.15). Step2's
-                # downweight-only asymmetry collapsed rally (lowered total voter weight
-                # vs fixed admission thresholds -> rally stab 0.077). The symmetric form
-                # (step1) kept ALL stability factors at 1.0; its only cost was bull raw
-                # (0.938->0.821) from over-perturbing bull's voter mix at +-30%. Halve
-                # the amplitude to [0.85,1.15]: smaller perturbation should preserve more
-                # of bull's high-Sharpe voter mix (recover raw) while still lifting bull
-                # stability above the 0.80 knee.
+                # Branch step4: MEAN-PRESERVING (redistribute, don't rescale). Steps 1&3
+                # both dropped bull raw to ~0.822 with DD 0.886->1.11 REGARDLESS of
+                # amplitude (0.30 vs 0.15) — diagnosis: the skill mult multiplies into
+                # TOTAL voter weight, so when skilled voters cluster on one side the
+                # strong-sum SCALE shifts vs the fixed admission thresholds, changing
+                # which bull trades fire/size -> DD up -> raw down. Fix: normalize the
+                # skill mult to mean 1.0 across the 7 voters so it only REDISTRIBUTES
+                # relative voter influence (anti-predictive down, predictive up) while
+                # leaving the summed weight scale unchanged -> admission/sizing scale
+                # preserved (bull raw protected) but the relative-skill stability lift
+                # retained. Symmetric +-15% pre-normalization.
                 _skill_mult = 1.0 + 0.15 * _skill  # in [0.85, 1.15]
+                _skill_mult = _skill_mult * (7.0 / _skill_mult.sum())  # mean-preserving
             else:
                 _skill_mult = np.ones(7)
             _voter_weights = tuple(bw * pm * sm for bw, pm, sm in zip(_base_weights, _persistence_mult, _skill_mult))
