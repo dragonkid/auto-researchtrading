@@ -1315,8 +1315,25 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                _vc_vol = max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))  # [0,1] volume-climax strength
+                # Exp4: profit-side exhaustion harvest (volume-climax tops). PnL-gated inline.
+                _vc_profit = 0.50 * _vc_vol * max(0.0, _pnl_scale)
+                # Exp6 (architectural iteration on Exp4 keep): volume-confirmed ADVERSE exit
+                # for counter-trend LOSERS. Exp4 reached bull (profit-side harvest) but rally
+                # (binding, ct-loser drag) was byte-identical - rally's winners don't sit at
+                # harvestable volume climaxes. Extend the volume mechanism to the LOSS side,
+                # ct-gated: a volume spike AGAINST a counter-trend losing position (rally
+                # pullback short facing a volume-backed bounce; crash dead-cat long facing a
+                # volume-backed dump) = the adverse move has volume backing -> cut the ct
+                # loser faster -> smaller realized loss -> rally raw up. Distinct from
+                # slope-against (price direction, not volume confirmation) and from the
+                # profit-side harvest. New cross-component data dep: loss-side exit pressure
+                # depends on (volume_z, ct, loss-sign). ct-gate (_ct_hold_sat, the validated
+                # multi-day ct signal) spares trend-aligned winners facing pullback volume
+                # spikes. Continuous tanh, no boundary.
+                _vc_loss = 0.40 * _vc_vol * max(0.0, -_pnl_scale) * _ct_hold_sat
+                _vc_pressure = max(_vc_profit, _vc_loss)
+                _w_vc = 1.0  # both terms carry their own pnl-side gating inline
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
