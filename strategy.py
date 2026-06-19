@@ -101,6 +101,12 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
+# Architectural (this session): portfolio same-direction gross-exposure governor.
+# Shrinks new-entry first-bar size when aggregate same-sign notional across the OTHER
+# symbols is already high (correlated-regime concentration risk). Shrink-only.
+CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shrink
+CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
+CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -817,10 +823,38 @@ class Strategy:
                 else:
                     _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
                     _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
+                # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
+                # governor. NEW cross-symbol data dependency the strategy entirely lacks:
+                # first-bar entry size reads the AGGREGATE already-open same-sign notional
+                # across the OTHER active symbols, as a fraction of equity. In correlated
+                # regimes (a rally: BTC/ETH/SOL all grind up together) the per-symbol logic
+                # independently builds 3 same-direction longs whose COMBINED drawdown is the
+                # portfolio-level risk no within-symbol primitive can see — and rally's DD
+                # (1.83%, dd_gate~0.35) is the binding low-score driver. When concurrent
+                # same-direction exposure is already high, shrink the marginal new entry
+                # (shrink-only, floor 1-CONC_EXP_MAX_SHRINK); when it's the first leg
+                # (~0 concurrent), no effect. Distinct from Exp2 (equity-vol, temporally
+                # DISJOINT from entries -> inert): concurrent position notional is high
+                # EXACTLY when correlated entries fire, so this is live at the decision.
+                # Direction-aware, shrink-only (respects Exp1 exposure-optimum lesson),
+                # smooth tanh (no boundary). Falls out per regime: rally/correlated-bull
+                # pile-ups shrink; uncorrelated/single-leg entries unaffected.
+                _long_notional = 0.0
+                _short_notional = 0.0
+                for _osym, _opos in portfolio.positions.items():
+                    if _osym != symbol:
+                        if _opos > 0:
+                            _long_notional += _opos
+                        elif _opos < 0:
+                            _short_notional += -_opos
+                _conc_frac_bull = _long_notional / max(equity, 1e-10)
+                _conc_frac_bear = _short_notional / max(equity, 1e-10)
+                _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
