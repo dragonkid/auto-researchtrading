@@ -1157,7 +1157,7 @@ class Strategy:
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
-                _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
+                _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
                 _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win
                 _soft_terms = (
