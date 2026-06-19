@@ -1001,7 +1001,24 @@ class Strategy:
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
                 _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj
+                # Exp3 (this session): counter-trend-gated max_hold SHORTENING to ROUTE
+                # counter-trend exits onto the noise-immune TIME gate. Tracking error is
+                # std(clean_ret - pert_ret) of the EQUITY curve; a TIME-triggered exit
+                # fires at a deterministic bars_held (bar counter is noise-immune -> clean
+                # and perturbed runs exit the SAME bar -> zero TE contribution), whereas
+                # slope/peak-profit triggers are price-noise-sensitive and fire at SCATTERED
+                # bars across the AR(1) ensemble -> TE. For counter-trend held positions
+                # (rally pullback shorts in a multi-day uptrend: pos_dir*ret_vlong<0 -> the
+                # TE source), bring the time-pressure onset FORWARD (max_hold down up to ~2
+                # bars) so the deterministic time term dominates the MAX fusion before the
+                # noisy slope/pp terms can trigger at divergent bars. Trend-aligned holds
+                # (bull longs, crash shorts: pos_dir*ret_vlong>0) keep max_hold unchanged
+                # -> byte-identical by construction; low-ret_vlong sideways spared. The
+                # slope-agree hold extension (_hold_adj>0) still lets genuine momentum
+                # runners extend, preserving raw. New cross-timescale data dep: time-gate
+                # onset depends on (pos_dir, ret_vlong). Same signed-ct family as the keeps.
+                _ct_hold_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_str
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
