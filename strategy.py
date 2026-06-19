@@ -1181,20 +1181,31 @@ class Strategy:
                 # aligned longs lose (_ride_win=0) / winners are counter-trend (align=0).
                 # Gates: clean (R^2), multi-day-aligned (ret_vlong*pos_dir>0), winning
                 # (pos_pnl>0), and vol-expanding (vol_ratio>1).
-                # Branch step 7 (DIAGNOSTIC): strip the 4th gate entirely. step5 (short)
-                # and step6 (vol) both left crash BYTE-IDENTICAL while step1 (open) showed
-                # crash +0.0566 -> the gated forms may have killed the lever. Test the pure
-                # clean x align x win time-suppression (step3's claimed crash-gain config)
-                # to establish definitively whether the crash lever is still alive in the
-                # current code. If crash recovers +~0.057 and only sideways breaks, the
-                # lever exists and the next step searches for the separator; if crash stays
-                # flat, the branch is dead.
+                # Branch step 7 DIAGNOSTIC (kept as comment): stripping the 4th gate proved
+                # the lever is ALIVE — crash raw 0.767586->0.831730 (+0.0641, Sh1.31->1.37,
+                # stab 1.0), bull +0.0013, rally BYTE-IDENTICAL; SOLE blocker sideways raw
+                # 1.013297->0.839338 (-0.174). Three separators failed (ret_vlong-mag step4,
+                # direction step5, vol_ratio step6).
+                # Branch step 8: short-term MOMENTUM-CONFIRMATION gate (orthogonal to all
+                # three failed separators — they keyed on the 96-bar trend / direction /
+                # vol; this keys on the FAST exit-slope). Mechanism: ride past the time-exit
+                # ONLY while the 12/16/22-bar exit slope still AGREES with the position
+                # (momentum actively persisting). The moment momentum fades (slope flattens
+                # or turns), the gate -> 0 and the normal time-exit is restored. This is the
+                # crash-vs-sideways discriminator: a crash relief-bounce long that is winning
+                # is still climbing (slope agrees -> keep riding), whereas a sideways drift-up
+                # long at the same hold age has typically exhausted its drift (slope flat ->
+                # time-exit fires -> capture the mean-reversion). General momentum-persistence
+                # principle, no regime label. _slope_against (computed above) is <0 when the
+                # position is slope-aligned; momentum-intact = tanh(-_slope_against/scale).
+                # Rally still spared by construction (aligned longs lose -> _ride_win=0).
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
                 _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win
+                _ride_mom = max(0.0, np.tanh(-_slope_against / 0.0006))
+                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win * _ride_mom
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
