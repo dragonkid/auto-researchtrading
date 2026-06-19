@@ -77,6 +77,16 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
+# Architectural (this session): winner-pyramiding parameters. Established,
+# trend-aligned, profitable positions may grow BEYOND full size. The strategy
+# previously had NO add-to-winner path — scale-in caps at `size`, after which a
+# position can only shrink (de-risk / tp / exit). Capped fractional growth gated
+# by fast-saturating multi-day trend alignment + deep-profit so the add-on amount
+# is near-constant (noise-robust) where it fires.
+PYRAMID_FRAC = 0.35            # max fractional growth beyond full size (-> 1.35x)
+PYRAMID_PROFIT_FLOOR = 0.012   # pos_pnl below which no pyramiding
+PYRAMID_PROFIT_SCALE = 0.010   # tanh saturation scale above the floor
+
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -873,6 +883,33 @@ class Strategy:
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
                         target = current_pos
+
+                # Architectural (this session): winner-pyramiding for ESTABLISHED
+                # positions. The strategy had NO add-to-winner path — scale-in caps at
+                # `size`, after which a position can only SHRINK (de-risk / tp / exit).
+                # In a grinding trend that forgoes the core trend-following alpha of
+                # growing a confirmed winner. After scale-in completes (bars_held past
+                # the dynamic full-bars), a trend-aligned profitable position may grow
+                # BEYOND full size, gated by:
+                #  - fast-saturating multi-day trend alignment (pos_dir * ret_vlong,
+                #    scale 0.01): in a real trend ret_vlong sits in tanh's flat tail so
+                #    the gate is a near-CONSTANT ~1.0 (the codebase's validated noise-
+                #    robustness lesson — the add-on amount does NOT track AR(1) noise);
+                #    sideways (ret_vlong~0) is SPARED by construction (gate ~0).
+                #  - deep-profit tanh above PYRAMID_PROFIT_FLOOR: only positions with a
+                #    real cushion add on (a wrong-side add can't deepen a loss).
+                # Grow-only RATCHET: target only rises toward the pyramided full level
+                # and never shrinks current_pos here (the exit subsystem below still
+                # handles all shrinking from the larger base). New control flow + new
+                # cross-timescale data dep: established-position size depends on multi-
+                # day trend alignment and accrued profit.
+                elif bars_held > _entry_full_bars_dyn:
+                    _pos_dir_py = 1.0 if current_pos > 0 else -1.0
+                    _py_align = max(0.0, np.tanh(_pos_dir_py * ret_vlong / 0.01))
+                    _py_profit = max(0.0, np.tanh((pos_pnl - PYRAMID_PROFIT_FLOOR) / PYRAMID_PROFIT_SCALE))
+                    _py_full = (size if current_pos > 0 else -size) * (1.0 + PYRAMID_FRAC * _py_align * _py_profit)
+                    if (current_pos > 0 and _py_full > current_pos) or (current_pos < 0 and _py_full < current_pos):
+                        target = _py_full
 
                 # Unified soft exit-pressure architecture (slope + peak_profit + time only).
                 # Stop-loss kept as hard gate (entry-anchored, already noise-immune).
