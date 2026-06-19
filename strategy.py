@@ -1392,23 +1392,7 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                        # Branch step5: CHURN-scaled cushion amplitude (NON-gating approach
-                        # to recover rally without the bull-kill pattern of steps 2/4).
-                        # Steps 2 (R^2) and 4 (peak-depth) both DIED because gating the
-                        # cushion away from bull winners killed bull (-0.077/-0.107) — bull's
-                        # stability prize is coupled to the cushion applying to its (shallow,
-                        # trend-aligned) winners. Recover rally via a DIFFERENT axis: scale
-                        # the cushion AMPLITUDE down at high recent entry-density (churn).
-                        # Rally is the dense-cluster regime (93 trades, len(_eh)>=2 often
-                        # during holds); bull is sparse (52 trades, len(_eh)<=1 during most
-                        # holds) -> _churn_dz ~0 for bull holds, >0 for rally holds. So a
-                        # modest churn-based amp reduction trims the cushion in rally's
-                        # choppy clustered holds (where holding trend-aligned winners through
-                        # giveback costs raw) while leaving bull's sparse holds at full
-                        # cushion (preserving the stability prize). Behavioral signal (entry
-                        # density), NOT a regime label. Continuous tanh. Small amp (0.25).
-                        _dr_churn_scale = 1.0 - 0.25 * _churn_dz  # 1.0 sparse (bull), down to ~0.75 dense (rally)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_churn_scale  # 1.0 loss/ct, up to ~1.6 sparse trend-aligned profit
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
