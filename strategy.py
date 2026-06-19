@@ -894,6 +894,27 @@ class Strategy:
                     _xasset_boost = 0.12 * max(0.0, np.tanh(abs(_btc_trend) / 0.03))
                     _xasset_bull *= 1.0 + _xasset_boost * max(0.0, np.tanh(_btc_trend / 0.03))      # boost alt long when BTC uptrend
                     _xasset_bear *= 1.0 + _xasset_boost * max(0.0, np.tanh(-_btc_trend / 0.03))     # boost alt short when BTC downtrend
+                    # Exp4 (architectural, combination): alt OWN-multi-day-trend boost gated
+                    # on BTC agreement. Combines the Exp3 BTC self-trend boost (own ret_vlong
+                    # as a trend-aligned entry boost) with the xasset BTC-agreement boost above.
+                    # The xasset boost fires when the alt agrees with BTC trend; this adds a
+                    # SMALL complementary boost when the alt's OWN ret_vlong ALSO strongly agrees
+                    # with the entry direction (conjunction: own AND btc both confirm). Only
+                    # fires in BROAD-MARKET trends (rally: alt up + BTC up; crash: alt down +
+                    # BTC down) -> ~0 in idiosyncratic alt moves (own trend up but BTC flat/down)
+                    # and sideways (both ~flat). Targets the binding regimes (rally 0.697, crash
+                    # 0.812) via the alt legs (BTC already covered by Exp3). Small +0.06 max
+                    # (bounds the combined alt size-up: up to +0.12 xasset + +0.06 own = +0.18 in
+                    # rally; crash/rally DD has large headroom at 0.65%/1.54%). Same /0.03 strong-
+                    # agreement gate as the validated boosts (bull-2021 weak-trend stretches
+                    # spared). New cross-component data dep: alt entry size depends on own
+                    # ret_vlong x BTC-trend conjunction (was BTC-trend only).
+                    _alt_own_bull = max(0.0, np.tanh(ret_vlong / 0.03))       # alt own multi-day uptrend
+                    _alt_own_bear = max(0.0, np.tanh(-ret_vlong / 0.03))      # alt own multi-day downtrend
+                    _alt_btc_agree_bull = max(0.0, np.tanh(_btc_trend / 0.03))   # BTC confirms uptrend
+                    _alt_btc_agree_bear = max(0.0, np.tanh(-_btc_trend / 0.03))  # BTC confirms downtrend
+                    _xasset_bull *= 1.0 + 0.06 * _alt_own_bull * _alt_btc_agree_bull
+                    _xasset_bear *= 1.0 + 0.06 * _alt_own_bear * _alt_btc_agree_bear
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
