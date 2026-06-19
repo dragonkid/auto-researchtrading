@@ -1136,96 +1136,10 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
-                # Architectural (Exp1 this session): surgical clean-trend winner
-                # ride-suppression. Suppress ONLY the slope-against and time exit
-                # pressures (NOT pp/ve/ar/SL) for holds that are SIMULTANEOUSLY
-                # (a) clean-trend: high R^2 of the log-HL2 path over LINREG_PERIOD
-                # (continuous [0,1], direction-agnostic), (b) multi-day-aligned:
-                # position direction agrees with the 96-bar ret_vlong slope, and
-                # (c) winning: pos_pnl positive. All three as continuous tanh gates
-                # multiplied together, so the suppression smoothly -> 0 whenever any
-                # gate weakens (no hard boundary). Mechanism: clean-trend winners
-                # (bull longs, crash shorts, sideways drift-longs) currently shed
-                # exit pressure every bar slope/time sit in-band; letting them ride
-                # pressure plateaus raises post-fee Sharpe. SURGICAL for rally BY
-                # CONSTRUCTION: rally's winners are counter-trend shorts in a
-                # multi-day uptrend (ret_vlong>0, pos<0 -> align gate=0) and its
-                # trend-aligned longs are net losers (pos_pnl<0 -> win gate=0), so
-                # neither rally side satisfies all three gates -> rally trades
-                # unchanged. New cross-component data dep at the exit-fusion layer:
-                # slope/time pressure scaled by (clean x multiday-align x winning).
-                # Branch step3 diagnostic: suppressing slope-against alone was
-                # BYTE-IDENTICAL to baseline -> slope is never the binding MAX term
-                # for clean winning holds; the whole crash gain + sideways loss came
-                # from suppressing the TIME pressure term. So suppress TIME only.
-                # Branch step4 diagnostic: a ret_vlong-magnitude deadzone did NOT
-                # separate crash from sideways (it CUT crash gain to +0.025 without
-                # recovering sideways) -> multi-day-trend MAGNITUDE overlaps between
-                # crash and sideways (both have strong-aligned trending winning holds).
-                # The clean separator is DIRECTION: crash winners are SHORTS, sideways
-                # winners are LONGS, and bull longs are byte-flat under ride-through
-                # (+0.0005).
-                # Branch step 6: the step-5 SHORT-only gate made crash BYTE-IDENTICAL
-                # (gain lost) -> DISPROVES the "crash winners are shorts" hypothesis. The
-                # step-1 crash gain comes from clean+aligned+winning LONGS during bear-
-                # market relief rallies (multi-week bounces where ret_vlong>0 locally), the
-                # SAME position type as sideways drift-up longs -> direction cannot separate
-                # them (step5 fail) and ret_vlong MAGNITUDE cannot either (step4 fail). The
-                # untried orthogonal separator is VOL EXPANSION: crash relief rallies are
-                # violent/high realized-vol (momentum persists -> ride past the time-exit),
-                # while sideways drift-up is calm/low-vol (mean-reverts -> keep the tight
-                # time-exit). Replace the short gate with a smooth vol_ratio gate. General
-                # momentum-persistence principle (high-vol trending moves persist, low-vol
-                # drifts revert), NOT a regime label; crash/sideways effects fall out of the
-                # backtest. Rally stays spared two ways: low-vol grind (_ride_vol~0) AND its
-                # aligned longs lose (_ride_win=0) / winners are counter-trend (align=0).
-                # Gates: clean (R^2), multi-day-aligned (ret_vlong*pos_dir>0), winning
-                # (pos_pnl>0), and vol-expanding (vol_ratio>1).
-                # Branch step 7 DIAGNOSTIC (kept as comment): stripping the 4th gate proved
-                # the lever is ALIVE — crash raw 0.767586->0.831730 (+0.0641, Sh1.31->1.37,
-                # stab 1.0), bull +0.0013, rally BYTE-IDENTICAL; SOLE blocker sideways raw
-                # 1.013297->0.839338 (-0.174). Three separators failed (ret_vlong-mag step4,
-                # direction step5, vol_ratio step6).
-                # Branch step 8: short-term MOMENTUM-CONFIRMATION gate (orthogonal to all
-                # three failed separators — they keyed on the 96-bar trend / direction /
-                # vol; this keys on the FAST exit-slope). Mechanism: ride past the time-exit
-                # ONLY while the 12/16/22-bar exit slope still AGREES with the position
-                # (momentum actively persisting). The moment momentum fades (slope flattens
-                # or turns), the gate -> 0 and the normal time-exit is restored. This is the
-                # crash-vs-sideways discriminator: a crash relief-bounce long that is winning
-                # is still climbing (slope agrees -> keep riding), whereas a sideways drift-up
-                # long at the same hold age has typically exhausted its drift (slope flat ->
-                # time-exit fires -> capture the mean-reversion). General momentum-persistence
-                # principle, no regime label. _slope_against (computed above) is <0 when the
-                # position is slope-aligned; momentum-intact = tanh(-_slope_against/scale).
-                # Rally still spared by construction (aligned longs lose -> _ride_win=0).
-                # Branch step 9 (kept as comment): profit-velocity gate REGRESSED — crash
-                # 0.832->0.808, bull 0.784->0.680 (velocity gate hurt bull slow-grind
-                # winners), sideways flat. Sixth failed separator.
-                # Branch step 10: pp-BACKSTOP gate (principled, derived from WHY sideways
-                # breaks). The suppression removes only the TIME exit term; _pp_pressure
-                # (giveback trailing) is itself GATED OFF below _pp_min (_pp_activation=0
-                # for peaks < ~2.5%). So small-peak sideways drift-longs have TIME as their
-                # ONLY protection — suppress it and they ride into mean-reversion UNPROTECTED
-                # (the -0.174 sideways drag). Crash relief-bounce / bull longs reach LARGE
-                # peaks (>= _pp_min) where _pp_pressure is ACTIVE -> still protected when
-                # time is suppressed. So: only ride past the time-exit when the pp backstop
-                # is active (peak >= _pp_min). _pp_ratio = peak_pnl/_pp_min (computed above).
-                # Not a regime label — "ride only when giveback protection covers the
-                # downside". Orthogonal to all 6 failed axes (trend/direction/vol/slope/
-                # velocity); keys on peak MAGNITUDE vs the pp-activation threshold. Rally
-                # still spared (aligned longs lose -> _ride_win=0).
-                _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
-                _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
-                _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
-                _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_pp = max(0.0, np.tanh((_pp_ratio - 1.0) / 0.5))
-                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win * _ride_pp
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure * (1.0 - _ride_supp),
+                    _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
