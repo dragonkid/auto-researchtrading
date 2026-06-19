@@ -832,6 +832,25 @@ class Strategy:
                 else:
                     _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
                     _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
+                    # Exp3 (architectural, indep): bilateral expansion of the xasset gate.
+                    # The existing term is SHRINK-only (caps at 1.0): alt entries disagreeing
+                    # with BTC's multi-day trend get smaller. Add the symmetric BOOST: alt
+                    # entries that strongly AGREE with BTC's multi-day trend get larger first-
+                    # bar size. Mechanism: when the market leader (BTC) is in a strong
+                    # multi-day trend and an alt entry trades the SAME direction, that is a
+                    # high-quality correlated-trend entry (rally: BTC/ETH/SOL grind up together
+                    # -> alt longs agree; crash: alts follow BTC down -> alt shorts agree) ->
+                    # more upfront commitment captures more of the correlated trend move ->
+                    # higher Sharpe in the trend regimes (rally 1.215 binding; crash 1.274
+                    # with 0.649% MaxDD = large DD headroom). Strong-agreement gate (tanh
+                    # saturation /0.03 so only DEEP BTC trend fires, ~off in choppy/weak-trend
+                    # bull-2021 pullback stretches) + small max boost 0.12 (size changes are
+                    # delicate; bull Sharpe prize is size-sensitive). BTC self-referential ->
+                    # 1.0 (byte-identical). New cross-symbol bilateral data dep (was shrink-
+                    # only). Continuous tanh, no boundary.
+                    _xasset_boost = 0.12 * max(0.0, np.tanh(abs(_btc_trend) / 0.03))
+                    _xasset_bull *= 1.0 + _xasset_boost * max(0.0, np.tanh(_btc_trend / 0.03))      # boost alt long when BTC uptrend
+                    _xasset_bear *= 1.0 + _xasset_boost * max(0.0, np.tanh(-_btc_trend / 0.03))     # boost alt short when BTC downtrend
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
