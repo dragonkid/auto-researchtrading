@@ -1237,22 +1237,23 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural simplification (this session, branch step2): REMOVED the
-                # voter_bias EMA (on the additive _voter_bias term) but RE-ADDED the
-                # exit-pressure EMA (on _soft_max, the dominant exit signal). Branch step1
-                # removed BOTH and bull regressed (stab factor 0.895->0.878) because bull's
-                # ct-shorts need the exit-SIGNAL timing smoothing on _soft_max that the
-                # terminal level-EMA cannot replicate (smoothing signal before max/threshold
-                # crossing changes which bar the exit fires; terminal level-EMA smooths
-                # AFTER and cant un-fire). The voter_bias EMA (smoother on the smaller
-                # additive term) is the more likely redundant one given the strong terminal
-                # EMA. Keeps one upstream EMA stage + terminal; removes voter_bias EMA
-                # state+branch. All ct-gated -> only rally + bull ct-shorts affected.
+                # Architectural simplification (this session, branch step3): REMOVE ONLY
+                # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
+                # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
+                # pressure EMA redundant given terminal level-EMA alpha0.99; it added
+                # double-smoothing lag) BUT bull -0.016 (voter_bias EMA load-bearing for
+                # bull ct-short exit timing). Step2 (re-add exit-pressure, keep voter_bias
+                # removed): rally gain vanished + bull still regressed = confirmed the two
+                # EMAs have OPPOSITE value. exit-pressure EMA = net-negative (redundant,
+                # removing helps rally); voter_bias EMA = net-positive (load-bearing for
+                # bull). So the keep combination is: remove exit-pressure EMA (capture
+                # rally +0.003), keep voter_bias EMA (hold bull at baseline). Removes one
+                # EMA state + branch; all ct-gated -> only rally + bull ct-shorts affected.
                 _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
                 _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
-                _prev_soft = self._exit_press_ema.get(symbol, _soft_max)
-                _soft_max = (1.0 - _exit_ema_alpha) * _soft_max + _exit_ema_alpha * _prev_soft
-                self._exit_press_ema[symbol] = _soft_max
+                _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
+                _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
+                self._voter_bias_ema[symbol] = _voter_bias
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
