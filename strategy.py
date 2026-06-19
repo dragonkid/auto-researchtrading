@@ -1578,7 +1578,20 @@ class Strategy:
                 # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                # Exp3 (architectural): bars_held-ramped EXTRA weakening for confirmed
+                # old losers. Exp1's immediate 50% cut captures crash ct losers (deeper
+                # intermediate losses) but barely fires on rally (shallow losses -> small
+                # loss_gate). A persistent loser held multiple bars is a confirmed bleeder
+                # (not a transient noise dip) -- ramp an ADDITIONAL alpha cut with age so
+                # old losers track the raw shrinking target even faster. bars_held is the
+                # noise-IMMUNE integer counter validated as the most noise-robust trigger
+                # (results.tsv row 701); gating the extra cut on age avoids over-reacting
+                # to fresh single-bar dips (stability-preserving) while pressing bleeders
+                # that have proven themselves over time. Fresh losers keep Exp1's 50% cut
+                # (crash gain preserved); old losers (bars_held>=4) reach ~70% total cut.
+                # New data dep: smoothing alpha depends on pos_pnl x bars_held interaction.
+                _te_age_ramp = min(1.0, max(0.0, bars_held - 1) / 3.0)  # 0 bar1, 1 bar>=4
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate - 0.20 * _te_loss_gate * _te_age_ramp)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
