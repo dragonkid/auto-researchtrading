@@ -786,11 +786,19 @@ class Strategy:
                 # cross-component data dep: first-bar size depends on churn x multi-day-ct
                 # interaction (ct_vlong's calm-partition complement, operating on the burst
                 # partition ct_vlong deliberately leaves alone).
-                _churn_ct = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 calm, ~1 bursting (noise-immune integer gate)
-                _bull_ctmd = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull long counter to multi-day downtrend
-                _bear_ctmd = max(0.0, np.tanh(ret_vlong / 0.01))   # bear short counter to multi-day uptrend (rally pullback shorts)
-                _churn_ct_atten_bull = 1.0 - 0.20 * _churn_ct * _bull_ctmd
-                _churn_ct_atten_bear = 1.0 - 0.20 * _churn_ct * _bear_ctmd
+                # Exp2 (architectural simplification): REMOVED _churn_ct_atten (churn x
+                # multi-day-counter-trend first-bar shrink, max 0.20). Added under baseline
+                # 5505dd8b (0.768642) for a +0.0015 bull gain; since then the entry-size
+                # stack gained _vol_entry_spike + _vol_shrink_held (Exp8/9 volume-spike
+                # entry shrink sustained through scale-in) which shrink the SAME spike-
+                # chasing burst entries this term targeted, plus _ct_vlong / _churn_size_atten
+                # / _adv_freeze already cover the ct + burst partitions. Test whether the
+                # 0.20 term is now redundant under the current baseline (0.833382): if
+                # neutral-or-positive, the simpler version generalizes better OOS; if
+                # negative, it remains load-bearing. Code-structure removal: -5 LOC +
+                # -2 multipliers in the entry-size product.
+                _churn_ct_atten_bull = 1.0
+                _churn_ct_atten_bear = 1.0
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
