@@ -226,6 +226,26 @@ class Strategy:
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
 
+        # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
+        # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
+        # (96-bar trend) feeding alt sizing; this uses BTC VOLUME (6/18-bar mean ratio), a
+        # genuinely orthogonal leader signal (leader participation, not leader direction).
+        # Rising BTC volume = building broad-market participation. Used as a conjunction
+        # confirmation on alt entries that AGREE with BTC's price trend: an alt trend entry
+        # confirmed by BOTH leader-direction-agreement AND leader-volume-participation is a
+        # higher-quality broad-market-trend entry -> larger first-bar commitment. Distinct
+        # from own-symbol vol-rise (Exp5, own 6/18-bar volume) and BTC-price-trend boost
+        # (Exp3 9cdb2a9a, price only): this is the cross-symbol price-agreement x cross-
+        # symbol leader-volume conjunction. Computed once per bar; falls to 0 if BTC
+        # absent/short. Deep-saturated (/0.30 volume ratio, /0.03 BTC trend -> near-constant,
+        # noise-free per the validated safe-family lesson), first-bar-only, small (+0.05 max).
+        _btc_vol_rise = 0.0
+        if "BTC" in bar_data and len(bar_data["BTC"].history) > 18:
+            _bv = bar_data["BTC"].history["volume"].values
+            _btc_vol_recent = float(np.mean(_bv[-6:]))
+            _btc_vol_long = max(float(np.mean(_bv[-18:])), 1e-10)
+            _btc_vol_rise = max(0.0, min(1.0, np.tanh(((_btc_vol_recent - _btc_vol_long) / _btc_vol_long) / 0.30)))
+
         # Exp2 (architectural, indep): cross-alt lead-lag short-term momentum. ETH and SOL
         # are correlated alts where ETH frequently LEADS SOL on intraday-to-daily moves. A
         # NEW cross-symbol data dep distinct from the BTC 96-bar trend (different leader,
@@ -954,6 +974,23 @@ class Strategy:
                     # symbol-pair shrink data dep (Exp2 was boost-only).
                     _xasset_bull *= 1.0 - 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
                     _xasset_bear *= 1.0 - 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
+                    # Exp1 (architectural, indep): BTC leader-volume-participation x BTC-price-
+                    # trend-agreement conjunction boost on alt entries. _btc_vol_rise (deep-
+                    # saturated BTC 6/18-bar volume ratio) confirms leader participation is
+                    # BUILDING; the /0.03 BTC-trend agreement gate (same as the validated Exp3
+                    # xasset boost) confirms the alt trades WITH the leader's multi-day direction.
+                    # The CONJUNCTION (both ~1) fires only on broad-market trend entries where
+                    # the leader is participating in the same direction -> larger first-bar
+                    # commitment captures more of the confirmed broad trend. Small +0.05 max,
+                    # deep-saturated both gates (near-constant -> noise-free, the validated safe
+                    # family). First-bar-only. BTC self-referential -> not reached (alt branch).
+                    # Distinct from own-vol-rise (Exp5: own symbol volume) and BTC-price boost
+                    # (Exp3: price only) — this is cross-symbol price-agreement x cross-symbol
+                    # leader-volume conjunction.
+                    _btc_agree_bull = max(0.0, np.tanh(_btc_trend / 0.03))   # BTC confirms uptrend
+                    _btc_agree_bear = max(0.0, np.tanh(-_btc_trend / 0.03))  # BTC confirms downtrend
+                    _xasset_bull *= 1.0 + 0.05 * _btc_vol_rise * _btc_agree_bull
+                    _xasset_bear *= 1.0 + 0.05 * _btc_vol_rise * _btc_agree_bear
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
