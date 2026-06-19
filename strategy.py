@@ -197,11 +197,6 @@ class Strategy:
         # a concentrated book proportionally smaller through the whole hold. Deterministic
         # (set once at entry, noise-robust). Reset on full exit; default 1.0.
         self._conc_shrink_held = {}
-        # Exp1 (this session): per-symbol per-voter PREDICTIVE-SKILL buffer. Rolling
-        # list of (tanh(voter_signals), close) per bar. Used to weight each voter by
-        # whether its signal sign has actually PREDICTED the next-bar return (magnitude-
-        # weighted), distinct from _voter_sign_history which tracks only sign-CONSISTENCY.
-        self._voter_skill_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -387,41 +382,7 @@ class Strategy:
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
                 _persistence_mult = np.ones(7)
-            # Exp1 (this session): per-voter PREDICTIVE-SKILL weighting. Append this
-            # bar's (signals, price) to a rolling 25-bar buffer; evaluate each voter's
-            # realized directional skill over the buffer as a magnitude-weighted
-            # sign-agreement between its signal and the NEXT-bar return. skill in
-            # [-1,+1]: +1 = voter's sign always predicted next-bar direction (weighted
-            # by confidence), -1 = always wrong. Map to a [0.7,1.3] weight multiplier
-            # so genuinely-predictive voters are upweighted and noise/anti-predictive
-            # voters downweighted. Orthogonal to _persistence_mult (sign-CONSISTENCY,
-            # on which a consistently-WRONG voter also scores high). New per-symbol
-            # state + new data dep: voter aggregation weight depends on each voter's
-            # realized forward-return hit history.
-            _sk_hist = self._voter_skill_hist.get(symbol, [])
-            _sk_hist.append((tuple(_voter_signals_bull), mid))
-            if len(_sk_hist) > 60:
-                _sk_hist = _sk_hist[-60:]
-            self._voter_skill_hist[symbol] = _sk_hist
-            if len(_sk_hist) >= 9:
-                _sk_sig = np.tanh(np.array([h[0] for h in _sk_hist]))  # (K,7) confidence-signed
-                _sk_px = np.array([h[1] for h in _sk_hist])
-                _fwd = (_sk_px[1:] - _sk_px[:-1]) / _sk_px[:-1]  # (K-1,) next-bar returns
-                _sk_sig = _sk_sig[:-1]  # align: signal at i predicts return i->i+1
-                _sk_num = (_sk_sig * _fwd[:, None]).sum(axis=0)
-                _sk_den = np.maximum((np.abs(_sk_sig) * np.abs(_fwd)[:, None]).sum(axis=0), 1e-12)
-                _skill = _sk_num / _sk_den  # in [-1, 1]
-                # Branch step6: LONGER window (25->60) at amp 0.15. The bull raw drop to
-                # 0.823 was a near step-function across amplitudes (even +-6% triggered
-                # it), consistent with trade-set churn from a NOISY 25-bar skill estimate
-                # shifting strong-sums bar-to-bar. A 60-bar estimate averages ~2.4x more
-                # samples (noise ~1/sqrt(N)) -> more stable weights -> less spurious
-                # trade-set churn -> may preserve bull raw while still catching
-                # persistently anti-predictive voters.
-                _skill_mult = 1.0 + 0.15 * _skill  # in [0.85, 1.15]
-            else:
-                _skill_mult = np.ones(7)
-            _voter_weights = tuple(bw * pm * sm for bw, pm, sm in zip(_base_weights, _persistence_mult, _skill_mult))
+            _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
             # amplifier composed three multiplicative gates (chop neutralization
