@@ -101,7 +101,6 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
-ADMIT_CALM_RELAX = 0.06  # admission threshold relaxation for never-bursting symbols (cumulative churn <= 2)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -424,25 +423,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Architectural (this session): never-burst admission relaxation. The
-            # measured table shows bull(43)/crash(45)/sideways(49) all sit JUST below the
-            # 50-trade sample_factor knee (sqrt(trades/50)<1 = ~5% score haircut) despite
-            # excellent Sharpe (1.27-1.94); rally(95) is far over. _freq_factor already
-            # RAISES admission in high churn — this adds the COMPLEMENT: lower admission
-            # (relax strong_min) ONLY for symbols that have NEVER burst (cumulative-max
-            # churn <= 2, the SAME noise-immune _calm_gate signal the baseline's calm grid
-            # uses). Never-bursting symbols (crash/sideways by construction) get a small
-            # threshold relaxation -> a few more marginal entries cross the sub-50 knee;
-            # bursty symbols (rally/bull) keep the un-relaxed threshold (spared, no churn
-            # added to the already-over-50 / stability-sensitive regimes). Symmetric
-            # (sample-size driven, not directional). Monotonic integer-max gate = noise-
-            # immune (no AR(1)-flippable boundary). New cross-component data dep: admission
-            # threshold reads the symbol's cumulative-max churn (read here from the
-            # end-of-loop-maintained _churn_hist; current bar folded in via len(_eh)).
-            _cm_adm = max(self._churn_hist.get(symbol, 0), len(_eh))
-            _calm_relax = 1.0 - ADMIT_CALM_RELAX if _cm_adm <= 2 else 1.0
-            _bull_strong_min = _strong_min * _freq_factor * _calm_relax * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * _calm_relax * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
