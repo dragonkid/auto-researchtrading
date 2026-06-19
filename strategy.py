@@ -1199,26 +1199,29 @@ class Strategy:
                 # principle, no regime label. _slope_against (computed above) is <0 when the
                 # position is slope-aligned; momentum-intact = tanh(-_slope_against/scale).
                 # Rally still spared by construction (aligned longs lose -> _ride_win=0).
-                # Branch step 8 (kept as comment): momentum-confirmation gate did NOT
-                # separate — crash byte-identical, sideways +0.003 only (both crash bounces
-                # and sideways drift longs have positive agreeing slopes). Fifth failed
-                # separator after ret_vlong-mag / direction / vol / slope-momentum.
-                # Branch step 9: profit-VELOCITY gate (the last genuinely-orthogonal axis).
-                # Crash relief rallies are violent short-squeezes that accumulate profit FAST
-                # (steep peak_pnl per bar); sideways drift-up is a slow grind (low peak_pnl
-                # per bar). Ride past the time-exit only when realized profit VELOCITY is
-                # high. peak_pnl is a confirmed high-water mark (noise-robust) and bars_held
-                # is integer, so velocity = peak_pnl/bars_held is noise-robust (not the
-                # walled instantaneous-pos_pnl-near-breakeven channel — this is a rate among
-                # already-winning holds). General squeeze-velocity principle (fast violent
-                # moves have momentum continuation; slow drifts mean-revert), no regime label.
+                # Branch step 9 (kept as comment): profit-velocity gate REGRESSED — crash
+                # 0.832->0.808, bull 0.784->0.680 (velocity gate hurt bull slow-grind
+                # winners), sideways flat. Sixth failed separator.
+                # Branch step 10: pp-BACKSTOP gate (principled, derived from WHY sideways
+                # breaks). The suppression removes only the TIME exit term; _pp_pressure
+                # (giveback trailing) is itself GATED OFF below _pp_min (_pp_activation=0
+                # for peaks < ~2.5%). So small-peak sideways drift-longs have TIME as their
+                # ONLY protection — suppress it and they ride into mean-reversion UNPROTECTED
+                # (the -0.174 sideways drag). Crash relief-bounce / bull longs reach LARGE
+                # peaks (>= _pp_min) where _pp_pressure is ACTIVE -> still protected when
+                # time is suppressed. So: only ride past the time-exit when the pp backstop
+                # is active (peak >= _pp_min). _pp_ratio = peak_pnl/_pp_min (computed above).
+                # Not a regime label — "ride only when giveback protection covers the
+                # downside". Orthogonal to all 6 failed axes (trend/direction/vol/slope/
+                # velocity); keys on peak MAGNITUDE vs the pp-activation threshold. Rally
+                # still spared (aligned longs lose -> _ride_win=0).
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
                 _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ride_vel = max(0.0, np.tanh((self.peak_pnl[symbol] / max(bars_held, 1) - 0.0030) / 0.0020))
-                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win * _ride_vel
+                _ride_pp = max(0.0, np.tanh((_pp_ratio - 1.0) / 0.5))
+                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win * _ride_pp
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
