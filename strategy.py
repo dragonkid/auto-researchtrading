@@ -1014,12 +1014,31 @@ class Strategy:
                 _vol_trend_r = (_vol_recent_m - _vol_long_m) / _vol_long_m  # + rising, - declining
                 _vd_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _vol_decline_shrink = 1.0 - 0.15 * _vd_trend_w * max(0.0, min(1.0, np.tanh(-_vol_trend_r / 0.30)))
+                # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
+                # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
+                # RISING volume has strong participation confirming the trend (rally longs on
+                # building volume, crash shorts on capitulation volume) -> high quality ->
+                # larger first-bar commitment captures more of the confirmed trend move ->
+                # higher Sharpe in the trend regimes. Distinct from vol_entry_spike (HIGH-
+                # LEVEL spike = exhaustion shrink), VWAP voter (level deviation), and Exp3
+                # (decline = low-participation shrink): this is the rising-SLOPE confirmation
+                # BOOST. Safety: trend-ALIGNMENT gated (entry dir matches ret_long sign) so it
+                # only boosts genuine trend entries, NOT counter-trend shorts (avoids over-
+                # committing losers, the Exp4 lesson). Strong gate (/0.30 deep rising volume),
+                # small max (+0.08), trend-strength required. First-bar-only (sustaining
+                # shrinks hurt per Exp4; a boost sustained would over-commit worse). New data
+                # dep: volume-trend slope x trend-alignment conjunction at entry sizing.
+                _vol_rise = max(0.0, min(1.0, np.tanh(_vol_trend_r / 0.30)))  # 0 flat/decline, 1 deep rising
+                _vol_rise_align_bull = _vol_rise * max(0.0, np.tanh(ret_long / 0.04))      # bull aligned with uptrend
+                _vol_rise_align_bear = _vol_rise * max(0.0, np.tanh(-ret_long / 0.04))     # bear aligned with downtrend
+                _vol_rise_boost_bull = 1.0 + 0.08 * _vol_rise_align_bull
+                _vol_rise_boost_bear = 1.0 + 0.08 * _vol_rise_align_bear
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vol_rise_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vol_rise_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
