@@ -217,11 +217,24 @@ class Strategy:
         # alt position values). Converted to net-window-return scale (slope*n) to match the
         # within-symbol ret_vlong tanh scales. Falls to 0 (no effect) if BTC absent/short.
         _btc_trend = 0.0
+        _btc_slope16 = 0.0
         if "BTC" in bar_data and len(bar_data["BTC"].history) > 9:
             _btc_closes = bar_data["BTC"].history["close"].values
             _btc_n = min(VLONG_WINDOW, len(_btc_closes) - 1)
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
+            # Architectural (Exp1): BTC short-term (16-bar) OLS log-HL2 slope. NEW
+            # cross-symbol data dependency for the EXIT subsystem (exit was purely
+            # within-symbol before). BTC is the market leader; its 16-bar slope
+            # rolling over LEADS alt pullbacks. Used as a confirmation / early-
+            # warning exit pressure term for alt held positions (BTC self-ref ->
+            # inert). 16-bar window averages ~16 bars of AR(1) noise (1/sqrt(16)
+            # attenuation) so it adds negligible position-value noise. Computed on
+            # BTC's own HL2 (not the alt's) -> orthogonal data source vs the alt's
+            # within-symbol exit slopes.
+            if len(_btc_closes) >= LINREG_PERIOD + 1:
+                _btc_hl2_s = (bar_data["BTC"].history["high"].values[-LINREG_PERIOD:] + bar_data["BTC"].history["low"].values[-LINREG_PERIOD:]) / 2.0
+                _btc_slope16 = _fast_slope(np.log(_btc_hl2_s))
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -1298,7 +1311,25 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural fusion change: element-wise MAX replaces weighted sum.
+                # Architectural (Exp1): cross-asset BTC short-term-slope EXIT pressure
+                # for ALT held positions (BTC self-ref -> 0, byte-inert on BTC). NEW
+                # cross-symbol data dependency in the exit fusion: the MAX of soft
+                # terms was previously purely within-symbol. BTC's 16-bar slope
+                # opposing an alt position is an EARLY-warning reversal signal — BTC
+                # rolls over before alts in correlated-trend regimes (rally: BTC/ETH/
+                # SOL grind up together; when BTC's slope turns negative, alt pullback
+                # follows). Added to the MAX fusion so it only contributes when it is
+                # the most-pressing term (a confirmation amplifier, not a standalone
+                # noise source). Trend-gated by _trend_strength_w so it fires only in
+                # strong trends (rally/crash correlated legs) — SPARING choppy bull-
+                # 2021 pullbacks where BTC slope flips negative frequently on noise
+                # (whipsaw risk). Ramp scale matches the within-symbol slope pressure
+                # (_slope_thresh ~0.0003). Direction-agnostic, shrink-only (caps at 1.0).
+                _btc_xp_pressure = 0.0
+                if symbol != "BTC":
+                    _btc_against = -_btc_slope16 if current_pos > 0 else _btc_slope16
+                    _btc_xp_pressure = max(0.0, min(1.0, (_btc_against - _slope_thresh) / max(_slope_band * _slope_thresh, 1e-9))) * _trend_strength_w
+                _w_btc = 1.0                # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
                 # noise in any shared input propagates to all 6, which then SUMS. Take
@@ -1311,7 +1342,8 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure
+                    _w_ar * _ar_pressure,
+                    _w_btc * _btc_xp_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
