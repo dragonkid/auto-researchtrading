@@ -1563,25 +1563,6 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
-            # Architectural (Exp4): LOSING-DE-RISK grid coarsening. A losing position
-            # de-risking through the lattice produces a partial-reduce REALIZING event at
-            # each grid level it crosses (prepare.py marks every same-direction reduce
-            # realized_resize=True -> counts in trade_pnls -> counts toward max_consecutive
-            # _losses). rally's streak_gate drag (0.8187 from 6 consec losses) is partly
-            # these small losing partial-reduce events strung along the de-risk ramp.
-            # Coarsen the grid for LOSING REDUCES only so the position reaches its de-risk
-            # target in fewer, larger lattice steps -> fewer losing realizing events -> lower
-            # max_consecutive_losses -> higher streak_gate. KEY: this is NOT a filter (the
-            # position still de-risks to its target, just in fewer steps -> no de-risk-latch
-            # DD blowup, the failure mode of the prior sub-$1 emission gates), NOT realized-
-            # PnL feedback (no path-dependence -> no stability collapse, the failure mode of
-            # the loss-streak admission escalator), and NOT price-derived modulation of exit
-            # pressure (uses the SAME proven noise-robust stable lattice equity*BASE_POSITION
-            # _SIZE just at coarser spacing for the losing-reduce path -> distinct-value-count
-            # stays equal-or-lower -> stability-neutral-or-positive). General (pos_pnl<0 +
-            # reduce, no regime label); winning reduces and all adds keep the standard grid.
-            _is_reduce = _is_resize and abs(target) < abs(current_pos)
-            _loss_coarse = 1.0 + (0.4 * max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) if _is_reduce else 0.0)
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
@@ -1610,7 +1591,7 @@ class Strategy:
             # is stable across the noise ensemble (a perturbed bar barely moves equity).
             # Also finer (0.06) so rally's bidirectional fine resizes are less coarsened.
             if _is_resize and _churn_dz > 0.0:
-                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz * _loss_coarse
+                _grid = 0.06 * equity * BASE_POSITION_SIZE * _churn_dz
                 if _grid > 0:
                     _qt = round(target / _grid) * _grid
                     if (_qt > 0) == (target > 0) and _qt != 0:
@@ -1668,7 +1649,7 @@ class Strategy:
             self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
-                _grid_c = 0.06 * equity * BASE_POSITION_SIZE * _loss_coarse
+                _grid_c = 0.06 * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
