@@ -957,6 +957,26 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
+                # Exp5 (architectural, indep): cross-symbol correlated-trend SCALE-IN
+                # accelerator (the pace-side analog of Exp3's size boost). Exp3 boosted
+                # first-bar SIZE for alt entries agreeing with BTC's multi-day trend; Exp4
+                # showed SUSTAINING that size through scale-in over-commits rally through
+                # pullbacks (rally -0.0145, MaxDD up). Reaching full size FASTER (not larger)
+                # captures more of the early correlated-trend move without raising the
+                # steady-state size that gives back in pullbacks. Mechanism: an alt entry
+                # trading WITH the market leader's (BTC) multi-day trend is a high-quality
+                # correlated-trend entry (rally alt longs with BTC up; crash alt shorts with
+                # BTC down) -> shorten its scale-in window -> faster full commit -> more
+                # early trend capture -> higher Sharpe. Gates: (1) own trend-strength
+                # (_trend_strength_w, protects sideways mean-reverters, same as _win_accel);
+                # (2) slope-confirmation (_slope_conf, the proven Exp4 bull-protection: gate
+                # off when short-term slope weakens, so bull doesn't over-accel into 2021
+                # corrections); (3) BTC self-referential -> 0 (byte-identical for BTC).
+                # Strong-agreement /0.03 scale (same as Exp3 boost). Max 0.6 bars faster,
+                # floored at _accel_floor. New cross-symbol data dep in scale-in pace.
+                _pos_dir_xa = 1.0 if current_pos > 0 else -1.0
+                _xasset_accel = max(0.0, np.tanh(_btc_trend * _pos_dir_xa / 0.03)) * _trend_strength_w * _slope_conf
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 0.6 * _xasset_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
