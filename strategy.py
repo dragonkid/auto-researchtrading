@@ -487,6 +487,25 @@ class Strategy:
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
+            # Exp2 (architectural, indep): continuous multi-day (96-bar) context blend into
+            # the admission trend signal. trend_avg was a 10/20-bar return blend only; in a
+            # rally pullback the 10-20-bar return goes negative so bear admission passes
+            # (trend_avg < deadzone) even though the multi-day trend is solidly up — exactly
+            # rally's losing counter-trend shorts. The 96-bar ret_vlong (positive through
+            # pullbacks) was absent from the admission trend signal (fed only size shrinks,
+            # because routing it through admission as a BINARY gate collapsed stability per
+            # prior session — pass/fail boundary at ret_vlong=0). Here it enters as a
+            # CONTINUOUS reweighting of an already-continuous signal (no new boundary): when
+            # the multi-day trend is strong (|ret_vlong| large), shift up to 25% of trend_avg
+            # weight onto the 96-bar view so a pullback short faces a less-negative (or
+            # positive) blended trend -> bear_admit fires less -> fewer losing rally shorts ->
+            # higher rally Sharpe. Crash mirror: ret_vlong negative -> lowers trend_avg ->
+            # bull_admit fires less -> fewer dead-cat-bounce longs. Sideways: ret_vlong ~0 ->
+            # _vl_strength 0 -> weight 0 -> byte-identical. Trend-strength-gated blend (flat
+            # multi-day = no change) is the continuous analog of the failed binary gate.
+            _vl_strength = min(abs(ret_vlong) / 0.06, 1.0)  # 0 flat multi-day, 1 strong
+            _vl_w = 0.25 * _vl_strength
+            trend_avg = (1.0 - _vl_w) * trend_avg + _vl_w * ret_vlong
             # Use trend_avg directly (stateless) — EMA smoothing amplifies noise via state propagation
             self.smoothed_trend[symbol] = trend_avg
 
