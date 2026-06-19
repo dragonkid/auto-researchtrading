@@ -1647,19 +1647,6 @@ class Strategy:
                     # graduated behavior to engage. Continuous via tanh blend.
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
-                    # Exp6 (architectural, indep): require MULTI-DAY trend-alignment for the
-                    # opp-gate graduation. The 20-bar _trend_align_og reads a rally pullback
-                    # SHORT as trend-aligned (ret_long<0 during pullback -> graduated partial
-                    # exit preserves the short), but the short is COUNTER-TREND at the multi-
-                    # day scale (ret_vlong>0, uptrend intact) -> it is a rally losing-trade
-                    # class. Require alignment at BOTH timescales (min): a position only earns
-                    # the graduated (partial-exit) path when trend-aligned on 20-bar AND 96-bar.
-                    # Rally pullback shorts (20-bar aligned, 96-bar ct) -> min -> ~0 -> binary
-                    # full exit (cut faster -> smaller realized loss -> rally Sharpe up, the
-                    # binding raw constraint). Crash shorts winning (both aligned) keep the
-                    # graduated path. New cross-timescale data dep at opp-gate graduation.
-                    _trend_align_og_md = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))  # [0, ~1]
-                    _trend_align_og = min(_trend_align_og, _trend_align_og_md)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
