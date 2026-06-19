@@ -226,6 +226,22 @@ class Strategy:
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
 
+        # Exp2 (architectural, indep): cross-alt lead-lag short-term momentum. ETH and SOL
+        # are correlated alts where ETH frequently LEADS SOL on intraday-to-daily moves. A
+        # NEW cross-symbol data dep distinct from the BTC 96-bar trend (different leader,
+        # SHORTER 20-bar timescale): the other alt's 20-bar OLS log-HL2 slope, used as a
+        # small trend-confirmation boost on an alt entry when the partner alt's near-term
+        # momentum agrees with the entry direction. ETH confirming SOL (and vice-versa) is
+        # broad-alt-trend confirmation independent of BTC. Computed once per bar for the alt
+        # pair; falls to 0 (no effect) if the partner alt is absent/short.
+        _alt_lead = {}  # partner-alt 20-bar slope*n (net window return scale)
+        _alt_pair = [s for s in ("ETH", "SOL") if s in bar_data and len(bar_data[s].history) > LONG_WINDOW + 1]
+        for _asym in _alt_pair:
+            _ac = bar_data[_asym].history["close"].values
+            _an = min(LONG_WINDOW, len(_ac) - 1)
+            _ahl2 = (bar_data[_asym].history["high"].values[-_an:] + bar_data[_asym].history["low"].values[-_an:]) / 2.0
+            _alt_lead[_asym] = _fast_slope(np.log(_ahl2)) * _an
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -915,6 +931,17 @@ class Strategy:
                     _alt_btc_agree_bear = max(0.0, np.tanh(-_btc_trend / 0.03))  # BTC confirms downtrend
                     _xasset_bull *= 1.0 + 0.06 * _alt_own_bull * _alt_btc_agree_bull
                     _xasset_bear *= 1.0 + 0.06 * _alt_own_bear * _alt_btc_agree_bear
+                    # Exp2: cross-alt lead-lag confirmation boost (partner alt = the OTHER
+                    # of ETH/SOL). ETH often leads SOL; a partner alt whose 20-bar momentum
+                    # agrees with this entry direction is broad-alt-trend confirmation at a
+                    # shorter timescale than BTC's 96-bar trend. Small +0.05 max, strong-
+                    # agreement gate (/0.02 so only DEEP partner momentum fires -> off in
+                    # idiosyncratic/single-alt moves + sideways). BTC self-referential ->
+                    # not reached (this is the alt branch). New cross-symbol pair data dep.
+                    _partner = "SOL" if symbol == "ETH" else "ETH"
+                    _partner_lead = _alt_lead.get(_partner, 0.0)
+                    _xasset_bull *= 1.0 + 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _xasset_bear *= 1.0 + 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
