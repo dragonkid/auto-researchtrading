@@ -1454,6 +1454,28 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Exp2 (architectural, indep): profit-graduated TREND-ALIGNED exit
+                # threshold. _exit_thresh is otherwise flat 1.0 once scale-in completes
+                # (profit-blind) — a deep winner that has proven the trend gets the SAME
+                # exit sensitivity as a marginal scratch winner. Mechanism: a position
+                # whose peak profit is deep (peak >> stop) AND is trend-aligned (pos_dir
+                # matches ret_long sign — the proven-safe cushion axis) has demonstrated
+                # the trend is real; raise its exit threshold slightly so it rides the
+                # trend run longer instead of exiting on the first mid-range giveback/
+                # slope-against spike. Counter-trend + losing positions keep 1.0 (cut
+                # fast, unchanged). Distinct from the convex cushion (which reshapes the
+                # de-risk RAMP): this raises the ENTRY POINT of the ramp (the threshold
+                # the fused pressure must cross), a different lever on the same proven
+                # trend-aligned-winner axis. Distinct from tp_scale (which CUTS big
+                # winners via a size scale-down): this holds them via the threshold.
+                # Continuous (tanh on peak depth, tanh on trend-align), small max +8pct,
+                # trend-gated (sideways low ret_long -> ~0 -> byte-identical there),
+                # shrink-side-only semantics (caps at 1.0 base for non-qualifying).
+                if pos_pnl > 0.0:
+                    _et_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _et_align = max(0.0, np.tanh(ret_long * _et_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                    _et_depth = max(0.0, np.tanh((self.peak_pnl[symbol] / abs(STOP_LOSS_PCT) - 1.5) / 1.0))  # 0 shallow, 1 deep (peak>2.5x stop)
+                    _exit_thresh += 0.08 * _et_align * _et_depth
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
