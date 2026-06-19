@@ -1017,6 +1017,31 @@ class Strategy:
                     # un-shrunk `size` after bar 1. Default 1.0 (no effect) if uncached.
                     _conc_held = self._conc_shrink_held.get(symbol, 1.0)
                     full_target = (size if current_pos > 0 else -size) * _conc_held
+                    # Exp1 (architectural, indep): trend-aligned WINNER pyramid in scale-in.
+                    # Rally is RAW-constrained (all stab=1.0, Sharpe 1.24, MaxDD only 1.53%
+                    # vs the 10% cap -> vast unused risk budget). High WR/PF but low Sharpe
+                    # = small position sizes yielding small returns. The proven rally-raw
+                    # lever is the scale-in accelerator (reach full size faster on trend-
+                    # aligned winners). This extends that axis: let scale-in OVERSHOOT the
+                    # entry `size` for positions that are REALIZED-winning AND trend-aligned
+                    # AND short-term-slope-confirming — deploying the unused risk budget
+                    # onto trades already paying off (distinct from the failed xasset-
+                    # sustain / trend-burst-boost, which committed at ENTRY on conviction
+                    # alone and gave back through pullbacks). Three coordinated gates:
+                    #   (1) pos_pnl > 0 (realized winner, not entry conviction),
+                    #   (2) trend-aligned (ret_long*pos_dir>0 -> spares sideways/chop
+                    #       mean-reverters and crash dead-cat longs),
+                    #   (3) short-term slope confirming (reuses Exp4 _slope_conf gate ->
+                    #       cuts the pyramid BEFORE bull corrections / rally pullbacks).
+                    # Smooth tanh product, max +0.30 size. Pyramid only grows during the
+                    # scale-in window (bars_held <= _entry_full_bars_dyn); once committed
+                    # the hold rides the exit subsystem. New control flow: full_target can
+                    # exceed `size`; new data dep on (pos_pnl, trend_align, slope_conf).
+                    _pyr_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 flat, ~1 deep win
+                    _pyr_align = max(0.0, np.tanh(ret_long * _pos_dir_si / 0.04))  # 0 ct, 1 trend-aligned
+                    _pyr_gate = _pyr_win * _pyr_align * _slope_conf  # all three required
+                    _pyramid = 1.0 + 0.30 * _pyr_gate
+                    full_target = full_target * _pyramid
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
