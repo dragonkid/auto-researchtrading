@@ -109,7 +109,7 @@ CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 CONC_HELD_GRID = 0.05  # branch: quantize the CACHED held-shrink to this grid (noise-immune stability)
 CONC_HELD_MIN_SHRINK = 0.08  # branch: only SUSTAIN held-shrink when decisively deep (>=8%); else snap to 1.0
-CONC_HELD_DEPTH = 0.5  # branch: fraction of first-bar shrink depth sustained through the hold
+CONC_HELD_DEPTH = 0.85  # branch: fraction of first-bar shrink depth sustained through the hold
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
