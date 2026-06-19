@@ -1351,21 +1351,6 @@ class Strategy:
                 # EMA state + branch; all ct-gated -> only rally + bull ct-shorts affected.
                 _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
                 _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
-                # Profit-graduated voter_bias EMA (architectural, mirrors Exp1 on the
-                # additive exit-pressure EMA). The voter_bias carries opp-side reversal
-                # exit pressure; smoothing it (current) delays that pressure on ct
-                # positions -> losing ct holds exit later -> bigger realized losses.
-                # Under k=0.3 the smoothing's stability benefit is discounted while the
-                # raw cost (delayed loser exit) remains. Weaken the alpha on LOSING ct
-                # positions so reversal exit pressure fires faster -> smaller losses ->
-                # raw up; WINNING ct holds keep full smoothing (preserves the bull
-                # ct-short exit-timing role that makes voter_bias_ema load-bearing).
-                # Unlike the _target_ema (Exp1), this CAN reach rally: a losing rally
-                # pullback short faces opp-side bull voter pressure when the uptrend
-                # resumes -> faster exit -> smaller loss. Smooth tanh on pos_pnl/|SL|,
-                # no boundary; trend-aligned (alpha 0) byte-identical.
-                _vb_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                _exit_ema_alpha = _exit_ema_alpha * (1.0 - 0.50 * _vb_loss_gate)
                 _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
                 self._voter_bias_ema[symbol] = _voter_bias
