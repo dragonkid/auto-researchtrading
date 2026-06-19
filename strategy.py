@@ -895,6 +895,24 @@ class Strategy:
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
                 _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
+                # Architectural (Exp3 this session): trend-gated realized-PnL scale-in
+                # ACCELERATION for early winners. Prior session removed a live-CONVICTION
+                # scale-in accelerator (it made pace depend on per-bar voter margin =
+                # noisy, added bull noise) — but recorded that removing it SLOWED rally
+                # (raw 0.393->0.371), proving scale-in PACE moves rally raw. This re-adds
+                # an accelerator on a SMOOTHER, realized signal (pos_pnl, cumulative not
+                # per-bar voter) and gates it by trend strength so chop (sideways, where
+                # early winners mean-revert) is spared. Mechanism: an early-winning
+                # position is likely trend-aligned (bull long / crash short / rally long
+                # riding the trend) -> reach full size faster to capture more of the
+                # winning trend -> higher Sharpe (the raw lever, since all stability
+                # factors are now 1.0). One-sided (only positive pos_pnl accelerates;
+                # losers keep baseline + adverse-freeze). Smooth tanh on pos_pnl/|stop|.
+                # Trend-gated by _trend_strength_w (0 in chop -> no accel, protects
+                # sideways mean-reverters; ~1 in trend). Max 0.8 bars faster, floored at
+                # 1.5 bars. New control flow on scale-in pace based on realized PnL.
+                _win_accel = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * _trend_strength_w
+                _entry_full_bars_dyn = max(1.5, _entry_full_bars_dyn - 0.8 * _win_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
