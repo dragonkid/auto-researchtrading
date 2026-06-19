@@ -1449,24 +1449,7 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                        # Architectural (Exp2): slope-confirmation BOOST on the convex cushion
-                        # amp. When the near-term multi-window exit slope still strongly
-                        # confirms the position direction (a clean trend RUN, not just
-                        # trend-ALIGNMENT), boost the cushion so trend-aligned winners ride
-                        # the confirmed leg longer -> capture more of strong trend runs.
-                        # Distinct from the trend-ALIGNMENT gate (_dr_align, 20-bar return
-                        # direction, 0 ct -> 1 aligned): slope-conf measures the 12/16/22-bar
-                        # mean slope STILL pointing the position's way (within-trend momentum
-                        # confirmation). NEW cross-component data dep (cushion amp on near-term
-                        # slope confirmation, reusing the exit-subsystem _exit_slope). PURELY
-                        # ADDITIVE (1.0 + 0.15*slope_conf multiplier) — never removes the base
-                        # cushion, so the trend-align gate's bull-stability protection is
-                        # preserved and NO bull winner is excluded (unlike the failed R^2 /
-                        # peak-depth / MAE cushion gates which all killed bull by exclusion).
-                        # Targets strong trend legs (rally longs in clean uptrend runs, crash
-                        # shorts in downtrend legs, bull longs in strong 2021 legs).
-                        _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0008))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * (1.0 + 0.15 * _dr_slope_conf) * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.85 confirmed-trend profit
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
