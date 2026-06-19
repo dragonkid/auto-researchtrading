@@ -107,6 +107,17 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shrink
 CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
+# Architectural: base EMA alpha applied to TREND-ALIGNED held positions in the
+# emitted-target temporal smoother. The ct gate (0.99*ct_str) leaves trend-aligned
+# positions (bull longs / crash shorts) UNsmoothed (alpha 0). Exp5's sustained
+# concentration shrink made bull's held level noise-sensitive (stab 0.806->0.769,
+# the strategy's SOLE stability penalty, factor 0.895 on raw 0.938 -> final 0.840).
+# A gentle base low-pass on the held level damps bull's resize wobble at its
+# terminal point — the same axis the ct EMA clears for rally — without touching
+# the concentration shrink (prior branch proved full-depth shrink optimal). alpha
+# rises smoothly from TE_BASE_ALPHA (trend-aligned) to 0.99 (counter-trend): no
+# regime switch, no boundary to overfit.
+TE_BASE_ALPHA = 0.30
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -1438,7 +1449,15 @@ class Strategy:
             if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
                 _pos_dir_te = 1.0 if current_pos > 0 else -1.0
                 _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
-                _te_alpha = 0.99 * _ct_te_str  # branch step5: alpha cap 0.97->0.99 (confirm peak)
+                # Architectural: extend emitted-target EMA to TREND-ALIGNED positions
+                # via a small base alpha (TE_BASE_ALPHA). Previously alpha=0.99*ct_str
+                # -> 0 for trend-aligned (bull longs / crash shorts) -> bull's held
+                # level UNsmoothed -> Exp5 shrink made it noise-sensitive (stab 0.769,
+                # sole penalty, factor 0.895 on raw 0.938). Gentle base low-pass damps
+                # bull's resize wobble at the terminal confluence point (same axis the
+                # ct EMA clears for rally) without touching the shrink (prior branch
+                # proved full-depth optimal). Continuous ramp trend-aligned->ct: no switch.
+                _te_alpha = TE_BASE_ALPHA + (0.99 - TE_BASE_ALPHA) * _ct_te_str
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
