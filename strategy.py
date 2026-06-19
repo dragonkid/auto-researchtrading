@@ -1390,7 +1390,7 @@ class Strategy:
             if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
                 _pos_dir_te = 1.0 if current_pos > 0 else -1.0
                 _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
-                _te_alpha = 0.97 * _ct_te_str  # branch step4: alpha cap 0.92->0.97 (clear 0.80 knee)
+                _te_alpha = 0.99 * _ct_te_str  # branch step5: alpha cap 0.97->0.99 (confirm peak)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
