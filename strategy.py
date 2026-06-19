@@ -411,7 +411,13 @@ class Strategy:
                 _sk_num = (_sk_sig * _fwd[:, None]).sum(axis=0)
                 _sk_den = np.maximum((np.abs(_sk_sig) * np.abs(_fwd)[:, None]).sum(axis=0), 1e-12)
                 _skill = _sk_num / _sk_den  # in [-1, 1]
-                _skill_mult = 1.0 + 0.3 * _skill  # in [0.7, 1.3]
+                # Branch step2: ASYMMETRIC downweight-only skill. Step1's symmetric
+                # [0.7,1.3] AMPLIFIED high-skill voters to 1.3x, inflating bull position
+                # size/DD (raw 0.938->0.821, DD 0.886->1.126). Mute provably anti-
+                # predictive voters (skill<0) only; never amplify (cap 1.0). Preserves
+                # the slow-moving (noise-averaged) weight dependence that lifted bull
+                # stability while removing the size-inflation that cost bull raw.
+                _skill_mult = 1.0 + 0.3 * np.minimum(0.0, _skill)  # in [0.7, 1.0]
             else:
                 _skill_mult = np.ones(7)
             _voter_weights = tuple(bw * pm * sm for bw, pm, sm in zip(_base_weights, _persistence_mult, _skill_mult))
