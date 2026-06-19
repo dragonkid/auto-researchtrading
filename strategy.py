@@ -926,7 +926,18 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
-                _entry_full_bars_dyn = max(1.5, _entry_full_bars_dyn - 0.8 * _win_accel)
+                # Exp5 (architectural, indep): adaptive acceleration floor + stronger
+                # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
+                # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
+                # 1.5 floor (pace stays ~1.7), so the floor is not the binding limit —
+                # the magnitude is. Make the floor ADAPTIVE: strong trends (rally/bull/
+                # crash, high _trend_strength_w) get a lower floor (1.3) allowing more
+                # acceleration; chop (sideways) stays at 1.5. Raise magnitude 0.8->1.2.
+                # The slope-confirmation gate (Exp4) protects bull from over-acceleration
+                # into imminent corrections (gate off when slope weakens). New control
+                # flow: acceleration floor depends on trend strength.
+                _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
+                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
