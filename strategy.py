@@ -1489,7 +1489,26 @@ class Strategy:
                         # earned by trading WITH the long-window trend, not by path shape.
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
-                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        # Architectural (Exp2): cross-timescale trend-alignment gate on
+                        # the convex de-risk cushion. Was 20-bar ret_long only: in a
+                        # rally pullback the 20-bar return goes NEGATIVE, so rally's
+                        # trend-aligned LONGS lose the convex cushion exactly when they
+                        # need it (mid-range pullback noise) -> linear fast de-risk ->
+                        # giveback of trend gains -> lower rally Sharpe (binding raw
+                        # constraint). Add the 96-bar multi-day trend (ret_vlong) as a
+                        # co-gate via MAX: trend-alignment is satisfied if EITHER the
+                        # 20-bar OR the multi-day trend agrees with position direction.
+                        # ret_vlong stays positive through multi-hour pullbacks (uptrend
+                        # intact at the multi-day scale) -> cushion persists for rally
+                        # longs through pullback noise. Counter-trend positions (both
+                        # timescales disagree) still get NO cushion -> fast linear cut
+                        # (rally pullback shorts unaffected). Fast-saturating /0.01 on
+                        # ret_vlong (same as the other ret_vlong ct gates -> near-constant,
+                        # noise-free, so cushion strength does not track AR(1) noise).
+                        # New cross-timescale data dependency in the de-risk subsystem.
+                        _dr_align_20 = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        _dr_align_vl = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.01))  # multi-day alignment, fast-sat
+                        _dr_align = max(_dr_align_20, _dr_align_vl)
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
