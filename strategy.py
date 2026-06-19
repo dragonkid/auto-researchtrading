@@ -1392,7 +1392,27 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
+                        # Architectural (Exp2 this session): CHURN-GATED cushion weakening.
+                        # The convex cushion (Exp1 859effa5) eliminated bull's stability
+                        # penalty and lifted crash/sideways, but cost rally -0.016 raw:
+                        # trend-aligned longs held through rally's choppy giveback. The
+                        # cushion's stability contribution is concentrated in BULL
+                        # (+0.103: 0.768->0.871); rally's stability comes from the target
+                        # EMA, the cushion adds only +0.007 (0.805->0.812). So weakening
+                        # the cushion where giveback is costly (high-churn bursty regimes
+                        # = rally/bull) should recover raw (less giveback) while costing
+                        # little stability (bull has 0.071 headroom above 0.80 knee;
+                        # rally's cushion-contribution is tiny). Critically the gate is
+                        # the noise-IMMUNE integer churn count len(_eh) (same _churn_dz
+                        # the order-emission grids use) — NOT a price-derived quantity —
+                        # so it does NOT re-introduce the stability-killing boundary noise
+                        # that sank the R^2 (step2) and peak-depth (step4) cushion gates.
+                        # Fires during entry bursts (len>=3 ~1, len<=1 ~0); quiet
+                        # stretches keep full cushion. Only affects trend-aligned profit
+                        # (ct/loss have _dr_align/_pnl_scale=0 -> k=1 already -> unchanged).
+                        _dr_churn_dz = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                        _dr_amp = DERISK_CONVEX_AMP * (1.0 - 0.5 * _dr_churn_dz)  # weaken cushion up to 50% in bursts
+                        _dr_k = 1.0 + _dr_amp * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit (quiet) / ~1.3 (burst)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
