@@ -1237,34 +1237,19 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Architectural (Exp1): counter-trend-DIRECTION-gated temporal EMA
-                # smoothing of the fused soft exit pressure. Rally's noise-sensitive
-                # positions are its counter-trend shorts (pos opposite the multi-day
-                # uptrend, ret_vlong>0 & pos<0); bull (trend-aligned longs) and crash
-                # (trend-aligned shorts) are NOT counter-trend, so a SIGNED
-                # ret_vlong*pos_dir gate spares them BY CONSTRUCTION (alpha->0) —
-                # directly addressing the bull-regression blocker that sank the
-                # churn-gated exit-EMA (bull churns -> churn gate caught bull). This
-                # smooths exit TIMING (the rally TE source) rather than modulating
-                # exit-pressure MAGNITUDE (the discarded ct exit accel/winner-ride).
-                # SL pressure stays raw (protective, applied below). New per-symbol
-                # state _exit_press_ema; reset on full exit. Sideways spared too
-                # (low ret_vlong -> gate ~0).
-                _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
-                _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
-                _prev_soft = self._exit_press_ema.get(symbol, _soft_max)
-                _soft_max = (1.0 - _exit_ema_alpha) * _soft_max + _exit_ema_alpha * _prev_soft
-                self._exit_press_ema[symbol] = _soft_max
-                # Architectural (Exp2): extend the counter-trend EMA smoothing to the
-                # SECOND noise-injecting exit component, the additive _voter_bias term
-                # (voter-margin-derived -> noisy). It is added to exit pressure AFTER the
-                # SL max, so smoothing it (same ct gate, same alpha) further reduces the
-                # exit-timing jitter of counter-trend positions (rally pullback shorts)
-                # without touching SL. Trend-aligned (bull/crash) spared by construction
-                # (alpha=0 -> byte-identical). Second per-symbol EMA state _voter_bias_ema.
-                _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
-                _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
-                self._voter_bias_ema[symbol] = _voter_bias
+                # Architectural simplification (this session): REMOVED the two upstream
+                # counter-trend EMAs (exit-pressure EMA on _soft_max, voter_bias EMA on
+                # _voter_bias), collapsing the 3-stage ct smoothing pipeline to the SINGLE
+                # terminal emitted-target EMA (alpha 0.99 for ct, fast-sat gate). Both
+                # upstream EMAs were added (rows 734/cfc48165) BEFORE the terminal EMA was
+                # strengthened to alpha 0.99 + fast-saturation (8e5a77da); their redundancy
+                # given the much stronger terminal low-pass was never re-tested. The
+                # terminal EMA low-passes the emitted held LEVEL — the confluence of ALL
+                # upstream resize sources incl. _soft_max and _voter_bias — so it subsumes
+                # the upstream timing smoothing at a strictly stronger alpha (0.99 vs 0.5)
+                # and at the noise-damping terminal point. All three were ct-gated (spare
+                # bull/crash/sideways by construction) -> only rally is affected. Removes
+                # two per-symbol EMA states + two control-flow branches (subsystem shrink).
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
