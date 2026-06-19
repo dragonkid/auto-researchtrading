@@ -411,19 +411,11 @@ class Strategy:
                 _sk_num = (_sk_sig * _fwd[:, None]).sum(axis=0)
                 _sk_den = np.maximum((np.abs(_sk_sig) * np.abs(_fwd)[:, None]).sum(axis=0), 1e-12)
                 _skill = _sk_num / _sk_den  # in [-1, 1]
-                # Branch step4: MEAN-PRESERVING (redistribute, don't rescale). Steps 1&3
-                # both dropped bull raw to ~0.822 with DD 0.886->1.11 REGARDLESS of
-                # amplitude (0.30 vs 0.15) — diagnosis: the skill mult multiplies into
-                # TOTAL voter weight, so when skilled voters cluster on one side the
-                # strong-sum SCALE shifts vs the fixed admission thresholds, changing
-                # which bull trades fire/size -> DD up -> raw down. Fix: normalize the
-                # skill mult to mean 1.0 across the 7 voters so it only REDISTRIBUTES
-                # relative voter influence (anti-predictive down, predictive up) while
-                # leaving the summed weight scale unchanged -> admission/sizing scale
-                # preserved (bull raw protected) but the relative-skill stability lift
-                # retained. Symmetric +-15% pre-normalization.
-                _skill_mult = 1.0 + 0.15 * _skill  # in [0.85, 1.15]
-                _skill_mult = _skill_mult * (7.0 / _skill_mult.sum())  # mean-preserving
+                # Branch step5: small-amplitude RESCALE probe (0.06). Frontier-mapping:
+                # rescale endpoints are bull raw 0.822/stab 1.0 (=0.823 at amp 0.15) and
+                # baseline raw 0.938/stab 0.769 (=0.840 at amp 0). Test whether a small
+                # amplitude lands on a CONCAVE midpoint where bull net exceeds 0.840.
+                _skill_mult = 1.0 + 0.06 * _skill  # in [0.94, 1.06]
             else:
                 _skill_mult = np.ones(7)
             _voter_weights = tuple(bw * pm * sm for bw, pm, sm in zip(_base_weights, _persistence_mult, _skill_mult))
