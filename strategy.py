@@ -1392,20 +1392,7 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                        # Branch step4: PEAK-DEPTH gate on the convex cushion (layered on
-                        # step3's trend-alignment gate). Step3 recovered rally +0.009 and
-                        # bull +0.009 but rally (0.578) still < baseline (0.595): the cushion
-                        # holds rally's SHALLOW trend-aligned winners (small peak, choppy
-                        # uptrend) longer through giveback they can't absorb. A DEEP winner
-                        # (peak >> _pp_min) can safely ride a pullback; a shallow winner
-                        # cannot. Gate the cushion amplitude by peak depth so only deep
-                        # trend-aligned winners get the full cushion; shallow winners revert
-                        # toward linear (cut fast on giveback). Preserves bull's deep-trend
-                        # winners (the stability-prize) while sparing rally's shallow choppy
-                        # winners. General principle (no regime label): the cushion is earned
-                        # by depth, not by regime. Continuous tanh on (peak/_pp_min - 1).
-                        _dr_depth = max(0.0, min(1.0, np.tanh((self.peak_pnl.get(symbol, 0.0) / max(_pp_min, 1e-6) - 1.0) / 0.6)))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_depth  # 1.0 loss/ct/shallow, up to ~1.6 deep trend-aligned profit
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
