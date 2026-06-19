@@ -1192,6 +1192,20 @@ class Strategy:
                     # validated safe family). First-bar-only, +0.05 max.
                     _partnervol_btc_boost_bull = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
                     _partnervol_btc_boost_bear = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Exp10 (architectural, indep): 3-way conjunction - OWN-volume-rise x BTC-
+                    # volume-rise x PARTNER-price-agreement boost on ALT entries. Broadest 3-symbol
+                    # breadth signal: the alt itself participating (own vol) AND the leader
+                    # participating (BTC vol) AND a follower confirming (partner price) all align
+                    # -> the deepest broad-market-trend confirmation -> larger first-bar
+                    # commitment. Tests whether the volume axis has 3-WAY headroom beyond the
+                    # complete 2-way grid (Exp1/3/5/6/7/8/9). Deep-saturated all gates (near-
+                    # constant, noise-free, validated safe family). First-bar-only, +0.05 max.
+                    # Risk: narrow gate (fires only when all 3 ~1 = rare deep broad trends), may
+                    # be inert or overfit (3rd-order interaction on in-sample regimes).
+                    _3way_breadth_bull = _vol_rise * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _3way_breadth_bear = _vol_rise * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    _3way_boost_bull = 1.0 + 0.05 * _3way_breadth_bull
+                    _3way_boost_bear = 1.0 + 0.05 * _3way_breadth_bear
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
@@ -1201,12 +1215,14 @@ class Strategy:
                     _btcvol_partner_boost_bear = 1.0
                     _partnervol_btc_boost_bull = 1.0
                     _partnervol_btc_boost_bear = 1.0
+                    _3way_boost_bull = 1.0
+                    _3way_boost_bear = 1.0
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _3way_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _3way_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
