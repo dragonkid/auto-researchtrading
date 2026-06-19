@@ -1136,10 +1136,34 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
+                # Architectural (Exp1 this session): surgical clean-trend winner
+                # ride-suppression. Suppress ONLY the slope-against and time exit
+                # pressures (NOT pp/ve/ar/SL) for holds that are SIMULTANEOUSLY
+                # (a) clean-trend: high R^2 of the log-HL2 path over LINREG_PERIOD
+                # (continuous [0,1], direction-agnostic), (b) multi-day-aligned:
+                # position direction agrees with the 96-bar ret_vlong slope, and
+                # (c) winning: pos_pnl positive. All three as continuous tanh gates
+                # multiplied together, so the suppression smoothly -> 0 whenever any
+                # gate weakens (no hard boundary). Mechanism: clean-trend winners
+                # (bull longs, crash shorts, sideways drift-longs) currently shed
+                # exit pressure every bar slope/time sit in-band; letting them ride
+                # pressure plateaus raises post-fee Sharpe. SURGICAL for rally BY
+                # CONSTRUCTION: rally's winners are counter-trend shorts in a
+                # multi-day uptrend (ret_vlong>0, pos<0 -> align gate=0) and its
+                # trend-aligned longs are net losers (pos_pnl<0 -> win gate=0), so
+                # neither rally side satisfies all three gates -> rally trades
+                # unchanged. New cross-component data dep at the exit-fusion layer:
+                # slope/time pressure scaled by (clean x multiday-align x winning).
+                _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
+                _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
+                _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.04))
+                _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win
                 _soft_terms = (
-                    _w_slope * _sl_slope_pressure,
+                    _w_slope * _sl_slope_pressure * (1.0 - _ride_supp),
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure,
+                    _w_time * _time_pressure * (1.0 - _ride_supp),
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure

@@ -5,7 +5,7 @@ Running 4 regimes in parallel...
   sideways: Sharpe=1.94  AnnReturn=+2.9%  MaxDD=0.45%  Score=1.01
   rally_2024: Sharpe=0.85  AnnReturn=+2.3%  MaxDD=1.87%  Score=0.28
 
-Total wall time: 315.4s
+Total wall time: 310.3s
 
 ========================================================================================================================
 Regime          Period                      Sharpe    AnnRet%   MaxDD%  Trades    Win%     PF    Score
