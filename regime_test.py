@@ -1,6 +1,6 @@
 """
 Regime robustness test: run the strategy across different market regimes.
-Computes a composite score = mean(scores) - k*std(scores) to reward
+Computes a composite score = mean(scores) - k*std(scores) (k=0.3) to reward
 strategies that work across ALL market conditions.
 
 Usage: uv run regime_test.py
@@ -28,8 +28,14 @@ HOLDOUT_REGIMES = [
     ("recent", "2025-01-01", "2026-03-31", "Recent market (holdout)"),
 ]
 
-# Consistency penalty weight: higher k = stricter consistency requirement
-CONSISTENCY_K = 0.5
+# Consistency penalty weight: higher k = stricter consistency requirement.
+# 2026-06-19: lowered 0.5 -> 0.3. At k=0.5, ~72% of composite gains came from
+# std reduction (measured across GLM R1-R6 keeps) — agent learned to only
+# lower vol/TE, never raise mean (return). k=0.3 keeps consistency reward
+# (4-regime robustness, prevents abandoning the weakest regime — see 6/17
+# summary analysis) while giving mean-improvement room. Pure k=0 was rejected:
+# it rewards "3 strong + 1 weak" fragile strategies.
+CONSISTENCY_K = 0.3
 
 # Per-regime timeout: accounts for clean + len(FIXED_STABILITY_SEEDS)*N_TRIALS
 # perturbed backtests (avg5 stability = 5 seeds x 20 trials = 100 perturbations,

@@ -21,7 +21,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 - Look at holdout data (2025-01 onwards).
 
 ### Phase priority rule
-Focus on maximizing composite_score (= mean regime scores - 0.5*std). Stability test is ENABLED — applies to regimes with positive score.
+Focus on maximizing composite_score (= mean regime scores - 0.3*std). Stability test is ENABLED — applies to regimes with positive score.
 
 ## Session protocol
 
@@ -164,7 +164,7 @@ commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	statu
 
 Legacy rows (6 columns) may remain in the file for historical reference but are ignored when computing the per-regime baseline. Always append new rows using the 10-column schema.
 
-- `score` = composite_score (mean - 0.5*std)
+- `score` = composite_score (mean - 0.3*std)
 - `mean_score` = average across 4 regimes
 - `std_score` = std across regimes (lower = more consistent)
 - `bull_2021 / crash_bear / sideways / rally_2024` = per-regime scores extracted from lines matching `^regime_<name>_score:` in run.log (e.g., `regime_bull_2021_score: 27.123456` → store `27.12`)
@@ -175,18 +175,19 @@ Legacy rows (6 columns) may remain in the file for historical reference but are 
 Each regime is scored via `compute_score()`, then combined:
 
 ```
-score = signal_quality × sample_factor × dd_gate × vol_gate × streak_gate
+score = signal_quality × sample_factor × dd_gate × streak_gate
 
 signal_quality = log(1 + max(sharpe, 0))
 sample_factor = sqrt(min(num_trades / 50, 1))
 dd_gate = 1/(1 + DD%) × exp(-max(0, DD%-5)/10)
-vol_gate = 1 / (1 + return_volatility)
 streak_gate = exp(-max_consecutive_losses / 30)
 
 Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
 
-Composite score = mean(regime_scores) - 0.5 * std(regime_scores)
+Composite score = mean(regime_scores) - 0.3 * std(regime_scores)
 ```
+
+**vol_gate removed (2026-06-19):** the former `vol_gate = 1/(1+return_volatility)` was a double penalty — `return_volatility` (= `std(returns)*sqrt(8760)`) is the same std already in Sharpe's denominator. Measured across all historical keeps it was a near-constant 0.970-0.985 dampener (<1.4% spread between regimes), never changing ranking, only shifting all scores uniformly by ~2.6%. At equal Sharpe it preferred lower-vol (= lower-return) strategies — a misincentive. Sharpe is now the sole vol-adjustment.
 
 Note: trades incur real fees (5bps taker + 1bp slippage) in the backtest, so transaction cost is already reflected in Sharpe. There is no separate turnover penalty — if higher trade frequency raises post-fee Sharpe, that is genuine alpha and is rewarded. `sample_factor` only enforces a minimum sample size (50 trades); it does not penalize high frequency.
 

@@ -248,9 +248,9 @@ def test_compute_score_factors():
     signal_quality = math.log(1.0 + 1.0)
     sample_factor = math.sqrt(min(50 / 50.0, 1.0))          # = 1.0
     dd_gate = (1.0 / (1.0 + 5.0 / 100.0)) * math.exp(-max(0.0, 5.0 - 5.0) / 10.0)
-    vol_gate = 1.0 / (1.0 + 0.10)
     streak_gate = math.exp(-0 / 30.0)                        # = 1.0
-    expected = signal_quality * sample_factor * dd_gate * vol_gate * streak_gate
+    # vol_gate removed 2026-06-19 (double penalty with Sharpe's std denominator)
+    expected = signal_quality * sample_factor * dd_gate * streak_gate
     assert compute_score(r) == pytest.approx(expected, abs=TOL)
 
 

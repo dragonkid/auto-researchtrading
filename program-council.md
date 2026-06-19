@@ -91,7 +91,7 @@ Use status `council_discard` or `council_keep` to distinguish from normal experi
 Multiplicative per-regime score, then combined. This mirrors `compute_score()` in `prepare.py` plus the stability and flip-streak penalties applied in `regime_test.py` — it is the exact metric, not an approximation.
 
 ```
-base = log(1+max(sharpe,0)) × sqrt(min(trades/50,1)) × dd_gate × 1/(1+vol) × exp(-streak/30)
+base = log(1+max(sharpe,0)) × sqrt(min(trades/50,1)) × dd_gate × exp(-streak/30)
   dd_gate = 1/(1+DD%) × exp(-max(0,DD%-5)/10)
 
 Per-regime score = base × stability_factor × flip_streak_gate
@@ -101,8 +101,12 @@ Per-regime score = base × stability_factor × flip_streak_gate
 Hard cutoffs: <10 trades, >10% DD, >15% capital loss → -999
 Soft DD penalty: smooth exponential above 5% DD (5%→0.95x, 8%→0.68x, 10%→0.55x)
 
-Composite = mean(regime_scores) - 0.5 * std(regime_scores)
+Composite = mean(regime_scores) - 0.3 * std(regime_scores)
 ```
+
+**vol_gate removed (2026-06-19):** the former `1/(1+vol)` factor was a double penalty — `return_volatility` is the same std already in Sharpe's denominator. Near-constant 0.970-0.985 across all historical keeps (<1.4% regime spread), never changed ranking. Sharpe is now the sole vol-adjustment.
+
+**std penalty lowered (2026-06-19):** `k` lowered 0.5 → 0.3. At k=0.5, ~72% of composite gains came from std reduction; agent over-optimized for consistency at the expense of mean return. k=0.3 keeps consistency reward (prevents abandoning weakest regime) while giving mean-improvement room.
 
 There is no return gate, turnover gate, or simplicity bonus — those were removed in the score-v5 overhaul. Higher trade frequency is NOT penalized beyond the fee-adjusted Sharpe already embedded in `base`.
 

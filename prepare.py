@@ -696,7 +696,7 @@ def compute_score(result: BacktestResult) -> float:
     """
     Multiplicative risk-adjusted score (HIGHER is better).
 
-    score = signal_quality × sample_factor × dd_gate × vol_gate × streak_gate
+    score = signal_quality × sample_factor × dd_gate × streak_gate
 
     Hard cutoffs for degenerate strategies.
     """
@@ -740,19 +740,21 @@ def compute_score(result: BacktestResult) -> float:
     dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
     dd_gate *= math.exp(-dd_excess / 10.0)
 
-    # Volatility gate: 1/(1 + vol). NOTE: return_volatility is ANNUALIZED
-    # (hourly std × sqrt(8760)), so for real hourly crypto strategies it sits
-    # in roughly 0.5–2.0 and vol_gate lands in ~0.33–0.67 — it never reaches
-    # ~1.0. It is effectively a near-constant dampening factor plus a mild
-    # "lower annualized vol scores higher" gradient; it does NOT award a 1.0 to
-    # low-vol strategies. (Partly overlaps dd_gate's downside-risk penalty.)
-    vol_gate = 1.0 / (1.0 + result.return_volatility)
+    # Volatility gate REMOVED (2026-06-19): vol_gate = 1/(1+return_volatility)
+    # was a DOUBLE penalty — return_volatility = std(returns)*sqrt(8760) is the
+    # same std already in Sharpe's denominator. Measured across all historical
+    # keeps (5a79ab80/9110bee4/c90c1e9f) vol_gate was a near-constant 0.970-0.985
+    # dampener (vol range 0.017-0.029, <1.4% spread between regimes), so it never
+    # changed regime ranking — it only shifted all scores by ~2.6% uniformly.
+    # dd_gate already covers downside risk; streak_gate covers loss clustering.
+    # At equal Sharpe, vol_gate preferred lower-vol (= lower-return) strategies —
+    # a misincentive. Removing lets Sharpe be the sole vol-adjustment.
 
     # Consecutive loss gate: exp(-streak/30) — smooth exponential decay
     # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
     streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
 
-    score = signal_quality * sample_factor * dd_gate * vol_gate * streak_gate
+    score = signal_quality * sample_factor * dd_gate * streak_gate
     return score
 
 # ---------------------------------------------------------------------------
