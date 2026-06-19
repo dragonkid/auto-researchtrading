@@ -959,6 +959,23 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural (Exp1 this session): counter-trend STOP-LOSS tightening.
+                # The ct-direction principle is encoded on the SIZE axis (entry ct_vlong
+                # shrink /0.01), the TIME axis (ct max_hold shortening /0.01), and the
+                # LEVEL-smoothing axis (ct emitted-target EMA /0.01) — but NOT on the
+                # STOP-LOSS axis. Counter-trend positions (pos_dir opposes the multi-day
+                # ret_vlong trend: rally pullback shorts, crash dead-cat-bounce longs)
+                # have negative expected edge, so a smaller adverse excursion should
+                # trigger the stop. Tighten _stop_abs up to 20% for strongly ct positions
+                # via the SAME fast-saturating gate (scale /0.01 -> rally's solidly-
+                # positive ret_vlong sits in the flat tail -> near-constant tightening,
+                # noise-free). Trend-aligned (gate 0) -> _stop_abs unchanged -> bull
+                # longs / crash shorts byte-identical; low-ret_vlong sideways spared.
+                # New cross-timescale data dep at the stop subsystem (currently stop
+                # depends on ATR/vol only, not trend direction).
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _ct_stop_str = max(0.0, np.tanh(-_pos_dir_sl * ret_vlong / 0.01))
+                _stop_abs = _stop_abs * (1.0 - 0.20 * _ct_stop_str)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
