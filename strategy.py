@@ -77,13 +77,6 @@ STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
-# Architectural (this session): portfolio equity-vol-target overlay constants.
-# Closed-loop feedback: first-bar size shrinks when realized equity-return vol runs
-# hot vs its own slow baseline. Shrink-only (respects the exposure-optimum lesson).
-EQ_VOL_FAST = 24    # fast equity-return-vol window (bars)
-EQ_VOL_SLOW = 120   # slow equity-return-vol baseline window (bars)
-EQ_VOL_FLOOR = 0.70  # max shrink when equity-vol burst saturates (-> 0.70x size)
-
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
@@ -191,12 +184,6 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
-        # Architectural (this session): portfolio equity history for the equity-vol-
-        # target overlay. The strategy has extensive PRICE-volatility conditioning but
-        # NO feedback from its own realized EQUITY-curve volatility — the quantity the
-        # score actually penalizes (vol_gate = 1/(1+return_vol), dd_gate). Rolling
-        # equity series feeds a shrink-only size controller (see on_bar).
-        self._equity_hist = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -204,31 +191,6 @@ class Strategy:
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
-        # Architectural (this session): portfolio EQUITY-VOL-TARGET overlay (shrink-only).
-        # New per-strategy state + new data dependency: new-position size responds to the
-        # strategy's OWN realized equity-return volatility — a closed-loop feedback never
-        # present before (all existing vol conditioning reads PRICE series, not the equity
-        # curve). The score penalizes equity-return volatility directly (vol_gate) and
-        # equity drawdown (dd_gate); when recent realized equity-vol runs hot relative to
-        # its own slow baseline, the controller shrinks first-bar commitment so the worst
-        # bursts of churn-driven equity whipsaw are down-weighted. Shrink-only (caps at
-        # 1.0) — respects the exposure-optimum lesson (Exp1: any size INCREASE blew up DD
-        # uniformly). Ratio of fast (short-window) to slow (long-window) equity-return std,
-        # smoothly mapped via tanh: ratio<=1 (calm/normal) -> 1.0 (no effect); ratio>=~2
-        # (vol burst) -> EQ_VOL_FLOOR. Slow baseline is gradual (averages many bars) so the
-        # lattice line barely moves under AR(1) noise; the integer bar-count windows are
-        # noise-immune. Falls to 1.0 until enough history accrues.
-        self._equity_hist.append(equity)
-        if len(self._equity_hist) > 220:
-            self._equity_hist = self._equity_hist[-220:]
-        _eq_vol_mult = 1.0
-        if len(self._equity_hist) >= EQ_VOL_SLOW + 2:
-            _eq_arr = np.asarray(self._equity_hist, dtype=float)
-            _eq_ret = np.diff(np.log(np.maximum(_eq_arr, 1e-10)))
-            _eq_fast = max(np.std(_eq_ret[-EQ_VOL_FAST:]), 1e-9)
-            _eq_slow = max(np.std(_eq_ret[-EQ_VOL_SLOW:]), 1e-9)
-            _eq_vol_ratio = _eq_fast / _eq_slow
-            _eq_vol_mult = 1.0 - (1.0 - EQ_VOL_FLOOR) * max(0.0, min(1.0, np.tanh((_eq_vol_ratio - 1.0) / 0.6)))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -856,9 +818,9 @@ class Strategy:
                     _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
                     _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _eq_vol_mult
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _eq_vol_mult
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
