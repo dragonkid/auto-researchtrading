@@ -996,12 +996,30 @@ class Strategy:
                 _vol_std_en = max(float(np.std(_vol_arr_en)), 1e-10)
                 _vol_z_en = (float(bd.history["volume"].values[-1]) - _vol_mean_en) / _vol_std_en
                 _vol_entry_spike = 1.0 - 0.25 * max(0.0, min(1.0, np.tanh((_vol_z_en - 2.0) / 1.5)))  # max 25% shrink at deep spike
+                # Exp3 (architectural, indep): volume-DECLINE entry shrink (volume-price
+                # divergence). Complementary to _vol_entry_spike (shrinks HIGH-volume spike
+                # entries = capitulation/exhaustion chases): this shrinks LOW-volume entries
+                # where the move lacks participation. A price move on DECLINING volume is a
+                # low-participation move (rally late-stage weak longs on fading volume, crash
+                # dead-cat bounces on thin volume) -> lower quality -> smaller first-bar
+                # commitment. NEW data dep: volume TREND (6-bar vs 18-bar mean ratio), signed
+                # by decline — distinct from vol_z (level spike) and VWAP voter (level deviation).
+                # Trend-strength-gated (_vd_trend_w via |ret_long|/0.04) so it fires only in
+                # trending moves where participation confirmation matters; sideways (low
+                # |ret_long| AND structurally low volume) is spared by the gate. Shrink-only
+                # (caps at 1.0, safe family), max 0.15. Continuous tanh, no boundary. Targets
+                # rally/crash raw via smaller low-participation entry losses.
+                _vol_recent_m = float(np.mean(bd.history["volume"].values[-6:]))
+                _vol_long_m = max(float(np.mean(bd.history["volume"].values[-18:])), 1e-10)
+                _vol_trend_r = (_vol_recent_m - _vol_long_m) / _vol_long_m  # + rising, - declining
+                _vd_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                _vol_decline_shrink = 1.0 - 0.15 * _vd_trend_w * max(0.0, min(1.0, np.tanh(-_vol_trend_r / 0.30)))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
