@@ -1449,7 +1449,23 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
+                        # Architectural (Exp1): path-cleanliness gate on the convex cushion.
+                        # A clean trend winner (shallow MAE — never dipped deep since entry)
+                        # keeps the full cushion (ride the trend through pullback noise); a
+                        # choppy winner (deep MAE relative to its peak — recovered from a big
+                        # dip) gets LESS cushion (de-risk faster, lock gains before the choppy
+                        # gain mean-reverts). NEW extrema-based data dep at the cushion: peak/
+                        # MAE ratio. Extrema (high-water peak, low-water MAE) are noise-robust
+                        # vs continuous price-derived quantities (the walled de_floor path
+                        # modulates the de-risk AMOUNT via price-derived _exit_pressure -> stab
+                        # collapse; this modulates the cushion SHAPE via state extrema instead).
+                        # MAE_clean already used at harvest (_ts_supp); first use at the cushion.
+                        # Only scales the profit-side cushion (already gated by max(0,_pnl_scale)
+                        # and _dr_align); direction-agnostic; choppy winners revert toward the
+                        # linear fast cut (stability-safe: linear is the original ramp).
+                        _dr_mae = self._mae.get(symbol, 0.0)
+                        _path_clean = 1.0 - max(0.0, min(1.0, np.tanh(-_dr_mae / (abs(STOP_LOSS_PCT) * 0.4))))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * (0.60 + 0.40 * _path_clean)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
