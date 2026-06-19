@@ -1315,10 +1315,7 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                # Exp7 (architectural iteration on Exp4 keep): raise harvest cap 0.50->0.70.
-                # Exp4's 0.50 cap left upside on bull's sharpest exhaustion tops where a
-                # bigger harvest would cut more giveback. Stronger harvest at deep climaxes.
-                _vc_pressure = 0.70 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
+                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
