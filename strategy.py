@@ -924,6 +924,25 @@ class Strategy:
                     _btc_self_boost = 0.12 * max(0.0, np.tanh(abs(_btc_trend) / 0.03))
                     _xasset_bull = 1.0 + _btc_self_boost * max(0.0, np.tanh(_btc_trend / 0.03))
                     _xasset_bear = 1.0 + _btc_self_boost * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Exp5 (architectural, indep): alt-pair VOLUME-participation confirmation
+                    # boost on BTC entries. NEW cross-symbol x cross-data-type data dep: BTC
+                    # entry sizing previously read NO alt data (only own self-trend boost above);
+                    # this reads the alt pair (ETH+SOL) average 6/18-bar VOLUME rise. When the
+                    # followers (alts) are participating (volume building) in the SAME direction
+                    # as a BTC trend-aligned entry, the broad market is confirming the leader's
+                    # move -> higher-quality broad-market-trend entry -> larger first-bar
+                    # commitment. Distinct from Exp1 (BTC volume -> alt) and Exp3 (partner
+                    # volume -> alt): this is alt-pair volume -> BTC (mirror direction). Volume
+                    # (participation) is the differentiated signal (Exp1/Exp3 proved cross-
+                    # symbol VOLUME is non-redundant, unlike cross-symbol price-agreement which
+                    # is saturated). Deep-saturated (/0.30 alt-pair vol, /0.03 BTC trend ->
+                    # near-constant, noise-free, validated safe family). First-bar-only, +0.05
+                    # max. Targets rally (BTC longs confirmed by alts participating) + crash
+                    # (BTC shorts confirmed by alts participating); bull weak-trend + sideways
+                    # spared by /0.03 BTC-trend gate.
+                    _alt_pair_vol_rise = 0.5 * (_alt_vol_rise.get("ETH", 0.0) + _alt_vol_rise.get("SOL", 0.0))
+                    _xasset_bull *= 1.0 + 0.05 * _alt_pair_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _xasset_bear *= 1.0 + 0.05 * _alt_pair_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
                 else:
                     _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
                     _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
