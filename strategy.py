@@ -967,7 +967,7 @@ class Strategy:
                     # two low-Sharpe regimes. Trend-aligned (ret_vlong*pos_dir>0 -> 0) and
                     # 20-bar-trend-aligned positions unaffected. Fast-saturating /0.01
                     # (same as other ret_vlong ct gates -> near-constant, noise-free).
-                    _ct_si_gate = max(_ct_si_gate, max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
+                    _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
