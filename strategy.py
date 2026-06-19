@@ -107,6 +107,8 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shrink
 CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
+# Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
+DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -1356,7 +1358,27 @@ class Strategy:
                     # so the position has cleared the initial commit-noise window.
                     # New control flow: bars_held condition gates the de-risk branch.
                     if _exit_pressure >= _de_floor * _exit_thresh:
-                        _de_risk = 1.0 - (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _dr_x = (_exit_pressure - _de_floor * _exit_thresh) / ((1.0 - _de_floor) * _exit_thresh)
+                        _dr_x = max(0.0, min(1.0, _dr_x))
+                        # Architectural (Exp2 this session): CONVEX de-risk ramp on the
+                        # profit side. The prior LINEAR ramp (_de_risk = 1 - x) de-risks
+                        # proportionally to exit pressure across the whole [0,1] band, so
+                        # mid-range giveback/slope-against NOISE translates 1:1 into
+                        # position-value wobble -> equity-curve tracking error (the
+                        # stability penalty's root currency). A CONVEX ramp
+                        # (_de_risk = 1 - x^k, k>1) holds near full size through moderate
+                        # pressure (absorbing transient mid-range noise without shrinking)
+                        # then de-risks sharply as pressure approaches saturation — the
+                        # decisive high-pressure cut is preserved (same _de_risk at x=1),
+                        # only the mid-range RESPONSE is damped. k scales with profit
+                        # (winners get the convex cushion, letting trend-aligned winners
+                        # ride pullback noise; losers keep the near-linear fast cut via the
+                        # 0.85 loss floor). Continuous (smooth x^k, no new boundary),
+                        # direction-agnostic, PnL-modulated via _pnl_scale. New control
+                        # flow: exit-decision function shape changes from linear to
+                        # profit-convex.
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale)  # 1.0 loss, up to ~1.6 deep profit
+                        _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
