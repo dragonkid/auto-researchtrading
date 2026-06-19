@@ -1574,29 +1574,6 @@ class Strategy:
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    # Exp1 (architectural, indep): multi-day trend confirmation on the
-                    # opp-gate reversal. NEW data dep: ret_vlong (96-bar multi-day OLS
-                    # trend, already used in ct_vlong shrink / max_hold / target EMA) is
-                    # NOT used in the opp-gate, which currently reads only the 20-bar
-                    # trend_avg for its reversal-direction check. A reversal signal
-                    # (opposite-side voters firing + 20-bar trend flipping) that DISAGREES
-                    # with the multi-day trend is more likely a counter-trend bounce/pullback
-                    # (dead-cat bounce against a crash short; rally pullback against a rally
-                    # long) than a genuine trend reversal — the 96-bar trend stays intact
-                    # through such noise. Scale the opp-exit fraction DOWN when the reversal
-                    # is against ret_vlong AND the position is in profit, so multi-day-
-                    # trend-aligned WINNERS ride the counter-trend noise instead of being
-                    # trimmed (crash Sharpe is return-limited: 100% WR but tiny per-trade
-                    # capture, consistent with premature trimming on bounces — correlation,
-                    # not yet causally measured). Full exit when the reversal confirms the
-                    # multi-day trend (genuine reversal) OR when the position is losing
-                    # (losers never earn protection). Shrink-only on exit fraction (caps at
-                    # 1.0), profit-gated (safe family). ret_vlong /0.03 saturates in strong
-                    # trends (crash/rally ~0.05-0.15) -> near-binary confirmation, ~0 in
-                    # sideways chop where the opp-gate rarely fires anyway (trend_avg~0).
-                    _reversal_dir_og = -1.0 if current_pos > 0 else 1.0  # reversal direction (opposite of pos)
-                    _vlong_confirm_og = max(0.0, np.tanh(_reversal_dir_og * ret_vlong / 0.03))  # 1 if reversal agrees w/ multi-day
-                    _opp_exit_frac = _opp_exit_frac * (1.0 - 0.45 * (1.0 - _vlong_confirm_og) * _profit_gate_og)
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
