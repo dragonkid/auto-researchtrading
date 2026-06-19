@@ -933,16 +933,45 @@ class Strategy:
                 # pile-ups shrink; uncorrelated/single-leg entries unaffected.
                 _long_notional = 0.0
                 _short_notional = 0.0
+                # Exp3 (architectural, indep): aggregate same-direction UNREALIZED PnL
+                # of the OTHER open positions. The existing _conc_shrink below reads
+                # same-dir NOTIONAL only (concurrent exposure size); it cannot tell a
+                # correlated book that is in PROFIT (winning trend still compounding)
+                # from one in LOSS (a real correlated pullback adding risk to losers).
+                # Mechanism: when the same-direction book is in aggregate LOSS, the new
+                # entry is adding risk to a losing correlated move (rally pullback: BTC
+                # long underwater, ETH/SOL still trigger new longs) -> shrink MORE; when
+                # the book is in aggregate profit (trend running), leave the shrink
+                # unchanged so the winning trend leg still compounds. New cross-symbol
+                # data dep on aggregate unrealized PnL (distinct from _conc_shrink
+                # notional, _port_dd_atten equity-DD, per-symbol pos_pnl). Shrink-only,
+                # smooth tanh, composes multiplicatively with the notional conc_shrink.
+                _long_upnl = 0.0
+                _short_upnl = 0.0
                 for _osym, _opos in portfolio.positions.items():
-                    if _osym != symbol:
+                    if _osym != symbol and _osym in bar_data:
+                        _omid = bar_data[_osym].close
+                        _oep = self.entry_prices.get(_osym)
+                        if _oep is None or _oep <= 0:
+                            continue
+                        _oret = (_omid - _oep) / _oep
                         if _opos > 0:
                             _long_notional += _opos
+                            _long_upnl += _opos * _oret
                         elif _opos < 0:
                             _short_notional += -_opos
+                            _short_upnl += (-_opos) * (-_oret)
                 _conc_frac_bull = _long_notional / max(equity, 1e-10)
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                # Exp3: extra adverse-book shrink (only when same-dir book is in loss).
+                # _conc_adverse > 0 only when aggregate same-dir unrealized PnL < 0.
+                # /0.01 scale: 1% aggregate same-dir loss -> ~full extra shrink.
+                _conc_adverse_bull = max(0.0, -_long_upnl / max(equity, 1e-10))
+                _conc_adverse_bear = max(0.0, -_short_upnl / max(equity, 1e-10))
+                _conc_shrink_bull *= 1.0 - 0.20 * max(0.0, np.tanh(_conc_adverse_bull / 0.01))
+                _conc_shrink_bear *= 1.0 - 0.20 * max(0.0, np.tanh(_conc_adverse_bear / 0.01))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
