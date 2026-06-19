@@ -852,8 +852,26 @@ class Strategy:
                 # label). Shrinking low-quality counter-market entries is Sharpe-neutral-to-
                 # positive (proven size-shrink axis) + cuts alt idiosyncratic tracking error.
                 if symbol == "BTC":
-                    _xasset_bull = 1.0
-                    _xasset_bear = 1.0
+                    # Exp3 (architectural, indep): BTC self-trend bilateral boost (mirrors
+                    # the alt xasset boost to BTC itself). BTC entries currently get
+                    # _xasset=1.0 (no trend boost) while alts get a +0.12 boost when
+                    # strongly aligned with BTC's multi-day trend. BTC IS the market
+                    # leader; a BTC entry aligned with its OWN strong multi-day trend
+                    # (BTC long in rally uptrend, BTC short in crash downtrend) is a
+                    # high-quality trend entry -> more upfront commitment captures more of
+                    # the trend move -> higher Sharpe in the two binding regimes (rally
+                    # 0.673 Sh1.24, crash 0.812 Sh1.26 return-limited). For BTC, _btc_trend
+                    # == its own 96-bar ret_vlong, so this is a self-referential trend-
+                    # aligned first-bar BOOST (the ct_vlong SHRINKS ct entries; this BOOSTS
+                    # trend-aligned ones, the symmetric opposite). Same +0.12 max and /0.03
+                    # strong-agreement gate as the validated alt xasset boost (9cdb2a9a
+                    # keep) -> weak-trend bull-2021 pullback stretches spared, sideways
+                    # (BTC~flat) -> ~no boost. Shrink-side unchanged (_xasset >= 1.0 for
+                    # BTC; BTC has no cross-asset disagreement to shrink). New self-
+                    # referential data dep at BTC entry sizing (was constant 1.0).
+                    _btc_self_boost = 0.12 * max(0.0, np.tanh(abs(_btc_trend) / 0.03))
+                    _xasset_bull = 1.0 + _btc_self_boost * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _xasset_bear = 1.0 + _btc_self_boost * max(0.0, np.tanh(-_btc_trend / 0.03))
                 else:
                     _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
                     _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
