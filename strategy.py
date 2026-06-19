@@ -1134,7 +1134,7 @@ class Strategy:
                 # Median can flip on a single window; mean spreads the contribution.
                 _hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
                 _slopes = []
-                for _w in (12, 16, 22):
+                for _w in (12, 16, 22, 32):
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
