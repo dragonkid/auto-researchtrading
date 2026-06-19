@@ -1563,6 +1563,22 @@ class Strategy:
                 _pos_dir_te = 1.0 if current_pos > 0 else -1.0
                 _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
                 _te_alpha = 0.99 * _ct_te_str  # branch step5: alpha cap 0.97->0.99 (confirm peak)
+                # Profit-graduated smoothing (architectural, new data dep on pos_pnl
+                # sign). The _target_ema was added when stability was the binding wall
+                # (k=0.5); its strong alpha lifts rally stability above the 0.80 knee
+                # BUT costs rally raw -- the lag holds counter-trend LOSERS (rally's
+                # pullback shorts, the documented losing-trade drag) bigger longer ->
+                # larger realized losses -> lower Sharpe. Under k=0.3 the stability
+                # benefit is discounted while the raw cost remains, so the trade-off
+                # shifted. Weaken the smoothing selectively on LOSING ct positions:
+                # losers track the raw (shrinking) target faster -> de-risk/exit
+                # sooner -> smaller losses -> rally raw up; WINNING ct holds keep full
+                # alpha (preserve the position-value consistency that holds stability
+                # above the knee). Smooth tanh on pos_pnl/|stop| (no decision boundary
+                # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
+                # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
+                _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
