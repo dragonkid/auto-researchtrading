@@ -1154,16 +1154,26 @@ class Strategy:
                 # neither rally side satisfies all three gates -> rally trades
                 # unchanged. New cross-component data dep at the exit-fusion layer:
                 # slope/time pressure scaled by (clean x multiday-align x winning).
+                # Branch step3 diagnostic: suppressing slope-against alone was
+                # BYTE-IDENTICAL to baseline -> slope is never the binding MAX term
+                # for clean winning holds; the whole crash gain + sideways loss came
+                # from suppressing the TIME pressure term. So suppress TIME only.
+                # The crash gain and sideways loss are coupled through time-ride; the
+                # align gate (multi-day trend magnitude) separates them: crash has a
+                # strong multi-day trend (|ret_vlong| large), sideways only weak drift
+                # (|ret_vlong| small). A deadzone-shifted aligned-tanh makes the gate
+                # exactly 0 for weak-drift holds (sideways) while saturating for
+                # strong-trend holds (crash). Aligned magnitude = ret_vlong*pos_dir.
                 _ride_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ride_r2 = _fast_r2(np.log(_hl2[-LINREG_PERIOD:]))
                 _ride_clean = max(0.0, min(1.0, np.tanh((_ride_r2 - 0.30) / 0.25)))
-                _ride_align = max(0.0, np.tanh(ret_vlong * _ride_pos_dir / 0.10))
+                _ride_align = max(0.0, np.tanh((ret_vlong * _ride_pos_dir - 0.06) / 0.05))
                 _ride_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
                 _ride_supp = 0.75 * _ride_clean * _ride_align * _ride_win
                 _soft_terms = (
-                    _w_slope * _sl_slope_pressure * (1.0 - _ride_supp),
+                    _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
-                    _w_time * _time_pressure,
+                    _w_time * _time_pressure * (1.0 - _ride_supp),
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure
