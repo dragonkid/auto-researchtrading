@@ -953,7 +953,21 @@ class Strategy:
                     # scale-in still freezes (real reversals shouldn't grow into losses).
                     # New cross-component dep: scale-in freeze depends on (pos_dir, ret_long).
                     _pos_dir_si = 1.0 if current_pos > 0 else -1.0
-                    _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend
+                    _ct_si_gate = max(0.0, np.tanh(-ret_long * _pos_dir_si / 0.04))  # [0,~1] counter-trend (20-bar)
+                    # Exp7 (architectural, indep): add MULTI-DAY counter-trend term to the
+                    # adverse-freeze gate. The 20-bar _ct_si_gate MISSES rally pullback
+                    # shorts: during a pullback ret_long<0 (short-aligned) -> gate=0 -> no
+                    # freeze, so the short scales in to full (un-ct_vlong-shrunk) size and
+                    # loses bigger. ret_vlong (96-bar OLS, the validated multi-day ct signal
+                    # used in ct_vlong shrink / max_hold / target EMA) stays POSITIVE through
+                    # rally pullbacks (uptrend intact) -> the short IS counter-trend at the
+                    # multi-day scale. Freeze if ct by EITHER measure (max). Catches rally
+                    # pullback shorts + crash dead-cat longs (both multi-day ct losers) ->
+                    # kept small through scale-in -> smaller losses -> higher Sharpe in the
+                    # two low-Sharpe regimes. Trend-aligned (ret_vlong*pos_dir>0 -> 0) and
+                    # 20-bar-trend-aligned positions unaffected. Fast-saturating /0.01
+                    # (same as other ret_vlong ct gates -> near-constant, noise-free).
+                    _ct_si_gate = max(_ct_si_gate, max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
