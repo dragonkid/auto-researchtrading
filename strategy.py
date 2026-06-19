@@ -400,8 +400,8 @@ class Strategy:
             # realized forward-return hit history.
             _sk_hist = self._voter_skill_hist.get(symbol, [])
             _sk_hist.append((tuple(_voter_signals_bull), mid))
-            if len(_sk_hist) > 25:
-                _sk_hist = _sk_hist[-25:]
+            if len(_sk_hist) > 60:
+                _sk_hist = _sk_hist[-60:]
             self._voter_skill_hist[symbol] = _sk_hist
             if len(_sk_hist) >= 9:
                 _sk_sig = np.tanh(np.array([h[0] for h in _sk_hist]))  # (K,7) confidence-signed
@@ -411,11 +411,14 @@ class Strategy:
                 _sk_num = (_sk_sig * _fwd[:, None]).sum(axis=0)
                 _sk_den = np.maximum((np.abs(_sk_sig) * np.abs(_fwd)[:, None]).sum(axis=0), 1e-12)
                 _skill = _sk_num / _sk_den  # in [-1, 1]
-                # Branch step5: small-amplitude RESCALE probe (0.06). Frontier-mapping:
-                # rescale endpoints are bull raw 0.822/stab 1.0 (=0.823 at amp 0.15) and
-                # baseline raw 0.938/stab 0.769 (=0.840 at amp 0). Test whether a small
-                # amplitude lands on a CONCAVE midpoint where bull net exceeds 0.840.
-                _skill_mult = 1.0 + 0.06 * _skill  # in [0.94, 1.06]
+                # Branch step6: LONGER window (25->60) at amp 0.15. The bull raw drop to
+                # 0.823 was a near step-function across amplitudes (even +-6% triggered
+                # it), consistent with trade-set churn from a NOISY 25-bar skill estimate
+                # shifting strong-sums bar-to-bar. A 60-bar estimate averages ~2.4x more
+                # samples (noise ~1/sqrt(N)) -> more stable weights -> less spurious
+                # trade-set churn -> may preserve bull raw while still catching
+                # persistently anti-predictive voters.
+                _skill_mult = 1.0 + 0.15 * _skill  # in [0.85, 1.15]
             else:
                 _skill_mult = np.ones(7)
             _voter_weights = tuple(bw * pm * sm for bw, pm, sm in zip(_base_weights, _persistence_mult, _skill_mult))
