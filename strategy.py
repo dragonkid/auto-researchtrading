@@ -76,10 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Counter-trend exit pressure cap (architectural Exp1): max contribution of the
-# multi-day counter-trend soft-exit term. Added to the MAX soft-exit fusion so it
-# binds only when no other pressure yet dominates (early-life counter-trend losers).
-CT_VLONG_EXIT_CAP = 0.30
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
@@ -1302,30 +1298,6 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural (Exp1, indep): multi-day COUNTER-TREND soft-exit pressure
-                # term added to the MAX fusion. ret_vlong (96-bar OLS slope) already drives
-                # entry-size shrink (_ct_vlong), scale-in freeze (_ct_si_gate), max_hold
-                # shortening (_ct_hold_sat) and the terminal target EMA (_ct_te_str) — but is
-                # NOT present in the exit-PRESSURE fusion. A position held AGAINST the multi-day
-                # trend (long while ret_vlong<0, short while ret_vlong>0) is the rally loss-tail
-                # source (pullback counter-trend holds that bleed before slope/pp/time pressure
-                # matures). This term fires EARLIEST on such holds (it is independent of
-                # bars_held / slope / peak), so in the MAX fusion it only binds when other
-                # pressures are still low — cutting the counter-trend loser earlier. Distinct
-                # from _ct_hold_sat (which shortens the time-CAP but still needs bars_held to
-                # reach it; a direct pressure term exits regardless of elapsed bars).
-                # Noise-robustness (per branch row-701 lessons): (1) fast-saturating /0.01 gate
-                # puts rally's solidly-signed ret_vlong in the flat tanh tail -> near-CONSTANT
-                # activation (sensitivity ~0, no AR(1) tracking error); (2) integer bars_held>=2
-                # post-commit gate (noise-immune counter) avoids firing on fresh-entry commit
-                # noise; (3) loss-only via max(0,-_pnl_scale) — winners counter-trend are rare
-                # and not targeted. Trend-aligned holds (pos_dir*ret_vlong>0 -> gate 0) and
-                # low-ret_vlong sideways (gate ~0) are byte-identical by construction.
-                _ctv_exit_gate = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _ctv_exit_loss = max(0.0, -_pnl_scale)  # 0 in profit, ~1 deep loss
-                _ctv_exit_bars = 1.0 if bars_held >= 2 else 0.0
-                _ctv_pressure = CT_VLONG_EXIT_CAP * _ctv_exit_gate * _ctv_exit_loss * _ctv_exit_bars
-                _w_ctv = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1339,8 +1311,7 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure,
-                    _w_ctv * _ctv_pressure
+                    _w_ar * _ar_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
