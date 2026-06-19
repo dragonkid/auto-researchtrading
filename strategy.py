@@ -180,6 +180,10 @@ class Strategy:
         # Reset on full exit.
         self._exit_press_ema = {}
         self._voter_bias_ema = {}  # Exp2: counter-trend EMA of additive _voter_bias term
+        # Exp1 (this session): per-symbol counter-trend EMA of the EMITTED position
+        # target (final level). Smooths bar-to-bar position-value wobble for
+        # counter-trend held positions only; reset on full exit.
+        self._target_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1338,6 +1342,31 @@ class Strategy:
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
+            # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
+            # EMITTED position target (the final held-position LEVEL) — a NEW smoothing
+            # POINT distinct from the prior exit-pressure EMA (734 keep) and voter_bias
+            # EMA (cfc48165 keep), both of which smooth UPSTREAM signals. The held-
+            # position target is the confluence of the de-risk ramp + opp-gate partial
+            # exit + scale-in + tp-harvest — each contributes position-value variation
+            # the upstream pressure/bias EMAs never observe. Stability's tracking error
+            # is literally std(clean_ret - pert_ret) of the EQUITY curve, i.e. driven by
+            # held-position-value differences between clean and perturbed runs; low-
+            # passing the emitted LEVEL for the noise-sensitive counter-trend (rally
+            # pullback-short) positions damps that variance at its terminal point,
+            # catching ALL upstream resize sources at once. Signed ct gate
+            # (-pos_dir*ret_vlong) -> alpha=0 for trend-aligned bull longs / crash
+            # shorts -> byte-identical by construction; low-ret_vlong sideways spared.
+            # Resizes only: full exits (target==0) and sign flips are risk transitions
+            # -> never smoothed (must hit exact target). Reset on full exit.
+            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                _pos_dir_te = 1.0 if current_pos > 0 else -1.0
+                _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.04))
+                _te_alpha = 0.5 * _ct_te_str  # 0 trend-aligned, up to 0.5 counter-trend
+                if _te_alpha > 0.0:
+                    _prev_te = self._target_ema.get(symbol, target)
+                    target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
+                self._target_ema[symbol] = target
+
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
             # gate previously fired on any move > 1.0 unit. Small same-sign resizes
@@ -1471,7 +1500,7 @@ class Strategy:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
