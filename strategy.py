@@ -107,9 +107,6 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shrink
 CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
-CONC_HELD_GRID = 0.05  # branch: quantize the CACHED held-shrink to this grid (noise-immune stability)
-CONC_HELD_MIN_SHRINK = 0.08  # branch: only SUSTAIN held-shrink when decisively deep (>=8%); else snap to 1.0
-CONC_HELD_DEPTH = 0.85  # branch: fraction of first-bar shrink depth sustained through the hold
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -861,26 +858,12 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                # Branch step3: GRADUATED held-shrink DEPTH (gentler sustained than first-bar).
-                # Steps 1-2 (grid, snap-deadzone) both failed to move bull stability (stuck
-                # ~0.766-0.769) — discretizing the shrink VALUE is the wrong lever. New
-                # diagnosis: the held shrink applies the FULL CONC_EXP_MAX_SHRINK (0.35), so
-                # bull's sustained position is up to 0.65x — a large, concentration-dependent
-                # reduction whose magnitude itself drives the held-equity variance that costs
-                # stability. The first-bar shrink (which already worked) is transient; the
-                # SUSTAINED depth is what perturbs the whole-hold equity path. Apply only a
-                # FRACTION (CONC_HELD_DEPTH) of the shrink to the cached held value:
-                # held_shrink = 1 - CONC_HELD_DEPTH*(1 - first_bar_shrink). Keeps bull
-                # positions closer to the noise-robust un-shrunk level through the hold
-                # (lower held-value variance -> stability recovers) while still sustaining a
-                # partial concentration reduction (preserves much of the raw DD/Sharpe gain).
-                # First-bar shrink unchanged (full depth, already validated).
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _conc_shrink_bull
-                    self._conc_shrink_held[symbol] = 1.0 - CONC_HELD_DEPTH * (1.0 - _conc_shrink_bull)
+                    self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _conc_shrink_bear
-                    self._conc_shrink_held[symbol] = 1.0 - CONC_HELD_DEPTH * (1.0 - _conc_shrink_bear)
+                    self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
