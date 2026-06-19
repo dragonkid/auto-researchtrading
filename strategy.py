@@ -107,6 +107,8 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shrink
 CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
+# Architectural (Exp1 this session): cross-symbol short-momentum confirmation gate.
+XMOM_MAX_SHRINK = 0.20  # max first-bar shrink when other symbols' 8-bar momentum opposes entry
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -858,11 +860,42 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                # Architectural (Exp1 this session): cross-symbol SHORT-WINDOW momentum
+                # confirmation gate on first-bar entry size. NEW cross-symbol data dep
+                # distinct from _btc_trend (BTC-only, 96-bar SLOW structural slope) and
+                # _conc_shrink (reads OTHER symbols' OPEN POSITIONS / notional). This reads
+                # the OTHER symbols' SHORT-window (8-bar) PRICE MOMENTUM SIGN — a fast
+                # market-breadth confirmation available whether or not they hold a position.
+                # Mechanism: an entry whose direction matches the broad cross-symbol short
+                # momentum is a market-wide move (high quality); an entry with no / opposing
+                # cross-symbol confirmation is idiosyncratic (lower quality, more noise-driven).
+                # Shrink-only on the unconfirmed side. Direction-agnostic general principle
+                # (no regime label): confirmation count c in {-2,-1,0,1,2} (net agreeing
+                # symbols), mapped via tanh to a [1-XMOM_MAX_SHRINK, 1.0] multiplier. Falls
+                # out per regime: correlated-uptrend longs (rally/bull) confirmed -> ~no
+                # shrink; counter-trend shorts unconfirmed -> shrunk; choppy sideways mixed
+                # -> partial. Continuous (tanh on integer count, no decision boundary that
+                # flips under AR(1) noise — the count is a sign-agreement of 8-bar returns,
+                # each averaging ~8 bars of noise).
+                _xmom_agree = 0
+                for _osym in ACTIVE_SYMBOLS:
+                    if _osym == symbol or _osym not in bar_data:
+                        continue
+                    _oh = bar_data[_osym].history
+                    if len(_oh) < SHORT_WINDOW + 1:
+                        continue
+                    _oc = _oh["close"].values
+                    _oret = (_oc[-1] - _oc[-SHORT_WINDOW]) / _oc[-SHORT_WINDOW]
+                    _xmom_agree += 1 if _oret > 0 else (-1 if _oret < 0 else 0)
+                # _xmom_agree in [-2, +2]. Bull entry benefits from +agree (broad up);
+                # bear entry benefits from -agree (broad down). Shrink when momentum OPPOSES.
+                _xmom_bull = 1.0 - XMOM_MAX_SHRINK * max(0.0, np.tanh(-_xmom_agree / 1.5))
+                _xmom_bear = 1.0 - XMOM_MAX_SHRINK * max(0.0, np.tanh(_xmom_agree / 1.5))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _conc_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _conc_shrink_bull * _xmom_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _conc_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _conc_shrink_bear * _xmom_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
