@@ -1228,11 +1228,22 @@ class Strategy:
                 _cl_close = closes[-3:]
                 _cl_span = np.maximum(_cl_high - _cl_low, 1e-10)
                 _close_loc = float(np.mean((_cl_close - _cl_low) / _cl_span))  # [0,1], 3-bar mean
-                _cl_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                # Branch step2: gate trend-ALIGNMENT on the MULTI-DAY ret_vlong (96-bar)
+                # not the 20-bar ret_long. Exp1 used ret_long: in crash, dead-cat-bounce
+                # longs are trend-aligned at 20-bar during sharp bounces (ret_long>0) but
+                # COUNTER-trend at the 96-bar scale (ret_vlong<0) -> bull-side boost leaked
+                # into crash's losing ct-bounce longs (crash -0.000366, bull -0.000270).
+                # ret_vlong is the validated multi-day trend (fast-saturating /0.03 puts
+                # sustained trends in the flat tail -> near-constant, noise-free). Direction
+                # agreement with ret_vlong excludes crash ct-bounce longs (ret_vlong<0 ->
+                # bull gate ~0) while keeping rally longs (ret_vlong>0 -> bull gate ~1) and
+                # crash shorts (ret_vlong<0 -> bear gate ~1). Sideways (ret_vlong~0) spared.
+                _cl_bull_trend = max(0.0, np.tanh(ret_vlong / 0.03))   # bull entry agrees with multi-day uptrend
+                _cl_bear_trend = max(0.0, np.tanh(-ret_vlong / 0.03))  # bear entry agrees with multi-day downtrend
                 _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.55) / 0.15))  # fires close near high
                 _cl_bear_conv = max(0.0, np.tanh((0.45 - _close_loc) / 0.15))  # fires close near low
-                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_bull_conv
-                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_bear_conv
+                _close_conv_boost_bull = 1.0 + 0.05 * _cl_bull_trend * _cl_bull_conv
+                _close_conv_boost_bear = 1.0 + 0.05 * _cl_bear_trend * _cl_bear_conv
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
