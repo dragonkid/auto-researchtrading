@@ -1298,32 +1298,6 @@ class Strategy:
                 # Weight: only fire on currently-losing positions (definitionally — gated above);
                 # full weight (this pressure measures recovery quality on losers, not profit lock-in).
                 _w_ar = 1.0
-                # Architectural (Exp4): momentum ACCELERATION (2nd derivative) early-
-                # warning exit pressure. NEW orthogonal signal: every existing slope
-                # term is a 1st derivative (slope LEVEL — fires only after slope has
-                # fully reversed against the position). Acceleration = CHANGE in slope
-                # = d(slope)/dt. A trend-aligned winner whose slope is DECELERATING
-                # (acceleration against position direction) is approaching trend
-                # exhaustion BEFORE the slope crosses zero -> EARLIER exit -> locks
-                # gains before the giveback that makes trend-winner-holding (Exp3)
-                # lose. Distinct from _sl_slope_pressure (uses 16-bar slope LEVEL
-                # shared with entry voter); this uses the 16-bar slope DELTA one bar
-                # apart (decoupled from entry-noise, and a 2nd-derivative quantity no
-                # existing primitive computes). Added to the MAX fusion -> only
-                # contributes when it is the most-pressing term (confirmation
-                # amplifier, not a standalone noise source). Gated to trend-aligned
-                # IN-PROFIT positions (where exhaustion-locked-gains matters; ct
-                # losers and chop already exit via slope/time). Continuous tanh ramp.
-                # Noise-robustness: 16-bar OLS slope averages ~16 bars of AR(1) noise;
-                # the delta of two such slopes one bar apart is dominated by the bar
-                # that drops out (~1/16 weight) -> low sensitivity to single-bar noise.
-                _accel_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _accel_align = max(0.0, np.tanh(ret_long * _accel_pos_dir / 0.04))  # trend-aligned only
-                _lr_slope_prev = _fast_slope(np.log(_hl2[-(LINREG_PERIOD + 1):-1]))  # 16-bar slope ending prev bar
-                _accel = _lr_slope - _lr_slope_prev  # per-bar slope change (2nd derivative)
-                _accel_against = -_accel * _accel_pos_dir  # >0 when decelerating vs position
-                _accel_pressure = max(0.0, min(1.0, (_accel_against - 0.00004) / 0.00012)) * _accel_align * max(0.0, _pnl_scale)
-                _w_accel = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1337,8 +1311,7 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_ar * _ar_pressure,
-                    _w_accel * _accel_pressure,
+                    _w_ar * _ar_pressure
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
