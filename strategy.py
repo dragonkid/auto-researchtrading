@@ -942,6 +942,18 @@ class Strategy:
                     _partner_lead = _alt_lead.get(_partner, 0.0)
                     _xasset_bull *= 1.0 + 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
                     _xasset_bear *= 1.0 + 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    # Exp3 (architectural, indep): symmetric partner-DISAGREEMENT entry shrink.
+                    # The Exp2 keep validated the partner-alt lead-lag as a confirmation BOOST
+                    # (agreement -> bigger). This adds the symmetric SHRINK counterpart: an alt
+                    # entry whose direction OPPOSES the partner alt's 20-bar momentum is an
+                    # idiosyncratic/counter-alt-trend move (one alt diverging while the other
+                    # trends) -> lower quality -> smaller first-bar commitment. Shrink-only
+                    # (caps at 1.0, safe family). Same /0.02 deep-disagreement gate so only
+                    # STRONG partner opposition fires (mild divergence spared). Distinct from
+                    # the BTC-trend shrink (different leader, shorter timescale). New cross-
+                    # symbol-pair shrink data dep (Exp2 was boost-only).
+                    _xasset_bull *= 1.0 - 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    _xasset_bear *= 1.0 - 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
                 # Architectural (this session): portfolio same-direction GROSS-EXPOSURE
                 # governor. NEW cross-symbol data dependency the strategy entirely lacks:
                 # first-bar entry size reads the AGGREGATE already-open same-sign notional
