@@ -202,6 +202,19 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
+        # Architectural (Exp1 this session): portfolio-level consecutive-LOSS streak
+        # counter. Increments on any losing full-exit (across ALL symbols), resets to
+        # 0 on any winning full-exit. Distinct from per-symbol _last_exit_pnl cooldown
+        # (single-symbol, single-trade) and _freq_factor (entry-density, not outcome):
+        # this tracks CROSS-SYMBOL loss CLUSTERS — correlated adverse micro-regimes
+        # (rally pullbacks hitting BTC/ETH/SOL in sequence) that no per-symbol
+        # primitive can see. Feeds a smooth admission-tightening (see _streak_tighten)
+        # to break loss streaks, directly targeting the streak_gate penalty
+        # (exp(-max_consecutive_losses/30)), the largest non-Sharpe drag on the
+        # lowest regime. Integer counter on trade outcomes; activation ramp is smooth
+        # tanh (no hard boundary) and floored so calm regimes (max streak <3) are
+        # byte-identical.
+        self._port_loss_streak = 0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -441,8 +454,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh((self._port_loss_streak - 2.5) / 1.0)))
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh((self._port_loss_streak - 2.5) / 1.0)))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -1800,7 +1813,17 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
+                        _exit_pnl_signed = -_ep if current_pos < 0 else _ep
+                        self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Exp1: update portfolio consecutive-loss streak on every full
+                        # exit. A loss increments, a win resets to 0. Cross-symbol so
+                        # correlated loss clusters (rally pullback shorts across BTC/
+                        # ETH/SOL) accumulate even though each symbol's own per-symbol
+                        # cooldown (_loss_only) fires independently.
+                        if _exit_pnl_signed < 0.0:
+                            self._port_loss_streak += 1
+                        else:
+                            self._port_loss_streak = 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
