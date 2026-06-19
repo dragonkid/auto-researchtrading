@@ -255,12 +255,28 @@ class Strategy:
         # broad-alt-trend confirmation independent of BTC. Computed once per bar for the alt
         # pair; falls to 0 (no effect) if the partner alt is absent/short.
         _alt_lead = {}  # partner-alt 20-bar slope*n (net window return scale)
+        _alt_vol_rise = {}  # partner-alt 6/18-bar volume-trend rise (deep-saturated), Exp3
         _alt_pair = [s for s in ("ETH", "SOL") if s in bar_data and len(bar_data[s].history) > LONG_WINDOW + 1]
         for _asym in _alt_pair:
             _ac = bar_data[_asym].history["close"].values
             _an = min(LONG_WINDOW, len(_ac) - 1)
             _ahl2 = (bar_data[_asym].history["high"].values[-_an:] + bar_data[_asym].history["low"].values[-_an:]) / 2.0
             _alt_lead[_asym] = _fast_slope(np.log(_ahl2)) * _an
+            # Exp3 (architectural, indep): partner-alt VOLUME-participation trend (6/18-bar mean
+            # ratio, deep-saturated /0.30). NEW cross-symbol x cross-data-type dep: prior
+            # cross-alt dep used the partner alt PRICE (20-bar momentum, _alt_lead); this uses
+            # the partner alt VOLUME. Rising partner-alt volume = broad alt-market participation
+            # building (both alts accumulating volume together) -> an alt trend entry confirmed
+            # by partner-alt-volume-building is a higher-quality broad-alt-trend entry -> larger
+            # first-bar commitment. Distinct from Exp1 (BTC leader volume) and Exp5 (own volume):
+            # this is the cross-alt PARTNER volume. Computed once per bar; falls to 0 if absent.
+            if len(bar_data[_asym].history) > 18:
+                _pv = bar_data[_asym].history["volume"].values
+                _pv_recent = float(np.mean(_pv[-6:]))
+                _pv_long = max(float(np.mean(_pv[-18:])), 1e-10)
+                _alt_vol_rise[_asym] = max(0.0, min(1.0, np.tanh(((_pv_recent - _pv_long) / _pv_long) / 0.30)))
+            else:
+                _alt_vol_rise[_asym] = 0.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -974,6 +990,20 @@ class Strategy:
                     # symbol-pair shrink data dep (Exp2 was boost-only).
                     _xasset_bull *= 1.0 - 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
                     _xasset_bear *= 1.0 - 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
+                    # Exp3 (architectural, indep): partner-alt VOLUME-rise x partner-alt-price-
+                    # momentum-agreement conjunction boost. _partner_vol_rise (deep-saturated
+                    # partner 6/18-bar volume ratio) confirms the partner alt's participation is
+                    # BUILDING; the /0.02 partner-price-agreement gate (same as the validated
+                    # Exp2 partner lead-lag boost) confirms this alt trades WITH the partner's
+                    # near-term direction. The CONJUNCTION (both ~1) fires only when both alts
+                    # are participating in the same direction -> broad alt-market trend entry ->
+                    # larger first-bar commitment. Small +0.05 max, deep-saturated both gates
+                    # (near-constant -> noise-free, validated safe family). First-bar-only.
+                    # Distinct from Exp1 (BTC leader volume) and Exp5 (own volume): cross-alt
+                    # PARTNER volume x partner-price conjunction.
+                    _partner_vol_rise = _alt_vol_rise.get(_partner, 0.0)
+                    _xasset_bull *= 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _xasset_bear *= 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
                     # Exp1 (architectural, indep): BTC leader-volume-participation x BTC-price-
                     # trend-agreement conjunction boost on alt entries. _btc_vol_rise (deep-
                     # saturated BTC 6/18-bar volume ratio) confirms leader participation is
