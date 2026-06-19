@@ -108,6 +108,7 @@ CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shr
 CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 CONC_HELD_GRID = 0.05  # branch: quantize the CACHED held-shrink to this grid (noise-immune stability)
+CONC_HELD_MIN_SHRINK = 0.08  # branch: only SUSTAIN held-shrink when decisively deep (>=8%); else snap to 1.0
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -859,26 +860,26 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                # Branch step1: QUANTIZE the cached held-shrink onto a coarse grid. The
-                # Exp5 keep regressed bull STABILITY (0.806->0.769, below the 0.80 knee)
-                # because the cached shrink makes bull's held-position LEVEL a continuous
-                # function of the entry-time concurrent-exposure reading — under AR(1)
-                # noise the timing/existence of the other-symbol positions shifts, so the
-                # cached value differs across the noise ensemble -> held-position-value
-                # variance -> tracking error -> stability down. Round the CACHED held value
-                # to a coarse grid (the codebase's validated noise-immune quantization
-                # pattern) so small noise-driven differences collapse to the SAME shrink
-                # level -> fewer distinct held-position values across the ensemble ->
-                # stability recovers; the raw gain (driven by the AVERAGE shrink magnitude,
-                # preserved by rounding to nearest) is kept. The FIRST-BAR shrink stays
-                # continuous (it already worked, and bar-1 size is not the dominant
-                # held-value-variance source). Grid applied only to the cached value.
+                # Branch step2: SNAP the cached held-shrink to {1.0, sustained-level} via a
+                # WIDE activation deadzone, instead of step1's fine 0.05 grid (which was
+                # inert: bull stability 0.769->0.769). Re-diagnosis: bull's stability loss
+                # is not sub-grid value jitter but BOUNDARY FLICKER — near CONC_EXP_FLOOR the
+                # held shrink hovers just below 1.0 and AR(1) noise flips whether the other-
+                # symbol positions exist at entry at all, so the cached value flickers
+                # between ~1.0 and ~0.9 across the ensemble (a large discrete jump no fine
+                # grid smooths). Fix: only SUSTAIN a shrink through the hold when it is
+                # decisively deep (cached shrink <= 1 - CONC_HELD_MIN_SHRINK); otherwise snap
+                # the held value to exactly 1.0 (no sustained shrink). Deep-concentration
+                # entries (unambiguous, noise-stable) keep the full sustained reduction that
+                # produced bull's raw 0.938; shallow/near-boundary entries revert to the
+                # Exp4 first-bar-only behavior (held=1.0), removing the flickering held
+                # level. First-bar shrink unchanged (already worked).
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bull_conv_atten * _churn_size_atten * _tq_atten * _xasset_bull * _conc_shrink_bull
-                    self._conc_shrink_held[symbol] = round(_conc_shrink_bull / CONC_HELD_GRID) * CONC_HELD_GRID
+                    self._conc_shrink_held[symbol] = _conc_shrink_bull if (1.0 - _conc_shrink_bull) >= CONC_HELD_MIN_SHRINK else 1.0
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _tod_atten * _bear_conv_atten * _churn_size_atten * _tq_atten * _xasset_bear * _conc_shrink_bear
-                    self._conc_shrink_held[symbol] = round(_conc_shrink_bear / CONC_HELD_GRID) * CONC_HELD_GRID
+                    self._conc_shrink_held[symbol] = _conc_shrink_bear if (1.0 - _conc_shrink_bear) >= CONC_HELD_MIN_SHRINK else 1.0
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
