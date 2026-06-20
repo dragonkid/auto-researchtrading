@@ -1419,55 +1419,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp3 (architectural, indep): LONG-WINDOW (50-bar) path-linearity R^2
-                # SUSTAINED-TREND entry-size BOOST. NEW data family distinct from the
-                # SATURATED participation-confirmation entry-boost family (DVP/vol_rise/
-                # close_loc, grid complete) and from Exp6 relative-strength (regressed):
-                # this is TREND-PERSISTENCE (how cleanly linear the 50-bar path is), a
-                # direction-agnostic SHAPE statistic. The existing _tq_atten uses 16-bar
-                # R^2 as a SHRINK (low-R^2 -> smaller, caps at 1.0, churn-gated to low-
-                # churn); this is the OPPOSITE direction (BOOST above 1.0 for HIGH R^2),
-                # a LONGER window (50-bar sustained vs 16-bar immediate), and a DIFFERENT
-                # decision axis (size UP on clean sustained trends, not size DOWN on
-                # chop). Mechanism: a clean SUSTAINED trend (high 50-bar R^2 = price
-                # moved efficiently in one direction over ~2 days) is a high-quality
-                # persistent trend -> larger first-bar commitment captures more of the
-                # sustained move -> higher Sharpe in return-limited regimes. Targets
-                # crash (sustained 14-month downtrend -> high 50-bar R^2 throughout,
-                # 100pct WR but +3.2pct return return-limited, MaxDD 0.65pct = massive
-                # DD headroom -> size up is safe and raises return -> Sharpe up). Safe-
-                # envelope (mirrors the validated close-loc/DVP keeps EXACTLY): trend_w
-                # (|ret_long|/0.04, 0 chop -> spares sideways) x ER grind gate (_er/0.25,
-                # separates directional grind from chop at equal low vol) x multi-day
-                # ret_vlong confirmation (excludes counter-trend bounces: bull boost
-                # needs ret_vlong>0 so crash dead-cat-bounce longs excluded; bear boost
-                # ungated by ret_vlong mirroring close-loc -- crash shorts are the trend-
-                # aligned crash trade) x slope-confirmation (_exit_slope still confirming
-                # the position, the validated bull-protection gate from keeps ce66fec6 /
-                # cabfb6f1 -- stops boosting when near-term slope weakens before a
-                # correction, so bull-2021 correction-precursor legs where slope turns
-                # get no boost). Deep-saturated R^2 gate (/0.20 above 0.50 -> near-
-                # constant where it fires, noise-free per the validated safe-family
-                # lesson). First-bar-only, +0.08 max, bilateral, direction-agnostic
-                # general principle (no regime label). New cross-timescale data dep:
-                # entry size depends on 50-bar path linearity (sustained-trend quality).
-                _sr2_n = min(50, len(closes) - 1)
-                _sr2_hl2 = (bd.history["high"].values[-_sr2_n:] + bd.history["low"].values[-_sr2_n:]) / 2.0
-                _sr2 = _fast_r2(np.log(_sr2_hl2))
-                _sr2_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
-                _sr2_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
-                _sr2_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
-                _sr2_bull_slope = max(0.0, np.tanh(_lr_slope / 0.0004))  # slope confirms long
-                _sr2_bear_slope = max(0.0, np.tanh(-_lr_slope / 0.0004))  # slope confirms short
-                _sr2_conv = max(0.0, min(1.0, np.tanh((_sr2 - 0.50) / 0.20)))  # fires above R^2=0.50
-                _sr2_boost_bull = 1.0 + 0.08 * _sr2_trend_w * _sr2_er_w * _sr2_bull_vlong * _sr2_bull_slope * _sr2_conv
-                _sr2_boost_bear = 1.0 + 0.08 * _sr2_trend_w * _sr2_er_w * _sr2_bear_slope * _sr2_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _sr2_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _sr2_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
