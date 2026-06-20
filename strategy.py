@@ -1866,7 +1866,7 @@ class Strategy:
                 _slp_older = _fast_slope(np.log(_hl2[-16:-8]))
                 _decel_raw = (_slp_older - _slp_recent) * _pos_dir_xd  # + = decelerating
                 _decel_conf = max(0.0, np.tanh(_slp_recent * _pos_dir_xd / 0.0003))  # slope still confirming
-                _decel_strength = max(0.0, np.tanh(_decel_raw / 0.00015))  # strong decel only
+                _decel_strength = max(0.0, np.tanh(_decel_raw / 0.00022))  # branch step5: loosen /0.00015->/0.00022 (fire on weaker decel, more sideways swing-top captures at same magnitude 0.40)
                 # Branch step2: WEAK-MULTI-DAY-TREND gate. Step1 decel pressure
                 # CATASTROPHIC on rally (-0.478, stability 0.124): rally grinds up with
                 # deceleration phases that RESUME, so decel cuts trend runners (raw
