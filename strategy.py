@@ -28,6 +28,33 @@ def _fast_r2(y):
     vy = (yd * yd).sum()
     return (cov * cov) / max(vx * vy, 1e-20)
 
+
+def _vw_slope(y, w):
+    """Volume-weighted least-squares slope of y vs 0..len(y)-1 with weights w.
+    Same units as _fast_slope (per-bar slope of y). Weighting by volume
+    emphasizes high-participation bars; volume is NOT perturbed by the AR(1)
+    noise test (only close/high/low are), so the weighting is noise-stable
+    across the perturbation ensemble -- the WEIGHTS don't wobble, only the
+    (already-noisy) y values do. A participation-weighted trend slope is a
+    structurally different aggregation from the equal-weight OLS slope used
+    elsewhere: a trend leg confirmed by rising volume gets more weight than
+    a low-volume drift of the same net slope."""
+    n = len(y)
+    if n < 2:
+        return 0.0
+    x = np.arange(n, dtype=float)
+    sw = w.sum()
+    if sw <= 0:
+        return _fast_slope(y)
+    x_mean = (w * x).sum() / sw
+    y_mean = (w * y).sum() / sw
+    xd = x - x_mean
+    denom = (w * xd * xd).sum()
+    if abs(denom) < 1e-20:
+        return 0.0
+    return (w * xd * (y - y_mean)).sum() / denom
+
+
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -2081,7 +2108,36 @@ class Strategy:
                         # separate computation (3-window mean already available -> no new price-
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
-                        _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
+                        # Exp1 (architectural, indep): VOLUME-WEIGHTED slope-confirmation
+                        # for the de-risk cushion, replacing the equal-weight 12/16/22 mean
+                        # _exit_slope. The cushion (k>1 -> hold near-full size through moderate
+                        # giveback, the validated stability lever) was last gated (Exp5 keep
+                        # cabfb6f1) on the equal-weight multi-window slope mean. Equal-weight
+                        # OLS treats every bar identically -- a low-participation drift bar
+                        # counts as much as a high-volume continuation bar. A VOLUME-WEIGHTED
+                        # slope (WLS, weights = bar volume) emphasizes high-participation bars:
+                        # the cushion is earned by a trend whose CONTINUATION bars carry volume
+                        # (genuine participation-backed ongoing move), not by a thin drift.
+                        # Mechanism: crash's 100%-WR trend-aligned shorts ride a sustained
+                        # down-move whose continuation bars are volume-backed -> higher
+                        # participation-weighted slope -> stronger cushion -> capture more of
+                        # the down-move (return-seeking; crash AnnRet 3.2% with DD 0.65% has
+                        # the largest headroom). bull 2021 corrections: the continuation bars
+                        # INTO a correction are lower-volume than the breakout bars that
+                        # preceded them -> participation-weighted slope WEAKENS faster than
+                        # equal-weight on approach to a correction -> cushion reduces -> cuts
+                        # giveback faster (protects bull, the documented failure mode of
+                        # cushion amplification). NEW data dep + new computation at the de-risk
+                        # cushion gate: volume-weighted OLS (WLS) slope, multi-window 12/16/22
+                        # mean (preserves Exp5's smoothing), /0.0004 scale (unchanged). Volume
+                        # is NOT perturbed by the AR(1) noise test (only close/high/low), so the
+                        # WEIGHTS are noise-stable; only the (already-noisy) log-HL2 values
+                        # perturb -- same noise exposure as the equal-weight slope but with
+                        # participation-aware weighting. Smooth tanh, direction-agnostic.
+                        _vw_vol = bd.history["volume"].values
+                        _vw_slopes = [_vw_slope(np.log(_hl2[-_w:]), _vw_vol[-_w:]) for _w in (12, 16, 22)]
+                        _dr_vw_slope = float(np.mean(_vw_slopes))
+                        _dr_slope_conf = max(0.0, np.tanh(_dr_vw_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
