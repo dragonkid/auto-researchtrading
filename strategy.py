@@ -1635,6 +1635,30 @@ class Strategy:
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                # Exp5 (architectural, indep): COUNTER-TREND-LONG modest-winner peak-profit
+                # giveback tolerance widening (crash-bounce return-seeking via the PEAK-PROFIT
+                # exit path -- the path crash actually uses, unlike the inert time-pressure
+                # path confirmed by Exp4). Exp4 proved _max_hold extension is byte-identical
+                # inert for crash (bounce longs exit via peak-profit giveback BEFORE time-
+                # pressure). The prior vol-stability branch's crash +0.022 Sh came from
+                # altering the peak/giveback PATH (hump-gate), not max_hold. So target the
+                # peak-profit path directly: for COUNTER-TREND LONG modest winners (crash
+                # dead-cat-bounce longs, ret_vlong<0, 100% WR), widen the no-harvest giveback
+                # zone (raise _pp_lower toward PEAK_PROFIT_GIVEBACK) so modest bounce winners
+                # ride MORE giveback before peak-profit harvesting -> capture more of the
+                # bounce -> higher crash Sharpe (return-limited Sh1.264, large DD headroom).
+                # Hump-gate: fade the widening for DEEP-profit ct-long winners (they give back
+                # near V-correction tops -> harvest them, the prior branch's bull-landmine fix).
+                # ct-long scope SPARES bull/rally longs (ret_vlong>0 -> trend-aligned -> gate 0)
+                # and sideways (~0). Gates: ct-long (/0.01 fast-sat noise-free) x modest-winner
+                # (1 - tanh(profit_magnitude/0.7), fades as peak grows) x winning (pos_pnl>0).
+                # Conservative +0.10 max widening. New cross-component data dep: peak-profit
+                # giveback tolerance depends on ct-long x profit-magnitude conjunction.
+                _ctlong_pp = max(0.0, np.tanh(-ret_vlong / 0.01)) if current_pos > 0 else 0.0
+                _ctlong_modest = 1.0 - max(0.0, min(1.0, np.tanh(_profit_magnitude / 0.7)))
+                _ctlong_win_pp = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _pp_lower = _pp_lower + 0.10 * _ctlong_pp * _ctlong_modest * _ctlong_win_pp * (PEAK_PROFIT_GIVEBACK - _pp_lower)
+                _pp_lower = min(_pp_lower, PEAK_PROFIT_GIVEBACK * 0.98)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
                 # boundary at peak == _pp_min creates noise discontinuity in stab tests.
