@@ -136,6 +136,37 @@ You do NOT need the experiment to "almost pass" — the point is to allow bold a
 5-13. Branch steps 2-10: iterate on sideways fixes (fast exit path, regime-specific logic, hybrid exit, etc.) → sideways stays at -0.002 throughout
 14. After 7 consecutive no-progress steps → revert all branch commits, record discard, session ends
 
+### Structural-exploration mode (for breaking structural rigidity)
+
+When the strategy is at a **structural local optimum** — every incremental angle has been documented dead (alpha-trade wall, noise-trajectory wall, etc.) and conventional experiments keep hitting the same walls — the normal keep criteria (which require mean_score improvement and no regime dropping >50%) will reject ANY structural change on step 1, because rewriting a subsystem temporarily disrupts multiple regimes at once. This mode gives structural changes room to rebuild.
+
+**Trigger conditions (ALL must be met):**
+1. The current session has 3+ consecutive architectural discards (proving conventional exploration is saturated).
+2. The experiment is a **subsystem rewrite**, not a gate/tweak/parameter change. "Subsystem rewrite" means replacing the CORE MECHANISM of one decision subsystem — e.g. replacing MAX-fusion with weighted-sum, replacing voter-count with voter-confidence-product, replacing the linear de-risk ramp with a completely different exit function form. Adding a new soft source, adding a gate, adjusting a parameter, or sustaining an existing shrink through a new path is NOT a subsystem rewrite — those are conventional experiments judged under normal criteria.
+3. You explicitly mark the experiment description with prefix `STRUCTURAL_EXPLORATION:` and state (a) which subsystem is being rewritten, (b) what the new core mechanism is, (c) why the old mechanism is at its structural ceiling.
+
+**Relaxed first-step criteria (ONLY for the opening STRUCTURAL_EXPLORATION experiment):**
+- `mean_score` regression up to **−0.05** allowed (vs the hard "must improve" of normal keep).
+- `composite_score` regression up to **−0.08** allowed (vs +0.003 improvement required for normal keep).
+- The 50% per-regime gate is RETAINED (no regime may drop >50% — structural changes must not catastrophically break a regime).
+- `max_dd_pct` > 10% hard cutoff RETAINED (safety net).
+- These relaxations apply ONLY to step 1. Once the branch is open, subsequent steps are judged against normal keep criteria (or the branch's own progress — see below).
+
+**Branch mechanics:**
+- The structural-exploration experiment auto-opens a branch (does NOT count as the session's one exploration branch for normal-experiment budget — it IS the branch).
+- Budget: **15 steps** (not 7). Historical structural successes took 14 steps to rebuild balance.
+- Stagnation guard: **10 consecutive no-progress steps** (raw_composite delta ≤ 0 vs previous step) → terminate. This is looser than the 7-step guard for normal branches, because structural rebuilds have plateaus.
+- Progress requirement: raw_composite must be **monotonically non-decreasing over any 3-step window** (a step may regress, but 3 consecutive regressions = terminate). This allows exploration detours while preventing drift.
+- Success: if at any step the FULL normal keep criteria are met vs the original baseline (composite +0.003, mean improved, all gates pass), it's a real `keep`.
+- Failure: if the branch terminates without meeting keep criteria, revert strategy.py ONLY to the last keep, record `STRUCTURAL_EXPLORATION` discard summary.
+
+**Frequency limit:** at most ONE structural-exploration branch per session. If it reverts, the session ends — do not open a second one.
+
+**What this is NOT:**
+- NOT a license to do reckless rewrites. The 50% regime gate and 10% DD cutoff still apply.
+- NOT for parameter sweeps. If your change can be described as "adjust X from A to B", it's a conventional experiment.
+- NOT for adding components. Adding a new soft source / gate / data dep is conventional, even if "architectural".
+
 7. **Decide next step**:
    - If you have a clear follow-up insight from the regime breakdown → continue to next experiment.
    - If you've found a keep and want to try combining it with another idea → continue.
