@@ -1487,6 +1487,26 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
+                # Exp2 (architectural, indep): MULTI-DAY trend BOOST on the win-accelerator
+                # (boost-only). ret_vlong (96-bar OLS slope, the validated multi-day trend
+                # context) has been used at ENTRY sizing and the EXIT ct-cut, but NEVER on
+                # the scale-in PACE. The accelerator currently gates on _trend_strength_w
+                # (20-bar |ret_long|) + _slope_conf (16-bar slope) -- both NEAR-TERM. A deep
+                # MULTI-DAY trend (ret_vlong strongly with the position) is the highest-
+                # quality sustained-trend regime (rally grinding uptrend, crash grinding
+                # downtrend): reach full size FASTER for these deep-trend winners -> capture
+                # more of the sustained trend move -> higher Sharpe (the raw lever, since
+                # all stability factors are 1.0). BOOST-ONLY (factor >= 1.0) -- respects the
+                # load-bearing-magnitude lesson (any GATE REDUCING the accelerator costs
+                # rally raw); this only INCREASES acceleration for the deep-trend subset,
+                # never reduces it for anything (so baseline/non-deep-trend winners are
+                # byte-identical). Profit-gated (via _win_accel's pos_pnl tanh) + slope-
+                # confirmed (via _slope_conf) + deep-multi-day (/0.03 fast-saturating so
+                # rally's solidly-positive ret_vlong sits in the flat tail -> near-constant
+                # boost, noise-free per the validated safe-family lesson). New cross-
+                # timescale data dep at the scale-in pace: multi-day trend x position dir.
+                _md_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_acc / 0.03))
+                _win_accel = _win_accel * (1.0 + 0.30 * _md_trend_align)
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
