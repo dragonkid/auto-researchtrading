@@ -2121,32 +2121,6 @@ class Strategy:
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
-                    # Exp1 (architectural, indep): MULTI-WINDOW SLOPE-CONFIRMATION gate
-                    # on the opp-gate FULL exit. The opp-gate fires a full exit (frac=1.0)
-                    # when opp-side voters pass + trend_avg sign flips. trend_avg is a
-                    # blend of 10-bar and 20-bar RETURNS (2-endpoint-ish, sensitive to
-                    # single dead-cat-bounce bars). The multi-window _exit_slope (mean of
-                    # 12/16/22-bar OLS log-HL2 slopes, already computed at line ~1602) is a
-                    # SMOOTHER reversal signal — a momentary bounce moves one endpoint of
-                    # trend_avg but barely dents the 3-window OLS slope mean. When the
-                    # opp-gate's full-exit path is about to fire (the _grad_gate did NOT
-                    # engage, i.e. counter-trend OR losing) but the multi-window slope STILL
-                    # CONFIRMS the position (slope-with, not slope-against), downgrade the
-                    # full exit to the graduated partial exit. Mechanism: a reversal
-                    # evidenced only by opp-voters + a return-sign flip, while the SMOOTH
-                    # multi-window trend slope has NOT turned, is more likely a dead-cat
-                    # bounce (crash) / pullback bull-spike (rally) than a genuine trend
-                    # reversal -> ride it at partial size instead of full-exiting -> captures
-                    # more of the persistent trend -> higher return in the return-limited
-                    # trend regimes (crash 100pct WR / 0.65pct DD / 3.2pct AnnRet = huge DD
-                    # headroom, gain-locking too conservative). Smooth tanh blend on
-                    # slope-confirmation strength (no new boundary); direction-agnostic
-                    # general principle (no regime label). When slope HAS turned against
-                    # (_slope_conf_with ~0), frac stays at full 1.0 (genuine reversal ->
-                    # full exit unchanged). _exit_slope reused (no new price-derived read).
-                    _pos_dir_og_sl = 1.0 if current_pos > 0 else -1.0
-                    _slope_conf_with = max(0.0, np.tanh(_exit_slope * _pos_dir_og_sl / 0.0004))  # [0,~1] slope still confirms position
-                    _opp_exit_frac = _opp_exit_frac + (_opp_exit_frac_grad - _opp_exit_frac) * _slope_conf_with
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
