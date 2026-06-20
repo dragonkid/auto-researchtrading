@@ -1265,12 +1265,33 @@ class Strategy:
                 _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
+                # Exp5 (architectural, indep): RANGE-EXPANSION entry boost. NEW data axis:
+                # the current bar's range (high-low) relative to recent ATR (mean TR).
+                # Distinct from close_loc (WHERE close sits in the bar), vol_rise (volume
+                # mean ratio), and slope (linear trend over N bars): range-expansion is
+                # intrabar directional ENERGY. A trend-aligned entry on a bar whose range
+                # EXCEEDS ATR (range_ratio > 1) is a high-energy directional bar (breakout/
+                # continuation) -> larger first-bar commitment captures more of the energetic
+                # move. Trend-gated (_cl_trend_w: only in directional moves where bar energy
+                # confirms a real move, NOT chop where range-expansion is just noise spikes).
+                # Deep-saturated (/0.50 -> near-constant where it fires, noise-free per the
+                # validated safe-family lesson). First-bar-only, +0.05 max, bilateral.
+                # Composes safely with _vol_entry_spike: a climax bar (vol_z>2) is already
+                # shrunk by the spike shrink which dominates the small +0.05 boost, so the
+                # boost effectively fires only on NON-climax range-expanding trend entries
+                # (genuine directional energy, not exhaustion). New cross-data-type dep.
+                _re_cur = float(bd.history["high"].values[-1] - bd.history["low"].values[-1])
+                _re_atr = max(_atr_pct_e * mid, 1e-10)  # mean TR in price units (ATR over 14 bars)
+                _range_ratio = _re_cur / _re_atr
+                _range_exp = max(0.0, min(1.0, np.tanh((_range_ratio - 1.0) / 0.50)))
+                _range_exp_boost_bull = 1.0 + 0.05 * _cl_trend_w * _range_exp
+                _range_exp_boost_bear = 1.0 + 0.05 * _cl_trend_w * _range_exp
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _range_exp_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _range_exp_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
