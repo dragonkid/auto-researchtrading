@@ -960,7 +960,7 @@ class Strategy:
                 # sideways alpha). Shrink-only (caps at 1.0), max 0.22, first-bar-only.
                 _prior_dur = self._last_exit_bars.get(symbol, None)
                 if _prior_dur is not None and _prior_dur > 0:
-                    _prior_dur_shrink = 1.0 - 0.90 * _churn_ct * max(0.0, min(1.0, np.tanh((10.0 - _prior_dur) / 1.5)))
+                    _prior_dur_shrink = 1.0 - 1.20 * _churn_ct * max(0.0, min(1.0, np.tanh((12.0 - _prior_dur) / 1.5)))
                 else:
                     _prior_dur_shrink = 1.0
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
