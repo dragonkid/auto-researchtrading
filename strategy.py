@@ -28,6 +28,26 @@ def _fast_r2(y):
     vy = (yd * yd).sum()
     return (cov * cov) / max(vx * vy, 1e-20)
 
+
+def _realized_excess_kurtosis(returns):
+    """Excess kurtosis (4th standardized moment - 3) of a return series.
+    Measures tail FATNESS independent of magnitude (vol) and asymmetry (skew):
+    a noise-dominated regime (frequent large two-sided moves) has high excess
+    kurtosis; a clean directional grind has near-Gaussian (~0) kurtosis. Range
+    ~[-1, large]. Orthogonal to every magnitude/direction/slope primitive."""
+    n = len(returns)
+    if n < 8:
+        return 0.0
+    mu = returns.mean()
+    dev = returns - mu
+    m2 = (dev * dev).mean()
+    if m2 < 1e-20:
+        return 0.0
+    m4 = (dev * dev * dev * dev).mean()
+    # Population excess kurtosis (g2). Unbiased correction unnecessary for a
+    # deep-saturated gate; we only need a stable ranking across noise realizations.
+    return m4 / (m2 * m2) - 3.0
+
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -964,6 +984,35 @@ class Strategy:
                 # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
                 _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
                 _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
+                # Exp1 (architectural, indep): REALIZED-EXCESS-KURTOSIS entry-size
+                # attenuator. NEW cross-data-type dependency: every existing entry
+                # primitive reads magnitude (vol_ratio, ATR), direction (slope,
+                # trend_avg), trajectory linearity (_fast_r2 / _er), or participation
+                # (volume/DVP). NONE measures the DISTRIBUTIONAL SHAPE — specifically
+                # tail FATNESS. Excess kurtosis of recent log-returns is genuinely
+                # orthogonal: a noise-dominated regime (frequent large two-sided
+                # moves within the window) has high excess kurtosis regardless of net
+                # direction or total vol; a clean one-directional grind has near-
+                # Gaussian kurtosis. Mechanism: a fat-tailed recent window means the
+                # bar-to-bar signal is dominated by outliers (noise spikes) rather
+                # than a persistent edge -> entries admitted on such bars are more
+                # likely noise-driven (the documented churn/low-WR drag in the
+                # binding regime) -> shrink first-bar commitment continuously so their
+                # clean/perturbed tracking error and Sharpe drag are down-weighted,
+                # while clean-trend regimes (low kurtosis) keep full size and stay
+                # ~inert. Direction-agnostic (same scalar both sides; no regime label).
+                # 50-bar window (long enough that the 4th moment is not single-bar-
+                # dominated -> stable ranking across the AR(1) ensemble). DEEP-
+                # SATURATED tanh (/8.0 threshold so only EXTREME kurtosis fires -> the
+                # gate is near-CONSTANT where it activates, the validated safe-family
+                # lesson: a near-binary 0/1 shrink, not a noise-tracking size wobble).
+                # Shrink-only (caps at 1.0, safe family), max 0.15, first-bar-only
+                # (respects the proven winning axis: first-bar-only size changes help
+                # the binding regime; sustained sizing hurts). New control flow + new
+                # data dependency (4th moment) at entry sizing.
+                _kurt_ret = np.diff(np.log(closes[-51:]))
+                _exk = _realized_excess_kurtosis(_kurt_ret)
+                _kurt_atten = 1.0 - 0.15 * max(0.0, min(1.0, np.tanh((_exk - 8.0) / 8.0)))
                 # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
                 # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
                 # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
@@ -1420,11 +1469,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _kurt_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _kurt_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
