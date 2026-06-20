@@ -1867,7 +1867,19 @@ class Strategy:
                 _decel_raw = (_slp_older - _slp_recent) * _pos_dir_xd  # + = decelerating
                 _decel_conf = max(0.0, np.tanh(_slp_recent * _pos_dir_xd / 0.0003))  # slope still confirming
                 _decel_strength = max(0.0, np.tanh(_decel_raw / 0.00015))  # strong decel only
-                _dec_pressure = 0.40 * _decel_conf * _decel_strength
+                # Branch step2: WEAK-MULTI-DAY-TREND gate. Step1 decel pressure
+                # CATASTROPHIC on rally (-0.478, stability 0.124): rally grinds up with
+                # deceleration phases that RESUME, so decel cuts trend runners (raw
+                # collapse) + 8bar decel is noise-sensitive (stability crash). FIX: slope
+                # deceleration is a real mean-reversion signal ONLY in WEAK-trend regimes
+                # (sideways chop, where a decelerating swing-top WILL reverse); in STRONG
+                # multi-day trends (rally/bull/crash) deceleration phases resume, so decel
+                # is NOT a reversal signal -> gate OFF. Separator = |ret_vlong| (96bar OLS,
+                # the validated noise-IMMUNE fast-saturating multi-day trend, NOT a noise-
+                # sensitive R^2/ER cleanliness gate that walled prior branches). Weak-trend
+                # gate: 1.0 at ret_vlong~0 (sideways), fading to 0 at strong trend (rally).
+                _decel_weak_trend = 1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
+                _dec_pressure = 0.40 * _decel_conf * _decel_strength * _decel_weak_trend
                 _w_dec = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
