@@ -1726,13 +1726,7 @@ class Strategy:
                 # agnostic (uses pos_pnl magnitude only, not sign-of-move). pos_pnl/|stop|
                 # is the validated PnL-normalization scale.
                 _mh_pnl_n = pos_pnl / abs(STOP_LOSS_PCT)
-                # Branch step7: narrow the hump band (rise /0.5->/0.35, fade onset 1.5->1.0,
-                # fade /1.0->/0.6). Step4 (+0.0017) left sideways -0.011 / bull -0.008 from the
-                # extension firing on too many modest winners in those regimes. A narrower
-                # modest-profit band (peak ~0.35-1.0*stop) extends FEWER winners -> less
-                # sideways/bull bleed -- while crash's gradual winners (which accumulate
-                # through that band on the sustained downtrend) keep capturing the extension.
-                _mh_winning = max(0.0, min(1.0, np.tanh(_mh_pnl_n / 0.35))) * max(0.0, 1.0 - max(0.0, np.tanh((_mh_pnl_n - 1.0) / 0.6)))
+                _mh_winning = max(0.0, min(1.0, np.tanh(_mh_pnl_n / 0.5))) * max(0.0, 1.0 - max(0.0, np.tanh((_mh_pnl_n - 1.5) / 1.0)))
                 _mh_vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
                 _mh_vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
                 _mh_vol_stable = max(0.0, 1.0 - max(0.0, np.tanh(((_mh_vol_6 / _mh_vol_18) - 1.0) / 0.3)))  # ~1 stable, 0 expanding
@@ -1758,7 +1752,7 @@ class Strategy:
                 # principle: only extend winner holds in CALM sustained trends (vol level low),
                 # never in high-vol regimes where sharp corrections are structurally likely.
                 _mh_calm = max(0.0, 1.0 - max(0.0, np.tanh((vol_ratio - 0.9) / 0.3)))  # ~1 calm, 0 high-vol
-                _max_hold += 3.0 * _mh_align * _mh_winning * _mh_vol_stable * _mh_slope_conf * _mh_calm
+                _max_hold += 2.0 * _mh_align * _mh_winning * _mh_vol_stable * _mh_slope_conf * _mh_calm
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
