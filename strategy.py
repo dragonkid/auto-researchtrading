@@ -1693,66 +1693,6 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
-                # Exp3 (architectural, indep): VOL-STABILITY winner-hold extension.
-                # Return-seeking lever (v2.1 scoring rewards accepting hold-duration for
-                # return). A trend-aligned WINNING position in a STABLE-vol sustained trend
-                # (vol_6/vol_18 near or below 1 = no vol-of-vol expansion) is riding a
-                # grinding, persistent trend (crash 2022 sustained downtrend, rally 2024
-                # grinding uptrend) -> letting it run longer captures more of the sustained
-                # move -> higher return (return_reward) at no Sharpe cost (the trend is
-                # ongoing). When vol-of-price EXPANDS (vol_6/vol_18 > 1.3), the regime is
-                # showing correction-signaling vol spikes (bull 2021 sharp corrections) ->
-                # do NOT extend (the Exp2 finding: vol expansion at bull corrections is
-                # where _ve_pressure is load-bearing gain-locking; extending hold there
-                # would ride the giveback). Direction-agnostic general principle: extend
-                # winning-trend hold when vol is STABLE, never when expanding. Gated on
-                # multi-day trend-alignment (ret_vlong*pos_dir, deep /0.02 -> spares
-                # sideways low-trend) AND winning (pos_pnl>0). Magnitude: up to +3 bars
-                # (modest; _max_hold base ~10-12). NEW data dep at the time-pressure
-                # decision: max_hold depends on vol-stability x trend-align x winning.
-                _mh_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _mh_align = max(0.0, np.tanh(ret_vlong * _mh_pos_dir / 0.04))  # 0 ct/sideways/moderate, ~1 DEEP-trend-aligned
-                # Branch step4: HUMP-shaped winning gate (replaces monotone tanh). Step3
-                # recovered sideways+rally but bull is STILL -0.090: bull 2021 winners
-                # reach DEEP run-ups at trend-top extensions right before sharp V-corrections,
-                # and the monotone _mh_winning (grows with profit) gave those extended
-                # winners the MOST extension -> held into the V-correction. Replace with a
-                # hump: rises 0->1 by ~0.5*|stop| profit, holds 1 through ~1.5*|stop|, FADES
-                # to 0 by ~2.5*|stop|. Only modest-to-moderate winners get the extension;
-                # deeply-extended winners (near a top, correction-imminent) get none. crash
-                # grind wins accumulate gradually and spend most of their life in the modest-
-                # profit hump band -> keep the extension (and its +0.020 gain); bull extended
-                # tops fall in the deep-profit fade -> no extension -> protected. Direction-
-                # agnostic (uses pos_pnl magnitude only, not sign-of-move). pos_pnl/|stop|
-                # is the validated PnL-normalization scale.
-                _mh_pnl_n = pos_pnl / abs(STOP_LOSS_PCT)
-                _mh_winning = max(0.0, min(1.0, np.tanh(_mh_pnl_n / 0.5))) * max(0.0, 1.0 - max(0.0, np.tanh((_mh_pnl_n - 1.5) / 1.0)))
-                _mh_vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
-                _mh_vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
-                _mh_vol_stable = max(0.0, 1.0 - max(0.0, np.tanh(((_mh_vol_6 / _mh_vol_18) - 1.0) / 0.3)))  # ~1 stable, 0 expanding
-                # Branch step2: add PERSISTENT slope-confirmation gate. Step1 extended holds
-                # on any deep-trend-aligned stable-vol winner, but bull 2021's STABLE
-                # stretches immediately before a sharp correction also matched (deep uptrend,
-                # stable vol, winning) -> held into the correction -> bull -0.089. Require the
-                # multi-window exit slope to STILL CONFIRM the position direction: a pre-
-                # correction stretch has slope WEAKENING (the correction is forming) -> gate
-                # off -> no extension; crash's sustained downtrend has slope persistently
-                # confirming across windows -> gate on -> keeps the +0.020 gain. Reuses
-                # _exit_slope (12/16/22 mean, already computed). /0.0004 scale (matches the
-                # de-risk cushion slope-conf calibration).
-                _mh_slope_conf = max(0.0, np.tanh(_exit_slope * _mh_pos_dir / 0.0004))
-                # Branch step3: vol-LEVEL (calm-regime) gate. Step2's slope-conf + deep-trend
-                # gates still fired on bull 2021 (deep uptrend, stable-vol stretches, slope
-                # still confirming) -> held into sharp V-corrections -> bull -0.089. bull 2021
-                # is a HIGH-VOL regime (frequent vol-expansion spikes = why _ve_pressure is
-                # load-bearing there); crash 2022 sustained downtrend and rally 2024 grind are
-                # LOWER-vol. Gate the extension on LOW vol_ratio (calm): full extension when
-                # vol_ratio<0.9, zeroing by vol_ratio~1.2. crash/rally (calm grind) keep the
-                # extension; bull 2021 (high vol) gets none. Direction-agnostic general
-                # principle: only extend winner holds in CALM sustained trends (vol level low),
-                # never in high-vol regimes where sharp corrections are structurally likely.
-                _mh_calm = max(0.0, 1.0 - max(0.0, np.tanh((vol_ratio - 0.9) / 0.3)))  # ~1 calm, 0 high-vol
-                _max_hold += 2.0 * _mh_align * _mh_winning * _mh_vol_stable * _mh_slope_conf * _mh_calm
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
