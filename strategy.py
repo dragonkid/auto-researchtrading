@@ -960,9 +960,24 @@ class Strategy:
                 # sideways alpha). Shrink-only (caps at 1.0), max 0.22, first-bar-only.
                 _prior_dur = self._last_exit_bars.get(symbol, None)
                 if _prior_dur is not None and _prior_dur > 0:
-                    _prior_dur_shrink = 1.0 - 0.90 * _churn_ct * max(0.0, min(1.0, np.tanh((10.0 - _prior_dur) / 1.5)))
+                    # Branch step8: DIRECTION-AWARE ct-gating. Step4's shrink used pure
+                    # _churn_ct (shrinks ALL burst re-entries incl trend-resumption
+                    # WINNERS) -> the over-shrinkage wall at max>=1.00 (step5/6/7) came
+                    # from shrinking trend-resumption longs. Gate the shrink on the
+                    # COUNTER-TREND direction (_bull_ctmd/_bear_ctmd, the validated
+                    # fast-sat /0.01 ret_vlong ct indicator = near-constant, noise-free):
+                    # only shrink COUNTER-TREND burst re-entries (the losing rally
+                    # pullback shorts + crash dead-cat longs), sparing trend-aligned
+                    # burst re-entries (the winning trend-resumption longs). This is the
+                    # SAME ct-direction partition _churn_ct_atten uses (line ~948). Should
+                    # allow a higher max without the wall. Max 0.90 (step4 best) retained;
+                    # gate 10.0 bars retained. If no wall, amplify next.
+                    _prior_dur_short = max(0.0, min(1.0, np.tanh((10.0 - _prior_dur) / 1.5)))
+                    _prior_dur_shrink_bull = 1.0 - 0.90 * _churn_ct * _bull_ctmd * _prior_dur_short
+                    _prior_dur_shrink_bear = 1.0 - 0.90 * _churn_ct * _bear_ctmd * _prior_dur_short
                 else:
-                    _prior_dur_shrink = 1.0
+                    _prior_dur_shrink_bull = 1.0
+                    _prior_dur_shrink_bear = 1.0
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
@@ -1451,11 +1466,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _prior_dur_shrink
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _prior_dur_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _prior_dur_shrink
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _prior_dur_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
