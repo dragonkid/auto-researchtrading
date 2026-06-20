@@ -79,14 +79,6 @@ PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
-# Architectural (Exp1, v2.1 scoring): portfolio-DD de-risk knee. Under v2.1 the
-# dd_gate soft knee sits at 8% MaxDD while real per-regime MaxDD is 0.55-1.57%.
-# _port_dd_atten was scale-0.008 (calibrated for the old 5% knee): it crushed
-# new entries to ~15% at 1% portfolio DD. PORT_DD_DEADZONE = no-shrink band
-# covering normal intra-regime drawdowns (entries stay full size); PORT_DD_SCALE
-# = tanh ramp above the deadzone, aggressive only as DD approaches the 8% knee.
-PORT_DD_DEADZONE = 0.02
-PORT_DD_SCALE = 0.025
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -228,22 +220,7 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
-        # Architectural (Exp1, v2.1 scoring): redesign portfolio-DD de-risk to be
-        # knee-aligned. The old form (scale 0.008, no deadzone) was calibrated for
-        # the pre-v2.1 5% dd_gate knee and crushed new entries to ~15% at just 1%
-        # portfolio DD — but real per-regime MaxDD is 0.55-1.57% (5-15x below the
-        # v2.1 8% knee), so it shrunk entries during NORMAL intra-regime drawdowns,
-        # trading away return (return_reward) for DD protection that is unneeded
-        # (DD has 5-15x headroom to the knee). New form: a deadzone equal to the
-        # normal-DD band (entries stay FULL size while portfolio DD < deadzone) +
-        # a tanh ramp scaled to the 8% knee (aggressive de-risk only as DD approaches
-        # the knee). Sharpe is exactly scale-invariant (PnL and fees both scale with
-        # size), so un-shrinking these entries keeps Sharpe ~constant while raising
-        # APY -> return_reward up; DD scales linearly but stays far under 8%. New
-        # data dep on the v2.1 scoring knee (PORT_DD_DEADZONE/PORT_DD_SCALE) + new
-        # deadzone control flow.
-        _port_dd_frac = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, _port_dd_frac - PORT_DD_DEADZONE) / PORT_DD_SCALE))
+        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
