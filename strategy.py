@@ -549,6 +549,22 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
+            # tightening (admission counterpart to Exp3's ct size shrink). After a
+            # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
+            # only (bull entry while multi-day downtrend / bear entry while multi-day
+            # uptrend = rally pullback shorts, the clustered losing re-entries), so the
+            # WEAK ct re-entries that extend the streak get filtered while strong-conviction
+            # ct entries (some are winners) still pass. Trend-aligned entries (ct indicator
+            # 0) are NOT tightened -> bull/crash/rally trend longs protected (the lesson
+            # from Exp1's blanket tightening which hurt bull). Distinct from Exp3 (size
+            # shrink): this filters at the ADMISSION gate (cuts weak ct re-entry COUNT ->
+            # directly targets the streak_gate 0.875 gap, the largest raw-vs-actual score
+            # lever), Exp3 cuts magnitude. Same fast-saturating /0.01 ret_vlong ct
+            # indicator (near-constant, noise-free) x streak ramp. Max 10% tighten.
+            _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
+            _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
+            _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
