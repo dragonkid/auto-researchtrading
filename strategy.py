@@ -1693,30 +1693,6 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
-                # Architectural (Exp1): DIRECTION-GATED winner-hold extension. Extends
-                # max_hold for WINNING BEAR positions in a sustained multi-day downtrend
-                # whose near-term slope still confirms. General momentum principle:
-                # downtrends persist, so a winning short in a sustained downtrend with
-                # ongoing slope confirmation has room to run -> longer hold captures more
-                # of the trend move -> higher Sharpe (return_reward now rewards absolute
-                # return; crash has 100% WR + DD 0.65% = large headroom). DIRECTION-GATED
-                # to bear-in-downtrend: fires in crash (sustained downtrend); does NOT fire
-                # for trend-aligned longs in bull/rally uptrends (_bear_dt=0 -> byte-
-                # identical) -> directly removes the fixed gate-firing bleed on bull/
-                # sideways/rally that capped the prior vol-stability winner-hold branch at
-                # +0.0017 composite (the branch extended BOTH-direction trend-aligned
-                # winners, bleeding bull/rally longs into V-corrections; this only extends
-                # bears in downtrends). slope_conf gate (ongoing 16-bar slope confirming
-                # the bear) protects against extending into a near-term reversal -- the
-                # stability wall the branch hit at un-gated +5 magnitude. Fast-saturating
-                # /0.01 ret_vlong (rally/bull solidly-signed ret_vlong sits in the flat
-                # tail -> _bear_dt is a near-CONSTANT, not a noise-tracking quantity).
-                # Max +3 bars (the validated peak magnitude from the branch). New control
-                # flow on exit timing + new data dep (direction x multi-day-trend x slope
-                # x PnL conjunction at the hold decision).
-                _bear_dt = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 multi-day downtrend, ~0 uptrend/flat
-                _hold_ext = 3.0 * _bear_dt * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * _slope_conf
-                _max_hold = _max_hold + _hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
