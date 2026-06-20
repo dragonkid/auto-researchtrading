@@ -92,7 +92,7 @@ Multiplicative per-regime score, then combined. This mirrors `compute_score()` i
 
 ```
 base = log(1+max(sharpe,0)) × sqrt(min(trades/50,1)) × dd_gate × exp(-streak/30) × log(1+max(APY,0)/100+1)
-  dd_gate = 1/(1+DD%) × exp(-max(0,DD%-5)/10)
+  dd_gate = 1/(1+DD%) × exp(-max(0,DD%-8)/2)   # soft@8%, scale=2; 0-8% mild, 8%+ steep
   APY = (1+total_return)^(8760/hours) - 1   # annualized; regime windows differ in length
 
 Per-regime score = base × stability_factor × flip_streak_gate
@@ -100,7 +100,7 @@ Per-regime score = base × stability_factor × flip_streak_gate
   flip_streak_gate = 1/(1 + flip_streak_drag_per_bar/0.5)         # applied only when score>0
 
 Hard cutoffs: <10 trades, >10% DD, >15% capital loss → -999
-Soft DD penalty: smooth exponential above 5% DD (5%→0.95x, 8%→0.68x, 10%→0.55x)
+Soft DD penalty: smooth exponential above 8% DD (5%→0.95x, 8%→0.93x, 9%→0.56x, 10%→0.33x)
 
 Composite = mean(regime_scores) - 0.3 * std(regime_scores)
 ```
@@ -111,7 +111,7 @@ Composite = mean(regime_scores) - 0.3 * std(regime_scores)
 
 **return_reward added (2026-06-20):** `log(1+max(APY,0)/100+1)` factor (range 0.693-0.81), where APY = `(1+total_return)^(8760/hours)-1` annualizes the regime-window return. Without it, score rewarded DD/Sharpe but not absolute return — at equal Sharpe, low-return+low-DD beat high-return+high-DD. Verified: 3x-DD+3x-return simulation flips winner from low-DD (v1) to high-return (v2). Real DD 0.45-1.70% is well below 5% soft-exp knee, so dd_gate barely differentiates — return_reward provides the missing incentive to accept higher DD for more return. Uses APY not raw total_return because regime windows differ in length (bull 273d, crash 426d, sideways 365d, rally 366d).
 
-**dd_gate params unchanged:** real DD (0.45-1.70%) sits far below the 5% soft-exp start, so dd_gate only costs 0.4-1.7% — not the cause of over-cautious DD. The fix was adding return_reward, not weakening dd_gate (which would risk letting >5% DD strategies through).
+**dd_gate soft_start raised 5→8, scale 10→2 (2026-06-20):** the 5-8% DD range was over-penalized (5→8% lost 28% under soft@5), discouraging the agent from accepting 5-8% DD to capture more return. New curve: 0-8% only the mild 1/(1+DD) base (8% → 0.926, just -7.4%); 8%+ steep exp penalty (scale=2: 9% → 0.557, 10% → 0.334). Hard cutoff at 10% unchanged. Real strategies sit at DD 0.45-1.70% (far below 8%), so this mainly opens up the 5-8% range for return-seeking experiments.
 
 There is no return gate, turnover gate, or simplicity bonus — those were removed in the score-v5 overhaul. Higher trade frequency is NOT penalized beyond the fee-adjusted Sharpe already embedded in `base`.
 

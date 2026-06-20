@@ -250,7 +250,7 @@ def test_compute_score_factors():
     )
     signal_quality = math.log(1.0 + 1.0)
     sample_factor = math.sqrt(min(50 / 50.0, 1.0))          # = 1.0
-    dd_gate = (1.0 / (1.0 + 5.0 / 100.0)) * math.exp(-max(0.0, 5.0 - 5.0) / 10.0)
+    dd_gate = (1.0 / (1.0 + 5.0 / 100.0)) * math.exp(-max(0.0, 5.0 - 8.0) / 2.0)
     streak_gate = math.exp(-0 / 30.0)                        # = 1.0
     # return_reward: APY = (1.05)^(1/1) - 1 = 5% (1 year, so APY == total)
     ann_return = ((1.0 + 5.0/100.0) ** (1.0 / (8761/8760.0)) - 1.0) * 100.0

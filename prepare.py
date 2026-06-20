@@ -734,11 +734,17 @@ def compute_score(result: BacktestResult) -> float:
     # Sample sufficiency: sqrt ramp, full credit at 50+ trades
     sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))
 
-    # Drawdown gate: base 1/(1+DD%) plus mild exponential penalty above 5%
-    # DD=5% → 0.95, DD=8% → 0.68, DD=10% → 0.55
+    # Drawdown gate: base 1/(1+DD%) plus exponential penalty above 8%
+    # (2026-06-20: soft_start 5→8, scale 10→2). Real strategies have DD
+    # 0.45-1.70%; the 5-8% range was over-penalized (5→8% lost 28% under the
+    # old soft@5), discouraging the agent from accepting 5-8% DD to capture
+    # more return. New curve: 0-8% only the mild 1/(1+DD) base (8% → 0.926,
+    # just -7.4%); 8%+ steep exp penalty (scale=2: 9% → 0.557, 10% → 0.334).
+    # Hard cutoff at 10% unchanged (safety net).
+    # DD=5% → 0.95, DD=8% → 0.93, DD=9% → 0.56, DD=10% → 0.33
     dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
-    dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
-    dd_gate *= math.exp(-dd_excess / 10.0)
+    dd_excess = max(0.0, result.max_drawdown_pct - 8.0)
+    dd_gate *= math.exp(-dd_excess / 2.0)
 
     # Volatility gate REMOVED (2026-06-19): vol_gate = 1/(1+return_volatility)
     # was a DOUBLE penalty — return_volatility = std(returns)*sqrt(8760) is the
