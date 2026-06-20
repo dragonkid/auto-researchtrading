@@ -1843,6 +1843,29 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp5 (architectural, indep): STREAK-GATED COUNTER-TREND-LOSER exit
+                # pressure source. NEW data dep at the exit fusion: no existing soft source
+                # reads the PORTFOLIO loss_streak (all 7 are price-derived: slope/pp/time/
+                # ve/ar/vc + voter_bias). The prior ct keeps (Exp3 size shrink, Exp5 admission
+                # tighten) are ENTRY-side -- they cut ct-loser MAGNITUDE by shrinking the entry.
+                # This is the EXIT-side counterpart: when the portfolio is in a loss streak AND
+                # the held position is counter-trend at the multi-day scale AND currently losing,
+                # add direct exit pressure -> exit ct losers FASTER -> smaller realized losses
+                # (higher Sharpe + lower DD) AND the next trade arrives sooner (a faster potential
+                # streak reset via an intervening trend-aligned winner). Targets rally's ct
+                # pullback shorts that cluster losses during streaks (streak_gate ~0.875 drag).
+                # Variance-safe family: streak ramp is the integer-streak _streak_ct (noise-
+                # immune), the ct indicator uses the validated fast-saturating /0.01 ret_vlong
+                # scale (rally's solidly-positive ret_vlong sits in the flat tail -> near-CONSTANT
+                # -> no noise-tracking pressure wobble), loss-side weight (max(0,-_pnl_scale))
+                # is already in the exit decision. Trend-aligned positions (ct indicator 0) ->
+                # 0 pressure -> bull/crash/sideways trend holds byte-identical. New source in
+                # the MAX fusion (8th soft source). Direction-agnostic general principle.
+                _streak_ramp_ex = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))  # 0 streak<=1, ~1 streak>=3
+                _pos_dir_ex = 1.0 if current_pos > 0 else -1.0
+                _ct_pos_ex = max(0.0, np.tanh(-_pos_dir_ex * ret_vlong / 0.01))  # ct position at multi-day scale
+                _sct_pressure = 0.25 * _streak_ramp_ex * _ct_pos_ex
+                _w_sct = max(0.0, -_pnl_scale)  # loss-side only (don't fire on ct winners)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1858,6 +1881,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_sct * _sct_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
