@@ -695,8 +695,11 @@ class Strategy:
             # through step2 (the gate fires only after a deep-MAE prior trade, which
             # crash/sideways rarely produce). Probe the wall: does over-shrinkage
             # finally regress rally (alpha-trade) or break the byte-identical regimes?
+            # Branch step4: push harder (max 0.34->0.44, sat 0.25->0.18) to find the
+            # wall or confirm headroom. If bull still rises linearly the mechanism has
+            # room; if it regresses the alpha-trade wall has been hit.
             _prior_mae = self._last_exit_mae.get(symbol, 0.0)
-            _prior_mae_atten = 1.0 - 0.34 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.25)))
+            _prior_mae_atten = 1.0 - 0.44 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.18)))
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
