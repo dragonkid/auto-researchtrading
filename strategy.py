@@ -214,13 +214,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp5 (architectural, indep): per-symbol consecutive-bars-underwater
-        # counter. Tracks how many CONSECUTIVE held bars pos_pnl has sat below
-        # -0.5*|stop| (sustained adverse, not momentary spike). Drives a stale-loss
-        # exit-pressure source (sustained underwater = slow bleeder = real loser).
-        # Distinct from _mae (single low-water mark, not duration) and bars_held
-        # (time since entry, not adversity). Reset on full exit.
-        self._underwater_bars = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1575,12 +1568,6 @@ class Strategy:
                 # Tracks lowest pos_pnl observed since entry; only updates downward.
                 _curr_mae = self._mae.get(symbol, 0.0)
                 self._mae[symbol] = min(_curr_mae, pos_pnl)
-                # Exp5: consecutive-bars-underwater update (sustained adverse
-                # duration). Increment while pos_pnl < -0.5*|stop|, else reset to 0.
-                _uw_thresh = -0.5 * abs(STOP_LOSS_PCT)
-                _uw = self._underwater_bars.get(symbol, 0)
-                _uw = _uw + 1 if pos_pnl < _uw_thresh else 0
-                self._underwater_bars[symbol] = _uw
 
                 # Architectural: ATR-based dynamic stop-loss.
                 # Replace fixed STOP_LOSS_PCT (-0.024) with ATR-derived per-symbol stop.
@@ -1856,31 +1843,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp5 (architectural, indep): STALE-LOSS exit pressure (7th soft
-                # source). Re-tests the row-775 stale-loss lever under v2.1. Row 775
-                # found cutting positions underwater past ~bar 5-8 raised rally RAW
-                # Sharpe 0.736->~0.78 (+0.04, surgical: bull/crash/sideways byte-
-                # identical since winners 86-100% WR never sit sustained-underwater)
-                # BUT was BLOCKED by rally stability seed-lock (5 draws all <0.79
-                # under v1). Under v2.1 rally stability is 1.0 (headroom exists).
-                # Mechanism: a position SUSTAINED underwater (consecutive bars
-                # pos_pnl < -0.5*|stop|) is a slow bleeder (rally ct shorts that
-                # bleed rather than spike to the stop) -> exit before the
-                # instantaneous ATR stop fires -> smaller realized loss -> higher
-                # rally Sharpe. Distinct from the ATR stop (instantaneous pos_pnl),
-                # _ar_pressure (RECOVERED-from-MAE losers, the opposite pattern),
-                # time-pressure (bars_held since entry, adversity-agnostic), and
-                # _ct_bars_pressure (ct x bars_held, Exp3 - this is adverse x
-                # DURATION, direction-agnostic). Uses the noise-IMMUNE integer
-                # consecutive-underwater count (row-701: integer bars_held is the
-                # most noise-robust trigger; pnl-derived gates are noise-sensitive
-                # in rally's shallow-loss zone -> the count flips only on sustained
-                # adversity, not momentary dips). Onset 4 sustained-underwater bars
-                # (after scale-in; momentary dips don't accumulate), ramp over 4
-                # bars to 0.40 cap, weight 1.0 (loss-side by construction). New per-
-                # symbol state + new exit-pressure source + new control flow in MAX.
-                _stale_loss_pressure = 0.40 * max(0.0, min(1.0, (_uw - 4.0) / 4.0))
-                _w_stale = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1896,7 +1858,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_stale * _stale_loss_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
@@ -2355,7 +2316,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._underwater_bars):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
