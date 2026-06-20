@@ -1600,47 +1600,6 @@ class Strategy:
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
-                # Exp2 (architectural, indep): TREND DECELERATION exit pressure (new soft
-                # source). NEW data dependency genuinely orthogonal to every existing exit
-                # signal: the strategy uses slope LEVEL (_sl_slope_pressure fires on
-                # slope-against magnitude) and slope CONFIRMATION (_dr_slope_conf /
-                # _slope_conf fire on whether slope still agrees with position). NONE
-                # measures the slope's own TREND (2nd derivative of log price). A trend-
-                # aligned winner whose slope is STILL positive but DECELERATING (slope
-                # falling toward zero) is exhibiting early trend exhaustion -- the move is
-                # losing momentum before the slope flips. Harvesting the winner on
-                # deceleration (before full giveback/slope-flip) locks the gain at the
-                # exhaustion point. Discrimination vs slope-level: a rally GRINDING uptrend
-                # has steady positive slope (low deceleration -> no exit) while a rally
-                # TOPPING has decelerating slope (exit) -- exactly the desired separation
-                # that slope-level alone (which fires whenever slope is small, including
-                # healthy pullbacks) cannot make. Compute prior slope over the same 3
-                # windows shifted back DEC_SHIFT bars, acceleration = current - prior.
-                # Direction-aware: for a long, deceleration = (slope falling) = acc<0;
-                # for a short, deceleration = (slope rising toward 0) = acc>0. Profit-side
-                # only (lock gains at exhaustion; losers handled by slope-against). Smooth
-                # tanh, no boundary. New exit-pressure source + new control-flow dep in the
-                # MAX fusion.
-                _dec_shift = 3
-                _dec_slopes = []
-                if len(_hl2) >= 22 + _dec_shift:
-                    for _w in (12, 16, 22):
-                        _seg = _hl2[-(_w + _dec_shift):-_dec_shift]
-                        if len(_seg) == _w:
-                            _dec_slopes.append(_fast_slope(np.log(_seg)))
-                    if len(_dec_slopes) == 3:
-                        _exit_slope_prev = float(np.mean(_dec_slopes))
-                        _acc = _exit_slope - _exit_slope_prev  # slope-of-slope
-                        # position-direction-signed deceleration: >0 means trend decelerating
-                        _pos_dir_dec = 1.0 if current_pos > 0 else -1.0
-                        _decel = -_acc * _pos_dir_dec  # >0 when slope moving AGAIND position dir
-                        # Activate on meaningful deceleration; saturate. Scale /0.00015.
-                        _dec_pressure = 0.40 * max(0.0, min(1.0, np.tanh(_decel / 0.00015)))
-                    else:
-                        _dec_pressure = 0.0
-                else:
-                    _dec_pressure = 0.0
-                _w_dec = max(0.0, _pnl_scale)  # profit-side only
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
@@ -1899,7 +1858,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_dec * _dec_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
