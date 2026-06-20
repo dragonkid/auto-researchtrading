@@ -1419,12 +1419,40 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp2 (architectural, indep): VOLUME x BODY-SHAPE "absorption" entry
+                # attenuator. NEW cross-data-type conjunction genuinely orthogonal to
+                # every existing entry primitive: close-loc reads close POSITION in the
+                # range (a level), DVP reads volume DIRECTION (sign of close-change
+                # weighted), vol-rise/vol-spike read volume MAGNITUDE (level/trend).
+                # NONE combines volume magnitude with the bar BODY shape. body_ratio =
+                # |close-open|/(high-low) in [0,1] measures how much of the bar's range
+                # was a NET directional body (1 = full-body trend bar, 0 = doji/inside).
+                # A HIGH-volume entry bar with a SMALL body = absorption/congestion
+                # (Wyckoff effort-with-no-result: buyers/sellers pushed volume but price
+                # did not resolve directionally) -> lower-quality entry prone to reversal
+                # -> smaller first-bar commitment. Shrink-only (caps at 1.0, safe family),
+                # fires only when BOTH high volume (z>1.5) AND small body (<0.35) hold
+                # (deep-saturated both gates -> near-constant where it fires, noise-free
+                # per the validated safe-family lesson). 3-bar mean body_ratio for noise-
+                # robustness (single-bar body flips under AR(1) noise). Direction-agnostic
+                # (same scalar both sides). Max shrink 0.20. First-bar only. New data dep:
+                # entry size depends on volume-magnitude x body-shape conjunction.
+                _ab_op = bd.history["open"].values[-3:]
+                _ab_cl = closes[-3:]
+                _ab_h = bd.history["high"].values[-3:]
+                _ab_l = bd.history["low"].values[-3:]
+                _ab_span = np.maximum(_ab_h - _ab_l, 1e-10)
+                _body_ratio = float(np.mean(np.abs(_ab_cl - _ab_op) / _ab_span))
+                _ab_vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_en) / _vol_std_en  # reuse entry-side vol z (mean/std of last 20)
+                _ab_high_vol = max(0.0, min(1.0, np.tanh((_ab_vol_z - 1.5) / 1.0)))
+                _ab_small_body = max(0.0, min(1.0, np.tanh((0.35 - _body_ratio) / 0.20)))
+                _absorp_atten = 1.0 - 0.20 * _ab_high_vol * _ab_small_body
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _absorp_atten
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _absorp_atten
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
