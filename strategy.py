@@ -1457,8 +1457,8 @@ class Strategy:
                 _sr2_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _sr2_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
                 _sr2_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
-                _sr2_bull_slope = max(0.0, np.tanh(_exit_slope / 0.0004))  # slope confirms long
-                _sr2_bear_slope = max(0.0, np.tanh(-_exit_slope / 0.0004))  # slope confirms short
+                _sr2_bull_slope = max(0.0, np.tanh(_lr_slope / 0.0004))  # slope confirms long
+                _sr2_bear_slope = max(0.0, np.tanh(-_lr_slope / 0.0004))  # slope confirms short
                 _sr2_conv = max(0.0, min(1.0, np.tanh((_sr2 - 0.50) / 0.20)))  # fires above R^2=0.50
                 _sr2_boost_bull = 1.0 + 0.08 * _sr2_trend_w * _sr2_er_w * _sr2_bull_vlong * _sr2_bull_slope * _sr2_conv
                 _sr2_boost_bear = 1.0 + 0.08 * _sr2_trend_w * _sr2_er_w * _sr2_bear_slope * _sr2_conv
