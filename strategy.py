@@ -2082,43 +2082,8 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # STRUCTURAL_EXPLORATION: subsystem rewrite of the de-risk ramp
-                        # CORE MECHANISM. Replaces the POWER-RAMP (_de_risk = 1 - _dr_x^k,
-                        # k=1 linear losers / k up to 1.6 convex trend-aligned winners)
-                        # with a NORMALIZED LOGISTIC (sigmoid) exit function. Old mechanism
-                        # (power ramp) is at its structural ceiling: prior sessions tuned
-                        # DERISK_CONVEX_AMP and the slope-conf gate to the productive
-                        # optimum; every cushion AMPLIFICATION destroyed bull (correction
-                        # wall) and every suppression destroyed rally (alpha wall). The
-                        # power-ramp SHAPE (convex = hold-then-cut) is locked at its
-                        # calibrated exponent. A different FUNCTION FORM (sigmoid) has a
-                        # qualitatively different mid-range profile: symmetric S-curve
-                        # (slow-start hold, steep mid cut, slow-end tail) vs the power-
-                        # ramp's monotone convexity. The slow-start preserves the winner
-                        # cushion (hold through mid-range giveback noise); the slow-end
-                        # tail lets a position retain a small residual longer under near-
-                        # full pressure (gradual final exit vs the power-ramp's sharp
-                        # approach to 0) -- a genuinely different exit-timing profile that
-                        # the power-ramp family could not reach at any exponent. Cushion
-                        # gate (profit x trend-align x smoother-slope-conf, the old _dr_k
-                        # driver) now drives the sigmoid's INFLECTION (right-shift 0.5->
-                        # 0.65 = winners hold longer before the steep cut) and STEEPNESS
-                        # (4 losers gentle/linear-ish -> 9 winners sharp cushion). Endpoints
-                        # NORMALIZED to exactly de_risk=1 at x=0 (no cut at zero pressure)
-                        # and de_risk=0 at x=1 (full exit at saturation) so the sigmoid's
-                        # asymptotes do not introduce a residual cut at zero pressure (the
-                        # raw sigmoid's flaw). Bilateral structure preserved (losers gentle,
-                        # winners cushioned); only the function FORM changes. 50% regime
-                        # gate + 10% DD cutoff retained as safety nets. Marked
-                        # STRUCTURAL_EXPLORATION (3+ prior architectural discards this
-                        # session + true subsystem rewrite of the de-risk exit function).
-                        _dr_gate = max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # [0, ~1] cushion gate
-                        _dr_infl = 0.5 + 0.15 * _dr_gate   # inflection 0.5 losers -> 0.65 winners
-                        _dr_steep = 4.0 + 5.0 * _dr_gate   # steepness 4 losers -> 9 winners
-                        _dr_sig = 1.0 / (1.0 + np.exp(-_dr_steep * (_dr_x - _dr_infl)))
-                        _sig0 = 1.0 / (1.0 + np.exp(_dr_steep * _dr_infl))
-                        _sig1 = 1.0 / (1.0 + np.exp(-_dr_steep * (1.0 - _dr_infl)))
-                        _de_risk = (_sig1 - _dr_sig) / max(_sig1 - _sig0, 1e-10)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
 
