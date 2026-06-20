@@ -588,8 +588,36 @@ class Strategy:
             _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
-            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
+            # Exp2 (architectural, indep): CHURN-GATED readiness-accumulator THRESHOLD
+            # raise. The summary's FUTURE guidance: churn-reduction at the ADMISSION
+            # gate targeting same-direction re-entry frequency is the most promising
+            # unexplored axis; prior churn-axis experiments (_freq_factor threshold
+            # raise, churn EMA RHO, churn size_atten, churn_ct_atten) are heavily
+            # explored, BUT the readiness accumulator's THRESHOLD (ENTRY_ACCUM_THRESH)
+            # churn-conditioning was never tried. Prior Exp3 found churn-conditioned
+            # RHO inert ("bump never shifts an admission crossing") -- but RHO is the
+            # EMA MEMORY (changes WHEN the smoothed margin crosses); THRESH is the
+            # crossing LEVEL itself, which directly shifts admissions. Raise the
+            # crossing level during a churn burst (high len(_eh), the noise-IMMUNE
+            # integer churn count the proven grids/deadband/_freq_factor use): re-entry
+            # requires the smoothed conviction margin to exceed a POSITIVE excess
+            # (not just 0) -> filters the marginal same-direction re-entries that are
+            # the 2x-trade-count churn (rally 98 vs ~50), while strong-conviction
+            # re-entries (genuine trend resumption / reversal) still cross. Distinct
+            # from _freq_factor (raises the instantaneous strong_min feeding the
+            # margin; this raises the SMOOTHED-margin crossing level -- a second,
+            # additive admission lever on the EMA-crossing boundary, not the
+            # instantaneous threshold). Does NOT block reversals (strong counter-
+            # conviction still crosses -> avoids the reversal-cooldown dead end where
+            # rally's bidirectional swings ARE its alpha), does NOT widen cushions or
+            # amplify scale-in (the saturated axes). Calm regimes (len<=1 -> gate 0)
+            # -> THRESH 0.0 -> byte-identical. Continuous tanh on the noise-immune
+            # integer churn count (fast-saturating /0.6 -> near-constant during a
+            # burst, no noise-tracking admission wobble). Small max 0.08 (excess
+            # margin bar; strong-conviction re-entries clear it).
+            _churn_admit_raise = 0.08 * max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH + _churn_admit_raise
+            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH + _churn_admit_raise
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
