@@ -1711,12 +1711,23 @@ class Strategy:
                 # (modest; _max_hold base ~10-12). NEW data dep at the time-pressure
                 # decision: max_hold depends on vol-stability x trend-align x winning.
                 _mh_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _mh_align = max(0.0, np.tanh(ret_vlong * _mh_pos_dir / 0.02))  # 0 ct/sideways, ~1 deep-trend-aligned
+                _mh_align = max(0.0, np.tanh(ret_vlong * _mh_pos_dir / 0.04))  # 0 ct/sideways/moderate, ~1 DEEP-trend-aligned
                 _mh_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 deep profit
                 _mh_vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
                 _mh_vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
                 _mh_vol_stable = max(0.0, 1.0 - max(0.0, np.tanh(((_mh_vol_6 / _mh_vol_18) - 1.0) / 0.3)))  # ~1 stable, 0 expanding
-                _max_hold += 3.0 * _mh_align * _mh_winning * _mh_vol_stable
+                # Branch step2: add PERSISTENT slope-confirmation gate. Step1 extended holds
+                # on any deep-trend-aligned stable-vol winner, but bull 2021's STABLE
+                # stretches immediately before a sharp correction also matched (deep uptrend,
+                # stable vol, winning) -> held into the correction -> bull -0.089. Require the
+                # multi-window exit slope to STILL CONFIRM the position direction: a pre-
+                # correction stretch has slope WEAKENING (the correction is forming) -> gate
+                # off -> no extension; crash's sustained downtrend has slope persistently
+                # confirming across windows -> gate on -> keeps the +0.020 gain. Reuses
+                # _exit_slope (12/16/22 mean, already computed). /0.0004 scale (matches the
+                # de-risk cushion slope-conf calibration).
+                _mh_slope_conf = max(0.0, np.tanh(_exit_slope * _mh_pos_dir / 0.0004))
+                _max_hold += 3.0 * _mh_align * _mh_winning * _mh_vol_stable * _mh_slope_conf
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
