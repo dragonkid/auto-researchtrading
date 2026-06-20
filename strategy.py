@@ -180,6 +180,19 @@ class Strategy:
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
+        # Exp1 (architectural, indep): DEMA (Double EMA) readiness accumulator. Replaces
+        # the single-EMA smoothing of the conviction margin with DEMA = 2*E1 - E2 where
+        # E2 = EMA(E1). DEMA has REDUCED LAG for the same noise attenuation: a single EMA
+        # with span k delays a sustained margin crossing by ~k bars; DEMA removes the
+        # linear-phase lag component so a genuine sustained-conviction trend entry crosses
+        # the readiness threshold ~1 bar earlier (more trend capture -> higher Sharpe in
+        # the trend regimes, the binding lever) while STILL suppressing single-bar AR(1)
+        # spikes (the E2 term keeps the high-frequency rolloff of a span-k EMA). Function-
+        # FORM change to the admission readiness mechanism (new state: E2 per side; new
+        # computation), not a parameter tweak (prior session confirmed RHO tuning is
+        # byte-identical inert -- the lag, not the level, is the untested axis). Direction-
+        # agnostic (same form both sides); smooth (no new decision boundary). State tuple
+        # (E1_b, E2_b, E1_s, E2_s); reset on full exit.
         self._entry_accum = {}
         # Architectural (Exp1 this session): per-symbol counter-trend exit-pressure EMA.
         # Temporally smooths the fused SOFT exit pressure ONLY while a position is
@@ -584,12 +597,15 @@ class Strategy:
             # that IS the dominant rally tracking-error source. Sustained-conviction filtering
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
-            _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
-            self._entry_accum[symbol] = (_acc_b, _acc_s)
-            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
-            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
+            _acc_b1, _acc_b2, _acc_s1, _acc_s2 = self._entry_accum.get(symbol, (0.0, 0.0, 0.0, 0.0))
+            _acc_b1 = ENTRY_ACCUM_RHO * _acc_b1 + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            _acc_b2 = ENTRY_ACCUM_RHO * _acc_b2 + (1.0 - ENTRY_ACCUM_RHO) * _acc_b1
+            _acc_s1 = ENTRY_ACCUM_RHO * _acc_s1 + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            _acc_s2 = ENTRY_ACCUM_RHO * _acc_s2 + (1.0 - ENTRY_ACCUM_RHO) * _acc_s1
+            self._entry_accum[symbol] = (_acc_b1, _acc_b2, _acc_s1, _acc_s2)
+            # DEMA = 2*E1 - E2 (reduced-lag smoothing of the conviction margin).
+            _bull_ready = (2.0 * _acc_b1 - _acc_b2) >= ENTRY_ACCUM_THRESH
+            _bear_ready = (2.0 * _acc_s1 - _acc_s2) >= ENTRY_ACCUM_THRESH
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -2324,7 +2340,7 @@ class Strategy:
                     # persist requirement). Kills the cross-position EMA memory that carried
                     # high conviction through a hold and enabled immediate post-exit re-entry
                     # — the churn source behind the step1 bull raw regression (-0.222).
-                    self._entry_accum[symbol] = (0.0, 0.0)
+                    self._entry_accum[symbol] = (0.0, 0.0, 0.0, 0.0)
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
