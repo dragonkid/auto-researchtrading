@@ -2069,32 +2069,7 @@ class Strategy:
                     # position through noise spikes). Both gates must hold for
                     # graduated behavior to engage. Continuous via tanh blend.
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
-                    # Exp2 (architectural, indep): use the MULTI-DAY ret_vlong (96-bar OLS
-                    # slope) instead of the 20-bar ret_long for the opp-gate trend-alignment
-                    # graduation. The graduation decides whether a winning position facing an
-                    # opposite-side voter spike gets a PARTIAL exit (trend-aligned + in-profit)
-                    # or a BINARY full exit (counter-trend / losing). Using ret_long (20-bar)
-                    # means a counter-move WITHIN a sustained multi-day trend -- a rally
-                    # pullback (ret_long flips negative while ret_vlong stays solidly positive)
-                    # or a crash dead-cat bounce (ret_long flips positive while ret_vlong stays
-                    # solidly negative) -- drives _trend_align_og to 0 -> binary full exit on a
-                    # WINNING position whose multi-day trend is intact. That forces rally longs
-                    # and crash shorts to fully exit on temporary counter-moves (churn + smaller
-                    # wins). ret_vlong is the sustained multi-day trend direction (the same
-                    # signal ct_vlong / max_hold / target-EMA use); a 20-bar counter-move within
-                    # it is a pullback/bounce, NOT a reversal -> the winning trend-aligned
-                    # position should graduate (partial exit) through it, preserving the trend
-                    # leg to capture more of the move. Also smoother (96-bar OLS averages ~96
-                    # bars of AR(1) noise vs ret_long's 20 -> ~1/sqrt(96) attenuation -> fewer
-                    # noise-driven graduation flips -> stability preserved or improved). Same
-                    # /0.04 scale (ret_vlong is in net-window-return units, comparable to
-                    # ret_long). Falls out per regime: rally longs (ret_vlong>0) + crash shorts
-                    # (ret_vlong<0) now graduate through counter-moves; sideways (ret_vlong~0)
-                    # stays ~binary (unchanged); weak-trend bull-2021 less affected. General
-                    # principle (no regime label): trend-alignment for exit graduation is a
-                    # MULTI-DAY property, not a 20-bar one. New cross-timescale data dep at the
-                    # opp-gate graduation.
-                    _trend_align_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))  # [0, ~1] multi-day
+                    _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
