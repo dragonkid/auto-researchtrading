@@ -1878,8 +1878,13 @@ class Strategy:
                 # the validated noise-IMMUNE fast-saturating multi-day trend, NOT a noise-
                 # sensitive R^2/ER cleanliness gate that walled prior branches). Weak-trend
                 # gate: 1.0 at ret_vlong~0 (sideways), fading to 0 at strong trend (rally).
-                _decel_weak_trend = 1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
-                _dec_pressure = 0.40 * _decel_conf * _decel_strength * _decel_weak_trend
+                # Branch step4: SHARPER weak-trend gate (/0.02 -> /0.01) so rally's
+                # modest-but-positive ret_vlong phases (pullback stretches where ret_vlong
+                # dips to ~0.01-0.02) are excluded more aggressively, + raise magnitude
+                # 0.40->0.60 (the sharper gate protects rally stability, opening headroom).
+                # At /0.01: ret_vlong=0.02 -> gate 0.036 (off), 0.01 -> 0.238, ~0 -> 1.0.
+                _decel_weak_trend = 1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.01)))
+                _dec_pressure = 0.60 * _decel_conf * _decel_strength * _decel_weak_trend
                 _w_dec = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
