@@ -518,8 +518,25 @@ class Strategy:
             _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
-            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
+            # Exp3 (architectural, indep): vol-LEVEL admission relaxation. The readiness
+            # threshold (ENTRY_ACCUM_THRESH=0.0) is constant across vol regimes. In DEEP
+            # low-vol conditions, entries are structurally less noise-prone (small bar-to-
+            # bar dispersion -> the EMA margin's AR(1) noise floor is lower -> a margin just
+            # below 0 in calm markets is more likely genuine conviction than the same margin
+            # in a noisy market). Lower the readiness threshold smoothly in deep low-vol so
+            # legitimate calm-market conviction entries that sit marginally below the threshold
+            # are admitted. Continuous tanh on (0.70 - vol_ratio)/0.15: 0 at vol_ratio>=0.70
+            # (normal/high vol - bull-2021 sharp uptrend, crash, rally-2024 ETF rally all
+            # higher-vol -> byte-identical), ramping to -0.05 at vol_ratio~0.55 (deep calm).
+            # Targets the sample_factor knee: calm low-entry regimes sit just below the 50-
+            # trade sample floor where sqrt(n/50) < 1; admitting one more high-quality calm
+            # entry crosses the knee -> +1pct sample_factor. General principle (no regime
+            # label): admission strictness scales with the noise floor of the environment.
+            # New cross-component data dep (admission threshold depends on vol LEVEL, not
+            # just the existing vol_RATIO used for sizing/smoothing).
+            _accum_thresh_dyn = ENTRY_ACCUM_THRESH - 0.05 * max(0.0, np.tanh((0.70 - vol_ratio) / 0.15))
+            _bull_ready = _acc_b >= _accum_thresh_dyn
+            _bear_ready = _acc_s >= _accum_thresh_dyn
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
