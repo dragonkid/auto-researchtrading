@@ -150,18 +150,6 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Exp2 (architectural, indep): per-symbol CACHED ENTRY CONVICTION margin.
-        # Stores the conviction margin (_bull_margin/_bear_margin) at entry time so
-        # the EXIT decision can depend on entry quality. Currently the exit threshold
-        # depends only on bars_held + pos_pnl; this adds a new cross-component data dep
-        # (exit patience depends on entry-time conviction). High-conviction entries
-        # (strong margin above the admission floor) are more likely genuine signal ->
-        # more exit room to ride pullback noise (less churn); low-conviction (marginal,
-        # noise-sensitive) entries keep the base threshold. Targets rally long-churn
-        # (98 trades = 2x others) -- high-conviction rally trend longs get more room ->
-        # fewer noise-driven exits -> higher Sharpe. Distinct from the trend-alignment
-        # convex cushion (conviction != trend-alignment). Reset on full exit.
-        self._entry_conv = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -1435,12 +1423,10 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._entry_conv[symbol] = _bull_margin  # Exp2: cache entry conviction for exit threshold
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._entry_conv[symbol] = _bear_margin  # Exp2: cache entry conviction for exit threshold
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1930,21 +1916,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Exp2 (architectural, indep): conviction-margin exit-threshold modulation.
-                # NEW cross-component data dep: exit patience depends on the CACHED ENTRY-TIME
-                # conviction margin (was bars_held + pnl only). A high-conviction entry (strong
-                # margin above the admission floor = voters decisively one-sided at entry) is more
-                # likely genuine signal -> give it more exit room to ride pullback noise (fewer
-                # noise-driven exits -> less churn -> higher Sharpe). Profit-side only (losers keep
-                # base threshold -- no reason to extend losers); bounded +10% at deep conviction.
-                # Smooth tanh on cached margin / 0.40 (same scale as _bull_conv_atten). Targets
-                # rally long-churn (98 trades = 2x others): high-conviction rally trend longs get
-                # more room -> fewer fee-drag exits. Distinct from the trend-alignment convex
-                # cushion (conviction != trend-alignment: a ct entry can be high-conviction, a
-                # trend-aligned entry can be marginal). Continuous, no new boundary.
-                if pos_pnl > 0:
-                    _ec = self._entry_conv.get(symbol, 0.0)
-                    _exit_thresh *= 1.0 + 0.10 * max(0.0, min(1.0, np.tanh(_ec / 0.40)))
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -2299,7 +2270,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._entry_conv):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
