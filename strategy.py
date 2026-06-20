@@ -2031,7 +2031,7 @@ class Strategy:
                     # Direction-agnostic general principle (no regime label). New cross-
                     # component data dep at the de-risk floor (peak magnitude x slope conf).
                     _dp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    _dp_deep = max(0.0, min(1.0, np.tanh((_dp_ratio - 2.5) / 0.8)))  # 0 small/chop peaks, ~1 deep confirmed move
+                    _dp_deep = max(0.0, min(1.0, np.tanh((_dp_ratio - 4.0) / 0.8)))  # 0 small/moderate peaks, ~1 VERY deep confirmed persistent-trend move
                     _de_floor -= 0.10 * _dp_deep * _dr_slope_conf * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
