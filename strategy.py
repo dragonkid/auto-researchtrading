@@ -1333,32 +1333,6 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
-                # Exp4 (architectural, indep): close-loc CONTINUATION co-gate on the
-                # win-accelerator. The accelerator (Exp3 prior session, rally +0.021)
-                # grows early winners faster to capture trend moves; the slope-confirmation
-                # gate (Exp4 prior) protects against accelerating into imminent slope
-                # reversals. This adds a SECOND, orthogonal continuation confirmation:
-                # the 3-bar mean close-loc (validated entry-boost signal 6e765b0f) agreeing
-                # with position direction. Mechanism targets the documented rally drag
-                # (prior-session diagnostic D3: rally LONGS are net drag -380; the losses
-                # are large-notional positions exiting at small pct after scaling up then
-                # reversing). An early-winning long whose recent bars are closing LOW
-                # (close_loc<0.5) is LOSING intrabar conviction even though cumulative
-                # pos_pnl>0 -> the trend is fading at the bar level -> do NOT accelerate
-                # further (it is about to reverse into a large-notional small-pct loss).
-                # Distinct from _slope_conf (16-bar LINEAR slope, slower): close-loc is
-                # intrabar conviction (fast bar-shape) - catches fading conviction before
-                # the 16-bar slope turns. Soft blend (0.5 + 0.5*cont) so a neutral close
-                # halves accel (preserves the rally gain) rather than zeroing it; full
-                # confirmation keeps full accel. New cross-subsystem data dep: scale-in
-                # accel depends on intrabar close-loc continuation (was slope-only).
-                _cl_h = bd.history["high"].values[-3:]
-                _cl_l = bd.history["low"].values[-3:]
-                _cl_c = closes[-3:]
-                _cl_span = np.maximum(_cl_h - _cl_l, 1e-10)
-                _cl_held = float(np.mean((_cl_c - _cl_l) / _cl_span))  # 3-bar mean close_loc
-                _cl_cont = max(0.0, min(1.0, np.tanh((_pos_dir_acc * (2.0 * _cl_held - 1.0)) / 0.30)))
-                _win_accel = _win_accel * (0.5 + 0.5 * _cl_cont)
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
