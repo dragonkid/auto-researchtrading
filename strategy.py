@@ -707,7 +707,7 @@ class Strategy:
             # wall. Keep max 0.44. Test informs whether shallow-MAE fires rally or
             # hits the wall.
             _prior_mae = self._last_exit_mae.get(symbol, 0.0)
-            _prior_mae_atten = 1.0 - 0.60 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.08)))
+            _prior_mae_atten = 1.0 - 0.80 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.06)))
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
