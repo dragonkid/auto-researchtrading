@@ -1940,24 +1940,7 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                # Exp2 (architectural, indep): SCALE-IN-CLEARED gate on the proactive
-                # take-profit harvest. The harvest (up to 30% scale-down at deep peaks)
-                # previously fired from bar 0 -- but a position that peaks at 1.6*_pp_min
-                # DURING scale-in gets harvested (target shrunk) WHILE scale-in is still
-                # trying to grow it: contradictory control flow (grow vs harvest on the
-                # same bars). The de-risk path already exempts bars_held<2 for exactly
-                # this reason; the harvest lacked the same exemption. Gate the harvest
-                # on bars_held > _entry_full_bars_dyn (position has reached full size
-                # before proactive harvest engages). Reversal protection is intact
-                # (_pp_pressure giveback + de-risk ramp + stop all still active during
-                # scale-in); only the PROACTIVE harvest is delayed. Mechanism: in fast
-                # trends (rally/crash) positions peak quickly; letting them reach full
-                # size before harvesting captures a larger winner -> higher Sharpe in
-                # the binding regimes. New cross-component data dep (harvest timing
-                # depends on scale-in completion). Continuous (no boundary flip; the
-                # bars_held threshold is a smooth integer crossing, and the harvest's
-                # own tanh activation ramps over a peak band, not at this gate).
-                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5 and bars_held > _entry_full_bars_dyn:
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
                     # rare AND likely mean-reverting — disable harvest to let small
