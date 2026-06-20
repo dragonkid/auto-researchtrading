@@ -2061,7 +2061,28 @@ class Strategy:
                         # label): the giveback-riding cushion is earned by an ONGOING confirmed
                         # slope, not just by long-window trend-alignment. New cross-component
                         # data dep at the de-risk ramp.
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+slope-conf
+                        # Exp5 (architectural, indep): SEPARATE SMOOTHER slope-confirmation for
+                        # the de-risk cushion, replacing the shared _slope_conf (single 16-bar
+                        # _lr_slope). Exp4 (keep ce66fec6) validated slope-conf on the de-risk
+                        # cushion (bull +0.001325, sideways +0.000647) BUT rally regressed
+                        # -0.000251: the single 16-bar slope is sensitive to MOMENTARY 1-bar
+                        # dips during rally pullbacks -> those dip bars got cut slightly faster
+                        # -> missed a bit of trend capture. Use the MULTI-WINDOW _exit_slope
+                        # (mean of 12/16/22-bar OLS slopes, already computed at line ~1602 for
+                        # the exit subsystem) instead: a momentary dip in one window is averaged
+                        # with the other two -> only SUSTAINED slope weakening triggers the
+                        # linear cut. Smoother slope -> fewer false momentary-dip cuts on rally's
+                        # grinding uptrend (slope persistently confirms across windows) -> recover
+                        # the rally regression while keeping the bull/sideways giveback-cut gains
+                        # (bull 2021 corrections weaken slope across ALL windows -> still cuts).
+                        # Isolates the de-risk ramp from the win-accelerator's calibration (the
+                        # accelerator keeps the validated single-16-bar _slope_conf at line 1488;
+                        # prior sessions tuned it there -> do NOT change the shared signal). New
+                        # separate computation (3-window mean already available -> no new price-
+                        # derived reads, just a new gate source at the de-risk decision). Same
+                        # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
+                        _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
