@@ -1487,7 +1487,23 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
-                # Exp5 (architectural, indep): adaptive acceleration floor + stronger
+                # Exp5 (architectural, indep): BTC-leader-confirmation amplifier on the win-
+                # accelerator (scale-in pace). The accelerator (proven productive for rally
+                # raw via scale-in pace) is gated on own-trend strength + own-slope-conf.
+                # Add a NEW data dep: for ALT symbols (BTC is the leader), when BTC's trend
+                # ALIGNS with the alt position direction, the leader CONFIRMS the alt's trend
+                # -> amplify the scale-in acceleration (reach full size faster -> capture more
+                # of the leader-confirmed trend move -> higher Sharpe in the binding regime
+                # rally, where BTC leads the grinding uptrend). Gated to alts only (symbol !=
+                # BTC): for BTC itself _btc_trend IS its own trend (already in _trend_strength_w
+                # -> would double-count). The existing slope-conf gate protects bull from
+                # over-acceleration into imminent corrections (gate off when slope weakens).
+                # Entry-side scale-in (NOT exit cushion) -> avoids the Exp1/Exp4 bull-cushion-
+                # break failure mode. Smooth tanh, max +30pct accel. Direction-agnostic.
+                if symbol != "BTC":
+                    _btc_conf = max(0.0, np.tanh(_btc_trend * _pos_dir_acc / 0.03))  # 0 leader-misaligned/flat, ~1 leader-confirms
+                    _win_accel = _win_accel * (1.0 + 0.30 * _btc_conf)
+                # Exp5b (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
                 # 1.5 floor (pace stays ~1.7), so the floor is not the binding limit —
