@@ -214,6 +214,17 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp2 (architectural, indep): per-symbol cumulative VOLUME-since-entry clock.
+        # A volume-time dimension distinct from bars_held (bar-clock): sums each bar's
+        # volume while a position is open, reset on full exit. Used to modulate the time-
+        # pressure ramp: a position held through DENSE participation (vol rate above the
+        # symbol's norm) has consumed more market information per bar -> time pressure
+        # ramps faster (the move has had enough participation to mature -> anti-overstay);
+        # a position held through THIN volume gets more bar-time (less info accumulated ->
+        # premature to time-exit). New cross-component data dep: time pressure depends on
+        # cumulative participation since entry, not just bar count. Reset on full exit.
+        self._vol_clock_held = {}
+        self._vol_bars_held = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1433,6 +1444,20 @@ class Strategy:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
 
+                # Exp2 (architectural): accumulate the volume-clock while a position is
+                # open. _vol_bars_held tracks how many bar-volumes-worth of participation
+                # the position has been held through, normalized by the symbol's 50-bar
+                # mean volume so it is on a "bar-equivalent" scale comparable to bars_held.
+                # Reset on full exit (in the exit block below). The first bar of a hold
+                # (bars_held==0 at entry bar) accumulates the entry bar's volume ratio.
+                _vol_bar_mean = max(float(np.mean(bd.history["volume"].values[-50:])), 1e-10)
+                _vol_bar_ratio = float(bd.history["volume"].values[-1]) / _vol_bar_mean
+                _vbh = self._vol_bars_held.get(symbol, 0.0) + _vol_bar_ratio
+                self._vol_bars_held[symbol] = _vbh
+                # Volume-time vs bar-time ratio: >1 means the hold has seen denser-than-
+                # normal participation (info-rich), <1 means thinner-than-normal.
+                _vol_time_ratio = _vbh / max(bars_held, 1.0)
+
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
                 # gates (TREND_GATE_DEADZONE). Re-checking trend during scale-in duplicates
@@ -1693,7 +1718,17 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Exp2 (architectural): volume-clock modulation of the time-pressure ramp.
+                # Blend bars_held toward the volume-time _vbh via a gentle kappa: a hold
+                # through dense participation (vol_time_ratio>1) reaches the time-pressure
+                # ramp sooner (info-rich move has matured -> anti-overstay), a thin-volume
+                # hold (ratio<1) gets extra bar-time (less info -> premature to time-exit).
+                # Only the RAMP position shifts; _max_hold (and the ct-hold shortening) is
+                # left bar-based to preserve the tuned rally ct-loser exit timing. Continuous
+                # (smooth in volume), bounded kappa=0.20 so the bar-clock still dominates.
+                _bars_held_eff = bars_held * (1.0 + 0.20 * (_vol_time_ratio - 1.0))
+                _bars_held_eff = max(0.0, _bars_held_eff)
+                _time_pressure = max(0.0, min(1.0, (_bars_held_eff - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
@@ -2316,7 +2351,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._vol_bars_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
