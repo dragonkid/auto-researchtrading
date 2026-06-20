@@ -278,6 +278,7 @@ class Strategy:
         # pair; falls to 0 (no effect) if the partner alt is absent/short.
         _alt_lead = {}  # partner-alt 20-bar slope*n (net window return scale)
         _alt_vol_rise = {}  # partner-alt 6/18-bar volume-trend rise (deep-saturated), Exp3
+        _alt_dvp = {}  # partner-alt 12-bar directional volume pressure (normalized OBV), Exp3
         _alt_pair = [s for s in ("ETH", "SOL") if s in bar_data and len(bar_data[s].history) > LONG_WINDOW + 1]
         for _asym in _alt_pair:
             _ac = bar_data[_asym].history["close"].values
@@ -299,6 +300,25 @@ class Strategy:
                 _alt_vol_rise[_asym] = max(0.0, min(1.0, np.tanh(((_pv_recent - _pv_long) / _pv_long) / 0.30)))
             else:
                 _alt_vol_rise[_asym] = 0.0
+            # Exp3 (architectural, indep): partner-alt DIRECTIONAL VOLUME PRESSURE (normalized
+            # OBV). NEW cross-symbol x cross-data-type dep: completes the DVP column of the
+            # {own,BTC,partner}x{vol,price,DVP} volume grid (own-DVP=Exp1 keep, BTC-DVP=Exp2
+            # keep; this is the partner cell). _alt_dvp[asym] = sum(vol[i]*sign(close[i]-
+            # close[i-1]))/sum(vol[i]) over 12 bars on the partner alt = partner volume-
+            # DIRECTION balance, distinct from _alt_lead (partner price momentum) and
+            # _alt_vol_rise (partner volume magnitude). Used as a conjunction confirmation on
+            # an alt trend entry: when the partner alt's volume is on the same side as the
+            # entry (partner buy-side volume confirming an alt long), broad alt-market
+            # participation is directional -> larger first-bar commitment. Deep-saturated
+            # (/0.15 DVP, /0.02 partner-price-agreement gate -> near-constant, noise-free,
+            # validated safe family), first-bar-only, +0.05 max. Computed once per bar.
+            if len(bar_data[_asym].history) > 13:
+                _adv_c = bar_data[_asym].history["close"].values[-13:]
+                _adv_v = bar_data[_asym].history["volume"].values[-12:]
+                _adv_rets = np.sign(np.diff(_adv_c))
+                _alt_dvp[_asym] = float(np.sum(_adv_v * _adv_rets) / max(np.sum(_adv_v), 1e-10))
+            else:
+                _alt_dvp[_asym] = 0.0
 
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
@@ -1225,6 +1245,17 @@ class Strategy:
                     # +0.05 max. BTC self-referential -> not reached (alt branch).
                     _btcdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_btc_dvp / 0.15)) * max(0.0, np.tanh(_btc_trend / 0.03))
                     _btcdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_btc_dvp / 0.15)) * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Exp3 (architectural, indep): partner-alt DVP x partner-alt-price-momentum-
+                    # agreement conjunction boost (partner cell of the DVP column). _partner_dvp
+                    # (partner volume-DIRECTION balance) x /0.02 partner-price-agreement gate
+                    # (same as the validated Exp2 partner lead-lag boost). When the partner alt's
+                    # volume is on the same side as a partner-confirmed alt trend entry, broad
+                    # alt-market participation is directional -> larger first-bar commitment.
+                    # Deep-saturated both gates (near-constant, noise-free, validated safe
+                    # family). First-bar-only, +0.05 max.
+                    _partner_dvp = _alt_dvp.get(_partner, 0.0)
+                    _partnerdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _partnerdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * max(0.0, np.tanh(-_partner_lead / 0.02))
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
@@ -1236,6 +1267,8 @@ class Strategy:
                     _partnervol_btc_boost_bear = 1.0
                     _btcdvp_boost_bull = 1.0
                     _btcdvp_boost_bear = 1.0
+                    _partnerdvp_boost_bull = 1.0
+                    _partnerdvp_boost_bear = 1.0
                 # Exp (architectural, indep): close-POSITION-WITHIN-BAR conviction
                 # entry boost. NEW data dependency: where the close sits in the bar's
                 # own high-low range, close_loc = (close-low)/(high-low) in [0,1]. NO
@@ -1340,11 +1373,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
