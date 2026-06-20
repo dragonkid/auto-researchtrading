@@ -683,10 +683,15 @@ class Strategy:
             # chopped around before resolving -> the symbol is in a noisy local state
             # -> the next entry is lower quality -> smaller first-bar commitment.
             # Deep-saturated (/|stop| -> near-constant where it fires, noise-free),
-            # shrink-only, first-bar only, max 0.18. Falls to 1.0 (no effect) on the
-            # first trade (no prior MAE) and for shallow-MAE prior trades.
+            # shrink-only, first-bar only. Falls to 1.0 (no effect) on the first
+            # trade (no prior MAE) and for shallow-MAE prior trades.
+            # Branch step2: AMPLIFY (max 0.18->0.26, saturation 0.5->0.35) to push
+            # the bull +0.0016 sub-noise gain past the +0.003 keep threshold. Less-
+            # saturated gate fires on shallower prior MAE (more post-chop re-entries
+            # shrunk); larger max deepens the shrink. Monitor for alpha-trade-wall
+            # regression (over-shrinking trend-resumption entries) on rally/crash.
             _prior_mae = self._last_exit_mae.get(symbol, 0.0)
-            _prior_mae_atten = 1.0 - 0.18 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.5)))
+            _prior_mae_atten = 1.0 - 0.26 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.35)))
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
