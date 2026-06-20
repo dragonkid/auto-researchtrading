@@ -225,6 +225,24 @@ class Strategy:
             _btc_n = min(VLONG_WINDOW, len(_btc_closes) - 1)
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
+        # Exp2 (architectural, indep): BTC INTRABAR close-position (cross-symbol bar-
+        # shape). NEW data axis: the close-loc own-symbol boost (6e765b0f keep) proved
+        # WHERE the close sits in the bar's own range is a real continuation signal.
+        # This extends it CROSS-SYMBOL: BTC's 3-bar mean close_loc = (close-low)/(high-
+        # low) in [0,1]. Distinct from _btc_trend (96-bar SLOPE, slow multi-day) and
+        # _btc_vol_rise (volume MEAN ratio): close_loc is the leader's INTRABAR
+        # conviction (fast bar-shape). Used as a conjunction confirmation on alt trend
+        # entries: an alt entry whose direction is confirmed by BTC's bar closing
+        # strongly the SAME way is a broad-market intrabar-conviction entry -> larger
+        # first-bar commitment. Computed once per bar on BTC; falls to 0.5 (neutral)
+        # if BTC absent/short. BTC self-referential alt-branch only (guarded).
+        _btc_close_loc = 0.5
+        if "BTC" in bar_data and len(bar_data["BTC"].history) > 3:
+            _bcl_h = bar_data["BTC"].history["high"].values[-3:]
+            _bcl_l = bar_data["BTC"].history["low"].values[-3:]
+            _bcl_c = bar_data["BTC"].history["close"].values[-3:]
+            _bcl_span = np.maximum(_bcl_h - _bcl_l, 1e-10)
+            _btc_close_loc = float(np.mean((_bcl_c - _bcl_l) / _bcl_span))
 
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
@@ -1192,6 +1210,26 @@ class Strategy:
                     # validated safe family). First-bar-only, +0.05 max.
                     _partnervol_btc_boost_bull = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
                     _partnervol_btc_boost_bear = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Exp2 (architectural, indep): BTC INTRABAR close-loc x BTC-price-
+                    # trend-agreement conjunction boost on ALT entries. NEW cross-symbol
+                    # x bar-shape data dep: extends the validated own-symbol close-loc
+                    # boost (6e765b0f) to the market LEADER. _btc_close_loc (BTC 3-bar
+                    # mean close position in [0,1]) confirms the leader's bar closed
+                    # strongly in the entry direction; the /0.03 BTC-trend agreement
+                    # gate (same as the validated Exp3 xasset boost) confirms the alt
+                    # trades WITH the leader's multi-day direction. The CONJUNCTION
+                    # (both ~1) fires only on broad-market trend entries where the
+                    # leader's INTRABAR conviction confirms -> larger first-bar
+                    # commitment. Distinct from the saturated {own,BTC,partner}x{vol,
+                    # price} grid (those use volume MEANS and price SLOPES; this uses
+                    # BTC intrabar CLOSE POSITION - a different data type). Deep-
+                    # saturated both gates (/0.15 BTC close-loc, /0.03 BTC trend ->
+                    # near-constant where it fires, noise-free, validated safe family).
+                    # First-bar-only, +0.05 max. BTC self-referential -> not reached.
+                    _btc_cl_bull_conv = max(0.0, np.tanh((_btc_close_loc - 0.55) / 0.15))  # BTC closed near high (confirms alt long)
+                    _btc_cl_bear_conv = max(0.0, np.tanh((0.45 - _btc_close_loc) / 0.15))  # BTC closed near low (confirms alt short)
+                    _btc_close_loc_boost_bull = 1.0 + 0.05 * _btc_cl_bull_conv * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _btc_close_loc_boost_bear = 1.0 + 0.05 * _btc_cl_bear_conv * max(0.0, np.tanh(-_btc_trend / 0.03))
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
@@ -1201,6 +1239,8 @@ class Strategy:
                     _btcvol_partner_boost_bear = 1.0
                     _partnervol_btc_boost_bull = 1.0
                     _partnervol_btc_boost_bear = 1.0
+                    _btc_close_loc_boost_bull = 1.0
+                    _btc_close_loc_boost_bear = 1.0
                 # Exp (architectural, indep): close-POSITION-WITHIN-BAR conviction
                 # entry boost. NEW data dependency: where the close sits in the bar's
                 # own high-low range, close_loc = (close-low)/(high-low) in [0,1]. NO
@@ -1266,11 +1306,11 @@ class Strategy:
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _btc_close_loc_boost_bull * _close_conv_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _btc_close_loc_boost_bear * _close_conv_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
