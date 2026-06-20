@@ -202,6 +202,16 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
+        # Exp4 (architectural, indep): per-symbol portfolio-DD attenuator CACHED AT ENTRY,
+        # sustained through scale-in. _port_dd_atten (line ~223) shrinks first-bar entry
+        # size during a portfolio drawdown but is NOT currently sustained through scale-in
+        # -- so the position ramps back to un-attenuated `size` over bars 2-3, undoing the
+        # DD reduction (the SAME gap Exp5/Exp9 fixed for _conc_shrink and _vol_shrink).
+        # Caching the entry-time _port_dd_atten and applying it to the scale-in full_target
+        # keeps a DD-affected entry smaller for the whole hold -> lower MaxDD in correlated
+        # regimes (rally MaxDD 1.57% is the binding dd_gate drag, dd_gate ~0.9845).
+        # Deterministic (cached, noise-robust). Reset on full exit; default 1.0.
+        self._port_dd_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1423,10 +1433,11 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                elif _bear_ready and _bear_admit:
+                    self._port_dd_held[symbol] = _port_dd_atten  # Exp4: cache for scale-in sustain
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._port_dd_held[symbol] = _port_dd_atten  # Exp4: cache for scale-in sustain
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1542,7 +1553,11 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
+                    # Exp4: sustain the entry-time portfolio-DD attenuator through scale-in
+                    # (cached at entry, deterministic). Keeps a DD-affected entry smaller for
+                    # the whole hold instead of ramping back to un-attenuated `size` after bar 1.
+                    _port_dd_held = self._port_dd_held.get(symbol, 1.0)
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _port_dd_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -2270,7 +2285,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._port_dd_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
