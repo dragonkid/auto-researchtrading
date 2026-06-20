@@ -1712,7 +1712,21 @@ class Strategy:
                 # decision: max_hold depends on vol-stability x trend-align x winning.
                 _mh_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _mh_align = max(0.0, np.tanh(ret_vlong * _mh_pos_dir / 0.04))  # 0 ct/sideways/moderate, ~1 DEEP-trend-aligned
-                _mh_winning = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 deep profit
+                # Branch step4: HUMP-shaped winning gate (replaces monotone tanh). Step3
+                # recovered sideways+rally but bull is STILL -0.090: bull 2021 winners
+                # reach DEEP run-ups at trend-top extensions right before sharp V-corrections,
+                # and the monotone _mh_winning (grows with profit) gave those extended
+                # winners the MOST extension -> held into the V-correction. Replace with a
+                # hump: rises 0->1 by ~0.5*|stop| profit, holds 1 through ~1.5*|stop|, FADES
+                # to 0 by ~2.5*|stop|. Only modest-to-moderate winners get the extension;
+                # deeply-extended winners (near a top, correction-imminent) get none. crash
+                # grind wins accumulate gradually and spend most of their life in the modest-
+                # profit hump band -> keep the extension (and its +0.020 gain); bull extended
+                # tops fall in the deep-profit fade -> no extension -> protected. Direction-
+                # agnostic (uses pos_pnl magnitude only, not sign-of-move). pos_pnl/|stop|
+                # is the validated PnL-normalization scale.
+                _mh_pnl_n = pos_pnl / abs(STOP_LOSS_PCT)
+                _mh_winning = max(0.0, min(1.0, np.tanh((_mh_pnl_n - 0.0) / 0.5))) * max(0.0, 1.0 - max(0.0, np.tanh((_mh_pnl_n - 1.5) / 1.0)))
                 _mh_vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
                 _mh_vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
                 _mh_vol_stable = max(0.0, 1.0 - max(0.0, np.tanh(((_mh_vol_6 / _mh_vol_18) - 1.0) / 0.3)))  # ~1 stable, 0 expanding
