@@ -696,7 +696,7 @@ def compute_score(result: BacktestResult) -> float:
     """
     Multiplicative risk-adjusted score (HIGHER is better).
 
-    score = signal_quality × sample_factor × dd_gate × streak_gate
+    score = signal_quality × sample_factor × dd_gate × streak_gate × return_reward
 
     Hard cutoffs for degenerate strategies.
     """
@@ -754,7 +754,31 @@ def compute_score(result: BacktestResult) -> float:
     # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
     streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
 
-    score = signal_quality * sample_factor * dd_gate * streak_gate
+    # Return reward (2026-06-20): log(1 + max(annualized_return,0)/100 + 1).
+    # Uses ANNUALIZED return (APY) not raw total_return_pct — regime windows
+    # differ in length (bull 273d, crash 426d, sideways 365d, rally 366d), so
+    # raw total_return is not comparable across regimes. APY = (1+ret)^(1/years)-1.
+    # Without this, score = log(1+sharpe)×dd_gate×... rewards DD reduction
+    # but NOT return — at equal Sharpe, low-return+low-DD beats high-return+
+    # high-DD. Verified: 3x DD + 3x return (relaxing DD controls) wins under
+    # v2 but loses under v1. Real strategies have DD 0.45-1.70% (well below
+    # the 5% soft-exp knee), so dd_gate barely penalizes — the missing piece
+    # was return reward. Range: 0.693 (0% APY) to ~0.81 (25% APY).
+    # Negative return → floor at log(2)=0.693 (no reward; sharpe already <0
+    # returns early above).
+    hours = len(result.equity_curve) if result.equity_curve else 0
+    if hours > 0 and result.total_return_pct > -100.0:
+        years = hours / 8760.0
+        growth = 1.0 + result.total_return_pct / 100.0
+        if growth > 0:
+            ann_return = (growth ** (1.0 / years) - 1.0) * 100.0
+        else:
+            ann_return = result.total_return_pct  # degenerate, don't annualize
+    else:
+        ann_return = result.total_return_pct
+    return_reward = math.log(1.0 + max(ann_return, 0.0) / 100.0 + 1.0)
+
+    score = signal_quality * sample_factor * dd_gate * streak_gate * return_reward
     return score
 
 # ---------------------------------------------------------------------------

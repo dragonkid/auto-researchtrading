@@ -240,17 +240,23 @@ def test_compute_score_lost_over_15pct():
 # compute_score multiplicative factors with a known BacktestResult.
 # ---------------------------------------------------------------------------
 def test_compute_score_factors():
+    # equity_curve: 8761 points = 1 year of hourly bars; 5% total return
+    ec = [INITIAL_CAPITAL] * 8760 + [INITIAL_CAPITAL * 1.05]
     r = BacktestResult(
         sharpe=1.0, num_trades=50, max_drawdown_pct=5.0,
         return_volatility=0.10, max_consecutive_losses=0,
-        equity_curve=[INITIAL_CAPITAL, INITIAL_CAPITAL * 1.05],
+        total_return_pct=5.0,
+        equity_curve=ec,
     )
     signal_quality = math.log(1.0 + 1.0)
     sample_factor = math.sqrt(min(50 / 50.0, 1.0))          # = 1.0
     dd_gate = (1.0 / (1.0 + 5.0 / 100.0)) * math.exp(-max(0.0, 5.0 - 5.0) / 10.0)
     streak_gate = math.exp(-0 / 30.0)                        # = 1.0
+    # return_reward: APY = (1.05)^(1/1) - 1 = 5% (1 year, so APY == total)
+    ann_return = ((1.0 + 5.0/100.0) ** (1.0 / (8761/8760.0)) - 1.0) * 100.0
+    return_reward = math.log(1.0 + max(ann_return, 0.0) / 100.0 + 1.0)
     # vol_gate removed 2026-06-19 (double penalty with Sharpe's std denominator)
-    expected = signal_quality * sample_factor * dd_gate * streak_gate
+    expected = signal_quality * sample_factor * dd_gate * streak_gate * return_reward
     assert compute_score(r) == pytest.approx(expected, abs=TOL)
 
 
