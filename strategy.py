@@ -1859,27 +1859,7 @@ class Strategy:
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
                 )
-                # Exp4 (architectural, indep): LOG-SUM-EXP blend replaces element-wise
-                # MAX in the soft-exit fusion. DECISION-ARCHITECTURE change to the
-                # fusion OPERATOR. The MAX fusion (a prior keep) was chosen over the
-                # weighted SUM to eliminate correlated-noise addition (all terms share
-                # vol_ratio/HL2/pnl_scale inputs -> noise summed across 7 terms). But
-                # pure MAX has a structural blind spot: two INDEPENDENT moderate
-                # pressures (e.g. slope-against + time, on different price-derived
-                # inputs) that each indicate risk do NOT reinforce -- only the larger
-                # counts. A log-sum-exp blend _soft_max = m + log(sum(exp(s*(t-m))))/s
-                # (m=max, s=sharpness) is a smooth differentiable approximation of max
-                # that lets near-equal independent sources combine additively (max + a
-                # small bonus when a 2nd source is near-max) while staying ~= max when
-                # one source dominates. At s=12 the bonus is ~+0.022 only when a 2nd
-                # source is within 0.1 of the max -> gentle, near-MAX in the noise-
-                # dominated single-source case (preserves the MAX keep's noise
-                # rejection) but captures multi-source agreement that pure MAX discards.
-                # Overflow-safe (subtract m before exp). New control flow: fusion
-                # operator MAX -> smooth-LSE. The existing _soft_atten (single-source
-                # attenuator) composes on top unchanged.
-                _soft_max_m = max(_soft_terms)
-                _soft_max = _soft_max_m + float(np.log(sum(float(np.exp(12.0 * (t - _soft_max_m))) for t in _soft_terms))) / 12.0
+                _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
