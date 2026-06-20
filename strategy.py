@@ -810,6 +810,31 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
+                # Exp3 (architectural, indep): STREAK-GATED TREND-ALIGNED entry BOOST --
+                # the symmetric counterpart to the Exp3-keep ct-shrink (which shrinks ct
+                # losers after a streak). After a portfolio loss streak the next TREND-
+                # ALIGNED entry (bull long in multi-day uptrend / bear short in multi-day
+                # downtrend) is the likely streak-RESETTER (a winner): a small first-bar
+                # boost captures more of the winning trend move -> higher return -> higher
+                # Sharpe, AND the bigger winner resets the streak more decisively (directly
+                # targets rally's streak_gate ~0.875 drag, the largest raw-score gap).
+                # NEW state-interaction: no existing boost gates on the portfolio loss_streak
+                # (BTC self-trend / alt xasset / vol-rise / DVP / close-loc boosts all gate on
+                # trend-alignment alone). This adds the loss_streak x trend-alignment conjunction.
+                # Variance-free safe family: _streak_ct is the integer-streak ramp (noise-
+                # immune), _bull/_bear_aligned uses the SAME fast-saturating /0.01 ret_vlong
+                # scale as the ct indicator (rally's solidly-positive ret_vlong sits in the flat
+                # saturated tail -> near-CONSTANT -> no noise-tracking size wobble -> stability
+                # preserved at the 0.820 knee). First-bar-only (the proven winning axis),
+                # +0.05 max, bilateral, boost-side only. Trend-aligned (aligned indicator 0 in
+                # chop/crash-bounce/sideways-flat) -> bull/crash/sideways largely byte-identical
+                # except their own post-streak trend-aligned entries (a general risk-off
+                # principle; no regime label). Distinct from the BTC self-trend boost (no streak
+                # gate) and the ct-shrink (opposite direction).
+                _bull_aligned_streak = max(0.0, np.tanh(ret_vlong / 0.01))    # bull long aligned with multi-day uptrend
+                _bear_aligned_streak = max(0.0, np.tanh(-ret_vlong / 0.01))   # bear short aligned with multi-day downtrend
+                _streak_ta_boost_bull = 1.0 + 0.05 * _streak_ct * _bull_aligned_streak
+                _streak_ta_boost_bear = 1.0 + 0.05 * _streak_ct * _bear_aligned_streak
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -1420,11 +1445,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _streak_ta_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _streak_ta_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
