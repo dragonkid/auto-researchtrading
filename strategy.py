@@ -1789,7 +1789,23 @@ class Strategy:
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
-                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
+                # Exp2 (architectural, indep): LOSS-SIDE vol-expansion contribution
+                # gated on slope-against CONFIRMATION. The original profit-only design
+                # spares losers (slope-against handles them), but during a correlated
+                # rally pullback (Apr/Aug 2024) vol EXPLODES before slope fully reverses
+                # -> slope-against lags the regime shift -> losing trend longs hold into
+                # the correlated drawdown (rally MaxDD 1.57pct is 3x other regimes, the
+                # binding safety concern). Add a MODEST loss-side ve weight that activates
+                # only when (a) losing AND (b) slope is ALREADY against the position
+                # (multi-source CONFIRMATION: vol expansion + directional reversal must
+                # agree). Slope-against confirmation prevents firing on normal trend
+                # pullbacks where vol expands but slope still confirms (the _ep_pressure
+                # removal lesson). Max loss-side weight 0.30 (half the profit-side 0.60
+                # magnitude) -> ve contributes to losers only under confirmed adverse
+                # regime shift. New control flow: ve_pressure fusion weight is now
+                # bilateral (profit-full, loss-confirmed) rather than profit-only.
+                _ve_slope_against = max(0.0, np.tanh(-_exit_slope * (1.0 if current_pos > 0 else -1.0) / 0.0004))  # 0 slope-confirms, ~1 slope-against
+                _w_ve = max(0.0, _pnl_scale) + 0.30 * max(0.0, -_pnl_scale) * _ve_slope_against  # profit-full + loss-confirmed
                 # Architectural simplification: removed early-profit-lock exit pressure.
                 # _ep_pressure fired on small-peak giveback below _pp_min activation.
                 # In rally (low-vol grind-up), positions frequently have small peaks
