@@ -202,21 +202,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Architectural (Exp1 this session): PORTFOLIO consecutive-loss streak counter.
-        # A genuinely new state dimension: the strategy tracks per-symbol last-exit PnL
-        # (_last_exit_pnl) but NEVER the running PORTFOLIO loss streak across symbols.
-        # max_consecutive_losses (the streak_gate input, exp(-streak/30)) is computed
-        # over the chronological sequence of ALL closed trades in a regime (portfolio-
-        # level, see prepare.py), so a portfolio-level streak is the direct lever on it.
-        # rally_2024 is the only regime with a material loss streak (~4 -> streak_gate
-        # 0.875, the single largest gap between raw potential and actual score; bull/side
-        # ~2, crash 0). rally's losing trades are clustered counter-trend shorts during
-        # pullback sequences -> a streak-escalating risk-off mode (longer cooldown after
-        # consecutive losses + smaller next-entry size + mildly higher admission bar)
-        # breaks the cluster sooner and shrinks the in-streak losers' magnitude. General
-        # risk-off principle (no regime label); fires strongest where the streak is
-        # longest, which falls out as rally. Reset to 0 on any winning closed trade.
-        self._loss_streak = 0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -552,16 +537,6 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
-            # Exp1 (architectural): portfolio loss-streak admission escalation. After a
-            # run of consecutive losses, raise the conviction bar for the NEXT entry so
-            # the marginal/noisy re-entries that extend the streak (rally's counter-trend
-            # pullback shorts) are filtered, while high-conviction trend-aligned entries
-            # (the winners) still pass. Smooth tanh on the streak (0 at streak<=1, up to
-            # ~10% tighter at streak>=3). Modest + capped so high-conviction winners
-            # remain admissible. General risk-off principle; no regime label.
-            _streak_admit = 1.0 + 0.10 * _streak_escal
-            _bull_strong_min *= _streak_admit
-            _bear_strong_min *= _streak_admit
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -600,17 +575,6 @@ class Strategy:
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
-            # Exp1 (architectural): portfolio consecutive-loss-streak risk-off escalator.
-            # _streak_escal is 0 at streak<=1 (no escalation), ramps via tanh to ~1 by
-            # streak>=3. Applied as (a) cooldown-window stretch (spaces out clustered
-            # losing re-entries -> more likely the next entry lands post-pullback = a
-            # winner, breaking the count) and (b) extra first-bar size shrink (smaller
-            # in-streak losers -> smaller realized loss + DD -> higher Sharpe/dd_gate).
-            # Smooth tanh on the integer streak (no boundary that flips under AR(1)).
-            _streak_escal = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
-            _cd_window = _cd_window * (1.0 + 0.8 * _streak_escal)
-            _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
-            _outcome_size_mult = _outcome_size_mult * (1.0 - 0.20 * _streak_escal)
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
@@ -2251,17 +2215,7 @@ class Strategy:
                 if target == 0:
                     if current_pos != 0:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
-                        _exit_pnl_signed = -_ep if current_pos < 0 else _ep
-                        self._last_exit_pnl[symbol] = _exit_pnl_signed
-                        # Exp1: update PORTFOLIO consecutive-loss streak. trade_pnls in
-                        # prepare.py is the chronological sequence of ALL closed trades
-                        # (portfolio-level), so this counter mirrors max_consecutive_losses
-                        # exactly. Increment on a loss, reset on a win. Drives the
-                        # _streak_escal risk-off mode at the next entry decision.
-                        if _exit_pnl_signed < 0:
-                            self._loss_streak += 1
-                        else:
-                            self._loss_streak = 0
+                        self._last_exit_pnl[symbol] = -_ep if current_pos < 0 else _ep
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
