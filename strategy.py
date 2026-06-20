@@ -1975,7 +1975,24 @@ class Strategy:
                 # (where trends are persistent and bounces are noise), not in calm chop
                 # (where bounces are reversals). Continuous tanh, no boundary.
                 _et_vol_w = max(0.0, np.tanh((vol_ratio - 1.1) / 0.3))  # 0 calm, ~1 elevated vol
-                _exit_thresh += 0.10 * _et_trend_align * _et_profit * _et_slope_conf * _et_vol_w
+                # Branch step5: add a PATH-CLEANLINESS (R^2) gate. Step4 confirmed vol
+                # separates crash from rally but NOT from sideways (sideways-2023
+                # recovery is elevated-vol + strong-trend + slope-confirmed -- looks
+                # like a trend to every gate, but is a CHOPPY uptrend whose swings
+                # mean-revert, so hold-extension destroys it). The only remaining
+                # separator is PATH CLEANLINESS: crash is a CLEAN one-directional
+                # downtrend (high R^2); sideways-2023 is a CHOPPY path (low R^2) even
+                # with strong net trend. Use the OLS R^2 of log(HL2) over LINREG_PERIOD
+                # (already-computed _tq_r2 at line ~950, a continuous [0,1] shape
+                # statistic with NO zero-crossing -- direction-agnostic, smoother than
+                # ER which flipped sign). Gate the raise on HIGH R^2 (clean path only).
+                # Risk (documented wall): path-cleanliness gates can be noise-sensitive
+                # (step2's ER+vol gate broke sideways stability 0.52). R^2 has no sign
+                # flip (always >=0) so is smoother; test whether it recovers sideways
+                # without a stability crash. General principle: the cushion is earned by
+                # a CLEAN (high R^2) persistent trend-aligned winner.
+                _et_clean_w = max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
+                _exit_thresh += 0.10 * _et_trend_align * _et_profit * _et_slope_conf * _et_vol_w * _et_clean_w
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
