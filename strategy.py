@@ -1379,31 +1379,7 @@ class Strategy:
                 # continuation boost requires multi-day uptrend confirmation.
                 _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
-                # Exp1 (architectural, indep): SYMMETRIC multi-day-downtrend gate on the
-                # BEAR close-loc boost. The bull side (line above) is gated by ret_vlong>0
-                # to EXCLUDE crash dead-cat-bounce longs (bull longs counter to a multi-day
-                # downtrend = ct losers). The bear side was left UNGATED (the prior-session
-                # rationale was "near-inert anyway, and crash shorts are the trend-aligned
-                # crash trade") -- but ungated, the bear boost ALSO fires on rally pullback
-                # SHORTS (bear short when ret_vlong is solidly POSITIVE = counter to the
-                # multi-day uptrend = rally's LOSING trades), BOOSTING those losers bigger.
-                # Completing the symmetry: gate the bear boost on ret_vlong<0 (multi-day
-                # downtrend). This KEEPS the boost on trend-aligned crash shorts (ret_vlong<0
-                # -> gate ~1, the winning crash trade, second-binding regime, return-limited
-                # with large DD headroom) and REMOVES it from rally ct pullback shorts
-                # (ret_vlong>0 -> gate ~0, the losing rally trades) -> smaller rally losers
-                # -> higher rally Sharpe (the binding regime). Consistent with the validated
-                # ct-shrink direction (shrinking ct entries after a streak is a keep; this
-                # stops BOOSTING them at entry). Same fast-saturating /0.03 scale as the
-                # bull gate (near-constant, noise-free per the validated safe-family lesson;
-                # rally's solidly-positive ret_vlong sits in the flat tail -> gate is a near-
-                # constant 0, not a noise-tracking wobble -> stability preserved). New data
-                # dep on the bear side: close-loc bear boost now depends on multi-day trend
-                # direction. Bilateral-symmetry-completing, direction-agnostic general
-                # principle (no regime label): a close-loc SHORT continuation boost requires
-                # multi-day downtrend confirmation (mirrors the bull long requirement).
-                _cl_bear_vlong = max(0.0, np.tanh(-ret_vlong / 0.03))  # multi-day downtrend confirmation
-                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_vlong * _cl_bear_conv
+                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
                 # Exp1 (architectural, indep): DIRECTIONAL VOLUME PRESSURE (normalized
                 # OBV) trend-aligned entry boost. NEW data axis genuinely orthogonal to
                 # every existing volume primitive: VWAP voter reads close vs a volume-
