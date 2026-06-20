@@ -113,11 +113,6 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# Exp1: ct-direction entry block after a portfolio loss streak. Block ct re-entries
-# (rally pullback shorts) for this many bars after CT_BLOCK_STREAK consecutive losses,
-# inserting a gap so a trend-aligned winner resets the streak count.
-CT_BLOCK_STREAK = 2
-CT_BLOCK_BARS = 3
 
 
 def ema(values, span):
@@ -219,31 +214,12 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp1 (architectural, indep): COUNTER-TREND-DIRECTION-scoped entry BLOCK
-        # after a portfolio loss streak. The two prior keeps (Exp3 size shrink,
-        # Exp5 admission tighten) cut ct-loser MAGNITUDE after a streak; the prior
-        # session explicitly recorded that the streak COUNT is "structural (hard to
-        # cut - cooldown does not break it without an intervening winner)". rally's
-        # binding raw gap is the streak_gate (exp(-max_consec_losses/30) ~ 0.875 at
-        # max_consec_losses~4) -- the LARGEST single raw-vs-actual gap of any regime.
-        # This is the missing third lever: a ct-specific entry BLOCK that prevents
-        # the clustered ct re-entries (rally pullback shorts) from re-entering for a
-        # few bars after a streak, inserting a gap so a trend-aligned winner (which
-        # always passes -- ct indicator 0) can fire and RESET the streak count.
-        # Distinct from the prior blanket cooldown (Exp1, hurt bull -0.113 because
-        # it blocked trend-aligned post-streak longs): this is ct-SCOPED via the
-        # same fast-saturating /0.01 ret_vlong ct indicator (near-constant ->
-        # noise-free, byte-identical on trend-aligned bull/crash/sideways entries
-        # exactly like Exp3/Exp5). General risk-off principle; no regime label.
-        self._ct_block = 0  # bars remaining of ct-direction entry block (portfolio-level)
 
     def on_bar(self, bar_data, portfolio):
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
-        # Exp1: decrement the ct-direction entry block once per bar (portfolio-level).
-        self._ct_block = max(0, self._ct_block - 1)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
@@ -834,22 +810,6 @@ class Strategy:
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
                 _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
                 _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
-                # Exp1 (architectural, indep): COUNTER-TREND entry BLOCK after a
-                # portfolio loss streak. Distinct from Exp3 (size shrink) and Exp5
-                # (admission tighten): this PREVENTS ct re-entry for a few bars after
-                # streak>=2, directly targeting the streak COUNT (max_consecutive_losses
-                # ~4 -> streak_gate ~0.875, rally's largest raw-score gap) by inserting
-                # a gap so a trend-aligned winner can reset the streak. ct-SCOPED: only
-                # blocks when the entry itself is counter-trend at the multi-day scale
-                # (_bull/_bear_ctmd_streak saturated > 0.5 = solidly ct, which for rally
-                # pullback shorts sits at ret_vlong ~0.02-0.04 -> indicator pinned ~1.0,
-                # deep in the saturated tail, nowhere near the 0.5 boundary -> stable
-                # under AR(1) noise). Trend-aligned entries (indicator 0) always pass ->
-                # bull/crash/sideways byte-identical (same noise-immune gate family as
-                # Exp3/Exp5). General risk-off principle; no regime label.
-                _ct_block_active = self._ct_block > 0
-                _bull_ct_blocked = _ct_block_active and _bull_ctmd_streak > 0.5
-                _bear_ct_blocked = _ct_block_active and _bear_ctmd_streak > 0.5
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -1459,11 +1419,11 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                if _bull_ready and _bull_admit and not _bull_ct_blocked:
+                if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                elif _bear_ready and _bear_admit and not _bear_ct_blocked:
+                elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
@@ -2308,17 +2268,8 @@ class Strategy:
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
                             self._loss_streak += 1
-                            # Exp1: when the losing exit extends the portfolio streak
-                            # to >= 2, arm the ct-direction entry block for CT_BLOCK_BARS
-                            # so the clustered ct re-entries (rally pullback shorts) get
-                            # blocked going forward, letting a trend-aligned winner fire
-                            # and reset the streak count. Only the ct direction is blocked;
-                            # trend-aligned entries always pass.
-                            if self._loss_streak >= CT_BLOCK_STREAK:
-                                self._ct_block = max(self._ct_block, CT_BLOCK_BARS)
                         else:
                             self._loss_streak = 0
-                            self._ct_block = 0  # win resets streak -> clear any ct block
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
