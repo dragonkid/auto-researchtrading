@@ -2082,37 +2082,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp3 (architectural, indep): CROSS-SYMBOL BROAD-TREND-AGREEMENT
-                        # amplifier on the convex cushion. NEW cross-symbol data dep at the
-                        # de-risk decision: the cushion (ride pullback giveback) is currently
-                        # gated on within-symbol trend-alignment + profit + slope-conf. NONE
-                        # reads whether the BROAD market trend agrees. A trend-aligned winner
-                        # whose giveback coincides with BTC + partner-alt STILL trending the
-                        # same direction is facing a LOCAL pullback in a broad confirmed trend
-                        # -> ride the giveback (bigger cushion). A winner whose giveback
-                        # coincides with broad-market trend DIVERGENCE (BTC/partner rolling
-                        # over) is facing a broad reversal -> cut fast (no extra cushion).
-                        # Reuses _btc_trend (BTC 96-bar) and _alt_lead[partner] (20-bar),
-                        # both already computed at bar top -- no new price-derived reads, just
-                        # a new cross-symbol gate source at the de-risk cushion. Direction-
-                        # aware (sign vs _dr_pos_dir), deep-saturated scales (/0.03 BTC, /0.02
-                        # partner -> near-constant where it fires, noise-free per the validated
-                        # safe-family lesson). Amplifies _dr_k by up to +25pct of the base amp
-                        # (additive, bounded) ONLY when trend-aligned (_dr_align gates) AND in
-                        # profit. Smooth tanh, no boundary. Targets broad-trend regimes (rally:
-                        # BTC/ETH/SOL grind up together) without naming them.
-                        _btc_agree = max(0.0, np.tanh(_btc_trend * _dr_pos_dir / 0.03))
-                        _partner_trend = 0.0
-                        if symbol == "BTC":
-                            # BTC itself: use ETH or SOL as the partner confirmation
-                            _partner_trend = _alt_lead.get("ETH", 0.0) or _alt_lead.get("SOL", 0.0)
-                        elif symbol in _alt_lead:
-                            # this alt's partner is the OTHER alt
-                            _partner_sym = "SOL" if symbol == "ETH" else "ETH"
-                            _partner_trend = _alt_lead.get(_partner_sym, 0.0)
-                        _partner_agree = max(0.0, np.tanh(_partner_trend * _dr_pos_dir / 0.02))
-                        _broad_agree = _btc_agree * _partner_agree  # [0,1], 1 only when BOTH agree
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 + 0.25 * _broad_agree)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
