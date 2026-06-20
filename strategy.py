@@ -1860,28 +1860,6 @@ class Strategy:
                     _w_vc * _vc_pressure,
                 )
                 _soft_max = max(_soft_terms)
-                # Exp2 (architectural, indep): SOFTMAX-BLENDED exit fusion. The MAX was
-                # introduced when STABILITY was the binding wall (correlated-noise
-                # addition across the 6 summing terms). Under v2.1 scoring all regimes
-                # now sit at stability_factor 1.0 (raw == score) and the BINDING
-                # constraint is RAW RETURN (crash 100pct WR / 0.65pct DD / 3.2pct AnnRet;
-                # rally 84.7pct WR / 1.57pct DD / 3.9pct -- enormous DD headroom, gain-
-                # locking too conservative). MAX is the most AGGRESSIVE fusion: any
-                # single source firing at full strength forces full exit pressure,
-                # cutting trend winners on the first single-source spike. Blend MAX
-                # with the WEIGHTED MEAN (sum of weighted terms / sum of weights): when
-                # MULTIPLE sources agree (strong reversal), mean ~ MAX (decisive exit
-                # preserved); when only ONE source fires weakly, mean << MAX (position
-                # rides the single-source noise -> more trend capture -> more return).
-                # The 0.5 blend keeps half the MAX's noise-rejection (stability headroom)
-                # while letting multi-source structure reduce over-exit. Subsystem
-                # mechanism change (fusion function form: pure MAX -> MAX/mean blend).
-                # New control flow at the fusion core. Stop-loss max-blend and voter_bias
-                # additive unchanged. General principle: with stability solved, let
-                # multi-source AGREEMENT (not single-source dominance) set exit strength.
-                _soft_weights = (_w_slope, _w_pp, _w_time, _w_ve, _w_ep, _w_ar, _w_vc)
-                _soft_mean = sum(_soft_terms) / max(sum(_soft_weights), 1e-6)
-                _soft_max = 0.5 * _soft_max + 0.5 * _soft_mean
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
