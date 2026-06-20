@@ -1940,6 +1940,33 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
+                # Exp1 (architectural, indep): COUNTER-TREND-LONG HARD take-profit.
+                # NEW exit control-flow path: a FULL exit at a modest fixed gain level,
+                # gated to ct-long positions (current_pos>0 while multi-day ret_vlong<0
+                # = crash dead-cat-bounce longs; crash is 100% bounce LONGS, 100% WR).
+                # Why this is NOT inert like Exp4/Exp5 (both byte-identical on crash):
+                # Exp4 (ct-long max_hold extension) and Exp5 (ct-long pp-giveback
+                # widening) were inert because crash bounces are MODEST winners whose
+                # peaks stay BELOW _pp_min activation (2.5%) -> pp_pressure=0 and
+                # time-pressure never engages (bounces exit via slope-against first).
+                # A hard TP at a MODEST gain (1.0-1.5%, well BELOW _pp_min) is a level
+                # modest winners actually REACH -> it fires where pp/time levers do not.
+                # Mechanism: a ct-long bounce (long against a sustained downtrend) is
+                # structurally mean-reverting -> locking the modest gain at peak captures
+                # return that the slope-against exit would otherwise give back. Distinct
+                # from tp_harvest (soft 30% scale-down at DEEP peaks >1.6*_pp_min, which
+                # crash bounces never reach) and pp-giveback (giveback-magnitude based).
+                # Gating: ct-long (ret_vlong<-0.01 for a long) excludes bull/rally trend
+                # longs (ret_vlong>0) and sideways (~0) -> byte-identical by construction
+                # there. This is the ct-DIRECTION gate the deep-peak de-risk branch
+                # LACKED (it gated on deep-peak x slope-conf, which caught bull grinding-
+                # top longs -> bull -0.383); ct-long ret_vlong<0 cleanly excludes bull.
+                # ATR-scaled level (per-symbol vol), clamped to a modest band. New data
+                # dep at exit: a hard exit level conditioned on (pos_dir, ret_vlong).
+                if target != 0 and current_pos > 0 and ret_vlong < -0.01:
+                    _tp_hard_level = max(0.008, min(0.020, 1.2 * _atr_pct))
+                    if pos_pnl >= _tp_hard_level:
+                        target = 0.0
                 if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
