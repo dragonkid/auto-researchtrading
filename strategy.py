@@ -1951,7 +1951,26 @@ class Strategy:
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp1 (architectural, indep): SLOPE-CONFIRMATION suppression on the
+                    # take-profit harvest. The harvest fires on peak MAGNITUDE (peak >
+                    # 1.6*_pp_min) within the 1.6-2.8 peak band even when _ts_supp (which
+                    # only fully suppresses DEEP peaks > 2.8) is near 0. In a grinding rally
+                    # uptrend, trend-aligned longs repeatedly cross the 1.6x peak threshold
+                    # during normal trend extension -> the harvest trims them prematurely ->
+                    # caps trend-capture (rally Sharpe 1.30 is the binding constraint).
+                    # Add the SAME validated slope-conf mechanism used at the de-risk cushion
+                    # (Exp4/Exp5 keeps): when the multi-window _exit_slope STILL CONFIRMS the
+                    # position (ongoing trend), suppress the harvest up to 40% so the confirmed
+                    # trend winner keeps running; when slope weakens/reverses (exhaustion),
+                    # full harvest locks the peak. Profit-gated (harvest is profit-side only
+                    # by construction). New control-flow data dep: harvest decision depends on
+                    # near-term slope confirmation (a NEW exit decision point not previously
+                    # slope-gated). Smooth tanh, direction-agnostic general principle.
+                    _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _tp_slope_conf = max(0.0, np.tanh(_exit_slope * _tp_pos_dir / 0.0004))  # 0 flat/reversed, ~1 strong confirm
+                    _tp_profit_gate = max(0.0, _pnl_scale)  # only suppress when in profit
+                    _tp_slope_supp = _tp_slope_conf * _tp_profit_gate  # both required
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp) * (1.0 - 0.40 * _tp_slope_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
