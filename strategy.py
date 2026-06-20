@@ -1843,31 +1843,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp3 (architectural, indep): RANGE-BREAKDOWN exit pressure (new soft
-                # source). NEW data dep: the N-bar Donchian range (recent low/high),
-                # orthogonal to slope (linear trend), pp (giveback magnitude), vc (volume
-                # climax), ve (vol-of-price expansion). A position whose price BREAKS its
-                # recent range AGAINST it has failed structurally (broke support for a
-                # long, resistance for a short) -> raise exit pressure. Captures a
-                # structural-failure signature the linear slope and giveback signals miss:
-                # a sharp range-break can precede slope confirmation (slope lags the break).
-                # Profit-side only (max(0,_pnl_scale) -- lock gains at structural failure;
-                # losers already handled by slope-against + sl). Continuous tanh on how
-                # far beyond the range, scaled by ATR (noise-robust). N=20-bar range.
-                _rb_n = 20
-                if len(bd.history["low"].values) > _rb_n + 1:
-                    _rb_low = float(np.min(bd.history["low"].values[-_rb_n - 1:-1]))
-                    _rb_high = float(np.max(bd.history["high"].values[-_rb_n - 1:-1]))
-                    _rb_atr = max(_atr_pct, 1e-6)  # reuse exit-side ATR pct (line ~1582)
-                    if current_pos > 0:
-                        _rb_break = (mid - _rb_low) / _rb_atr  # negative when below range (breakdown)
-                        _rb_pressure = 0.50 * max(0.0, min(1.0, np.tanh((-_rb_break - 0.5) / 1.0)))
-                    else:
-                        _rb_break = (_rb_high - mid) / _rb_atr  # negative when above range (breakout vs short)
-                        _rb_pressure = 0.50 * max(0.0, min(1.0, np.tanh((-_rb_break - 0.5) / 1.0)))
-                else:
-                    _rb_pressure = 0.0
-                _w_rb = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1883,7 +1858,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_rb * _rb_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
