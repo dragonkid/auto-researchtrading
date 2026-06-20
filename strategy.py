@@ -1796,35 +1796,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp2 (architectural, indep): VWAP-SLOPE exit pressure (new data dep in
-                # the exit fusion). VWAP is currently used ONLY as a 7th entry VOTER (a
-                # LEVEL deviation: close vs 12-bar VWAP). Its SLOPE -- whether the volume-
-                # weighted average price is RISING or FALLING -- is never read by any
-                # primitive. A VWAP slope against the position is participation-confirmed
-                # adverse drift: even when raw close-slope is flat/ambiguous, a falling
-                # VWAP means the volume-weighted tape is distributing (buyers losing
-                # control of a long, sellers pressing a short) -> the position is losing
-                # ground on the participation-weighted tape -> harvest before the close
-                # slope confirms it. Distinct from _sl_slope_pressure (raw close/HL2 slope,
-                # pure price) and _vc_pressure (volume LEVEL spike). Profit-side only
-                # (lock winners on participation fade; losers already handled by
-                # slope-against + adverse-freeze). Compute 12-bar VWAP series slope via
-                # OLS on log-VWAP; deep-saturated tanh activation (noise-robust). New
-                # exit-pressure source in the MAX fusion.
-                _vs_n = 12
-                if len(closes) >= _vs_n + 1:
-                    _vs_high = bd.history["high"].values[-_vs_n:]
-                    _vs_low = bd.history["low"].values[-_vs_n:]
-                    _vs_cl = closes[-_vs_n:]
-                    _vs_vol = bd.history["volume"].values[-_vs_n:]
-                    _vs_tp = (_vs_high + _vs_low + _vs_cl) / 3.0
-                    _vs_vwap = np.cumsum(_vs_tp * _vs_vol) / np.maximum(np.cumsum(_vs_vol), 1e-10)
-                    _vs_slope = _fast_slope(np.log(np.maximum(_vs_vwap, 1e-10)))
-                    _vs_against = -_vs_slope if current_pos > 0 else _vs_slope
-                    _vs_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_vs_against - 0.0003) / 0.0006)))
-                else:
-                    _vs_pressure = 0.0
-                _w_vs = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1840,7 +1811,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_vs * _vs_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
