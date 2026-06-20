@@ -1942,23 +1942,7 @@ class Strategy:
                 _pos_dir_et = 1.0 if current_pos > 0 else -1.0
                 _et_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_et / 0.03))
                 _et_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                # Branch step2: gate the raise to CLEAN PERSISTENT trends only.
-                # Step1 proved the mechanism captures crash trend return (+0.014) BUT
-                # destroyed sideways (-0.278, mean-reversion: bounces ARE reversals)
-                # and bull (-0.116, 2021 sharp corrections punished). Add two gates:
-                # (a) EFFICIENCY-RATIO gate -- high ER = price moved directionally
-                # (not choppy). Sideways (mean-reverting chop) has low ER -> excluded;
-                # crash/rally grinding trends have high ER -> kept. _er already
-                # computed (line ~662). (b) VOL-OF-VOL PERSISTENCE gate -- LOW
-                # _vol_expansion (vol_6/vol_18 ~1 = stable vol regime) = persistent
-                # trend; HIGH vol_expansion (recent vol surge) = spiky/correction-prone
-                # (bull 2021 corrections) -> excluded. Crash's persistent downtrend has
-                # stable vol -> kept. Both continuous tanh, no boundary. General
-                # principle (no regime label): the soft-pressure cushion is earned by a
-                # CLEAN (high ER) PERSISTENT (stable vol) trend-aligned winner.
-                _et_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional
-                _et_persist_w = 1.0 - max(0.0, min(1.0, np.tanh((_vol_expansion - 1.3) / 0.4)))  # 1 stable, 0 spiky
-                _exit_thresh += 0.15 * _et_trend_align * _et_profit * _et_er_w * _et_persist_w
+                _exit_thresh += 0.15 * _et_trend_align * _et_profit
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
