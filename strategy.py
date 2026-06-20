@@ -1942,7 +1942,24 @@ class Strategy:
                 _pos_dir_et = 1.0 if current_pos > 0 else -1.0
                 _et_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_et / 0.03))
                 _et_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _exit_thresh += 0.15 * _et_trend_align * _et_profit
+                # Branch step3: replace step2's noisy ER/vol gates (broke sideways
+                # stability) with a SLOPE-CONFIRMATION gate + smaller magnitude. Step1
+                # (0.15, ret_vlong+profit only) helped crash +0.014 but destroyed
+                # sideways (-0.278, raise fired in recovery phases) and bull (-0.116,
+                # 2021 corrections punished). The distinguishing signal between crash's
+                # BENEFICIAL persistent trend and bull/sideways HARMFUL bounces: the
+                # NEAR-TERM multi-window slope still CONFIRMS the position. In an ongoing
+                # persistent trend (crash downtrend) the 12/16/22-bar slope stays aligned
+                # -> raise fires -> ride the trend. When slope WEAKENS or flips (bull
+                # correction starting, sideways mean-reversion bounce) -> raise off ->
+                # no extension. Reuses the already-computed _exit_slope (multi-window
+                # mean, smoother than single-window) -- no new price-derived read, just a
+                # new gate at the threshold. Same /0.0004 scale as the de-risk cushion's
+                # validated _dr_slope_conf. Smaller magnitude (0.10) limits damage if the
+                # gate still leaks. General principle: the cushion is earned by a trend-
+                # aligned winner whose near-term slope STILL confirms the position.
+                _et_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_et / 0.0004))
+                _exit_thresh += 0.10 * _et_trend_align * _et_profit * _et_slope_conf
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
