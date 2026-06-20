@@ -1583,6 +1583,32 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp1 (architectural, indep): LOSS-CONDITIONED COUNTER-TREND ATR stop
+                # tightening. NEW data dependency at the STOP DECISION POINT itself --
+                # explicitly flagged unexplored (b46f47a3: "to move rally MaxDD would
+                # require changing the STOP itself - a different decision point"). The
+                # stop distance has been a pure ATR function across every prior session;
+                # all exit-loser mechanisms added were SOFT pressure SOURCES (slope/pp/
+                # time/ve/ar/vc/stale-loss) layered onto _soft_max, never the stop
+                # distance. Tighten the stop for positions that are BOTH counter-trend
+                # at the multi-day scale (ret_vlong*pos_dir<0 = rally pullback shorts,
+                # crash dead-cat bounce longs) AND currently losing (pos_pnl<0). Sparing
+                # by construction: trend-aligned holds (gate 0) -> byte-identical stop;
+                # WINNING counter-trend positions (crash bounce longs, ~100% WR per prior
+                # session) -> loss gate 0 -> byte-identical (protects crash, the regime
+                # that is 100% winning-bounce-longs). Fast-saturating /0.01 ret_vlong
+                # (rally's solidly-positive multi-day trend sits in the flat saturated
+                # tail -> ct indicator is a near-CONSTANT, not a noise-tracking quantity,
+                # per the validated branch-step-9 lesson) so the tightening magnitude does
+                # not wobble under AR(1) noise. Mechanism: a losing counter-trend position
+                # is a genuine misread (rally pullback short against the uptrend); a
+                # tighter stop cuts its realized loss SMALLER when it does hit the stop ->
+                # smaller loss magnitude -> higher rally Sharpe + lower DD + smaller
+                # in-streak loss contribution. Floor 0.018 preserved (never tighter than
+                # the validated absolute floor). New cross-component data dep at the stop.
+                _ct_stop_gate = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _ct_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
+                _stop_abs = max(0.018, _stop_abs * (1.0 - 0.25 * _ct_stop_gate * _ct_loss_gate))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
