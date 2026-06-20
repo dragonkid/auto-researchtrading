@@ -1843,44 +1843,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp3 (architectural, indep): slope-DECELERATION exit pressure (7th soft
-                # source, 2nd-derivative / leading-reversal signal). All existing exit
-                # slope logic uses the slope LEVEL (1st derivative): _sl_slope_pressure
-                # fires when slope-against is already strong (slope has crossed zero /
-                # reversed -> LAGGING, the documented slope-lags-reversal wall). NONE
-                # measures slope ACCELERATION (2nd derivative): a trend whose slope is
-                # STILL confirming (positive for a long) but DECELERATING (falling toward
-                # zero) is at the LEADING edge of an imminent reversal -> harvest the
-                # winner BEFORE the slope crosses zero (vs _sl_slope_pressure which fires
-                # AFTER). Disjoint-half proxy: _slp_recent = OLS slope over [t-7..t],
-                # _slp_older = OLS slope over [t-15..t-8]; decel = (older - recent)*pos_dir
-                # (positive = slope decelerating for the position direction). Profit-side
-                # only (lock gains at trend-end exhaustion; losers handled by slope-against).
-                # Gated on slope STILL strongly confirming (deep gate /0.0003 so it only
-                # fires while genuinely in-trend, not during chop) AND strong deceleration
-                # (/0.00015 deep gate -> near-constant where it fires, sparing normal mid-
-                # trend deceleration phases that resume). New exit-pressure source + new
-                # control flow in the MAX fusion. Targets trend-runner gain-locking at tops.
-                _pos_dir_xd = 1.0 if current_pos > 0 else -1.0
-                _slp_recent = _fast_slope(np.log(_hl2[-8:]))
-                _slp_older = _fast_slope(np.log(_hl2[-16:-8]))
-                _decel_raw = (_slp_older - _slp_recent) * _pos_dir_xd  # + = decelerating
-                _decel_conf = max(0.0, np.tanh(_slp_recent * _pos_dir_xd / 0.0003))  # slope still confirming
-                _decel_strength = max(0.0, np.tanh(_decel_raw / 0.00015))  # strong decel only
-                # Branch step2: WEAK-MULTI-DAY-TREND gate. Step1 decel pressure
-                # CATASTROPHIC on rally (-0.478, stability 0.124): rally grinds up with
-                # deceleration phases that RESUME, so decel cuts trend runners (raw
-                # collapse) + 8bar decel is noise-sensitive (stability crash). FIX: slope
-                # deceleration is a real mean-reversion signal ONLY in WEAK-trend regimes
-                # (sideways chop, where a decelerating swing-top WILL reverse); in STRONG
-                # multi-day trends (rally/bull/crash) deceleration phases resume, so decel
-                # is NOT a reversal signal -> gate OFF. Separator = |ret_vlong| (96bar OLS,
-                # the validated noise-IMMUNE fast-saturating multi-day trend, NOT a noise-
-                # sensitive R^2/ER cleanliness gate that walled prior branches). Weak-trend
-                # gate: 1.0 at ret_vlong~0 (sideways), fading to 0 at strong trend (rally).
-                _decel_weak_trend = 1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
-                _dec_pressure = 0.40 * _decel_conf * _decel_strength * _decel_weak_trend
-                _w_dec = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1896,7 +1858,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_dec * _dec_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
