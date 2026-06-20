@@ -1361,25 +1361,10 @@ class Strategy:
                 # only, +0.05 max, bilateral, shrink-side caps at 1.0. Direction-agnostic
                 # general principle (no regime label). New cross-data-type dep.
                 _dvp_n = 12
-                # Exp5 (architectural, indep): MULTI-WINDOW DVP consensus. Replace the
-                # single 12-bar own-DVP with a 12/24/48-bar SIGN-based consensus (mean of
-                # per-window normalized OBV). Mirrors the validated multi-window exit-slope
-                # pattern (line ~1444): averaging sign-aggregated DVP across 3 windows
-                # spreads residual AR(1) noise across timescales while preserving the sign-
-                # based noise-robustness that made the 12-bar DVP productive (Exp1 keep).
-                # A real signal should survive or strengthen under multi-window aggregation;
-                # a 12-bar noise artifact would wash out. BTC/partner DVP stay 12-bar
-                # (isolating the test to the own-cell). New data deps on 24/48-bar windows.
-                _dvp_all = bd.history["volume"].values
-                _dvp_close_all = closes
-                _dvp_vals = []
-                for _dw in (12, 24, 48):
-                    if len(_dvp_close_all) > _dw:
-                        _dc = _dvp_close_all[-_dw - 1:]
-                        _dv = _dvp_all[-_dw:]
-                        _dr = np.sign(np.diff(_dc))
-                        _dvp_vals.append(float(np.sum(_dv * _dr) / max(np.sum(_dv), 1e-10)))
-                _dvp = float(np.mean(_dvp_vals)) if _dvp_vals else 0.0
+                _dvp_c = closes[-_dvp_n - 1:]
+                _dvp_v = bd.history["volume"].values[-_dvp_n:]
+                _dvp_rets = np.sign(np.diff(_dvp_c))
+                _dvp = float(np.sum(_dvp_v * _dvp_rets) / max(np.sum(_dvp_v), 1e-10))
                 _dvp_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _dvp_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
