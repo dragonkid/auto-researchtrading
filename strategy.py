@@ -226,6 +226,18 @@ class Strategy:
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
 
+        # Exp6 (architectural, indep): BTC 20-bar return (leader near-term performance).
+        # Used to compute alt/BTC RELATIVE STRENGTH (alt ret_long - BTC ret20) inside the
+        # per-symbol loop. NEW cross-symbol data axis: relative value (alt out/under-
+        # performing the leader), distinct from absolute price trend (ret_long, _btc_trend)
+        # and volume (DVP, vol_rise). An alt LONG whose 20-bar return EXCEEDS BTC's is
+        # outperforming the leader = high relative strength = higher-quality alt-long entry.
+        # Computed once per bar; 0 if BTC absent/short.
+        _btc_ret20 = 0.0
+        if "BTC" in bar_data and len(bar_data["BTC"].history) > LONG_WINDOW:
+            _btc_closes_r = bar_data["BTC"].history["close"].values
+            _btc_ret20 = (_btc_closes_r[-1] - _btc_closes_r[-LONG_WINDOW]) / _btc_closes_r[-LONG_WINDOW]
+
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
         # (96-bar trend) feeding alt sizing; this uses BTC VOLUME (6/18-bar mean ratio), a
@@ -1256,6 +1268,26 @@ class Strategy:
                     _partner_dvp = _alt_dvp.get(_partner, 0.0)
                     _partnerdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * max(0.0, np.tanh(_partner_lead / 0.02))
                     _partnerdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    # Exp6 (architectural, indep): alt/BTC RELATIVE STRENGTH trend-aligned
+                    # entry boost. NEW data axis: relative value (alt out/under-performing
+                    # the leader). _rs = ret_long (own 20-bar return) - _btc_ret20 (BTC 20-
+                    # bar return); +rs = alt outperforming BTC. An alt LONG outperforming the
+                    # leader is high relative strength (alt leading the broad market) ->
+                    # higher-quality alt-long entry -> larger first-bar commitment; an alt
+                    # SHORT underperforming (rs strongly negative, alt falling faster than
+                    # BTC) confirms alt weakness. Distinct from xasset (alt AGREES with BTC
+                    # direction) and DVP (volume): this measures alt vs BTC PERFORMANCE
+                    # SPREAD. Trend-aligned gated (entry dir matches ret_long sign), ER grind
+                    # gate (_er/0.25 - spares sideways chop where RS oscillates), deep-
+                    # saturated /0.04 (near-constant where it fires, noise-free), first-bar-
+                    # only, +0.05 max, bilateral. BTC self-referential -> not reached.
+                    _rs = ret_long - _btc_ret20
+                    _rs_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))
+                    _rs_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))
+                    _rs_bull_conv = max(0.0, np.tanh(_rs / 0.04))    # alt outperforming -> boost long
+                    _rs_bear_conv = max(0.0, np.tanh(-_rs / 0.04))   # alt underperforming -> boost short
+                    _rs_boost_bull = 1.0 + 0.05 * _rs_trend_w * _rs_er_w * _rs_bull_conv
+                    _rs_boost_bear = 1.0 + 0.05 * _rs_trend_w * _rs_er_w * _rs_bear_conv
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
@@ -1269,6 +1301,8 @@ class Strategy:
                     _btcdvp_boost_bear = 1.0
                     _partnerdvp_boost_bull = 1.0
                     _partnerdvp_boost_bear = 1.0
+                    _rs_boost_bull = 1.0
+                    _rs_boost_bear = 1.0
                 # Exp (architectural, indep): close-POSITION-WITHIN-BAR conviction
                 # entry boost. NEW data dependency: where the close sits in the bar's
                 # own high-low range, close_loc = (close-low)/(high-low) in [0,1]. NO
@@ -1373,11 +1407,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _rs_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _rs_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
