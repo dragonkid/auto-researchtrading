@@ -79,19 +79,6 @@ PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
 BASE_POSITION_SIZE = 0.065
-# Exp2 (architectural, v2.1 return-seeking): portfolio-DD-headroom size BOOST.
-# The strategy is under-leveraged (Sharpe ~1.3 but AnnReturn only +3-5%, MaxDD
-# 0.55-1.57% = 5-15x below the v2.1 8% dd_gate knee). Sharpe is exactly scale-
-# invariant (PnL and fees both scale with size), so sizing up positive-edge
-# entries keeps Sharpe ~constant while raising APY -> return_reward up, with
-# DD scaling linearly but staying far under the 8% knee (dd_gate ~flat). Boost
-# is largest at peak equity (headroom=1), ramping to 1.0 (no boost) as
-# portfolio DD approaches the 8% knee. Cached at entry and sustained through
-# scale-in (deterministic, no bar-to-bar portfolio-DD wobble). Distinct from a
-# prior _port_dd_atten loosening (which touched a minor multiplier and moved
-# realized sizes ~0): this scales the DOMINANT `size` base.
-PORT_DD_HEADROOM_KNEE = 0.08
-PORT_DD_BOOST_MAX = 0.4
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -215,10 +202,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Exp2 (v2.1 return-seeking): portfolio-DD-headroom size boost cached at
-        # entry and sustained through scale-in (deterministic, no bar-to-bar
-        # portfolio-DD wobble during holds). Default 1.0 (no boost) if uncached.
-        self._dd_boost_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -238,15 +221,6 @@ class Strategy:
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
-        # Exp2 (architectural, v2.1 return-seeking): portfolio-DD-headroom size
-        # boost. _port_dd_frac = current portfolio drawdown from peak equity.
-        # _port_dd_headroom = unused fraction of the 8% dd_gate knee (1 at peak
-        # equity, 0 at 8% DD). Boost scales the dominant `size` base up by up to
-        # PORT_DD_BOOST_MAX when DD is far below the knee (cached at entry,
-        # sustained through scale-in). See PORT_DD_BOOST_MAX docstring.
-        _port_dd_frac = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-        _port_dd_headroom = max(0.0, 1.0 - _port_dd_frac / PORT_DD_HEADROOM_KNEE)
-        _port_dd_boost = 1.0 + PORT_DD_BOOST_MAX * _port_dd_headroom
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1445,39 +1419,14 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Branch step2: gate the headroom boost on the noise-immune low-churn
-                # partition. Step1 uniform boost collapsed rally stability (bigger
-                # high-churn positions -> noisier equity curve -> stability penalty
-                # 0.853) while crash/sideways (sparse entries) scaled cleanly (Sh held,
-                # return up). Gate the boost by the SAME noise-immune integer churn
-                # count the baseline grids/deadband use: full boost at len(_eh)<=1
-                # (sparse-entry regimes crash/sideways/bull), fading to ~0 at len>=3
-                # (rally bursts). Captures the crash/sideways return gains while
-                # sparing rally noise-driving burst positions. General behavioral
-                # gate (no regime label); regime effects fall out of realized entry
-                # density. Reassigns portfolio-level _port_dd_boost to its churn-gated
-                # value for the entry target + scale-in cache.
-                _boost_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
-                # Branch step4: revert step3's _er path-cleanliness gate (it
-                # suppressed sideways -- a low-_er grind that GAINED in step2 -- and
-                # rally, a wrong discriminator). Keep step2's churn gate (the validated
-                # structure: spare rally bursts). Step3 confirmed bull's loss is
-                # super-linear in boost magnitude (0.8->-0.0254, 0.5->-0.0056), so a
-                # LOWER magnitude with churn-gate-only should shrink bull's loss faster
-                # than crash/sideways' gains (which held Sharpe -> scale ~linearly).
-                # Magnitude 0.8 -> 0.4: bull loss ~-0.005 (extrapolated), crash/sideways
-                # gains ~half of step2 (+0.004/+0.008), rally ~flat (churn-spared).
-                _port_dd_boost = 1.0 + PORT_DD_BOOST_MAX * _port_dd_headroom * _boost_calm
                 if _bull_ready and _bull_admit:
-                    target = size * _port_dd_boost * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._dd_boost_held[symbol] = _port_dd_boost  # Exp2: sustain headroom boost through scale-in
                 elif _bear_ready and _bear_admit:
-                    target = -size * _port_dd_boost * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._dd_boost_held[symbol] = _port_dd_boost  # Exp2: sustain headroom boost through scale-in
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1593,8 +1542,7 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    _dd_boost_held = self._dd_boost_held.get(symbol, 1.0)  # Exp2: sustained headroom boost
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _dd_boost_held
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -2368,7 +2316,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._dd_boost_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
