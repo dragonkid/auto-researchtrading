@@ -1265,12 +1265,51 @@ class Strategy:
                 _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
+                # Exp1 (architectural, indep): DIRECTIONAL VOLUME PRESSURE (normalized
+                # OBV) trend-aligned entry boost. NEW data axis genuinely orthogonal to
+                # every existing volume primitive: VWAP voter reads close vs a volume-
+                # weighted TYPICAL price (a LEVEL deviation), vol_rise reads the TREND of
+                # TOTAL volume (a magnitude), _vol_z reads a volume LEVEL spike. NONE
+                # measures the DIRECTIONAL BALANCE of volume -- whether participating
+                # volume is concentrated on up-bars or down-bars. DVP = sum(vol[i] *
+                # sign(close[i]-close[i-1])) / sum(vol[i]) over 12 bars, range [-1,+1].
+                # +1 = all volume on up-bars (buying pressure), -1 = all on down-bars.
+                # close-to-close sign uses only close (noise-perturbed -> legitimately
+                # noise-sensitive, NOT the open-price artifact). Mechanism: a grinding
+                # rally uptrend has volume on up-bars (DVP>0) even when TOTAL volume is
+                # flat (the case vol_rise misses) -> a trend-aligned long confirmed by
+                # buy-side volume participation is a higher-quality trend entry -> larger
+                # first-bar commitment captures more of the confirmed trend move ->
+                # higher Sharpe in the binding regime (rally 1.285 raw, all stab 1.0).
+                # Symmetric on crash (sell-side volume confirms downtrend shorts). Mirrors
+                # the validated close-loc boost envelope EXACTLY: trend_w (|ret_long|/0.04)
+                # x ER grind gate (_er/0.25 - separates rally directional grind from
+                # sideways chop at equal low vol) x multi-day ret_vlong>0 bull gate
+                # (excludes crash dead-cat-bounce longs whose 20-bar ret_long is positive
+                # during sharp bounces but 96-bar ret_vlong negative) x deep-saturated
+                # conviction (/0.15 -> near-constant where it fires, noise-free per the
+                # validated safe-family lesson). Bear side ungated by ret_vlong (mirrors
+                # close-loc; crash shorts are the trend-aligned crash trade). First-bar-
+                # only, +0.05 max, bilateral, shrink-side caps at 1.0. Direction-agnostic
+                # general principle (no regime label). New cross-data-type dep.
+                _dvp_n = 12
+                _dvp_c = closes[-_dvp_n - 1:]
+                _dvp_v = bd.history["volume"].values[-_dvp_n:]
+                _dvp_rets = np.sign(np.diff(_dvp_c))
+                _dvp = float(np.sum(_dvp_v * _dvp_rets) / max(np.sum(_dvp_v), 1e-10))
+                _dvp_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                _dvp_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
+                _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
+                _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
+                _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
+                _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
+                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
