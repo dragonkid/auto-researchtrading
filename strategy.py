@@ -698,8 +698,16 @@ class Strategy:
             # Branch step4: push harder (max 0.34->0.44, sat 0.25->0.18) to find the
             # wall or confirm headroom. If bull still rises linearly the mechanism has
             # room; if it regresses the alpha-trade wall has been hit.
+            # Branch step5: lower saturation (0.18->0.10) so the gate fires on
+            # SHALLOWER prior MAE -> more regimes affected (rally/crash may have
+            # shallow-MAE priors that deep-sat missed). Goal: get a SECOND regime
+            # contributing (rally=lowest, raising it lowers std = doubly valuable
+            # since single-regime bull amplification is std-drag-capped below +0.003).
+            # Risk: shallow-MAE gating = shrinking normal trend entries = alpha-trade
+            # wall. Keep max 0.44. Test informs whether shallow-MAE fires rally or
+            # hits the wall.
             _prior_mae = self._last_exit_mae.get(symbol, 0.0)
-            _prior_mae_atten = 1.0 - 0.44 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.18)))
+            _prior_mae_atten = 1.0 - 0.44 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.10)))
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
