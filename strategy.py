@@ -1445,6 +1445,20 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Branch step2: gate the headroom boost on the noise-immune low-churn
+                # partition. Step1 uniform boost collapsed rally stability (bigger
+                # high-churn positions -> noisier equity curve -> stability penalty
+                # 0.853) while crash/sideways (sparse entries) scaled cleanly (Sh held,
+                # return up). Gate the boost by the SAME noise-immune integer churn
+                # count the baseline grids/deadband use: full boost at len(_eh)<=1
+                # (sparse-entry regimes crash/sideways/bull), fading to ~0 at len>=3
+                # (rally bursts). Captures the crash/sideways return gains while
+                # sparing rally noise-driving burst positions. General behavioral
+                # gate (no regime label); regime effects fall out of realized entry
+                # density. Reassigns portfolio-level _port_dd_boost to its churn-gated
+                # value for the entry target + scale-in cache.
+                _boost_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                _port_dd_boost = 1.0 + PORT_DD_BOOST_MAX * _port_dd_headroom * _boost_calm
                 if _bull_ready and _bull_admit:
                     target = size * _port_dd_boost * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
