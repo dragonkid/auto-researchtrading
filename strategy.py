@@ -2171,39 +2171,6 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                # Exp1 (architectural, indep): TREND-ALIGNED WINNER emitted-level
-                # smoothing. The target_ema was deliberately ct-only (alpha=0 for
-                # trend-aligned -> byte-identical) -- never tested on trend-aligned
-                # holds. rally's alpha IS its trend-aligned longs, whose emitted LEVEL
-                # wobbles bar-to-bar through scale-in / de-risk / grid-quantize ->
-                # equity-curve vol -> Sharpe 1.30 (the binding raw constraint; all
-                # stability_factor 1.0 so raw IS the score). Low-passing the emitted
-                # LEVEL of trend-aligned WINNERS (small alpha) damps that bar-to-bar
-                # size variance -> lower return vol -> higher Sharpe, WITHOUT blocking
-                # trades (full exits target==0 and flips are exempt by the outer guard
-                # -> no lag on risk transitions, unlike the dead-end reversal-cooldown
-                # which killed rally raw). Distinct from the saturated cushion
-                # (DERISK_CONVEX_AMP changes the de-risk RAMP SHAPE; this low-passes
-                # the FINAL level -- different code path, different mechanism). Three
-                # gates protect bull (whose 2021 corrections are preceded by clean
-                # slope-confirming winners that reverse hard -- the cushion-amp failure
-                # mode): (1) TREND-ALIGNMENT (_pos_dir*ret_vlong>0, fast-saturating
-                # /0.01 -> near-constant, noise-free per branch-step-9 lesson); (2)
-                # DEEP PROFIT (tanh(pos_pnl/|stop|) -- only locks REAL winners deep in
-                # profit, spares the small/early winners that precede bull corrections);
-                # (3) SLOPE-CONFIRMATION (multi-window _exit_slope confirming the
-                # position, the validated bull-protection gate from keeps ce66fec6 /
-                # cabfb6f1 -- the moment slope weakens at a correction's start,
-                # smoothing ceases -> the linear fast de-risk cut fires normally, no
-                # held-through-reversal). New control flow on the target_ema gate
-                # (extends smoothing condition beyond ct-only) + new data dep (pos_pnl
-                # sign x slope-conf gate the trend-aligned smoothing). Small alpha cap
-                # 0.30 (vs 0.99 ct -- winners need far less lag than ct losers).
-                _ta_te_str = max(0.0, np.tanh(_pos_dir_te * ret_vlong / 0.01))  # trend-aligned strength
-                _ta_te_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # deep profit
-                _ta_te_slope = max(0.0, np.tanh(_exit_slope * _pos_dir_te / 0.0004))  # slope still confirms
-                _ta_te_alpha = 0.30 * _ta_te_str * _ta_te_profit * _ta_te_slope
-                _te_alpha = max(_te_alpha, _ta_te_alpha)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
