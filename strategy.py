@@ -225,6 +225,10 @@ class Strategy:
         # the validated safe-family lesson), shrink-only (caps at 1.0), first-bar
         # only, small max (0.18). Overwritten on each full exit.
         self._last_exit_mae = {}
+        # Branch step9: per-symbol GIVEBACK of the most recently closed trade
+        # (peak_pnl - exit_pnl). Prior-trade peak-to-exit fade signal, distinct
+        # from MAE (adverse excursion). See _prior_gb_atten.
+        self._last_exit_giveback = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -707,7 +711,25 @@ class Strategy:
             # wall. Keep max 0.44. Test informs whether shallow-MAE fires rally or
             # hits the wall.
             _prior_mae = self._last_exit_mae.get(symbol, 0.0)
-            _prior_mae_atten = 1.0 - 1.00 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.05)))
+            _prior_mae_atten = 1.0 - 0.80 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.06)))
+            # Branch step9: prior-trade-GIVEBACK attenuator (complement to prior-MAE).
+            # The prior-MAE gate is bull-only (crash/sideways structurally MAE-free;
+            # rally barely fires) and std-drag-capped below +0.003 keep. ADD a
+            # distinct prior-trade signal: GIVEBACK = peak_pnl - exit_pnl of the
+            # last closed trade (how much of its peak a winner gave back before
+            # exiting). A prior trade that faded significantly from its peak before
+            # resolving is in a regime where momentum STALLS after peaking -> the
+            # next entry is lower quality -> smaller first-bar commitment. Distinct
+            # from MAE (adverse EXCURSION vs peak-to-exit FADE): a trade can have
+            # small MAE (never deeply adverse) but large giveback (peaked then faded
+            # to breakeven) -- the rally trend-long pattern (peak in uptrend, give
+            # back on pullback, exit on giveback). Targets rally (the lowest regime
+            # -- raising it lowers std = doubly valuable vs bull-only). Deep-sat
+            # (/|stop|, noise-free), shrink-only, first-bar only, max 0.30. Kept
+            # conservative (the step8 wall showed over-aggressive shrink breaks
+            # rally); paired with step-7's MAE params (best safe point).
+            _prior_gb = self._last_exit_giveback.get(symbol, 0.0)
+            _prior_gb_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh(_prior_gb / abs(STOP_LOSS_PCT) / 0.4)))
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
@@ -1463,11 +1485,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _prior_mae_atten
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _prior_mae_atten * _prior_gb_atten
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _prior_mae_atten
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _prior_mae_atten * _prior_gb_atten
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
@@ -2356,6 +2378,10 @@ class Strategy:
                         # Exp4: cache the closing trade's MAE (max adverse excursion)
                         # before _mae is popped below, for the next entry's attenuator.
                         self._last_exit_mae[symbol] = self._mae.get(symbol, 0.0)
+                        # Branch step9: cache the closing trade's GIVEBACK (peak -
+                        # exit_pnl) before peak_pnl is popped, for the next entry's
+                        # giveback attenuator. Positive = winner that faded from peak.
+                        self._last_exit_giveback[symbol] = max(0.0, self.peak_pnl.get(symbol, 0.0) - _exit_pnl_signed)
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
