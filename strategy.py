@@ -332,6 +332,37 @@ class Strategy:
             else:
                 _alt_dvp[_asym] = 0.0
 
+        # Exp1 (architectural, indep): cross-sectional RETURN DISPERSION as a portfolio-
+        # correlation state signal. NEW cross-symbol x cross-sectional data dep: every prior
+        # cross-symbol primitive is BILATERAL (BTC-vs-alt, partner-vs-alt) directional
+        # agreement on PRICE/slope/volume. NONE measures how SPREAD OUT the 3 symbols'
+        # returns are regardless of direction -- a portfolio-level correlation statistic.
+        # Dispersion = std of the 3 symbols' 12-bar log returns; LOW dispersion = all 3
+        # moving together (high cross-correlation = a correlated pile-up carries large
+        # PORTFOLIO DD risk per unit gross notional); HIGH dispersion = idiosyncratic
+        # rotation (low correlation = same gross carries less portfolio risk). Maps to
+        # _xcorr_factor in [0,1]: ~1 when dispersion is low (correlated, rally BTC-led
+        # grind), ~0 when dispersion is high (decorrelated, bull-2021 alt rotation).
+        # Computed once per bar across all 3 symbols; falls to 0.0 (no effect) if fewer
+        # than 2 symbols present/short. Deep-saturated /0.012 scale (slowly-varying cross-
+        # sectional stat over 12 bars -> near-constant within a regime, noise-free per the
+        # validated safe-family lesson). Consumed by the concentration governor (below) as a
+        # correlation-aware magnitude scaler: portfolio DD risk = gross x correlation, so the
+        # same-direction concurrent-exposure shrink should be LARGER when the book is
+        # correlated (rally grind) and smaller when decorrelated (bull rotation). Distinct
+        # from _conc_shrink's gross-notional input: this adds the orthogonal correlation
+        # dimension the governor entirely lacks.
+        _xcorr_factor = 0.0
+        _xs_syms = [s for s in ACTIVE_SYMBOLS if s in bar_data and len(bar_data[s].history) > 13]
+        if len(_xs_syms) >= 2:
+            _xs_rets = []
+            for _xs in _xs_syms:
+                _xsc = bar_data[_xs].history["close"].values
+                _xs_rets.append(np.log(_xsc[-1] / _xsc[-13]))
+            _xs_disp = float(np.std(_xs_rets))
+            _xcorr_factor = max(0.0, min(1.0, np.tanh((0.012 - _xs_disp) / 0.006)))
+            # _xcorr_factor: ~1 low-dispersion (correlated), ~0 high-dispersion (decorrelated)
+
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -1155,8 +1186,20 @@ class Strategy:
                             _short_notional += -_opos
                 _conc_frac_bull = _long_notional / max(equity, 1e-10)
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
-                _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                # Exp1 (architectural): correlation-aware concentration shrink magnitude.
+                # Portfolio DD risk = gross x correlation; the base governor shrinks on
+                # gross notional alone, ignoring that the SAME gross is riskier when the
+                # book is correlated (low cross-sectional dispersion, _xcorr_factor~1 =
+                # rally BTC-led grind) and safer when decorrelated (_xcorr_factor~0 =
+                # bull-2021 alt rotation). Scale the shrink magnitude by a blend anchored
+                # at 0.5 (decorrelated keeps half the load-bearing shrink; correlated gets
+                # full). Shrink-only (caps at 1.0), continuous. Falls out per regime: rally
+                # correlated pile-ups shrink more (smaller DD -> higher Sharpe in the
+                # binding low-Sharpe regime); bull rotation pile-ups shrink less (spares the
+                # strong regime). New cross-sectional data dep on the concentration governor.
+                _conc_mag = CONC_EXP_MAX_SHRINK * (0.5 + 0.5 * _xcorr_factor)
+                _conc_shrink_bull = 1.0 - _conc_mag * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                _conc_shrink_bear = 1.0 - _conc_mag * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
