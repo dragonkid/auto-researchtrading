@@ -214,6 +214,21 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp2 (architectural, indep): per-symbol DURATION of the most-recently-closed
+        # trade (bars held), cached at exit. NEW cross-trade data dep distinct from
+        # _last_exit_pnl (prior PnL OUTCOME) and the reverted prior-trade-MAE (prior
+        # max ADVERSE excursion): this is the prior trade's TIME dimension. A prior
+        # trade that exited FAST (short hold = quick reversal/stop) signals the symbol
+        # is in a choppy/fast-reversing local state -> the next re-entry is lower
+        # quality -> shrink first-bar commitment (smaller realized loss on the
+        # re-entry if it too reverses -> higher Sharpe, the proven shrink axis). A
+        # prior trade held LONG = trending/persistent state -> no shrink. Shrink-only
+        # (safe family), first-bar-only. Churn-gated to the rally-burst partition via
+        # the noise-immune integer churn count (same gate baseline grids/deadband use)
+        # so it fires in rally bursts and stays ~0 in low-churn crash/sideways/bull
+        # (spared by construction -> byte-identical there, protecting crash's 100pct
+        # winning bounce longs + sideways alpha).
+        self._last_exit_bars = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -932,6 +947,22 @@ class Strategy:
                 _bear_ctmd = max(0.0, np.tanh(ret_vlong / 0.01))   # bear short counter to multi-day uptrend (rally pullback shorts)
                 _churn_ct_atten_bull = 1.0 - 0.20 * _churn_ct * _bull_ctmd
                 _churn_ct_atten_bear = 1.0 - 0.20 * _churn_ct * _bear_ctmd
+                # Exp2 (architectural, indep): prior-trade-DURATION first-bar shrink.
+                # Read the cached bars-held of the most-recently-closed trade for this
+                # symbol. A SHORT prior duration (quick exit = choppy/fast-reversing
+                # local state) -> next re-entry lower quality -> shrink first-bar.
+                # Deep-saturated gate (/4.0 bars so only VERY short priors fire ->
+                # near-constant where active, noise-free per the validated safe-family
+                # lesson; a 1-2 bar prior -> ~full shrink, >=4 bars -> none). Churn-
+                # gated by _churn_ct (rally-burst partition, noise-immune integer) so
+                # it fires only in rally bursts and is ~0 in low-churn crash/sideways/
+                # bull -> byte-identical there (protects crash's winning bounce longs +
+                # sideways alpha). Shrink-only (caps at 1.0), max 0.22, first-bar-only.
+                _prior_dur = self._last_exit_bars.get(symbol, None)
+                if _prior_dur is not None and _prior_dur > 0:
+                    _prior_dur_shrink = 1.0 - 0.22 * _churn_ct * max(0.0, min(1.0, np.tanh((4.0 - _prior_dur) / 1.5)))
+                else:
+                    _prior_dur_shrink = 1.0
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
@@ -1420,11 +1451,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _prior_dur_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _prior_dur_shrink
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
@@ -2310,6 +2341,11 @@ class Strategy:
                         _ep = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                         _exit_pnl_signed = -_ep if current_pos < 0 else _ep
                         self._last_exit_pnl[symbol] = _exit_pnl_signed
+                        # Exp2: cache prior-trade DURATION (bars held) for the
+                        # next entry's first-bar shrink. entry_bar is popped below,
+                        # so capture before the cleanup loop. _last_exit_bars is NOT
+                        # popped (it must persist as the prior-trade cache).
+                        self._last_exit_bars[symbol] = self.bar_count - self.entry_bar.get(symbol, self.bar_count)
                         # Exp3: update portfolio consecutive-loss streak (mirrors
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
