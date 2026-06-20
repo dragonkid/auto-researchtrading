@@ -2082,7 +2082,25 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp4 (architectural, indep): MAE-cleanliness amplifier on the de-
+                        # risk convex cushion. The cushion (k>1, ride moderate giveback -
+                        # the validated stability lever) is currently gated on profit +
+                        # trend-align (ret_long) + slope-conf. A winner whose MAE (max
+                        # adverse excursion since entry) is SMALL entered cleanly and has
+                        # never been seriously threatened -> higher-quality ongoing trend ->
+                        # deserves a BIGGER cushion (ride more pullback giveback -> more
+                        # trend capture -> higher Sharpe in the binding regime rally, whose
+                        # grinding-uptrend longs typically have small MAE). A winner with
+                        # LARGE MAE (dipped deep before recovering) is lower-quality ->
+                        # smaller cushion (cut faster on giveback). NEW data dep: cushion
+                        # exponent depends on MAE-cleanliness (self._mae, computed at line
+                        # ~1570, available here). Continuous tanh, profit-gated (only
+                        # amplifies when already in profit), max +20pct DERISK_CONVEX_AMP.
+                        # Direction-agnostic general principle: clean entries earn a wider
+                        # giveback cushion. Smooth (no boundary).
+                        _dr_mae = self._mae.get(symbol, 0.0)  # <= 0
+                        _dr_mae_clean = max(0.0, 1.0 - np.tanh(-_dr_mae / (0.5 * abs(STOP_LOSS_PCT))))  # 1 clean, 0 deep-MAE
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (1.0 + 0.20 * _dr_mae_clean)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
