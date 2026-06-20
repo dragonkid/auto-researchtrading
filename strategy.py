@@ -1499,24 +1499,6 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
-                # Exp2 (architectural, indep): ENTRY-CONVICTION-MARGIN scale-in pace
-                # modulation. A high-conviction entry (strong-sum well above the
-                # admission floor = a decisive voter-backed move) scales in FASTER to
-                # commit before the move extends; a marginal entry (just above floor =
-                # noise-prone) scales in SLOWER (cautious, smaller early exposure if it
-                # reverses). Uses the entry-TIME conviction margin (_bull_margin/
-                # _bear_margin, computed at admission BEFORE any realized pos_pnl) -- a
-                # genuinely different signal from _win_accel (which uses realized pos_pnl
-                # AFTER entry). Acts on the bars-0-1 window before pos_pnl is meaningful;
-                # _win_accel then takes over for confirmed early winners. Bilateral
-                # (side-specific via pos_dir). Trend-gated by _trend_strength_w so chop
-                # (sideways, where high conviction is mean-reverting noise) is spared ->
-                # fires only in genuine trends where decisive conviction = strong move.
-                # Max 0.5 bars faster for deep-conviction trend entries. New cross-
-                # component data dep: scale-in pace depends on entry-time conviction margin.
-                _em_side = _bull_margin if current_pos > 0 else _bear_margin
-                _entry_margin_accel = 0.5 * _trend_strength_w * max(0.0, min(1.0, (_em_side - 0.3) / 0.4))
-                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - _entry_margin_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
