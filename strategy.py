@@ -1994,6 +1994,45 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Exp2: pre-compute the multi-window slope-confirmation signal (used by
+                    # the deep-peak floor relaxation below AND the convex-cushion k later).
+                    # _exit_slope (mean of 12/16/22-bar OLS log-HL2 slopes) already computed.
+                    _dr_pos_dir_pre = 1.0 if current_pos > 0 else -1.0
+                    _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir_pre / 0.0004))
+                    # Exp2 (architectural, indep): DEEP-PEAK x SLOPE-CONFIRMED de-risk
+                    # floor relaxation (return-seeking via the binding exit channel,
+                    # SEPARATED from the sideways coupling wall by peak MAGNITUDE). The
+                    # prior trend-aligned exit-thresh-raise branch walled because crash
+                    # (persistent downtrend) and sideways-2023 (choppy uptrend) are
+                    # indistinguishable on EVERY smooth trend gate (vol, ER, slope,
+                    # trend-strength) -- sideways looks like a trend but mean-reverts, so
+                    # holding winners longer catches its reversals. The ONE statistic that
+                    # DISTINGUISHES them is peak MAGNITUDE: a persistent one-direction
+ # trend (crash shorts, rally longs) accumulates a DEEP peak; a choppy mean-reverter
+                    # (sideways-2023) produces only SMALL peaks (it reverses before peaks
+                    # deepen). Gate the floor relaxation on a DEEP-PEAK indicator (peak
+                    # >> _pp_min, fires only on confirmed large moves -- NOT small chop
+                    # peaks) so it engages for crash's deep-peak shorts but stays OFF for
+                    # sideways's small-peak chop -> AVOIDS the sideways coupling wall.
+                    # PROTECTION from rally: rally longs ALSO develop deep peaks, and
+                    # holding them through pullbacks is rally's risk (the binding regime).
+                    # Gate the relaxation by the EXISTING _dr_slope_conf (multi-window
+                    # 12/16/22-bar OLS slope STILL confirming the position): a rally long
+                    # in a pullback has slope WEAKEN -> slope_conf -> 0 -> no relaxation ->
+                    # linear fast cut (protected). A crash short in a persistent downtrend
+                    # has slope persistently confirming -> full relaxation -> rides small
+                    # giveback -> captures more of the trend -> higher crash return (the
+                    # return-limited binding regime: 100pct WR / 0.65pct DD / 3.2pct AnnRet
+                    # = huge DD headroom, gain-locking too conservative). Mechanism is
+                    # peak-magnitude (regime-distinguishing) x slope-confirmation (ongoing-
+                    # trend) -- two gates that together select persistent-trend deep winners
+                    # while excluding both chop (small peaks) and faltering trends (slope
+                    # weak). Continuous tanh, no new boundary; max 0.10 floor relaxation.
+                    # Direction-agnostic general principle (no regime label). New cross-
+                    # component data dep at the de-risk floor (peak magnitude x slope conf).
+                    _dp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
+                    _dp_deep = max(0.0, min(1.0, np.tanh((_dp_ratio - 2.5) / 0.8)))  # 0 small/chop peaks, ~1 deep confirmed move
+                    _de_floor -= 0.10 * _dp_deep * _dr_slope_conf * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -2081,7 +2120,7 @@ class Strategy:
                         # separate computation (3-window mean already available -> no new price-
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
-                        _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
+                        # (_dr_slope_conf pre-computed above for the deep-peak floor relaxation.)
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
