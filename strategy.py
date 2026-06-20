@@ -1407,7 +1407,18 @@ class Strategy:
                 _ef_base_vol = float(np.mean(bd.history["volume"].values[-23:-3]))
                 _ef_base_effort = _ef_base_vol / max(_ef_base_rng, 1e-8)
                 _ef_ratio = _ef_effort / max(_ef_base_effort, 1e-10)  # <1 easy move, >1 absorption
-                _ef_easy = max(0.0, min(1.0, np.tanh((1.0 - _ef_ratio) / 0.50)))  # fires on easy (low-effort) bars
+                # Branch step2: widen the easy-conviction gate. Step1's /0.50 deep-saturated
+                # gate made the boost near-INERT on rally grinds: a rally uptrend has RISING
+                # volume (vol_rise fires) so effort_ratio sits ~1.0-1.2 (above baseline) ->
+                # _ef_easy ~0 -> boost rarely fires. The +0.000133 rally signal came only from
+                # the rare low-volume large-range bars. Widen the activation so NEUTRAL-effort
+                # trend bars (ratio~1.0) get partial boost and only genuine absorption (ratio
+                # >1.5) is excluded: shift center to 1.15 and scale /0.70. This fires the
+                # validated mechanism on more trend-aligned rally bars (ratio 0.8-1.2 = the
+                # grind's typical operating range) without boosting absorption bars. Same
+                # trend_w x ER x vlong envelope (still spares sideways/crash-bounce/bull-
+                # weak-trend by the outer gates). Amplifies the rally signal toward a real keep.
+                _ef_easy = max(0.0, min(1.0, np.tanh((1.15 - _ef_ratio) / 0.70)))  # fires on easy-to-neutral, excludes absorption
                 _ef_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _ef_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
                 _ef_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
