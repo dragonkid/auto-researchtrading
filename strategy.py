@@ -1252,7 +1252,18 @@ class Strategy:
                 # holds). rally grinding uptrend ER high; sideways chop ER low -> spared.
                 # Continuous tanh on _er (no boundary). _er in [0,1], saturate /0.25.
                 _cl_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
-                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_conv
+                # Branch step7: multi-day direction gate on the BULL boost. Step6's crash
+                # leak (-0.000354) is the bull boost firing on crash dead-cat-bounce longs
+                # (sharp bounce: ret_long>0 trend, ER high directional, close near high ->
+                # bull boost over-commits to the losing bounce). Require the MULTI-DAY
+                # ret_vlong>0 for the bull boost (crash bounces have ret_vlong<0 -> excluded;
+                # rally grind has ret_vlong>0 -> kept). ret_vlong is the validated multi-day
+                # trend; tanh/0.03 fast-saturating (near-constant, noise-free). Bear boost
+                # left ungated by ret_vlong (it is near-inert anyway, and crash shorts are
+                # the trend-aligned crash trade). General principle: a close-loc LONG
+                # continuation boost requires multi-day uptrend confirmation.
+                _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
+                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
