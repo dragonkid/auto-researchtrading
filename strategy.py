@@ -504,8 +504,26 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
+            # Exp3 (architectural, indep): TREND-CONDITIONED strong-sum ramp exponent.
+            # The aggregation function form (was fixed quintic (c-0.5)^5 * 97.66) is the
+            # CORE MECHANISM of the voter-aggregation subsystem and has NOT been
+            # rewritten (only its per-voter WEIGHTS were tuned). Make the ramp EXPONENT
+            # depend on trend strength: exp = 3 + 4*_trend_strength_w (cubic in chop,
+            # ~septic in strong trend). Renormalized so f(c=1.0)=3.05 UNCHANGED (max
+            # per-voter contribution preserved -> admission threshold STRONG_WEIGHT_MIN
+            # calibration intact). Only the SHAPE between 0.5 and 1.0 changes: in trend
+            # (high exp) mid-conviction voters (c~0.7) contribute LESS (sharper ramp ->
+            # only DECISIVE voters count -> filters mid-conviction entry noise in fast
+            # trends); in chop (low exp) mid-conviction voters contribute MORE (softer
+            # ramp -> sideways mean-reversion entries that rely on several mid-strength
+            # voters are admitted, matching the sideways admission-tightening balance).
+            # New cross-timescale data dep at the aggregation function form (not a
+            # weight, not a threshold -- the ramp SHAPE itself is trend-conditioned).
+            # Continuous (exp varies smoothly with _trend_strength_w), no boundary.
+            _ramp_exp = 3.0 + 4.0 * _trend_strength_w  # [3, ~7]
+            _ramp_norm = 3.05 / (0.5 ** _ramp_exp)  # preserve f(1.0)=3.05
+            _bull_strong = sum(max(0.0, (c - 0.5) ** _ramp_exp * _ramp_norm) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** _ramp_exp * _ramp_norm) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
