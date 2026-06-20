@@ -1240,11 +1240,20 @@ class Strategy:
                 # recent regime is. Sideways (low vol, low trend) still gated off by the
                 # trend-alignment term; crash (bear side) gated off by direction.
                 _cl_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
-                _cl_grind_w = max(0.0, min(1.0, np.tanh((1.15 - vol_ratio) / 0.25)))  # ~1 grinding/low-vol, ~0 sharp
-                _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.62) / 0.10))  # fires only DEEP close-near-high
-                _cl_bear_conv = max(0.0, np.tanh((0.38 - _close_loc) / 0.10))  # fires only DEEP close-near-low
-                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_grind_w * _cl_bull_conv
-                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_grind_w * _cl_bear_conv
+                _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.55) / 0.15))  # fires close near high
+                _cl_bear_conv = max(0.0, np.tanh((0.45 - _close_loc) / 0.15))  # fires close near low
+                # Branch step6: replace vol-based grind gate with EFFICIENCY-RATIO gate.
+                # Step4's vol gate (low vol_ratio) separated rally from bull-2021 (high vol)
+                # but NOT from sideways (also low vol) -> sideways leak -0.000199. ER
+                # (Kaufman, already computed) distinguishes DIRECTIONAL grind (rally, high
+                # ER) from CHOPPY mean-reversion (sideways, low ER) at equal low vol.
+                # close_loc continuation is a trending-market signal; gate it on path
+                # efficiency (high ER = price moved efficiently one way = continuation
+                # holds). rally grinding uptrend ER high; sideways chop ER low -> spared.
+                # Continuous tanh on _er (no boundary). _er in [0,1], saturate /0.25.
+                _cl_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
+                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_conv
+                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
