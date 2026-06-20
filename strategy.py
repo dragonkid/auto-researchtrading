@@ -1241,8 +1241,8 @@ class Strategy:
                 # trend-alignment term; crash (bear side) gated off by direction.
                 _cl_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _cl_grind_w = max(0.0, min(1.0, np.tanh((1.15 - vol_ratio) / 0.25)))  # ~1 grinding/low-vol, ~0 sharp
-                _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.55) / 0.15))  # fires close near high
-                _cl_bear_conv = max(0.0, np.tanh((0.45 - _close_loc) / 0.15))  # fires close near low
+                _cl_bull_conv = max(0.0, np.tanh((_close_loc - 0.62) / 0.10))  # fires only DEEP close-near-high
+                _cl_bear_conv = max(0.0, np.tanh((0.38 - _close_loc) / 0.10))  # fires only DEEP close-near-low
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_grind_w * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_grind_w * _cl_bear_conv
                 if _bull_ready and _bull_admit:
