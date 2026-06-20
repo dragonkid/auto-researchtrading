@@ -214,6 +214,19 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp3 (architectural, indep): portfolio consecutive-WIN streak counter (the
+        # symmetric counterpart to _loss_streak). _loss_streak drives counter-trend risk-
+        # off (shrink + tighten ct admission after losses). _win_streak captures the
+        # opposite portfolio state: a run of winning closed trades means the broad market
+        # regime is currently FAVORABLE to the strategy's edge. Used to RELAX admission
+        # for TREND-ALIGNED entries (entry dir matches ret_long) when the strategy is hot
+        # -- marginally-conviction trend entries during a favorable regime are more likely
+        # winners -> admit them to capture more of the favorable regime. Distinct from a
+        # size boost (Sharpe-scale-invariant): this changes WHICH trades are admitted (the
+        # trade SET), not their size. Trend-aligned gate ensures no extra counter-trend
+        # noise is admitted (protects rally's ct-short drag). General risk-on principle;
+        # no regime label.
+        self._win_streak = 0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -565,6 +578,24 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
+            # Exp3 (architectural, indep): portfolio WIN-streak trend-aligned admission
+            # RELAXATION (the symmetric risk-on counterpart to the loss-streak ct tighten
+            # above). _win_streak (consecutive winning closed trades across all symbols)
+            # signals the broad regime is favorable to the strategy's edge. Relax the
+            # strong-sum admission floor for TREND-ALIGNED entries (bull entry in uptrend /
+            # bear entry in downtrend) so marginally-conviction trend entries that the
+            # baseline rejects get admitted during favorable stretches -> capture more of
+            # the favorable regime. Trend-aligned gate (ret_long, /0.04 fast-saturating ->
+            # near-constant within a trend, noise-free per the validated safe-family
+            # lesson) ensures NO extra counter-trend noise is admitted (the ct side is
+            # unaffected -> rally's ct-short drag not worsened, crash's bounce-long
+            # admission protected since those are ct longs -> gate 0 -> byte-identical).
+            # Max 8% relaxation, win-streak-gated (streak>=2), trend-aligned only. New
+            # cross-component data dep: admission floor depends on portfolio win-streak x
+            # trend-alignment. Distinct from a size boost (changes the trade SET, not size).
+            _win_streak_ramp = max(0.0, np.tanh((self._win_streak - 1) / 2.0))
+            _bull_strong_min *= 1.0 - 0.08 * _win_streak_ramp * max(0.0, np.tanh(ret_long / 0.04))
+            _bear_strong_min *= 1.0 - 0.08 * _win_streak_ramp * max(0.0, np.tanh(-ret_long / 0.04))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -2314,8 +2345,10 @@ class Strategy:
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
                             self._loss_streak += 1
+                            self._win_streak = 0
                         else:
                             self._loss_streak = 0
+                            self._win_streak += 1
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
