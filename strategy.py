@@ -1843,6 +1843,40 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp3 (architectural, indep): COUNTER-TREND bars-held DIRECT exit
+                # pressure (7th soft source in the MAX fusion). Re-tests the row-701
+                # multi-day-ct EXIT lever under v2.1 scoring. Row 701 found a DIRECT
+                # exit-pressure bars_held gate for ct positions raised rally RAW Sharpe
+                # +0.052 (bull/crash/sideways byte-identical at mag<=0.25) BUT was
+                # BLOCKED because rally's stability sat at the 0.8008 knife-edge and the
+                # exit-timing perturbation dropped it below 0.80 -> factor penalty
+                # exceeded the raw gain. Under v2.1 the stability penalty is relaxed
+                # (k 0.5->0.3) and the current baseline has ALL stability factors at 1.0
+                # (min_stability 0.820) -> the headroom that was absent in row 701 now
+                # exists, so the same mechanism may now NET positive. Mechanism: a
+                # position held AGAINST the multi-day (96-bar ret_vlong) trend beyond an
+                # onset bar-count accrues DIRECT exit pressure (independent of time-
+                # pressure onset _max_hold and of slope-against) -> cuts the counter-
+                # trend LOSERS (rally pullback shorts, crash dead-cat-bounce longs)
+                # faster -> smaller realized losses -> higher rally/crash raw Sharpe.
+                # Distinct from _ct_hold_sat (which shortens the TIME-PRESSURE onset
+                # threshold _max_hold): this is a SEPARATE pressure SOURCE added to the
+                # MAX fusion, so it fires even when time/slope/pp pressures are mid-range.
+                # Uses the SAME fast-saturating /0.01 ret_vlong ct indicator as
+                # _ct_hold_sat/_ct_vlong (rally's solidly-positive ret_vlong sits in the
+                # flat saturated tail -> ct indicator is a near-CONSTANT ~1, not a noise-
+                # tracking wobble -> the pressure ramp is driven by the noise-IMMUNE
+                # integer bars_held, the most noise-robust trigger per row-701's gate
+                # ranking). Trend-aligned holds (pos_dir*ret_vlong>0 -> indicator 0) get
+                # zero pressure -> bull longs / crash shorts / rally trend longs BYTE-
+                # IDENTICAL; low-ret_vlong sideways spared. Onset 4 bars (after the
+                # scale-in window so fresh entries are not cut), ramp over 4 bars to a
+                # 0.45 cap, weight 1.0 (loss-side by construction - ct holds held >4 bars
+                # are overwhelmingly the losing re-entries). New exit-pressure source +
+                # new control flow in the MAX fusion.
+                _ct_pos_sat_e = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _ct_bars_pressure = 0.45 * _ct_pos_sat_e * max(0.0, min(1.0, (bars_held - 4.0) / 4.0))
+                _w_ctb = 1.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1858,6 +1892,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_ctb * _ct_bars_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
