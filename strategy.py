@@ -2036,7 +2036,32 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align  # 1.0 loss/ct, up to ~1.6 trend-aligned profit
+                        # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
+                        # convex cushion. The cushion (k>1 -> hold near full size through
+                        # moderate giveback, the validated stability lever) was gated only on
+                        # trend-ALIGNMENT (ret_long*pos_dir) + profit. The win-accelerator
+                        # (line ~1488) is ALREADY gated by _slope_conf (16-bar OLS slope
+                        # confirming the position) -- a prior session added it to protect bull
+                        # (slope weakens before corrections). Extend the SAME slope-confirmation
+                        # to the de-risk cushion: the convex cushion (ride giveback) now requires
+                        # the near-term slope to STILL CONFIRM the position; when slope weakens
+                        # (trend faltering, pullback deepening), _slope_conf -> 0 -> k -> 1 ->
+                        # LINEAR fast cut (exit through giveback faster instead of riding it).
+                        # Mechanism: a trend-aligned winner whose slope STILL confirms is a
+                        # genuine ongoing trend -> ride the small giveback (cushion); a winner
+                        # whose slope has weakened is facing a real near-term reversal -> cut
+                        # fast (linear). Consistent with the Exp2 lesson this session (near-term
+                        # slope/ret_long is the CORRECT exit signal for rally -- cutting rally
+                        # longs when the near-term trend turns protects giveback + stability;
+                        # the multi-day ret_vlong was too slow and catastrophic). _slope_conf is
+                        # computed unconditionally for held positions (line ~1488, before the
+                        # scale-in if); reusing it here adds no new price-derived computation
+                        # (just a new control-flow dependency at the de-risk decision). Smooth
+                        # tanh (no boundary); direction-agnostic general principle (no regime
+                        # label): the giveback-riding cushion is earned by an ONGOING confirmed
+                        # slope, not just by long-window trend-alignment. New cross-component
+                        # data dep at the de-risk ramp.
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
