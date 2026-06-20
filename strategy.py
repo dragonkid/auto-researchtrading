@@ -585,8 +585,33 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            # Exp3 (architectural, indep): CHURN-CONDITIONED entry-readiness EMA RHO. The
+            # readiness accumulator admits entry when an EMA-smoothed conviction margin
+            # crosses threshold (RHO=0.5 -> ~2-bar half-life). rally over-trades (98 trades
+            # = ~2x the other regimes) because in its choppy pullback sequences the margin
+            # oscillates and the EMA crosses the threshold repeatedly -> many churny
+            # re-entries, each a fresh entry-TIMING decision whose bar shifts across the
+            # AR(1) noise ensemble -> tracking-error (rally stability sits at 0.820, just
+            # above the 0.80 knee). Raise RHO for HIGH-churn symbols so admission requires
+            # MORE sustained conviction (slower EMA -> ~3-bar half-life at peak) -> filters
+            # the churny re-entries AND reduces timing divergence (entries happen only after
+            # conviction persists ~3 bars -> clean and perturbed cross the threshold the
+            # SAME bar more often -> less tracking error -> stability up off the knee).
+            # Low-churn symbols (bull/crash/sideways, len(_eh)<=1 the whole regime) keep
+            # RHO=0.5 -> byte-identical (rally-safe; the validated entry timing for the
+            # well-calibrated 50-trade regimes is untouched). Gated on the noise-IMMUNE
+            # integer churn count len(_eh) via the same fast-saturating /0.6 sigmoid the
+            # order-emission grids use (near-constant where it fires -> not a noise-tracking
+            # RHO wobble -> no new stability cost). Bump capped at +0.15 (RHO 0.5->0.65 max;
+            # conservative -- a bigger bump risks delaying rally trend-onset entries and
+            # missing fast moves). New cross-component control flow: entry-readiness EMA
+            # memory depends on the symbol's own recent entry density. General self-measured
+            # behavioral principle (no regime label): a symbol that is re-entering
+            # frequently needs more sustained conviction to admit the next entry.
+            _churn_dz_acc = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 calm, ~1 bursting (noise-immune)
+            _acc_rho = ENTRY_ACCUM_RHO + 0.15 * _churn_dz_acc
+            _acc_b = _acc_rho * _acc_b + (1.0 - _acc_rho) * _bull_margin
+            _acc_s = _acc_rho * _acc_s + (1.0 - _acc_rho) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
