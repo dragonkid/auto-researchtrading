@@ -202,10 +202,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Branch: sustain the deep-downtrend bear entry boost through scale-in
-        # (cached at entry, deterministic). Keeps a crash winning short larger for
-        # the whole hold instead of scale-in reverting the first-bar boost.
-        self._deep_dt_boost_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1423,36 +1419,14 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp4 (architectural, indep): DEEP-DOWNTREND bear ENTRY SIZE BOOST
-                # (return-seeking). Crash is 100% WR + DD 0.65% (huge headroom) + high vol;
-                # the inverse-vol sizing term ((TARGET_VOL/vol)^0.85 in combined_mult) shrinks
-                # crash bear shorts, capping return. In a DEEP sustained downtrend (ret_vlong
-                # strongly negative), high vol = trend PERSISTENCE not noise -> boost bear-entry
-                # size to partially override the inverse-vol shrink. DEEP gate (ret_vlong/0.03
-                # fast-saturating) is the key vs the prior direction-gated Exp1 landmine: crash
-                # ret_vlong is solidly/deeply negative (gate ~1); rally pullbacks only make
-                # ret_vlong SHALLOW-negative or near-0 (gate ~0 -> no boost on rally's losing CT
-                # bears); sideways flat; bull/rally uptrend excluded by bear direction. So this
-                # fires crash-only via a general principle (strong downtrend momentum warrants
-                # larger trend-aligned commitment despite high vol), NOT a regime label. Direct
-                # sizing on 100%-WR winners (bigger position x certain win = more return ->
-                # higher Sharpe via return_reward; crash DD 0.65% << 8% soft knee so dd_gate is
-                # flat -> no penalty for the extra return). First-bar-only, +0.10 max, bear-only.
-                # Distinct from Exp1 (hold TIMING -- crash exits via slope/pp before time, so
-                # timing did nothing; SIZING directly scales the 100%-WR PnL).
-                _deep_dt = max(0.0, np.tanh(-ret_vlong / 0.03))  # ~1 deep multi-day downtrend, ~0 shallow/flat/uptrend
-                _deep_dt_boost_bull = 1.0  # one-sided: bear-in-deep-downtrend only (bull-in-deep-uptrend boost risks the V-correction landmine per _ve lesson)
-                _deep_dt_boost_bear = 1.0 + 0.10 * _deep_dt
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _deep_dt_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._deep_dt_boost_held[symbol] = _deep_dt_boost_bull  # branch: sustain boost
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _deep_dt_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._deep_dt_boost_held[symbol] = _deep_dt_boost_bear  # branch: sustain boost
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1568,8 +1542,7 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    _deep_dt_held = self._deep_dt_boost_held.get(symbol, 1.0)  # branch: sustain deep-downtrend bear boost
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _deep_dt_held
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -2343,7 +2316,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._deep_dt_boost_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
