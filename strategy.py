@@ -1265,37 +1265,12 @@ class Strategy:
                 _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
-                # Exp2 (architectural, indep): close-loc SHRINK counterpart to the
-                # validated boost above. Symmetric signal: shrink trend-aligned
-                # entries whose entry bar closed OPPOSITE the trade direction (low
-                # intrabar conviction - a bull entry bar that closed near its low, or
-                # a bear entry bar that closed near its high). The boost proved
-                # close_loc is a CONTINUATION signal for grinding trends (rally bars
-                # close high then continue -> boost); the symmetric implication is
-                # that a grinding-trend entry bar closing AGAINST the entry is a
-                # lower-quality counter-move-within-trend -> smaller first-bar
-                # commitment. Same validated gate stack as the boost (trend-w x ER
-                # grind gate x multi-day ret_vlong>0 on bull) isolates the
-                # grinding-trend continuation case (close against = low conviction
-                # only when the move is directional grind, NOT chop noise and NOT
-                # crash capitulation V-bounces). Bear side ungated by ret_vlong
-                # (mirrors the boost exactly): a counter-trend short whose bar
-                # closed high = the pullback recovered against the short = low-
-                # conviction ct short (rally's losing pullback shorts); a trend-
-                # aligned crash short rarely closes high so the shrink stays ~off in
-                # crash. Shrink-only (caps at 1.0, safe family), first-bar-only,
-                # 0.05 max, bilateral. New cross-data-type dep (close_loc applied as
-                # a shrink, distinct from the boost application).
-                _cl_bull_against = max(0.0, np.tanh((0.45 - _close_loc) / 0.15))  # fires close near low (against bull)
-                _cl_bear_against = max(0.0, np.tanh((_close_loc - 0.55) / 0.15))  # fires close near high (against bear)
-                _close_conv_shrink_bull = 1.0 - 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_against
-                _close_conv_shrink_bear = 1.0 - 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_against
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _close_conv_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _close_conv_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
