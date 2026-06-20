@@ -332,42 +332,6 @@ class Strategy:
             else:
                 _alt_dvp[_asym] = 0.0
 
-        # Exp1 (architectural, indep): CROSS-SECTIONAL RELATIVE-STRENGTH ranking.
-        # NEW data dependency genuinely orthogonal to every existing cross-symbol
-        # primitive: prior cross-symbol deps compare a LEADER to a follower
-        # directionally (BTC 96-bar trend -> alt, partner 20-bar slope -> alt),
-        # confirming DIRECTION. NONE ranks the symbols AGAINST EACH OTHER by
-        # recent momentum magnitude. RS = own ret_long minus the cross-sectional
-        # MEAN ret_long across the active symbols: positive = this symbol is
-        # currently OUTPERFORMING its peers (the trend leader among the 3),
-        # negative = UNDERPERFORMING (the laggard). Computed once per bar from
-        # each symbol's 20-bar close return (smooth, AR(1)-averaged). Used as a
-        # continuous first-bar SIZE REALLOCATION modulator on trend-aligned
-        # entries (not a voter, not a direction signal): a trend entry on the
-        # cross-sectional leader is a higher-quality trend trade (the strongest
-        # mover in a confirmed trend captures more per unit risk) -> larger first-
-        # bar commitment; a trend entry on the laggard is lower-quality (a weak/
-        # lagging participant that more often gives back) -> smaller commitment.
-        # This is REALLOCATION (boost leaders, shrink laggards), NOT gross sizing
-        # up -- Sharpe-seeking (cut laggard drag, amplify leader strength), the
-        # v2.1 path (return-seeking uniform sizing is dead per session 920).
-        # Trend-ALIGNMENT gated (only fires on entries whose direction matches
-        # own ret_long sign -> spares counter-trend shorts which are already
-        # heavily shrunk by the ct_vlong/churn_ct stack, and spares chop where RS
-        # is mean-reverting noise). Deep-saturated (/0.03 RS -> near-constant
-        # where it fires, noise-free per the validated safe-family lesson), first-
-        # bar only, small magnitude (max +0.06 leader / -0.06 laggard). Direction-
-        # agnostic general principle (no regime label): in any multi-asset trend,
-        # the relative leader is the higher-quality trend entry.
-        _xs_ret_long = {}
-        for _xs_sym in ACTIVE_SYMBOLS:
-            if _xs_sym in bar_data:
-                _xs_bd = bar_data[_xs_sym]
-                if len(_xs_bd.history) > LONG_WINDOW:
-                    _xs_c = _xs_bd.history["close"].values
-                    _xs_ret_long[_xs_sym] = (_xs_c[-1] - _xs_c[-LONG_WINDOW]) / _xs_c[-LONG_WINDOW]
-        _xs_mean = float(np.mean(list(_xs_ret_long.values()))) if _xs_ret_long else 0.0
-
         for symbol in ACTIVE_SYMBOLS:
             if symbol not in bar_data:
                 continue
@@ -411,20 +375,6 @@ class Strategy:
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
             ret_long = (closes[-1] - closes[-LONG_WINDOW]) / closes[-LONG_WINDOW]
-            # Exp1: cross-sectional relative-strength factor (own ret_long vs the
-            # cross-sectional mean computed in the pre-pass above). Signed: positive
-            # when this symbol leads its peers, negative when it lags. Tanh-bounded
-            # so the magnitude is near-constant where it fires (deep-saturated,
-            # noise-free). Trend-ALIGNMENT gated here (boost/shrink only on entries
-            # matching own ret_long sign) -> ct shorts (bull entry w/ ret_long<0,
-            # bear entry w/ ret_long>0) and chop entries get factor 1.0 (RS ~0 in
-            # flat/mean-reverting regimes anyway). Reallocation: leader boost +
-            # laggard shrink, NOT gross sizing up (Sharpe-seeking per v2.1).
-            _xs_rs = ret_long - _xs_mean
-            _rs_align_bull = max(0.0, np.tanh(ret_long / 0.04))   # ~1 uptrend-aligned bull, 0 ct/chop
-            _rs_align_bear = max(0.0, np.tanh(-ret_long / 0.04))  # ~1 downtrend-aligned bear, 0 ct/chop
-            _rs_factor_bull = 1.0 + 0.06 * _rs_align_bull * np.tanh(_xs_rs / 0.03)
-            _rs_factor_bear = 1.0 + 0.06 * _rs_align_bear * np.tanh(-_xs_rs / 0.03)
             # Architectural: multi-day (~96-bar) trend context, a SLOWER timescale than
             # the 20-bar ret_long. In a grinding rally the 20-bar window frequently
             # shows local negative returns (multi-hour pullbacks) while the multi-day
@@ -1470,11 +1420,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _rs_factor_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _rs_factor_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
