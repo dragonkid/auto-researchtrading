@@ -1295,7 +1295,21 @@ class Strategy:
                 _cl_low = bd.history["low"].values[-3:]
                 _cl_close = closes[-3:]
                 _cl_span = np.maximum(_cl_high - _cl_low, 1e-10)
-                _close_loc = float(np.mean((_cl_close - _cl_low) / _cl_span))  # [0,1], 3-bar mean
+                # Exp7 (architectural, indep): VOLUME-WEIGHTED close-loc. Replace the
+                # equal-weighted 3-bar mean close_loc with a volume-weighted mean so
+                # high-participation bars dominate the conviction measure. A bar closing
+                # near its high ON high volume = strong intrabar conviction WITH
+                # participation = higher-quality continuation than a low-volume close-near-
+                # high. Refines the validated close-loc keep (6e765b0f) within the productive
+                # PARTICIPATION-CONFIRMATION family (where volume/positioning confirm an
+                # ongoing move). Genuinely distinct from DVP (inter-bar directional volume)
+                # and vol_rise (total volume magnitude): this weights WHERE the close sits by
+                # how much volume participated in that bar. Falls back to equal-weighted if
+                # volume is zero. New data dep on volume x close-position conjunction.
+                _cl_vol = bd.history["volume"].values[-3:]
+                _cl_loc = (_cl_close - _cl_low) / _cl_span  # [0,1] per bar
+                _cl_vsum = float(np.sum(_cl_vol))
+                _close_loc = float(np.sum(_cl_vol * _cl_loc) / _cl_vsum) if _cl_vsum > 1e-10 else float(np.mean(_cl_loc))
                 # Branch step4: revert to ret_long trend gate (step1 was the best composite
                 # -0.000003 vs step2 ret_vlong -0.000064) AND add a GRINDING-trend (low-vol)
                 # condition. The leak in step1 was into bull-2021 (high-vol uptrend: -0.000270)
