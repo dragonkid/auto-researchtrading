@@ -1959,7 +1959,23 @@ class Strategy:
                 # gate still leaks. General principle: the cushion is earned by a trend-
                 # aligned winner whose near-term slope STILL confirms the position.
                 _et_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_et / 0.0004))
-                _exit_thresh += 0.10 * _et_trend_align * _et_profit * _et_slope_conf
+                # Branch step4: add a HIGH-VOLATILITY gate. Step3's slope-conf cut bull
+                # damage (-0.116->-0.087) but sideways was STILL destroyed (-0.282):
+                # sideways 2023 recovery phases have aligned slope+ret_vlong too, so the
+                # raise fired on mean-reverting swings and held them into reversals. The
+                # clean separator between crash (hold-extension HELPS, +0.014) and
+                # sideways (HURTS, -0.282): VOLATILITY. Crash is a HIGH-vol persistent
+                # downtrend (vol_ratio >1.2); sideways is LOW-vol (vol_ratio ~0.7-1.0);
+                # rally is LOW-vol grind. Gating on ELEVATED vol_ratio fires the raise
+                # only in genuine high-vol trend regimes (crash) and excludes the low-vol
+                # mean-reverting/choppy regimes (sideways, rally) where hold-extension
+                # destroys the fast-exit swing capture. vol_ratio is smooth (24-bar
+                # realized vol / target). General principle: a trend winner earns the
+                # soft-pressure cushion only in an ELEVATED-volatility trend regime
+                # (where trends are persistent and bounces are noise), not in calm chop
+                # (where bounces are reversals). Continuous tanh, no boundary.
+                _et_vol_w = max(0.0, np.tanh((vol_ratio - 1.1) / 0.3))  # 0 calm, ~1 elevated vol
+                _exit_thresh += 0.10 * _et_trend_align * _et_profit * _et_slope_conf * _et_vol_w
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
