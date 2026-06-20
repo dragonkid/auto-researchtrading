@@ -1419,12 +1419,50 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp2 (architectural, indep): ADDITIVE-BOUNDED fusion of the 8
+                # volume/DVP confirmation boosts (replaces their MULTIPLICATIVE
+                # product in the entry-size stack). DECISION-ARCHITECTURE change:
+                # the {own,BTC,partner}x{vol,price,DVP} grid was validated factor-by-
+                # factor (each a +0.05 max, deep-saturated, near-constant keep) but
+                # as INDEPENDENT KEEPS never tested as a COMPOUND product. In a broad
+                # trend (rally grind) ALL 8 fire at once -> multiplicative product
+                # 1.05^8 ~= 1.48, a +48% first-bar over-commit on the trend-aligned
+                # rally longs whose over-commit raises pullback giveback/MaxDD (same
+                # mechanism as the discarded win-accelerator over-commit). The boosts
+                # share underlying gates (_vol_rise, _btc_trend, _partner_lead recur)
+                # -> their fires are CORRELATED -> the multiplicative compound double-
+                # counts the same participation signal. Replace with an ADDITIVE sum
+                # of per-boost EXCESSES (boost-1.0, each >=0 since all 8 are pure
+                # boosts >=1.0) capped at +0.20: all-fire case gives +20% (not +48%),
+                # partial-fire (~2 firing) near-unchanged (0.10 ~= 1.05^2-1). Caps the
+                # compound over-commit in broad-trend regimes while preserving each
+                # boost's directional contribution and sparing no-fire cases. Shrink-
+                # on-the-upside only. New control flow: subsystem-group fusion
+                # operator change (x -> +bounded) at entry sizing.
+                _volconf_group_bull = 1.0 + min(0.20, (
+                    (_vol_rise_boost_bull - 1.0) +
+                    (_vol_partner_boost_bull - 1.0) +
+                    (_vol_btc_boost_bull - 1.0) +
+                    (_btcvol_partner_boost_bull - 1.0) +
+                    (_partnervol_btc_boost_bull - 1.0) +
+                    (_dvp_boost_bull - 1.0) +
+                    (_btcdvp_boost_bull - 1.0) +
+                    (_partnerdvp_boost_bull - 1.0)))
+                _volconf_group_bear = 1.0 + min(0.20, (
+                    (_vol_rise_boost_bear - 1.0) +
+                    (_vol_partner_boost_bear - 1.0) +
+                    (_vol_btc_boost_bear - 1.0) +
+                    (_btcvol_partner_boost_bear - 1.0) +
+                    (_partnervol_btc_boost_bear - 1.0) +
+                    (_dvp_boost_bear - 1.0) +
+                    (_btcdvp_boost_bear - 1.0) +
+                    (_partnerdvp_boost_bear - 1.0)))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _volconf_group_bull * _close_conv_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _volconf_group_bear * _close_conv_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
