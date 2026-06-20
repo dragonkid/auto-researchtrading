@@ -1865,7 +1865,7 @@ class Strategy:
                 _slp_recent = _fast_slope(np.log(_hl2[-8:]))
                 _slp_older = _fast_slope(np.log(_hl2[-16:-8]))
                 _decel_raw = (_slp_older - _slp_recent) * _pos_dir_xd  # + = decelerating
-                _decel_conf = max(0.0, np.tanh(_slp_recent * _pos_dir_xd / 0.0003))  # slope still confirming
+                _decel_conf = max(0.0, np.tanh(_slp_recent * _pos_dir_xd / 0.0005))  # branch step6: tighten /0.0003->/0.0005 (fire only when slope STRONGLY confirming = deep swing-tops, sparing rally modestly-confirming weak phases)
                 _decel_strength = max(0.0, np.tanh(_decel_raw / 0.00015))  # strong decel only
                 # Branch step2: WEAK-MULTI-DAY-TREND gate. Step1 decel pressure
                 # CATASTROPHIC on rally (-0.478, stability 0.124): rally grinds up with
@@ -1879,7 +1879,7 @@ class Strategy:
                 # sensitive R^2/ER cleanliness gate that walled prior branches). Weak-trend
                 # gate: 1.0 at ret_vlong~0 (sideways), fading to 0 at strong trend (rally).
                 _decel_weak_trend = 1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
-                _dec_pressure = 0.40 * _decel_conf * _decel_strength * _decel_weak_trend
+                _dec_pressure = 0.55 * _decel_conf * _decel_strength * _decel_weak_trend
                 _w_dec = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
