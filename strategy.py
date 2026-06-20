@@ -1727,7 +1727,18 @@ class Strategy:
                 # _exit_slope (12/16/22 mean, already computed). /0.0004 scale (matches the
                 # de-risk cushion slope-conf calibration).
                 _mh_slope_conf = max(0.0, np.tanh(_exit_slope * _mh_pos_dir / 0.0004))
-                _max_hold += 3.0 * _mh_align * _mh_winning * _mh_vol_stable * _mh_slope_conf
+                # Branch step3: vol-LEVEL (calm-regime) gate. Step2's slope-conf + deep-trend
+                # gates still fired on bull 2021 (deep uptrend, stable-vol stretches, slope
+                # still confirming) -> held into sharp V-corrections -> bull -0.089. bull 2021
+                # is a HIGH-VOL regime (frequent vol-expansion spikes = why _ve_pressure is
+                # load-bearing there); crash 2022 sustained downtrend and rally 2024 grind are
+                # LOWER-vol. Gate the extension on LOW vol_ratio (calm): full extension when
+                # vol_ratio<0.9, zeroing by vol_ratio~1.2. crash/rally (calm grind) keep the
+                # extension; bull 2021 (high vol) gets none. Direction-agnostic general
+                # principle: only extend winner holds in CALM sustained trends (vol level low),
+                # never in high-vol regimes where sharp corrections are structurally likely.
+                _mh_calm = max(0.0, 1.0 - max(0.0, np.tanh((vol_ratio - 0.9) / 0.3)))  # ~1 calm, 0 high-vol
+                _max_hold += 3.0 * _mh_align * _mh_winning * _mh_vol_stable * _mh_slope_conf * _mh_calm
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
