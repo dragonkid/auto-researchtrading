@@ -973,8 +973,8 @@ class Strategy:
                     # allow a higher max without the wall. Max 0.90 (step4 best) retained;
                     # gate 10.0 bars retained. If no wall, amplify next.
                     _prior_dur_short = max(0.0, min(1.0, np.tanh((10.0 - _prior_dur) / 1.5)))
-                    _prior_dur_shrink_bull = 1.0 - 1.30 * _churn_ct * _bull_ctmd * _prior_dur_short
-                    _prior_dur_shrink_bear = 1.0 - 1.30 * _churn_ct * _bear_ctmd * _prior_dur_short
+                    _prior_dur_shrink_bull = 1.0 - 0.90 * _churn_ct * _bull_ctmd * _prior_dur_short
+                    _prior_dur_shrink_bear = 1.0 - 0.90 * _churn_ct * _bear_ctmd * _prior_dur_short
                 else:
                     _prior_dur_shrink_bull = 1.0
                     _prior_dur_shrink_bear = 1.0
