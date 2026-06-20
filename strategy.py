@@ -214,6 +214,12 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp4 (architectural, indep): per-symbol consecutive-WIN streak (mirror of the
+        # portfolio-level _loss_streak, a validated keep). Increment on a winning full
+        # exit, reset on a losing one. Persists across positions (a symbol on a winning
+        # run keeps the streak). NOT popped on full-exit state reset (persists like
+        # _last_exit_pnl). Used by the win-streak trend-aligned entry boost below.
+        self._win_streak = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1419,12 +1425,46 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp4 (architectural, indep): per-symbol consecutive-WIN-STREAK
+                # trend-aligned entry-size BOOST. Symmetric counterpart of the validated
+                # portfolio _loss_streak ct-shrink (a keep): that shrinks COUNTER-TREND
+                # entries after consecutive LOSSES; this boosts TREND-ALIGNED entries
+                # after consecutive WINS. NEW per-symbol state (_win_streak, mirror of
+                # _loss_streak) + new data source (own-symbol reliability / hit-rate
+                # regime, distinct from _loss_streak's portfolio loss COUNT and from
+                # _outcome_size_mult's single-last-loss). Mechanism: a symbol on a long
+                # WIN streak is trading reliably in the current regime -> its trend-
+                # aligned entries are high-quality -> larger first-bar commitment
+                # captures more of the sustained move -> higher Sharpe in return-limited
+                # high-WR regimes (crash 100pct WR +3.2pct return, 0.65pct MaxDD = massive
+                # DD headroom -> sizing up is safe and raises return -> Sharpe up, since
+                # 100pct WR means no loss variance so return rises faster than vol).
+                # TWO-GATE clean isolation of crash (avoids the rally/bull MaxDD-sensitivity
+                # and the sideways std-widening): (1) TREND-ALIGNMENT gate
+                # (|ret_long|/0.04 -> 0 in chop) SPARES sideways (low |ret_long|, so its
+                # 98pct-WR long streaks do NOT get boosted -> sideways not pushed higher,
+                # std not widened against the binding rally); (2) WIN-STREAK THRESHOLD
+                # (fires at 7+ consecutive wins, steep tanh /2.0 -> ~0 at streak<=7, ~1 at
+                # 10+) -> crash (100pct WR, streak ~52) gets FULL boost; rally (84.7pct WR,
+                # avg streak ~5.5, rarely reaches 7) and bull (86.5pct, ~6) get MINIMAL
+                # boost -> protects the MaxDD-sensitive binding constraint (Exp3 confirmed
+                # sizing UP rally longs raises MaxDD and lowers Sharpe). Small max +0.08,
+                # first-bar-only, bilateral, direction-agnostic general principle (no
+                # regime label -- the regime effects fall out of each symbol's realized
+                # win streak + trend-alignment). New cross-component data dep: first-bar
+                # size depends on per-symbol consecutive-win streak x trend-alignment.
+                _ws_sym = self._win_streak.get(symbol, 0)
+                _ws_ramp = max(0.0, np.tanh((_ws_sym - 7) / 2.0))  # 0 streak<=7, ~1 streak>=10
+                _ws_bull_ta = max(0.0, np.tanh(ret_long / 0.04))   # bull entry aligned with uptrend
+                _ws_bear_ta = max(0.0, np.tanh(-ret_long / 0.04))  # bear entry aligned with downtrend
+                _ws_boost_bull = 1.0 + 0.08 * _ws_bull_ta * _ws_ramp
+                _ws_boost_bear = 1.0 + 0.08 * _ws_bear_ta * _ws_ramp
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _ws_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _ws_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
@@ -2314,8 +2354,10 @@ class Strategy:
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
                             self._loss_streak += 1
+                            self._win_streak[symbol] = 0  # Exp4: reset per-symbol win streak on a loss
                         else:
                             self._loss_streak = 0
+                            self._win_streak[symbol] = self._win_streak.get(symbol, 0) + 1  # Exp4: increment on a win
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
