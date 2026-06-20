@@ -1693,33 +1693,6 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
-                # Exp4 (architectural, indep): COUNTER-TREND-LONG winner-hold extension
-                # (crash-bounce return-seeking, ct-direction-scoped). The prior vol-stability
-                # winner-hold branch proved crash return CAN be lifted (+0.022 Sh, 1.264->1.332
-                # VERIFIED) by extending trend-aligned winning holds -- but it stagnated at
-                # +0.0017 composite because the extension fired on bull/sideways too (fixed
-                # gate-firing bleed -0.022 offset the crash gain). THIS version scopes the
-                # extension to COUNTER-TREND LONGS: a LONG position held while ret_vlong<0 is a
-                # crash dead-cat-bounce long (crash is 100% bounce LONGS, 100% WR -- the
-                # measured crash edge). Extending modest-winning bounce longs captures more of
-                # the bounce -> higher crash Sharpe (return-limited crash Sh1.264, AnnRet 3.2%,
-                # DD 0.65% = large return headroom). Crucially, the ct-LONG gate SPARES the
-                # regimes that bled in the prior branch: bull longs (ret_vlong>0 -> trend-aligned
-                # -> gate 0), rally longs (ret_vlong>0 -> gate 0), sideways (ret_vlong~0 -> ~0).
-                # So the fixed bleed that capped the prior branch at +0.0017 is structurally
-                # removed. Gates: ct-long (ret_vlong<0, /0.01 fast-sat noise-free) x winning
-                # (pos_pnl>0, /|stop|) x slope-confirming (_slope_conf, near-term slope still
-                # agrees -> bounce ongoing not reversing) x calm (vol_ratio low, /0.4 -- the
-                # vol-stability branch's vol-of-vol~1 calm condition, here via low realized vol
-                # = stable regime not chaotic). Modest +2.0 bar extension (below the prior
-                # branch's +5 stability wall where crash stab 1.0->0.104; +2 stays in the
-                # stable region). New cross-component data dep: _max_hold depends on ct-long x
-                # winning x slope x calm conjunction. Trend-aligned LONG holds byte-identical.
-                _ct_long = max(0.0, np.tanh(-ret_vlong / 0.01)) if current_pos > 0 else 0.0
-                _ctlong_win = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _ctlong_calm = max(0.0, 1.0 - min(1.0, np.tanh(max(0.0, (vol_ratio - 0.8)) / 0.4)))
-                _ct_long_ext = _ct_long * _ctlong_win * _slope_conf * _ctlong_calm
-                _max_hold = _max_hold + 2.0 * _ct_long_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
