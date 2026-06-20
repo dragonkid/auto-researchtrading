@@ -1786,22 +1786,6 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
-                # Exp3 (architectural, indep): VOL-EXPANSION amplification of the
-                # slope-against weight for LOSING positions. Exp2 added a loss-side ve
-                # TERM to the MAX fusion and was byte-identical inert (slope-against
-                # already dominates the MAX when both fire, so an additive sub-dominant
-                # term cannot move the max). The structural fix: AMPLIFY the dominant
-                # term itself. During a correlated rally pullback (Apr/Aug 2024) vol
-                # explodes before slope fully reverses; a losing trend long facing this
-                # regime shift should cut FASTER. Boost _w_slope (the slope-against
-                # weight, already heavier in loss) by up to +0.45 when (a) losing AND
-                # (b) severe vol expansion (regime shift confirmed by vol-of-price).
-                # Amplifying the dominant term raises _soft_max directly (unlike Exp2's
-                # inert additive term). Gated on loss (_pnl_scale<0) so profit-side
-                # winners are unaffected (no premature winner cut - the Exp1 lesson).
-                # Smooth tanh on vol_expansion above 1.5x; max +0.45 weight. New cross-
-                # component data dep: slope-against exit weight depends on vol expansion.
-                _w_slope += 0.45 * max(0.0, -_pnl_scale) * max(0.0, np.tanh((_vol_expansion - 1.5) / 0.5))
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
