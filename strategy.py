@@ -91,7 +91,7 @@ BASE_POSITION_SIZE = 0.065
 # prior _port_dd_atten loosening (which touched a minor multiplier and moved
 # realized sizes ~0): this scales the DOMINANT `size` base.
 PORT_DD_HEADROOM_KNEE = 0.08
-PORT_DD_BOOST_MAX = 0.5
+PORT_DD_BOOST_MAX = 0.4
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -1458,19 +1458,16 @@ class Strategy:
                 # density. Reassigns portfolio-level _port_dd_boost to its churn-gated
                 # value for the entry target + scale-in cache.
                 _boost_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
-                # Branch step3: path-cleanliness gate. Step2 showed the boost helps
-                # CLEAN trends (crash downtrend, sideways grind -- Sharpe held, return
-                # up) but hurts CHOPPY bull-2021 (sharp corrections -- bigger positions
-                # amplify giveback, Sharpe drops 1.864->1.81). Gate the boost on the
-                # Kaufman efficiency ratio _er (path directionality over 12 bars: high
-                # = price moved efficiently one way = clean trend, low = choppy). Fires
-                # only when _er is high (clean directional move), sparing choppy entries.
-                # General path-shape gate (no regime label); regime effects fall out of
-                # realized per-bar path efficiency. Also reduce magnitude 0.8 -> 0.5
-                # (step2's 0.8 over-boosted bull; a smaller boost is less likely to drop
-                # Sharpe while still capturing return_reward in clean-trend regimes).
-                _boost_clean = max(0.0, min(1.0, np.tanh((_er - 0.30) / 0.15)))
-                _port_dd_boost = 1.0 + PORT_DD_BOOST_MAX * _port_dd_headroom * _boost_calm * _boost_clean
+                # Branch step4: revert step3's _er path-cleanliness gate (it
+                # suppressed sideways -- a low-_er grind that GAINED in step2 -- and
+                # rally, a wrong discriminator). Keep step2's churn gate (the validated
+                # structure: spare rally bursts). Step3 confirmed bull's loss is
+                # super-linear in boost magnitude (0.8->-0.0254, 0.5->-0.0056), so a
+                # LOWER magnitude with churn-gate-only should shrink bull's loss faster
+                # than crash/sideways' gains (which held Sharpe -> scale ~linearly).
+                # Magnitude 0.8 -> 0.4: bull loss ~-0.005 (extrapolated), crash/sideways
+                # gains ~half of step2 (+0.004/+0.008), rally ~flat (churn-spared).
+                _port_dd_boost = 1.0 + PORT_DD_BOOST_MAX * _port_dd_headroom * _boost_calm
                 if _bull_ready and _bull_admit:
                     target = size * _port_dd_boost * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
