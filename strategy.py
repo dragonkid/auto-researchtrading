@@ -1916,6 +1916,33 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Exp1 (architectural, indep): TREND-ALIGNED WINNER exit-threshold raise
+                # (return-seeking via the binding exit channel). The strategy's binding
+                # regimes are return-limited despite near-perfect win rates: crash 100%
+                # WR / 0.65% MaxDD / 3.2% AnnRet, sideways 98% WR / 0.55% MaxDD / 3.5%
+                # AnnRet -- enormous DD headroom (15x below the 10% cutoff) but low
+                # return because gain-locking exits fire too early. Prior return-seeking
+                # attempts (winner-hold extension, peak-profit giveback widening) were
+                # BYTE-IDENTICAL INERT: they targeted time-pressure and pp-giveback,
+                # which crash exits BEFORE reaching (crash's winning shorts exit via
+                # slope-against on bounces first). This targets the THRESHOLD itself --
+                # the gate every soft-pressure de-risk/exit must cross -- which IS the
+                # binding channel. Raise _exit_thresh for MATURE (past scale-in) trend-
+                # aligned winners: a position whose direction is CONFIRMED by the multi-
+                # day ret_vlong AND is in profit needs stronger soft pressure to trigger
+                # de-risk -> rides trend bounces (slope-against noise) longer -> captures
+                # more trend move -> higher return/Sharpe in the trend regimes. Profit-
+                # gated (only winners), multi-day-trend-gated (pos_dir matches ret_vlong
+                # -- excludes crash dead-cat-bounce longs and rally pullback shorts whose
+                # 20-bar trend flips but 96-bar ret_vlong confirms they are counter-trend),
+                # trend-strength-scaled (deep trend -> larger raise). Stop-loss exempt
+                # (hard exit below). General principle (no regime label): a profitable
+                # position confirmed by the multi-day trend earns a wider soft-pressure
+                # cushion. Continuous tanh, no decision boundary. Max 15% raise.
+                _pos_dir_et = 1.0 if current_pos > 0 else -1.0
+                _et_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_et / 0.03))
+                _et_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _exit_thresh += 0.15 * _et_trend_align * _et_profit
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
