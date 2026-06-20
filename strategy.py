@@ -690,8 +690,13 @@ class Strategy:
             # saturated gate fires on shallower prior MAE (more post-chop re-entries
             # shrunk); larger max deepens the shrink. Monitor for alpha-trade-wall
             # regression (over-shrinking trend-resumption entries) on rally/crash.
+            # Branch step3: amplify further (max 0.26->0.34, sat 0.35->0.25) -- bull
+            # gain is monotonic w/ magnitude and crash/sideways stayed byte-identical
+            # through step2 (the gate fires only after a deep-MAE prior trade, which
+            # crash/sideways rarely produce). Probe the wall: does over-shrinkage
+            # finally regress rally (alpha-trade) or break the byte-identical regimes?
             _prior_mae = self._last_exit_mae.get(symbol, 0.0)
-            _prior_mae_atten = 1.0 - 0.26 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.35)))
+            _prior_mae_atten = 1.0 - 0.34 * max(0.0, min(1.0, np.tanh(-_prior_mae / abs(STOP_LOSS_PCT) / 0.25)))
 
             if current_pos == 0 and not in_cooldown:
                 # Architectural simplification: removed Donchian range-position entry adj.
