@@ -132,6 +132,19 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 CONC_EXP_FLOOR = 0.05 * LEVERAGE_K   # concurrent same-dir notional/equity below which no shrink (scaled by LEVERAGE_K: 2x size -> 2x notional/equity -> threshold scales to keep activation invariant)
 CONC_EXP_SCALE = 0.06 * LEVERAGE_K   # tanh saturation scale of the concentration ramp (scaled by LEVERAGE_K for decision invariance)
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
+# Exp6 (architectural): leverage-coupled concentration governor cap. At high
+# leverage the correlated-regime DD (rally: BTC/ETH/SOL all grind up together)
+# is the binding dd_gate constraint (rally DD 7.58pct at the 8pct knee at 5x).
+# The governor's MAX_SHRINK cap (0.35) was calibrated at 1x/2x; at 5x the same
+# concurrent-exposure FRACTION produces 5x deeper portfolio DD. Scale the cap
+# with LEVERAGE_K so high-concurrency entries shrink more at high leverage ->
+# cuts rally's correlated-long pile-up DD at the knee. Behavior-based signal
+# (concurrent same-direction notional, NOT a regime label): low-concurrency
+# regimes (crash/sideways/bull, mostly single-leg) stay below CONC_EXP_FLOOR
+# -> ~no shrink -> byte-identical; only the correlated-pile-up regime is
+# affected. Floor stays 1-_cap (>= 0.45x at 5x, still commits). Stability-safe
+# (reads portfolio positions, slow-moving). New LEVERAGE-coupling on the cap.
+CONC_EXP_MAX_SHRINK_LEV = CONC_EXP_MAX_SHRINK + 0.08 * (LEVERAGE_K - 1.0)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
@@ -1186,8 +1199,8 @@ class Strategy:
                             _short_notional += -_opos
                 _conc_frac_bull = _long_notional / max(equity, 1e-10)
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
-                _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
-                _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK_LEV * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK_LEV * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
