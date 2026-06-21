@@ -117,6 +117,21 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Architectural (Exp4 this session): PORTFOLIO-DD-ADAPTIVE TP-HARVEST MAGNITUDE
+# amplification. Exp1 (keep 91c4496a) validated the DD-adaptive tp-harvest: relaxing
+# the _ts_supp suppression during portfolio DD harvests clean-trend winners at peak,
+# capping bull's DD (spiky correction pullbacks). That keep used the BASE harvest
+# magnitude (0.30 max scale-down). This deepens the SAME validated DD lever: during
+# DEEP portfolio DD, amplify the harvest magnitude (0.30 -> up to 0.45) so MORE of
+# the peak is locked exactly when capping DD is worth ~2x under v2.2. Phase-3-style
+# escalation of a validated mechanism (not a new direction). Byte-identical at
+# portfolio peak (dd_frac=0 -> amplification 1.0 -> baseline 0.30 magnitude).
+# Reuses the Exp1 scale (PORT_DD_TP_HARVEST_SCALE) so relaxation and magnitude
+# amplification activate in lockstep. Risk: over-harvesting -> recovery miss (the
+# walled held-position de-risk lesson); mitigated by harvest being a 0.45 SCALE-DOWN
+# (never a full cut -- 55% of the winner rides the recovery) and profit-target-only
+# (fires at peak >= 1.6*_pp_min, never on an open/losing position).
+PORT_DD_TP_HARVEST_MAGAMP = 0.50  # max fractional amplification of tp-harvest magnitude at deep DD (0.30 -> up to 0.45)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -2055,7 +2070,13 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp4 (architectural): portfolio-DD-adaptive MAGNITUDE amplification
+                    # of the tp-harvest (deepens the Exp1 keep's validated DD lever). During
+                    # deep portfolio DD, raise the harvest magnitude (0.30 -> up to 0.45) so
+                    # more of the peak is locked when capping DD is worth ~2x. Byte-identical
+                    # at portfolio peak (factor 1.0 -> baseline 0.30). Reuses the Exp1 scale.
+                    _dd_tp_mag = 1.0 + PORT_DD_TP_HARVEST_MAGAMP * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
+                    _tp_scale = (0.30 * _dd_tp_mag) * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
