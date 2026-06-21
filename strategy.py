@@ -181,12 +181,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Branch (profit-velocity de-risk gate): EMA of per-bar unrealized PnL delta.
-        # Smooths the single-bar velocity (pos_pnl - prev_pos_pnl) so the de-risk
-        # floor gate responds to SUSTAINED PnL trend, not 1-bar noise (fixes the
-        # Exp1 bull stability crash: raw per-bar delta flipped sign on price noise
-        # -> floor jumped -> position wobbled -> stability penalty).
-        self._pnl_vel_ema = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -1594,12 +1588,6 @@ class Strategy:
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
-                # Branch step2: EMA-smooth the per-bar PnL velocity (alpha=0.35 ->
-                # ~3-bar effective lookback). Sustained PnL trend, not 1-bar noise.
-                _pnl_vel_raw = pos_pnl - _prev_pnl
-                _pv_prev = self._pnl_vel_ema.get(symbol, _pnl_vel_raw)
-                _pnl_vel_ema = (1.0 - 0.35) * _pv_prev + 0.35 * _pnl_vel_raw
-                self._pnl_vel_ema[symbol] = _pnl_vel_ema
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
                 # pos_pnl >= prev_pos_pnl (rising bar).
@@ -2037,37 +2025,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp1 (architectural, indep): PROFIT-VELOCITY de-risk floor gate.
-                    # NEW data dependency at the de-risk decision: the per-bar change in
-                    # the position's OWN unrealized PnL (pos_pnl - _prev_pnl, the previous-
-                    # bar pos_pnl already tracked for confirmed-peak gating). Structurally
-                    # distinct from the trend-align gate (ret_long = a PRICE-WINDOW signal
-                    # shared by crash & sideways -> the documented crash-sideways coupling
-                    # wall). The position's PnL trajectory is a per-trade signal: a winner
-                    # whose PnL is STILL RISING this bar is on a genuine continuing move ->
-                    # lower the floor (ride through pullback noise, capture more trend
-                    # return -- targets crash, return-limited at Sh1.26 with 100pct WR +
-                    # 3.01pct DD headroom); a winner whose PnL is FALLING this bar is giving
-                    # back -> raise the floor (cut faster on real giveback). Sideways
-                    # winners mean-revert -> choppy/negative velocity -> cut (breaks the
-                    # coupling because the separator is PnL trajectory not price-window).
-                    # One-sided in profit only; smooth tanh on /0.006 (a 60bps one-bar PnL
-                    # move saturates). Floor stays bounded.
-                    # Branch step4: RAW-VELOCITY both sides (step1's signal: sideways
-                    # +0.0068) but VOL-GATED to fire only in LOW vol_ratio. Step1 crashed
-                    # bull stability 1.0->0.532 because raw per-bar velocity flips on
-                    # price noise in HIGH-vol bull -> floor jumps -> wobble. In LOW vol
-                    # (sideways, where the +0.0068 signal lives) per-bar velocity is
-                    # cleaner (smaller noise relative to signal) AND mean-reversion is
-                    # the structure the gate targets. Gate the whole velocity term by
-                    # max(0, tanh((1.0 - vol_ratio)/0.3)) -> ~1 in low-vol, 0 in high-vol
-                    # (bull/crash trend) -> no wobble in bull, stability preserved.
-                    # Continuous (smooth tanh on vol_ratio, no regime label). Keeps the
-                    # step1 sideways signal while protecting bull stability.
-                    _vel_gate = np.tanh(_pnl_vel_ema / 0.006)
-                    _vel_vol_gate = max(0.0, np.tanh((1.0 - vol_ratio) / 0.3))
-                    _de_floor -= 0.08 * max(0.0, _vel_gate) * _ta_de_profit * _vel_vol_gate
-                    _de_floor += 0.06 * max(0.0, -_vel_gate) * _ta_de_profit * _vel_vol_gate
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -2403,7 +2360,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_vel_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
