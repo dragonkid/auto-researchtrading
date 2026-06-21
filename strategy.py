@@ -1166,8 +1166,13 @@ class Strategy:
                     # not reached (this is the alt branch). New cross-symbol pair data dep.
                     _partner = "SOL" if symbol == "ETH" else "ETH"
                     _partner_lead = _alt_lead.get(_partner, 0.0)
-                    _xasset_bull *= 1.0 + 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))
-                    _xasset_bear *= 1.0 + 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    # Branch step7 (simplification): REMOVED Exp2 partner-alt lead-lag boost
+                    # (+0.05). Test whether the partner-alt 20-bar momentum is redundant with
+                    # the BTC 96-bar trend confirmation (broad-trend agreement at a longer
+                    # timescale). The partner-DISAGREEMENT shrink (next) is retained. Stacks
+                    # step1 over-commit reduction if redundant.
+                    # _xasset_bull *= 1.0 + 0.05 * max(0.0, np.tanh(_partner_lead / 0.02))  # removed
+                    # _xasset_bear *= 1.0 + 0.05 * max(0.0, np.tanh(-_partner_lead / 0.02))  # removed
                     # Exp3 (architectural, indep): symmetric partner-DISAGREEMENT entry shrink.
                     # The Exp2 keep validated the partner-alt lead-lag as a confirmation BOOST
                     # (agreement -> bigger). This adds the symmetric SHRINK counterpart: an alt
