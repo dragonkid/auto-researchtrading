@@ -1584,7 +1584,29 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
+                    # Exp2 (architectural): CONCAVE front-loaded scale-in ramp for
+                    # trend-aligned + slope-confirmed early WINNERS. The linear ramp
+                    # (progress) reaches only ENTRY_INITIAL_FRAC + 0.5*(1-init) of full
+                    # size at the midpoint; a slope-confirmed trend-aligned position
+                    # that is ALREADY in profit (pos_pnl>0) early is a high-quality
+                    # confirmed-trend entry -> front-load the ramp (progress**0.6) so
+                    # more size is committed in bars 1-2, capturing more of the
+                    # confirmed trend move before it extends -> higher Sharpe in the
+                    # trend regimes (rally/crash, the low-raw binding constraint). The
+                    # _win_accel (line ~1557) SHORTENS the window; this changes the
+                    # ramp SHAPE within it (more size early at unchanged window) -- a
+                    # distinct lever. Byte-identical for non-qualifying positions
+                    # (linear ramp): counter-trend, slope-weak, or early losers keep
+                    # the linear ramp (no extra early size on unconfirmed/adverse
+                    # positions -> stability preserved). Uses _slope_conf (16-bar OLS
+                    # slope confirming position, already computed), trend-alignment via
+                    # ret_long*pos_dir, and pos_pnl>0. Smooth (continuous power, no
+                    # boundary); direction-agnostic. New control flow: scale-in ramp
+                    # shape depends on confirmation quality.
+                    _si_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _si_qual = _slope_conf * max(0.0, np.tanh(ret_long * _si_pos_dir / 0.04)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                    _si_eff = _eff_progress ** (1.0 - 0.40 * _si_qual)  # 1.0 linear (no qual), 0.6 concave (full qual)
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _si_eff)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
                     # categories: (1) real reversal (counter-trend entries facing the
