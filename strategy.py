@@ -249,6 +249,22 @@ class Strategy:
         # makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation
         # while preserving the pullback-depth signal that drives the rally DD relief.
         self._equity_ema = 0.0
+        # Exp1 (architectural, indep): SLOW EMA of portfolio equity for an
+        # equity-curve MOMENTUM (slope) admission modulator. The fast _equity_ema
+        # (span 3) and this slow EMA (span 12) form a MACD-style fast-over-slow
+        # momentum on the strategy's OWN equity curve -- a meta-signal about whether
+        # the strategy's edges are currently being rewarded (equity rising) or
+        # punished (equity declining) by the prevailing regime. Used to tighten
+        # entry ADMISSION when equity momentum is negative. Distinct new data
+        # dependency: prior portfolio-DD circuits read the equity LEVEL (peak-to-
+        # trough DD fraction -> entry SIZE shrink, exit giveback tightening); this
+        # reads the equity DERIVATIVE (slope). A strategy can be in DD but recovering
+        # (positive slope -> re-enter normally) or at peak but rolling over (negative
+        # slope -> tighten) -- the derivative is orthogonal information to the level.
+        # Both EMAs are smoothed so the slope is bar-stable (no admission-timing
+        # noise -> no stability penalty). Shrink-only: factor >= 1.0 (tighten on
+        # decline, byte-identical when equity flat/up).
+        self._equity_ema_slow = 0.0
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
@@ -296,6 +312,16 @@ class Strategy:
         # fraction only; _peak_equity still uses instantaneous for the entry circuit).
         _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
         self._equity_ema = _eq_alpha * equity + (1.0 - _eq_alpha) * (self._equity_ema if self._equity_ema > 0 else equity)
+        # Exp1: slow equity EMA (span 12) for the equity-momentum admission modulator.
+        _eq_slow_alpha = 2.0 / (12 + 1)
+        self._equity_ema_slow = _eq_slow_alpha * equity + (1.0 - _eq_slow_alpha) * (self._equity_ema_slow if self._equity_ema_slow > 0 else equity)
+        # Equity-curve momentum: fast-over-slow (MACD-style), normalized to slow EMA.
+        # Positive = equity curve rising (regime rewarding edges), negative = declining.
+        # Smooth (both terms are EMAs) so the admission factor is bar-stable. Scale
+        # 0.0006: meaningful equity moves are ~bps/bar; a 6bps/bar persistent decline
+        # saturates the tighten. tanh keeps it bounded + continuous.
+        _eq_mom = (self._equity_ema - self._equity_ema_slow) / max(self._equity_ema_slow, 1e-10)
+        _eq_mom_admit = 1.0 + 0.12 * max(0.0, -np.tanh(_eq_mom / 0.0006))  # >=1.0, max +12% tighten on decline
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -629,8 +655,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * _eq_mom_admit
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * _eq_mom_admit
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
