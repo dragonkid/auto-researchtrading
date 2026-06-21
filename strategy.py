@@ -145,24 +145,23 @@ PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturat
 # invariance). LEVERAGE_K is a single named coupling constant.
 LEVERAGE_K = 4.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
-# Architectural (this session): entry-vs-resize emission threshold split. The single
-# emission threshold `1.0*LEVERAGE_K` (Branch step2 behavior-preserving leverage) made
-# cold ENTRIES and same-sign RESIZES share one $-floor. Under v2.2 (calmar return_reward,
-# leverage-INVARIANT) the LEVERAGE_K=5 level is no longer optimal: a 5->4 cut gives a
-# real dd_gate gain on rally (DD 6.36->5.09) + bull + crash (prior Exp1 measured
-# +0.002041 composite), BUT it was blocked by sideways dropping 52->48 trades -- below
-# the 50-trade sample_factor knee (sqrt(48/50)=0.980, -2pct penalty = the entire sideways
-# regression). Root cause: at 4x a few marginal sideways ENTRIES (mean-reversion entries
-# that are small in $ terms: ~$5 at 5x -> ~$4 at 4x) fall below the $4 (=1.0*LEVERAGE_K)
-# entry emission floor and stop emitting -- while rally/crash trend ENTRIES are large
-# ($20+) and unaffected, and RESIZES are grid/deadband-gated. Splitting the emission
-# threshold: cold entries (current_pos==0, already passed the full admission gate) use a
-# LOWER floor (ENTRY_EMIT_THRESHOLD_SCALE*LEVERAGE_K) so the conviction-passed marginal
-# sideways entries re-emit at 4x; same-sign RESIZES keep 1.0*LEVERAGE_K so rally's
-# micro-resize churn is NOT re-admitted (rally stability preserved). New control flow at
-# the order-emission layer (entries vs resizes previously shared one threshold). The
-# entry floor is a pure $-minimum to suppress sub-noise position dust, NOT a conviction
-# gate (admission already filtered) -- so lowering it for entries re-emits REAL trades.
+# Architectural (this session): risk-transition-vs-resize emission threshold split. The
+# single emission threshold `1.0*LEVERAGE_K` (Branch step2 behavior-preserving leverage)
+# made cold ENTRIES, full EXITS, flips, and same-sign RESIZES share one $-floor. Under
+# v2.2 (calmar return_reward, leverage-INVARIANT) the LEVERAGE_K=5 level is no longer
+# optimal: a 5->4 cut gives a real dd_gate gain on rally (DD 6.36->5.09) + bull + crash
+# (prior Exp1 measured +0.002041 composite), BUT it was blocked by sideways dropping
+# 52->48 trades -- below the 50-trade sample_factor knee (sqrt(48/50)=0.980, -2pct
+# penalty = the entire sideways regression). Root cause (diagnosed this session): at 4x
+# small positions wanting to FULLY EXIT (target=0) have |current_pos| ~ $3.5-4, below
+# the $4 resize emission floor -> exit does not emit -> position lingers -> close-trade
+# lost -> trade count drops. Fix: RISK TRANSITIONS (cold entry, full exit, flip) use a
+# LOWER floor (ENTRY_EMIT_THRESHOLD_SCALE*LEVERAGE_K) so small positions can OPEN and
+# CLOSE at 4x (preserves sideways trade count above the 50-trade knee); same-sign
+# RESIZES keep 1.0*LEVERAGE_K to avoid re-admitting rally micro-resize churn. New
+# control flow at the order-emission layer. The floor is a pure $-minimum to suppress
+# sub-noise position dust, NOT a conviction gate -- lowering it for risk transitions
+# re-emits REAL trades.
 ENTRY_EMIT_THRESHOLD_SCALE = 0.75
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
@@ -2453,12 +2452,32 @@ class Strategy:
             # restoring the baseline trade set. prepare.py's \$1 execution floor
             # is then moot (strategy already filters <\$2). This makes trade
             # SELECTION leverage-invariant (the last size-dependent decision gate).
-            # Architectural: entry-vs-resize emission threshold split. Cold entries
-            # (current_pos==0) use a lower floor (ENTRY_EMIT_THRESHOLD_SCALE*LEVERAGE_K)
-            # so marginal conviction-passed entries re-emit at lower leverage (preserves
-            # sideways trade count above the 50-trade sample_factor knee); same-sign
-            # resizes keep 1.0*LEVERAGE_K to avoid re-admitting rally micro-resize churn.
-            _emit_thresh = ENTRY_EMIT_THRESHOLD_SCALE * LEVERAGE_K if current_pos == 0 else 1.0 * LEVERAGE_K
+            # Architectural: risk-transition-vs-resize emission threshold split. The
+            # single emission threshold `1.0*LEVERAGE_K` (Branch step2 behavior-preserving
+            # leverage) made cold ENTRIES, full EXITS, flips, and same-sign RESIZES share
+            # one $-floor. Under v2.2 (calmar return_reward, leverage-INVARIANT) the
+            # LEVERAGE_K=5 level is no longer optimal: a 5->4 cut gives a real dd_gate
+            # gain on rally (DD 6.36->5.09) + bull + crash (prior Exp1 measured +0.002041
+            # composite), BUT it was blocked by sideways dropping 52->48 trades -- below
+            # the 50-trade sample_factor knee (sqrt(48/50)=0.980, -2pct = the entire
+            # sideways regression). Root cause (diagnosed this session): at 4x, SMALL
+            # positions (~$5 at 5x -> ~$4 at 4x) that want to FULLY EXIT (target=0) have
+            # |0 - current_pos| = |current_pos| ~ $3.5-4, which falls BELOW the $4
+            # (=1.0*LEVERAGE_K) resize emission floor -> the exit does not emit -> the
+            # position lingers -> the close-trade is lost -> trade count drops. (Cold
+            # ENTRIES were NOT the cause: lowering the entry floor alone was byte-
+            # identical to plain 4x -- sideways entries are large enough.) Fix: RISK
+            # TRANSITIONS (cold entry current_pos==0, full exit target==0, and flips
+            # which cross zero) use a LOWER floor (ENTRY_EMIT_THRESHOLD_SCALE*LEVERAGE_K)
+            # so small positions can still OPEN and CLOSE at 4x (preserves sideways trade
+            # count above the 50-trade knee); same-sign RESIZES keep 1.0*LEVERAGE_K so
+            # rally's micro-resize churn is NOT re-admitted (rally stability preserved).
+            # New control flow at the order-emission layer (risk transitions vs resizes
+            # previously shared one threshold). The floor is a pure $-minimum to suppress
+            # sub-noise position dust, NOT a conviction gate (admission/exit-pressure
+            # already filtered) -- so lowering it for risk transitions re-emits REAL trades.
+            _is_risk_transition = (current_pos == 0) or (target == 0) or ((current_pos > 0) != (target > 0))
+            _emit_thresh = ENTRY_EMIT_THRESHOLD_SCALE * LEVERAGE_K if _is_risk_transition else 1.0 * LEVERAGE_K
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
