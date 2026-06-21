@@ -117,22 +117,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Architectural (this session, Exp6): LEVERAGE-COUPLED giveback WIDENING (return-seeking).
-# The Exp3 keep established the principle: at lower leverage, DD headroom exists for
-# return-seeking (rally DD 5.19pct at 4x, all regimes well below the 8pct dd_gate knee:
-# bull 3.21, crash 2.46, sideways 2.21). Exp3 applied this to ENTRY size (sideways_boost
-# coupling -> rally pullback alpha). This applies the SAME principle to the EXIT giveback
-# tolerance: at lower leverage, WIDEN the peak-profit giveback slightly so trend-aligned
-# winners run LONGER (capture more of the trend move -> higher Sharpe via return_reward
-# calmar gain) -- the dd_gate cost of the resulting slightly-deeper DD is absorbed by the
-# 4x DD headroom. Distinct from the DYNAMIC run-up-velocity giveback widening (prior,
-# CATASTROPHIC: rally DD 6.36->7.58) which widened grind-peak giveback based on a noisy
-# per-bar velocity; this is a STATIC leverage-coupled widening (deterministic, leverage-
-# level-based, no per-bar noise -> no exit-timing noise -> stability preserved) at SMALL
-# magnitude (+0.08 at LEVERAGE_K=4). Byte-identical at LEVERAGE_K=5 (0 headroom -> 0
-# widening -> reverts to baseline giveback). New cross-subsystem coupling (exit giveback
-# magnitude depends on leverage level / DD headroom). General principle, no regime label.
-PORT_DD_GIVEBACK_WIDEN = 0.08 * max(0.0, 5.0 - LEVERAGE_K)  # 0 at LEVERAGE_K=5, +0.08 at LEVERAGE_K=4
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -161,6 +145,22 @@ PORT_DD_GIVEBACK_WIDEN = 0.08 * max(0.0, 5.0 - LEVERAGE_K)  # 0 at LEVERAGE_K=5,
 # invariance). LEVERAGE_K is a single named coupling constant.
 LEVERAGE_K = 4.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
+# Architectural (this session, Exp6): LEVERAGE-COUPLED giveback WIDENING (return-seeking).
+# The Exp3 keep established the principle: at lower leverage, DD headroom exists for
+# return-seeking (rally DD 5.19pct at 4x, all regimes well below the 8pct dd_gate knee:
+# bull 3.21, crash 2.46, sideways 2.21). Exp3 applied this to ENTRY size (sideways_boost
+# coupling -> rally pullback alpha). This applies the SAME principle to the EXIT giveback
+# tolerance: at lower leverage, WIDEN the peak-profit giveback slightly so trend-aligned
+# winners run LONGER (capture more of the trend move -> higher Sharpe via return_reward
+# calmar gain) -- the dd_gate cost of the resulting slightly-deeper DD is absorbed by the
+# 4x DD headroom. Distinct from the DYNAMIC run-up-velocity giveback widening (prior,
+# CATASTROPHIC: rally DD 6.36->7.58) which widened grind-peak giveback based on a noisy
+# per-bar velocity; this is a STATIC leverage-coupled widening (deterministic, leverage-
+# level-based, no per-bar noise -> no exit-timing noise -> stability preserved) at SMALL
+# magnitude (+0.08 at LEVERAGE_K=4). Byte-identical at LEVERAGE_K=5 (0 headroom -> 0
+# widening -> reverts to baseline giveback). New cross-subsystem coupling (exit giveback
+# magnitude depends on leverage level / DD headroom). General principle, no regime label.
+PORT_DD_GIVEBACK_WIDEN = 0.08 * max(0.0, 5.0 - LEVERAGE_K)  # 0 at LEVERAGE_K=5, +0.08 at LEVERAGE_K=4
 CALM_BOOST_MAX = 0.8
 # Architectural (this session): LEVERAGE-COUPLED sideways mean-reversion boost. Under v2.2
 # (calmar return_reward, leverage-INVARIANT) the LEVERAGE_K=5 level is no longer optimal:
