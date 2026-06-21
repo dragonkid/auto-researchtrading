@@ -166,6 +166,27 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
 
+# Architectural (Exp1 this session): TIME-OF-DAY session-quality admission tilt.
+# NEW orthogonal data dependency: the timestamp (hour-of-day, UTC) is the one data
+# source in the bar not already mined (OHLCV fully covered by 7 voters + exit stack;
+# funding_rate is all-zeros / unusable). Crypto has a documented, stable cross-regime
+# liquidity cycle: US/EU overlap hours (~13-20 UTC) carry higher participation and
+# more-informative price action; Asia morning (~0-6 UTC) is thinner/staler. Tilting
+# admission strictness by a smooth session-quality scalar lets higher-quality (liquid-
+# hour) entries clear more easily and raises the bar for thin-hour entries — a return-
+# seeking entry-TIMING change (alters clean-run trades, NOT position size).
+# Design constraints from the documented un-disproven axis: (i) direction-NEUTRAL
+# (same additive bias to both bull and bear margins -> cannot unbalance rally's
+# bidirectional book, the documented rally-directional-sizing wall); (ii) NO price-
+# derived threshold/gate (timestamp is not perturbed by the AR(1) noise test ->
+# noise-IMMUNE, adds no stability-crossing boundary); (iii) additive to the margin
+# only, does NOT touch the 7-voter strong-sum aggregation or STRONG_WEIGHT_MIN
+# (voter-aggregation redesigns are walled). Continuous cosine over hour-of-day
+# (peak 1.0 at 16 UTC, trough 0.0 at 04 UTC), centered so the net bias is zero-mean
+# across a day (preserves overall admission rate; only REDISTRIBUTES entries across
+# hours). AMP is the peak +/- shift on the normalized margin.
+SESSION_QUAL_AMP = 0.04
+
 
 class Strategy:
     def __init__(self):
@@ -599,7 +620,18 @@ class Strategy:
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
-            _bear_margin = (_bear_strong - _bear_strong_min) / max(_bear_strong_min, 1e-6)
+            _bear_margin = (_bear_strong - _bear_strong_min) / max(_bull_strong_min, 1e-6)
+            # Exp1: direction-NEUTRAL time-of-day session-quality admission tilt. Smooth
+            # cosine over hour-of-day (peak liquid at 16 UTC, trough at 04 UTC), zero-mean
+            # over a day (redistributes entry timing across hours, preserves overall rate).
+            # Added equally to both margins so it cannot unbalance the bidirectional book;
+            # timestamp is noise-test-immune (not a perturbed column) -> no new stability
+            # boundary. Small AMP; only shifts admission near the margin boundary.
+            _hour_utc = (int(bd.timestamp) // 3600000) % 24
+            _session_q = 0.5 + 0.5 * np.cos(2.0 * np.pi * (_hour_utc - 16.0) / 24.0)  # [0,1]
+            _session_bias = SESSION_QUAL_AMP * (_session_q - 0.5)  # +/- AMP/2, zero-mean
+            _bull_margin += _session_bias
+            _bear_margin += _session_bias
             # Architectural subsystem redesign (Exp2, entry-admission gate): entry-readiness
             # EMA accumulator. Replaces three coupled instantaneous mechanisms — the
             # strong-sum threshold crossing, the a5c60e3a max(curr,prev) anti-dip stickiness,
