@@ -117,6 +117,28 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Exp3 (architectural): PORTFOLIO-DD-ADAPTIVE DE-RISK FLOOR for trend-aligned
+# winners. The giveback-tightening (PORT_DD_GIVEBACK_TIGHTEN) and tp-harvest-relax
+# (PORT_DD_TP_HARVEST_RELAX) are the two confirmed DD-reduction levers, both
+# maxed (0.50/0.60 cliff rally stability). They act on pp_pressure (giveback
+# tolerance) and tp scale-down respectively. The DE-RISK RAMP FLOOR is a THIRD
+# exit path with NO portfolio-DD coupling today: trend-aligned profitable
+# winners get their floor LOWERED (line ~2114, relax to de-risk gradually
+# through pullback noise) -- which is exactly the behavior that lets rally's
+# trend longs ride through pullbacks, contributing the 6.36pct DD (the binding
+# low-score + low-calmar driver). During portfolio DD (rally pullbacks = the DD
+# source), RAISE the de-risk floor for trend-aligned profitable winners so they
+# de-risk FASTER (lock partial gains earlier) -> caps the DD from riding winners
+# through deep pullbacks. Byte-identical at portfolio peak (_port_dd_frac=0 ->
+# no raise). Distinct exit path from giveback (pp_pressure tolerance) and tp
+# (peak scale-down): this widens the graduated de-risk ramp's activation floor.
+# Continuous tanh on the EMA-smoothed DD fraction (noise-free amount); leverage-
+# coupled scale (same discipline); only fires on trend-aligned+profitable (the
+# trend-long-through-pullback set); losers/ct keep their floor (fast exit
+# unchanged). New cross-component data dep: de-risk floor depends on portfolio
+# DD fraction (was PnL+trend-align only).
+PORT_DD_DERISK_FLOOR_RAISE = 0.12  # max floor raise at deep DD (small: floor is sensitive, 0.55->0.67 max on trend-aligned winners)
+PORT_DD_DERISK_FLOOR_SCALE = 0.012  # base DD-fraction at which raise saturates (scaled by LEVERAGE_K, same discipline)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -2112,6 +2134,11 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Exp3: portfolio-DD-adaptive de-risk floor RAISE for trend-aligned
+                    # winners. Counter the trend-align relaxation during portfolio DD so
+                    # trend longs de-risk faster through pullbacks -> cap DD. Byte-
+                    # identical at portfolio peak (dd_frac=0 -> raise 0).
+                    _de_floor += PORT_DD_DERISK_FLOOR_RAISE * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_DERISK_FLOOR_SCALE * LEVERAGE_K))) * _ta_de_align * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
