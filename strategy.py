@@ -1526,11 +1526,14 @@ class Strategy:
                 # existing ones. Continuous tanh gates, deep-saturated (/0.03, /0.008,
                 # /0.004 -> near-constant where it fires, noise-free per safe family).
                 _dt = max(0.0, np.tanh(-ret_vlong / 0.03))  # 0 flat/uptrend, ~1 strong downtrend
-                _bounce = max(0.0, ret_short)  # recent counter-trend up-move
-                _exhaust_rets = np.diff(np.log(closes[-4:]))  # 3 recent log-returns
-                _exhaust = max(0.0, min(1.0, np.tanh(-float(np.mean(_exhaust_rets)) / 0.004)))  # ~1 when recent 3-bar avg DOWN (bounce exhausting)
-                _bounce_exhaust = _dt * max(0.0, np.tanh(_bounce / 0.008)) * _exhaust  # [0,1]
-                _bear_bounce_trigger = _bounce_exhaust > 0.5  # strong downtrend + bounce + exhaustion
+                # Branch step1: SHORT-WINDOW bounce detection (was ret_short = 8-16-bar
+                # median ref -> required a bounce >8 bars ago, never fired in crash).
+                # Use a 3-bar up-move ending 1 bar ago as the bounce, and the LAST bar
+                # closing down as the exhaustion. This matches crash's short bounces.
+                _bounce = max(0.0, float((closes[-2] - closes[-4]) / closes[-4]))  # 2-bar return ending 1 bar ago (the bounce)
+                _exhaust = max(0.0, min(1.0, np.tanh(-float((closes[-1] - closes[-2]) / closes[-2]) / 0.004)))  # last bar DOWN (bounce exhausting)
+                _bounce_exhaust = _dt * max(0.0, np.tanh(_bounce / 0.004)) * _exhaust  # [0,1]; /0.004 loosened from /0.008
+                _bear_bounce_trigger = _bounce_exhaust > 0.25  # loosened from 0.5 so it actually fires
                 _bounce_atten = 0.55 if (_bear_bounce_trigger and not _bear_ready) else 1.0  # smaller for voter-bypass entries
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
