@@ -1518,40 +1518,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp2 (architectural, indep): TREND-ALIGNED entry sparing of the
-                # portfolio-DD entry-size circuit breaker (_port_dd_atten). The DD
-                # breaker shrinks ALL first-bar entries during portfolio DD. But
-                # trend-aligned entries taken during a DD (crash shorts in a multi-
-                # day downtrend, bull longs in a multi-day uptrend) are higher-
-                # quality -- the trend is your friend, and a fresh trend-aligned
-                # entry in a DD is typically a continuation of the recovering trend,
-                # not a falling-knife catch. Shrinking them is overly conservative
-                # and caps crash return (crash IS a deep portfolio DD -> its trend-
-                # aligned shorts are shrunk throughout -> small wins -> Sharpe 1.27,
-                # AnnRet 12.1pct, return-limited despite 100pct WR; DD 2.46pct has
-                # huge headroom below the 8pct knee). Spare trend-aligned entries:
-                # apply the DD shrink ONLY to COUNTER-TREND entries (the risky
-                # falling-knife / bounce catches that actually deepen DD). ct-gated
-                # by the validated fast-saturating /0.01 ret_vlong scale (rally's
-                # solidly-positive ret_vlong / crash's solidly-negative ret_vlong
-                # sit in the flat tail -> gate is a near-CONSTANT, noise-free; the
-                # gate boundary near ret_vlong~0 is sideways/chop where _port_dd_atten
-                # is already ~0 -> no DD in sideways -> boundary inert). Distinct
-                # from fcae6004 (naive threshold shift -> rally stability crash):
-                # this keeps the activation POINT unchanged, only gates the MAGNITUDE
-                # by entry-direction trend-alignment. Trend-aligned (gate 0) ->
-                # _port_dd_atten_bull/bear = 1.0 (no shrink, full size); ct (gate 1)
-                # -> full shrink (byte-identical to baseline for ct entries).
-                _port_dd_shrink_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # 1 if bull entry is ct (multi-day downtrend)
-                _port_dd_shrink_gate_bear = max(0.0, np.tanh(ret_vlong / 0.01))   # 1 if bear entry is ct (multi-day uptrend)
-                _port_dd_atten_bull = 1.0 - (1.0 - _port_dd_atten) * _port_dd_shrink_gate_bull
-                _port_dd_atten_bear = 1.0 - (1.0 - _port_dd_atten) * _port_dd_shrink_gate_bear
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten_bull * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten_bear * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
