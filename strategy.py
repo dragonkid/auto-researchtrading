@@ -286,33 +286,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp1 (architectural, this session): DIRECTION-SPECIFIC consecutive-loss
-        # streak counters. The portfolio-level _loss_streak above resets on ANY win,
-        # but rally_2024 is an uptrend-with-pullbacks regime whose LOSING trades are
-        # counter-trend SHORTS interleaved with WINNING longs (the trend legs between
-        # pullbacks). Each intervening long win RESETS the portfolio streak, so the
-        # portfolio counter rarely exceeds 1-2 in rally -> the ct admission/size gates
-        # it drives (which fire at streak>=2 via tanh((streak-1)/2)) barely activate
-        # on rally's short-loss clusters -> the ~4 consecutive-loss streak (streak_gate
-        # 0.886, the largest UN-MAXED lever on the binding regime; DD-reduction is
-        # maxed at 0.50) persists. A PER-DIRECTION streak accumulates rally's SHORT
-        # losses across the intervening LONG wins: _loss_streak_short keeps climbing
-        # through a pullback sequence even as long wins reset the portfolio/long
-        # counters, so the ct gate on bear entries (short in uptrend = rally pullback
-        # shorts) fires when it should -> filters/shrinks the Nth consecutive ct-short
-        # loser -> breaks the streak earlier -> shorter max_consecutive_losses ->
-        # higher streak_gate -> higher rally score (raw==score at stab 1.0). Symmetric
-        # on crash bounce-LONGS (_loss_streak_long drives the bull ct gate). Distinct
-        # new state + new control flow: the ct admission/size gates now key on the
-        # DIRECTION-MATCHED streak (bull ct <- long streak, bear ct <- short streak),
-        # not the portfolio aggregate. General risk-off principle (after N consecutive
-        # SAME-DIRECTION losses, raise the bar for the next counter-trend re-entry in
-        # that direction); regime effects fall out of each direction's realized loss
-        # clustering (no regime label). The scored streak_gate (prepare.py, portfolio-
-        # level chronological) changes only if the actual consecutive losses fall
-        # (fewer ct re-entries -> fewer losses -> shorter streak).
-        self._loss_streak_long = 0
-        self._loss_streak_short = 0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -671,16 +644,9 @@ class Strategy:
             # directly targets the streak_gate 0.875 gap, the largest raw-vs-actual score
             # lever), Exp3 cuts magnitude. Same fast-saturating /0.01 ret_vlong ct
             # indicator (near-constant, noise-free) x streak ramp. Max 10% tighten.
-            # Exp1 (this session): DIRECTION-SPECIFIC streak -> ct admission tighten.
-            # bull ct (long in downtrend) keys on the LONG-loss streak; bear ct (short
-            # in uptrend = rally pullback shorts) keys on the SHORT-loss streak. This
-            # is the architectural change: the gate now fires on the direction-matched
-            # streak (accumulates across intervening opposite-direction wins) instead
-            # of the portfolio aggregate (which resets on every win).
-            _streak_ct_admit_bull = max(0.0, np.tanh((self._loss_streak_long - 1) / 2.0))
-            _streak_ct_admit_bear = max(0.0, np.tanh((self._loss_streak_short - 1) / 2.0))
-            _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit_bull * max(0.0, np.tanh(-ret_vlong / 0.01))
-            _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit_bear * max(0.0, np.tanh(ret_vlong / 0.01))
+            _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
+            _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
+            _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -921,12 +887,11 @@ class Strategy:
                 # losses -> higher rally Sharpe + lower DD. Trend-aligned (ct indicator 0)
                 # -> 1.0 byte-identical. New cross-component data dep: first-bar ct size
                 # depends on portfolio loss-streak x multi-day-ct interaction.
-                _streak_ct_bull = max(0.0, np.tanh((self._loss_streak_long - 1) / 2.0))   # long-direction streak (crash bounce-long losses)
-                _streak_ct_bear = max(0.0, np.tanh((self._loss_streak_short - 1) / 2.0))  # short-direction streak (rally pullback-short losses)
+                _streak_ct = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))  # 0 streak<=1, ~1 streak>=3
                 _bull_ctmd_streak = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull ct in multi-day downtrend
                 _bear_ctmd_streak = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
-                _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct_bull * _bull_ctmd_streak
-                _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct_bear * _bear_ctmd_streak
+                _streak_ct_shrink_bull = 1.0 - 0.25 * _streak_ct * _bull_ctmd_streak
+                _streak_ct_shrink_bear = 1.0 - 0.25 * _streak_ct * _bear_ctmd_streak
                 # Architectural: multi-window slope CONSENSUS GATE on first-bar SIZE.
                 # Decision-architecture change: replace discrete 4-step map ((0.40,0.60,
                 # 0.85,1.0) indexed by sign-agreement count) with continuous magnitude-
@@ -2482,23 +2447,6 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                        # Exp1 (this session): DIRECTION-SPECIFIC streak update. The
-                        # trade's direction is current_pos's sign (long>0 / short<0).
-                        # Increment the matched-direction streak on a loss, reset on a
-                        # win; the opposite-direction streak is UNCHANGED (a long win
-                        # does not reset the short-loss streak -> rally's short-loss
-                        # clusters accumulate across intervening long wins, which is
-                        # the whole point).
-                        if current_pos > 0:
-                            if _exit_pnl_signed < 0:
-                                self._loss_streak_long += 1
-                            else:
-                                self._loss_streak_long = 0
-                        else:
-                            if _exit_pnl_signed < 0:
-                                self._loss_streak_short += 1
-                            else:
-                                self._loss_streak_short = 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
