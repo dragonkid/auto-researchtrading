@@ -163,7 +163,7 @@ CALM_BOOST_MAX = 0.8
 # fires in chop/sideways, ~off in trends -> spares rally grinding uptrend). The coupling
 # ties a sizing magnitude to the leverage level (new cross-subsystem data dep). Clamped to
 # keep the boost bounded.
-SIDEWAYS_BOOST_MAX = min(0.80, 0.50 + 0.15 * max(0.0, 5.0 - LEVERAGE_K))
+SIDEWAYS_BOOST_MAX = min(0.80, 0.50 + 0.20 * max(0.0, 5.0 - LEVERAGE_K))
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 STRENGTH_FLOOR_SIDEWAYS = 2.6
