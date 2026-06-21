@@ -1292,27 +1292,26 @@ class Strategy:
                     # is participating (volume building) AND the partner alt confirms the direction
                     # is a broad-market move with leader participation -> larger first-bar
                     # commitment. Tests whether the MIXED cells of the {own,BTC,partner}x{vol,
-                    # Exp4 (architectural simplification): REMOVED the two MIXED-cell entry
-                    # boosts (_btcvol_partner_boost = BTC-vol x PARTNER-price, and
-                    # _partnervol_btc_boost = PARTNER-vol x BTC-price). The code's own comments
-                    # flagged these as "may be redundant with the existing Exp1 (BTC-vol) x
-                    # Exp2-partner-boost (partner-price) which already multiply" -- the clean
-                    # 2-way cells (Exp1 BTC-vol x BTC-price, Exp3 partner-vol x partner-price,
-                    # Exp5/6/7 own-vol x {own,BTC,partner}-price) already cover the diagonal of
-                    # the {own,BTC,partner}x{vol,price} grid, and the off-diagonal mixed cells
-                    # are a product of signals already multiplied elsewhere (BTC-vol appears in
-                    # Exp1; partner-price in Exp2/Exp3). Each was +0.05 max deep-saturated ->
-                    # near-constant 1.0 -> removing is expected score-neutral (simplification
-                    # for OOS generalization: fewer near-constant multipliers = less in-sample
-                    # fitting). If score-neutral, the mixed cells were redundant double-counting;
-                    # if negative, they carried marginal orthogonal signal. Code-structure
-                    # removal: -2 active computations + their comments (neutral 1.0 in both
-                    # branches; the boost is still referenced in the target product so the
-                    # neutral value passes through).
-                    _btcvol_partner_boost_bull = 1.0
-                    _btcvol_partner_boost_bear = 1.0
-                    _partnervol_btc_boost_bull = 1.0
-                    _partnervol_btc_boost_bear = 1.0
+                    # price} grid add signal beyond the 5 clean 2-way keeps (Exp1/3/5/6/7).
+                    # Distinct from Exp1 (BTC-vol x BTC-PRICE, not partner) and Exp3 (PARTNER-vol
+                    # x partner-price, not BTC-vol). Deep-saturated both gates (/0.30 BTC vol,
+                    # /0.02 partner price -> near-constant, noise-free, validated safe family).
+                    # First-bar-only, +0.05 max. Risk: may be redundant with the existing Exp1
+                    # (BTC-vol) x Exp2-partner-boost (partner-price) which already multiply.
+                    _btcvol_partner_boost_bull = 1.0 + 0.05 * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _btcvol_partner_boost_bear = 1.0 + 0.05 * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    # Exp9 (architectural, indep): PARTNER-alt-volume-rise x BTC-price-trend-
+                    # agreement conjunction boost on ALT entries. Symmetric mixed cell to Exp8
+                    # (BTC-vol x partner-price): follower VOLUME x leader PRICE. An alt trend
+                    # entry where the partner alt is participating (volume building) AND the
+                    # leader (BTC) confirms the direction is a broad-market move with follower
+                    # participation -> larger first-bar commitment. Last cell of the full
+                    # {own,BTC,partner}x{vol,price} 2-way grid. Distinct from Exp3 (PARTNER-vol
+                    # x PARTNER-price) and Exp8 (BTC-vol x partner-price). Deep-saturated both
+                    # gates (/0.30 partner vol, /0.03 BTC trend -> near-constant, noise-free,
+                    # validated safe family). First-bar-only, +0.05 max.
+                    _partnervol_btc_boost_bull = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _partnervol_btc_boost_bear = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
                     # Exp2 (architectural, indep): BTC leader DVP x BTC-price-trend-agreement
                     # conjunction boost on ALT entries (the directional-volume column of the
                     # {own,BTC,partner}x{vol,price} grid). _btc_dvp (leader volume-DIRECTION
