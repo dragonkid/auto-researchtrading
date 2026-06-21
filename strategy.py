@@ -683,6 +683,20 @@ class Strategy:
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
+            # Exp (architectural, indep): VOL-NORMALIZED cooldown recovery window. The
+            # _cd_window is a vol-BLIND bar-unit timing parameter (same family as the
+            # vol-normalized max_hold keep 637f5e53). In a vol-spike period, N bars of
+            # cooldown = a larger real price move, so re-entry comes "too fast" in real-move
+            # terms -- the post-exit vol burst has more room to run before cooldown clears,
+            # and re-entering into an ongoing volatile burst is lower-quality (chasing noise /
+            # capitulation tail). Scale _cd_window UP with vol_ratio (max +12pct at
+            # vol_ratio>=1.5) so the cooldown is vol-normalized (same amount of REAL price
+            # move before re-entry). Calm (vol_ratio<1) byte-identical (gate floored at 0).
+            # Continuous tanh, no boundary. New vol term in the cooldown recovery (distinct
+            # subsystem from max_hold's time-pressure center). LOOSENING-only (longer cooldown
+            # in vol-spike; never shorter -> does not rush re-entry in calm).
+            _cd_vol_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
+            _cd_window *= 1.0 + 0.12 * _cd_vol_ext
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
