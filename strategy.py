@@ -117,6 +117,21 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Exp2 (architectural, indep): PORTFOLIO-DD-ADAPTIVE TIME-PRESSURE INTENSIFICATION.
+# A THIRD DD-reduction lever on a DIFFERENT exit path from the maxed giveback-
+# tightening (giveback path, fires on WINNERS) and tp-harvest (tp scale-down
+# path). This shortens max_hold during portfolio DD so the TIME exit path cuts
+# positions faster during DD episodes (where DD reduction is worth ~2x under
+# v2.2). Byte-identical at portfolio peak (dd_frac=0 -> no shortening). Same
+# leverage-coupled DD-fraction scale as the other two DD levers (decision
+# invariance under leverage). Continuous tanh on the DD fraction (no boundary).
+# Tests whether the TIME path -- documented NON-BINDING for crash/rally WINNERS
+# (they exit via giveback first) -- can still contribute to DD reduction by
+# cutting MID-LIFE positions during a DD pullback BEFORE they reach the giveback
+# threshold (open positions that have not yet peaked but are riding the pulldown
+# and contributing to the equity drawdown). Distinct path, distinct mechanism.
+PORT_DD_TIME_SHORTEN = 0.20       # max fractional max_hold reduction at deep DD
+PORT_DD_TIME_SCALE = 0.012        # base DD-fraction at which shortening saturates (scaled by LEVERAGE_K at use)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1798,6 +1813,13 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp2: portfolio-DD-adaptive time-pressure intensification.
+                # Shorten max_hold during portfolio DD so the TIME exit path cuts
+                # mid-life positions faster during DD episodes. Byte-identical at
+                # portfolio peak (dd_frac=0). Leverage-coupled scale (decision
+                # invariance). Continuous tanh on the DD fraction.
+                _port_dd_frac_tp = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _max_hold *= 1.0 - PORT_DD_TIME_SHORTEN * max(0.0, np.tanh(_port_dd_frac_tp / (PORT_DD_TIME_SCALE * LEVERAGE_K)))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
