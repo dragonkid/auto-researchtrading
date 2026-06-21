@@ -93,7 +93,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # to ride vs lock. Continuous tanh on the DD fraction (no new boundary), symmetric
 # (both long/short), Sharpe-affecting (alters exit timing of WINNERS, not size).
 # Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
-PORT_DD_GIVEBACK_TIGHTEN = 0.50   # max fractional reduction of giveback at deep DD (probing higher; step3 mag0.40 gave +0.0124 keep, rally DD 6.80pct has headroom below 8pct knee)
+PORT_DD_GIVEBACK_TIGHTEN = 0.60   # max fractional reduction of giveback at deep DD (final probe; step4 mag0.50 gave +0.0178 keep, gains decelerating + sideways regressing)
 PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
 PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
 
