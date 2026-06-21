@@ -372,7 +372,28 @@ class Strategy:
 
             closes = bd.history["close"].values
             mid = bd.close
-            realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            # Architectural (Exp1 this session): range-based (Parkinson) vol estimator
+            # BLENDED into the close-to-close realized_vol and the 200-bar baseline.
+            # vol_ratio is a load-bearing primitive feeding ~15 gates (calm_boost,
+            # ct_vlong, de-risk floor, pp bands, caps, smoothing alpha, etc.). The close-
+            # to-close std uses 1 price point/bar; Parkinson uses the full intrabar
+            # high-low range and is a ~5x more STATISTICALLY EFFICIENT vol estimator
+            # (lower estimator variance for the same window). A lower-variance estimator
+            # -> vol_ratio is more stable bar-to-bar under AR(1) noise -> all vol-
+            # conditioned sizing wobbles less -> stability headroom on the regimes whose
+            # stability sits near the 0.80 knee (min_stability 0.819). New data dep on
+            # intrabar range for VOL estimation (distinct from every prior intrabar-range
+            # experiment, which used range as a directional/size SIGNAL, not a vol
+            # estimator). Smooth (no boundary, pure averaging); 0.5 blend keeps the
+            # validated close-to-close behavior while adding the efficient range estimate.
+            # Parkinson sigma = sqrt( mean(ln(H/L)^2) / (4*ln2) ) over the window.
+            def _parkinson(_h, _l):
+                _r = np.log(_h / np.maximum(_l, 1e-10))
+                return float(np.sqrt(np.mean(_r * _r) / (4.0 * np.log(2.0))))
+            _rv_close = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            _rv_park = max(_parkinson(bd.history["high"].values[-VOL_LOOKBACK:],
+                                      bd.history["low"].values[-VOL_LOOKBACK:]), 1e-6)
+            realized_vol = 0.5 * _rv_close + 0.5 * _rv_park
             # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
             # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
             # 0.5 weight. Long-window vol is each symbol's structural baseline (BTC ~0.012,
@@ -380,7 +401,10 @@ class Strategy:
             # bias toward "always-elevated" vol_ratio. New cross-bar data dependency on
             # 200-bar log-return std per symbol; smooth (no boundary), continuous.
             _long_n = min(200, len(closes) - 1)
-            _baseline_vol = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
+            _bv_close = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
+            _bv_park = max(_parkinson(bd.history["high"].values[-_long_n:],
+                                      bd.history["low"].values[-_long_n:]), 1e-6)
+            _baseline_vol = 0.5 * _bv_close + 0.5 * _bv_park
             _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
             vol_ratio = realized_vol / _target_vol_dyn
 
