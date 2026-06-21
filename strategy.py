@@ -2416,30 +2416,7 @@ class Strategy:
             self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
-                # Exp2 (architectural, this session): VOL-MODULATED calm-grid
-                # spacing. The calm partition fires only for never-bursting symbols
-                # (crash max-len=1, sideways max-len=2 -- bull/rally burst early and
-                # are excluded). The grid snaps same-sign resizes onto a coarse
-                # lattice (0.06*equity*BASE) to cut churn/fees + hold stability.
-                # SIDEWAYS (the strongest regime, 52 trades at 5x) sits just above the
-                # 50-trade sample_factor knee -- a fragility that BLOCKS the one viable
-                # v2.2 lever (leverage reduction 5->4 gives rally/bull/crash dd_gate
-                # gains +0.018 but pulls sideways below 50 trades -> -2pct sample_factor
-                # penalty cancels it). Make the grid FINER in CALM (low-vol) regimes:
-                # in calm markets smaller resizes are MEANINGFUL (low vol -> small moves
-                # are signal not noise), so a finer lattice (a) reduces quantization
-                # error -> more precise sideways position tracking -> potentially higher
-                # sideways Sharpe, (b) lets more resizes pass -> raises sideways trade
-                # count above the 50-trade knee -> unblocks leverage reduction (a future
-                # session lever). Continuous tanh on (1-vol_ratio)/0.3, floored so
-                # high-vol crash (vol_ratio>1) keeps the coarse 0.06 grid (crash is
-                # exit-inert/giveback-dominated -- do not add churn there). New data
-                # dependency: calm-grid spacing depends on vol_ratio. General principle
-                # (calm markets tolerate finer position granularity); regime effects
-                # fall out of each regime's realized vol (no regime label). Max 25pct
-                # finer (0.06 -> 0.045) at vol_ratio<=0.7.
-                _calm_grid_finer = 0.015 * max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))
-                _grid_c = (0.06 - _calm_grid_finer) * equity * BASE_POSITION_SIZE
+                _grid_c = 0.06 * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
