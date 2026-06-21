@@ -239,20 +239,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp5 (architectural): SUSTAINED multi-day counter-trend de-leverage cached
-        # at entry. The 5 existing ct shrinks (_ct_atten, _ct_vlong, _churn_ct_atten,
-        # _vd_ct_shrink, _streak_ct_shrink) are ALL first-bar-only -> the scale-in
-        # ramp grows the position back to full un-shrunk `size` (full 5x leverage)
-        # over 2-3 bars, so a ct loser reaches full leverage during the hold. Only
-        # _conc_shrink_held / _vol_shrink_held are sustained (cached at entry). This
-        # adds the ct-specific sustained counterpart: cache a ct de-leverage at entry
-        # (deterministic, noise-immune) and apply it to scale-in full_target so the
-        # ct position stays de-levered for the WHOLE hold -> smaller realized ct
-        # losses -> rally Sharpe up + DD down (the binding constraint at 5x). Fast-
-        # saturating /0.01 ret_vlong (rally's solidly-positive ret_vlong sits in the
-        # flat tail -> near-constant, noise-free per the validated branch-step-9
-        # lesson), max 0.30, shrink-only, trend-aligned byte-identical. Reset on exit.
-        self._ct_leverage_held = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1468,12 +1454,10 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._ct_leverage_held[symbol] = 1.0 - 0.30 * _bull_ctmd_streak  # Exp5: sustained ct de-leverage
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._ct_leverage_held[symbol] = 1.0 - 0.30 * _bear_ctmd_streak  # Exp5: sustained ct de-leverage
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1589,13 +1573,7 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    # Exp5: sustain the multi-day counter-trend de-leverage through
-                    # scale-in (cached at entry, deterministic). The 5 first-bar ct
-                    # shrinks ramp back to full `size` during scale-in; this keeps a
-                    # ct entry de-levered for the WHOLE hold -> smaller ct realized
-                    # losses. Trend-aligned entries cached 1.0 -> byte-identical.
-                    _ct_lev_held = self._ct_leverage_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _ct_lev_held
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -2382,7 +2360,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._ct_leverage_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
