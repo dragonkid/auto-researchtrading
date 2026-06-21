@@ -1724,32 +1724,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp3 (architectural, indep): RUN-UP-VELOCITY-ADAPTIVE giveback tolerance.
-                # STRUCTURAL change to the giveback-TOLERANCE subsystem (distinct from the
-                # portfolio-DD tightening, which is maxed at 0.50; and from the prior
-                # GIVEBACK-VELOCITY EXIT-pressure source, which was a 7th MAX term measuring
-                # the DERIVATIVE of giveback). This adapts the TOLERANCE itself (how much
-                # giveback is allowed before pp_pressure harvests) to how the peak FORMED:
-                # peak-per-bar rate = peak_pnl / max(bars_held,1), normalized by |stop|. A
-                # FAST run-up (high rate, spike/exhaustion peak) -> tighten tolerance (harvest
-                # the spike fast, lock gains before the mean-reverting giveback deepens -> caps
-                # the DD from exhaustion-peak reversals). A SLOW run-up (low rate, grind/trend
-                # peak) -> WIDEN tolerance (let the trend winner run through pullback noise ->
-                # preserves rally's grinding-uptrend return, the alpha-trade-wall concern).
-                # RALLY-SAFE by construction: rally's peaks form SLOWLY (grinding uptrend, low
-                # peak-per-bar) -> widened giveback -> winners run (return preserved); only
-                # fast spike peaks (exhaustion tops in bull/crash capitulation bounces) tighten.
-                # Stateless (uses existing peak_pnl + bars_held; no new per-symbol state).
-                # Continuous tanh on the per-bar run-up rate; bilateral (both long/short peaks);
-                # Sharpe-affecting (alters harvest timing of WINNERS at peak). Capped so the
-                # widen never fully disables pp (floor 0.7x of tightened tolerance). New control
-                # flow: giveback tolerance now depends on peak-formation velocity.
-                _runup_rate = self.peak_pnl[symbol] / max(bars_held, 1) / abs(STOP_LOSS_PCT)
-                # _runup_mult: <1 tightens (fast spike peak), >1 widens (slow grind peak).
-                # Centered at 1.0 for mid-rate; saturates both directions.
-                _runup_mult = 1.0 + 0.35 * max(0.0, np.tanh((0.5 - _runup_rate) / 0.5)) - 0.30 * max(0.0, np.tanh((_runup_rate - 1.5) / 0.5))
-                _runup_mult = max(0.7, min(1.35, _runup_mult))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _runup_mult
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
