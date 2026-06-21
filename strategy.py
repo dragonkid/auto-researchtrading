@@ -117,27 +117,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Architectural (Exp2 this session): PORTFOLIO-DD-ADAPTIVE BURST COUNTER-TREND
-# ENTRY SHRINK amplification. Exp1 (keep 91c4496a) showed the DD-adaptive tp-harvest
-# engages bull (spiky correction peaks) but NOT rally (grinding pullbacks exit via
-# the giveback path before the tp-harvest fires -> redundant there). The giveback
-# tightening is rally's proven DD lever but is maxed at mag 0.50. This targets a
-# DIFFERENT rally DD source: the counter-trend SHORT re-entries during pullback
-# BURSTS (the documented rally losers -- "streak is REAL SEPARATE losing trades =
-# burst re-entries during choppy pullbacks"). The existing _churn_ct_atten shrink
-# (0.20 max, fires on ct entries during entry bursts via the noise-immune integer
-# churn gate x fast-saturating ret_vlong) already cuts these but at a fixed 0.20.
-# During portfolio DD (rally pullback underway), DEEPEN this shrink so the ct
-# re-entries that open WHILE the portfolio is drawing down are smaller -> smaller
-# realized losses -> lower DD. Shrink-only (safe family: does not BLOCK ct entries,
-# so the ct alpha -- some ct shorts ARE winners -- is preserved, just sized smaller
-# when portfolio risk is elevated). First-bar-only, noise-immune (integer churn +
-# saturated ret_vlong + smoothed DD fraction -> near-constant where it fires).
-# Byte-identical at portfolio peak (dd_frac=0 -> amplification 1.0 -> baseline 0.20).
-# Leverage-coupled DD-fraction scale (same discipline). Distinct DD source (ct
-# losers) from giveback tightening / tp-harvest (long giveback).
-PORT_DD_CT_SHRINK_AMP = 0.75   # max fractional amplification of the burst-ct shrink at deep DD (0.20 -> up to 0.35)
-PORT_DD_CT_SHRINK_SCALE = 0.012  # base DD-fraction at which amplification saturates (scaled by LEVERAGE_K, same discipline)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -324,15 +303,6 @@ class Strategy:
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
-        # Exp2 (architectural): top-level portfolio-DD FRACTION (smoothed-equity based,
-        # same _equity_ema/_peak_equity the giveback tightening uses) made available to
-        # the ENTRY branch. The giveback tightening computes its own inline copy in the
-        # held-position branch; that copy is unreachable from the cold-entry sizing path.
-        # Hoisting a single top-level computation lets a DD-adaptive ENTRY-side shrink
-        # (burst counter-trend re-entry shrink, see _churn_ct_atten amplification below)
-        # read the same pullback-depth signal at the decision point where ct re-entries
-        # open. Continuous (tanh on a smoothed fraction); 0 at portfolio peak.
-        _port_dd_frac_top = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1042,14 +1012,8 @@ class Strategy:
                 _churn_ct = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 calm, ~1 bursting (noise-immune integer gate)
                 _bull_ctmd = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull long counter to multi-day downtrend
                 _bear_ctmd = max(0.0, np.tanh(ret_vlong / 0.01))   # bear short counter to multi-day uptrend (rally pullback shorts)
-                # Exp2 (architectural): portfolio-DD-adaptive amplification of the burst
-                # counter-trend entry shrink. Deepen the 0.20 shrink when the portfolio is
-                # drawing down (rally pullback underway) so ct re-entries opening DURING the
-                # DD are smaller -> smaller realized losses -> lower rally DD. Shrink-only
-                # (alpha preserved, not blocked); byte-identical at portfolio peak (factor 1.0).
-                _dd_ct_amp = 1.0 + PORT_DD_CT_SHRINK_AMP * max(0.0, np.tanh(_port_dd_frac_top / (PORT_DD_CT_SHRINK_SCALE * LEVERAGE_K)))
-                _churn_ct_atten_bull = 1.0 - (0.20 * _dd_ct_amp) * _churn_ct * _bull_ctmd
-                _churn_ct_atten_bear = 1.0 - (0.20 * _dd_ct_amp) * _churn_ct * _bear_ctmd
+                _churn_ct_atten_bull = 1.0 - 0.20 * _churn_ct * _bull_ctmd
+                _churn_ct_atten_bear = 1.0 - 0.20 * _churn_ct * _bear_ctmd
                 # Architectural: trend-QUALITY (regression R^2) first-bar entry-size
                 # attenuator. NEW orthogonal signal: none of the existing attenuators
                 # (conv-margin, voter-quality, multi-window consensus, churn) measure
