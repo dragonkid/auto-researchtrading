@@ -216,6 +216,9 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # Exp (architectural): per-symbol bar_count of the last CONFIRMED peak update
+        # (bars-since-peak stall clock). Used by the peak-stall exit pressure source.
+        self._peak_bar = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -1644,6 +1647,7 @@ class Strategy:
                 # pos_pnl >= prev_pos_pnl (rising bar).
                 if pos_pnl > _curr_peak and pos_pnl >= _prev_pnl:
                     self.peak_pnl[symbol] = pos_pnl
+                    self._peak_bar[symbol] = self.bar_count
                 else:
                     self.peak_pnl[symbol] = _curr_peak
                 # Architectural: MAE (maximum adverse excursion) low-water mark.
@@ -1934,6 +1938,32 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp (architectural, indep): PEAK-STALL exit pressure (7th soft source).
+                # NEW data dependency: peak_pnl is tracked but only its MAGNITUDE is used
+                # (giveback ratio via _pp_pressure). The TIME since the last confirmed peak
+                # is never read. A profitable winner whose peak_pnl has NOT made a new high
+                # for N bars has STALLED — the impulse that produced the peak exhausted and
+                # price is consolidating at the top -> harvest before the consolidation
+                # breaks down into giveback. Distinct from _time_pressure (total bars held,
+                # not time-since-peak), _pp_pressure (giveback MAGNITUDE from peak, which is
+                # ~0 during a flat-top consolidation -> pp does NOT fire on a stall), and
+                # _sl_slope_pressure (price slope; a gently-rising plateau has positive slope
+                # -> slope-against does NOT fire). The stall catches the gap: profit present,
+                # no giveback yet, but no new highs -> momentum died. Profit-side only (lock
+                # gains on stalled winners; losers have no peak). Continuous tanh ramp on
+                # bars-since-peak (activation ~6 bars, saturation ~14), no boundary. New
+                # exit-pressure source + new control flow in the MAX fusion + new state dep.
+                _ps_pressure = 0.0
+                if pos_pnl > 0:
+                    _bars_since_peak = self.bar_count - self._peak_bar.get(symbol, self.bar_count)
+                    # Normalize the stall clock by vol regime: high-vol regimes make new
+                    # peaks less often per unit of real trend progress, so the activation
+                    # bar-count scales up with vol_ratio (a calm-regime 6-bar stall == a
+                    # high-vol-regime ~9-bar stall at vol_ratio 1.5). Keeps the stall
+                    # signal regime-fair (no per-regime labels, continuous vol scaling).
+                    _stall_act = 6.0 + 4.0 * min(1.0, vol_ratio)
+                    _ps_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_bars_since_peak - _stall_act) / 4.0)))
+                _w_ps = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1949,6 +1979,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_ps * _ps_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
@@ -2445,6 +2476,7 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._peak_bar[symbol] = self.bar_count
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
