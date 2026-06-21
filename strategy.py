@@ -145,7 +145,19 @@ PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturat
 # invariance). LEVERAGE_K is a single named coupling constant.
 LEVERAGE_K = 4.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
-CALM_BOOST_MAX = 0.8
+# Architectural (this session, Exp4): LEVERAGE-COUPLED calm (low-vol) boost. Extends the
+# Exp3 keep's leverage-coupling (which tied SIDEWAYS_BOOST_MAX to leverage headroom, hitting
+# rally PULLBACK entries via the low-trend gate) to the VOL axis: calm_boost fires in LOW-
+# VOL regimes (rally grinding uptrend + sideways calm periods), which at 4x leverage have DD
+# headroom (rally 5.19pct, sideways 2.21pct, both far below the 8pct dd_gate knee). Coupling
+# CALM_BOOST_MAX to leverage headroom -> bigger calm-regime entries at 4x -> (a) more rally
+# GRIND alpha (the dominant rally partition, distinct from the sideways_boost pullback hit),
+# (b) higher sideways Sh (bigger sideways mean-reversion positions -> could recover the
+# sample_factor 0.980 penalty that plain 4x paid). Crash (high-vol, calm_boost ~off) spared.
+# Same general principle as Exp3 (DD headroom -> return-seeking), applied to the vol axis.
+# Moderate magnitude (+0.10 per unit -> 0.90 at LEVERAGE_K=4) since calm_boost compounds with
+# sideways_boost on rally pullback bars (both low-trend AND low-vol).
+CALM_BOOST_MAX = min(1.10, 0.8 + 0.10 * max(0.0, 5.0 - LEVERAGE_K))
 # Architectural (this session): LEVERAGE-COUPLED sideways mean-reversion boost. Under v2.2
 # (calmar return_reward, leverage-INVARIANT) the LEVERAGE_K=5 level is no longer optimal:
 # a 5->4 cut gives a real dd_gate gain on rally (DD 6.36->5.09) + bull + crash (prior Exp1
