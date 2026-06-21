@@ -175,6 +175,22 @@ CONC_EXP_SCALE = 0.06 * LEVERAGE_K   # tanh saturation scale of the concentratio
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Architectural (this session): PROFIT-CUSHION slope-against threshold relaxation. The
+# slope-against exit threshold (_slope_thresh) is vol-conditioned ONLY -- it never reads the
+# position's realized profit. A deep-profit winner (large peak_pnl cushion) can tolerate a
+# slightly larger slope-against move before it threatens the gain: minor slope wobble (a
+# dead-cat bounce in crash, a pullback bar in rally/bull) cannot meaningfully dent a deep
+# cushion, so riding it captures more of the ongoing trend move -> higher Sharpe in the
+# return-limited regime (crash: 100pct WR, Sh1.27, AnnRet15.2pct, DD3.04pct = return-starved,
+# not risk-starved; trend-aligned shorts exit too early on bounces). Relax the slope threshold
+# UP for trend-aligned deep-profit winners (crash shorts, rally/bull trend longs), gated so
+# marginal winners and counter-trend positions keep the tight band. Peak-harvesting-adjacent
+# (rides bounces on deep winners; sustained reversals still caught by giveback + time pressure).
+# Distinct from the profit-magnitude GIVEBACK amplification (which tightens giveback tolerance
+# in chop): this loosens the SLOPE-against threshold for deep cushions. Continuous tanh on the
+# peak-cushion ratio; trend-aligned gated (pos_dir matches ret_long); profit-side only; small.
+SLOPE_PROFIT_RELAX_AMP = 0.30  # max fractional raise of slope-against threshold for deep-cushion trend-aligned winners
+SLOPE_PROFIT_RELAX_SCALE = 1.5  # peak-cushion ratio (peak/_pp_min - 1) at which relaxation saturates
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -1684,6 +1700,17 @@ class Strategy:
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Architectural (this session): profit-cushion slope-against threshold
+                # relaxation for trend-aligned deep-profit winners. A deep cushion (peak_pnl
+                # well above the activation base) tolerates a larger slope-against move before
+                # the bounce threatens the gain -> ride bounces (dead-cat in crash, pullback in
+                # rally/bull) -> capture more trend move -> higher Sharpe in return-limited
+                # crash. Gated: trend-aligned (pos_dir matches ret_long) + in profit + deep
+                # cushion; marginal/ct/losing positions keep the tight band. Continuous tanh.
+                _pos_dir_sp = 1.0 if current_pos > 0 else -1.0
+                _cushion = max(0.0, self.peak_pnl.get(symbol, 0.0) / PEAK_PROFIT_MIN_BASE - 1.0)
+                _slope_profit_relax = 1.0 + SLOPE_PROFIT_RELAX_AMP * max(0.0, np.tanh(_cushion / SLOPE_PROFIT_RELAX_SCALE)) * max(0.0, np.tanh(ret_long * _pos_dir_sp / 0.04)) * (1.0 if pos_pnl > 0 else 0.0)
+                _slope_thresh = _slope_thresh * _slope_profit_relax
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
