@@ -74,6 +74,27 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
+# Architectural (Exp1 this session): COUNTER-TREND stop-loss tightening.
+# The ATR stop (_stop_abs) is currently TREND-AGNOSTIC: a trend-aligned crash
+# short and a counter-trend crash dead-cat-bounce long take the SAME stop. But
+# the two binding regimes' LOSING trades are predominantly counter-trend at the
+# multi-day scale -- crash dead-cat-bounce longs (pos_dir +1 vs ret_vlong<0) and
+# rally pullback shorts (pos_dir -1 vs ret_vlong>0). Trend-aligned shorts in
+# crash / longs in rally are the WINNERS and need FULL room to ride the trend
+# through relief-rally spikes. This makes the stop trend-alignment-aware: tighten
+# _stop_abs for counter-trend positions so the losing ct trades are cut faster
+# (smaller realized losses -> higher Sharpe in the return-limited binding
+# regimes), while trend-aligned positions keep the full ATR stop byte-identical
+# (no DD cost on the profitable trend trades). Signal-quality lever on the RETURN
+# side (NOT sizing, NOT a DD-harvest/giveback lever). Continuous tanh on the
+# signed ct indicator (fast-saturating /0.01 scale -- the validated noise-free
+# ret_vlong ct gate used by _ct_vlong / _ct_hold_sat / _target_ema: rally/crash
+# solidly-signed ret_vlong sits in the flat tail -> ct indicator is a near-
+# CONSTANT, not a noise-tracking quantity -> stop does not wobble bar-to-bar ->
+# stability preserved); low-ret_vlong sideways -> gate ~0 -> byte-identical.
+# Shrink-only (caps at full ATR stop), symmetric (both long/short ct), max 30%.
+CT_STOP_TIGHTEN = 0.30   # max fractional reduction of the ATR stop for counter-trend positions
+CT_STOP_SCALE = 0.01     # ret_vlong scale at which ct tightening saturates (fast-saturating, noise-free)
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -1665,6 +1686,18 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp1 (architectural): trend-alignment-aware stop-loss. Tighten the
+                # ATR stop for COUNTER-TREND positions (pos_dir opposes the multi-day
+                # ret_vlong trend = crash dead-cat-bounce longs, rally pullback shorts
+                # -- the losing trades in the two binding regimes) so they are cut
+                # faster -> smaller realized losses -> higher Sharpe. Trend-aligned
+                # positions (pos_dir matches ret_vlong sign) -> ct indicator 0 -> full
+                # ATR stop byte-identical (no change to the profitable trend trades).
+                # Fast-saturating /0.01 scale -> near-constant ct indicator where it
+                # fires (noise-free); low-ret_vlong sideways -> ~0 -> byte-identical.
+                _pos_dir_stop = 1.0 if current_pos > 0 else -1.0
+                _ct_stop_str = max(0.0, np.tanh(-_pos_dir_stop * ret_vlong / CT_STOP_SCALE))
+                _stop_abs = _stop_abs * (1.0 - CT_STOP_TIGHTEN * _ct_stop_str)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
