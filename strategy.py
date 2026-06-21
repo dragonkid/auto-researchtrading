@@ -1501,12 +1501,43 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp5 (architectural, indep): BOUNCE-EXHAUSTION bear-entry TRIGGER
+                # -- a NEW ADMISSION PATH. Exp4 proved the strategy CANNOT enter bounce-
+                # tops: bounces (ret_short>0) suppress bear voters -> _bear_ready (EMA-
+                # of-bear-margin) fails -> no bear entry fires at the bounce top. So the
+                # high-quality "sell the bounce" short (enter at the bounce top before
+                # downtrend resumption) is structurally inaccessible. This adds a second
+                # bear-admission path that BYPASSES the voter-EMA gate when a bounce is
+                # EXHAUSTING in a strong downtrend: detect (1) strong multi-day downtrend
+                # (_dt, ret_vlong<0 -> crash/bear-leg only, rally/bull uptrend -> gate 0
+                # -> byte-identical), (2) a recent counter-trend bounce (_bounce =
+                # max(0,ret_short), the short-term up-move), (3) bounce EXHAUSTION (the
+                # recent 3-bar mean log-return turning back DOWN = the bounce is stalling
+                # and the downtrend is resuming). When all three are strong, admit a bear
+                # entry even with _bear_ready False. Still requires _bear_admit (trend<
+                # 0 deadzone -- confirms downtrend context). Reduced size (0.55x) since
+                # these bypass the voter noise-filter and are higher-risk (some bounces
+                # continue up -> losers; crash is 100pct WR so adding any losers risks
+                # lowering WR -- the exhaustion gate + small size bounds that risk).
+                # Multi-bar exhaustion signal (3-bar mean, not single-bar) for AR(1)
+                # noise-robustness. New control flow: a second admission OR-branch on
+                # the bear side. Targets crash (return-limited Sh1.274, DD3.04pct
+                # headroom) by adding genuinely new high-quality shorts, not sizing
+                # existing ones. Continuous tanh gates, deep-saturated (/0.03, /0.008,
+                # /0.004 -> near-constant where it fires, noise-free per safe family).
+                _dt = max(0.0, np.tanh(-ret_vlong / 0.03))  # 0 flat/uptrend, ~1 strong downtrend
+                _bounce = max(0.0, ret_short)  # recent counter-trend up-move
+                _exhaust_rets = np.diff(np.log(closes[-4:]))  # 3 recent log-returns
+                _exhaust = max(0.0, min(1.0, np.tanh(-float(np.mean(_exhaust_rets)) / 0.004)))  # ~1 when recent 3-bar avg DOWN (bounce exhausting)
+                _bounce_exhaust = _dt * max(0.0, np.tanh(_bounce / 0.008)) * _exhaust  # [0,1]
+                _bear_bounce_trigger = _bounce_exhaust > 0.5  # strong downtrend + bounce + exhaustion
+                _bounce_atten = 0.55 if (_bear_bounce_trigger and not _bear_ready) else 1.0  # smaller for voter-bypass entries
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                elif (_bear_ready or _bear_bounce_trigger) and _bear_admit:
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _bounce_atten
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
