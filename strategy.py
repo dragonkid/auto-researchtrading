@@ -1798,23 +1798,7 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp (architectural, indep): VOL-NORMALIZED time-pressure ramp SHAPE.
-                # Extension of the vol-normalized max_hold (keep 637f5e53): the ramp
-                # pre-activation offset (+3.0) and width (/4.0) are ALSO vol-blind bar-unit
-                # constants. In a vol-spike period a 4-bar ramp = a larger real price move,
-                # so pressure ramps "too fast" in real-move terms (same root as max_hold).
-                # Scale BOTH the offset and the width by the same _vol_hold_ext factor so the
-                # entire ramp shape (center + pre-activation + steepness) is vol-normalized:
-                # at vol_ratio>=1.5 the ramp is ~12pct wider and starts ~12pct later, giving
-                # vol-spike winners a proportionally more gradual pressure build through the
-                # burst. Calm (vol_ratio<1) byte-identical (gate floored at 0). Time-pressure
-                # is non-binding for crash/rally (confirmed byte-identical in keep 637f5e53),
-                # so the ramp-shape change is SAFE for the binding regimes -- only sideways
-                # (where time-pressure binds) is affected. New control flow: vol term in the
-                # ramp shape, composed with the validated vol-normalized center.
-                _tp_offset = 3.0 * (1.0 + 0.12 * _vol_hold_ext)
-                _tp_width = 4.0 * (1.0 + 0.12 * _vol_hold_ext)
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + _tp_offset) / _tp_width))
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
