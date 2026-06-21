@@ -94,8 +94,8 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # (both long/short), Sharpe-affecting (alters exit timing of WINNERS, not size).
 # Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
 PORT_DD_GIVEBACK_TIGHTEN = 0.30   # max fractional reduction of giveback at deep DD
-PORT_DD_GIVEBACK_ONSET = 0.05     # portfolio DD-fraction below which NO tightening (spares low-DD regimes like bull at ~4pct; the knee is absolute 8pct so onset is in absolute DD-fraction terms, not leverage-scaled)
-PORT_DD_GIVEBACK_SCALE = 0.02     # DD-fraction ramp width above onset (tightening saturates ~onset+2*scale)
+PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
+PORT_DD_GIVEBACK_EQUITY_SPAN = 5  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -222,6 +222,12 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
+        # Exp1 branch step3: EMA-smoothed equity for the giveback-tightening DD
+        # fraction. Instantaneous equity is bar-noisy -> tightening amount noisy ->
+        # exit-timing noise -> stability penalty (step1 cost). Smoothing the equity
+        # makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation
+        # while preserving the pullback-depth signal that drives the rally DD relief.
+        self._equity_ema = 0.0
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
@@ -265,6 +271,10 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
+        # Exp1 branch step3: EMA-smoothed equity (for the giveback-tightening DD
+        # fraction only; _peak_equity still uses instantaneous for the entry circuit).
+        _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
+        self._equity_ema = _eq_alpha * equity + (1.0 - _eq_alpha) * (self._equity_ema if self._equity_ema > 0 else equity)
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -1691,8 +1701,8 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                _port_dd_frac = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh((_port_dd_frac - PORT_DD_GIVEBACK_ONSET) / PORT_DD_GIVEBACK_SCALE))
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
