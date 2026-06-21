@@ -1864,6 +1864,40 @@ class Strategy:
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                # Exp3 (architectural, indep): CROSS-SYMBOL BREADTH-CONFIRMATION HOLD term
+                # on the exit fusion. NEW data dep: the exit subsystem currently reads only
+                # OWN-symbol data (slopes, peaks, voters) + portfolio DD -- it never reads
+                # whether the BROAD MARKET (other symbols) still confirms the position
+                # direction. The giveback tightening (rally's proven DD lever, maxed at
+                # 0.50) treats ALL portfolio DD identically: it cannot distinguish a NOISE
+                # pullback (broad market still trending in the trade direction -> the
+                # pullback mean-reverts -> hold through it -> less giveback -> lower DD +
+                # higher return) from a REAL correction (broad market also reversed -> cut).
+                # This adds exactly that missing signal: for a TREND-ALIGNED, IN-PROFIT
+                # position (the winner-giving-back-during-a-pullback case), SUBTRACT exit
+                # pressure when the broad market (BTC multi-day trend + partner alt 20-bar
+                # momentum) still AGREES with the position direction -> hold the winner
+                # through noise pullbacks -> less giveback -> lower rally DD + higher rally
+                # Sharpe. The profit gate (_pnl_scale, only positive) is the safety release:
+                # the moment the position stops being in profit (real correction underway),
+                # the hold benefit vanishes -> normal exit resumes (cannot hold into a real
+                # correction the way the walled held-position de-risk missed recoveries --
+                # this only DELAYS pressure on WINNERS, never cuts a loser). Continuous tanh
+                # on each leader's trend x position direction (no boundary); deep-saturated
+                # gates (/0.03 BTC, /0.02 partner -> near-constant where it fires, noise-free
+                # per the validated safe-family lesson); one-sided (hold only, never adds
+                # pressure -- real-correction cutting left to the existing slope/giveback
+                # paths). Direction-agnostic general principle (no regime label): a winner
+                # backed by broad-market trend agreement is held through its noise pullbacks.
+                # For BTC: breadth from the alt pair (ETH+SOL 20-bar); for alts: BTC (96-bar)
+                # + the partner alt (20-bar). Falls to 0 (no effect) if partners absent.
+                if symbol != "BTC":
+                    _br_partner = "SOL" if symbol == "ETH" else "ETH"
+                    _br_partner_lead = _alt_lead.get(_br_partner, 0.0)
+                    _breadth = 0.5 * (max(0.0, np.tanh(_btc_trend * _pos_dir_vb / 0.03)) + max(0.0, np.tanh(_br_partner_lead * _pos_dir_vb / 0.02)))
+                else:
+                    _breadth = 0.5 * (max(0.0, np.tanh(_alt_lead.get("ETH", 0.0) * _pos_dir_vb / 0.02)) + max(0.0, np.tanh(_alt_lead.get("SOL", 0.0) * _pos_dir_vb / 0.02)))
+                _voter_bias += -0.15 * _breadth * max(0.0, _pnl_scale) * _trend_align_vb
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
