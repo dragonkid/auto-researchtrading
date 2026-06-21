@@ -340,29 +340,6 @@ class Strategy:
             _btc_vol_long = max(float(np.mean(_bv[-18:])), 1e-10)
             _btc_vol_rise = max(0.0, min(1.0, np.tanh(((_btc_vol_recent - _btc_vol_long) / _btc_vol_long) / 0.30)))
 
-        # Exp (architectural, indep): BTC vol-REGIME (vol_ratio) for cross-symbol
-        # vol-regime AGREEMENT. NEW cross-symbol data dep: prior BTC cross-symbol deps
-        # use BTC PRICE trend (96-bar), BTC VOLUME magnitude (6/18-bar), and BTC
-        # directional volume (OBV). NONE compare the BTC vol-REGIME (calm vs volatile,
-        # i.e. BTC's own vol_ratio) to an alt's vol_regime. _btc_vol_ratio mirrors the
-        # per-symbol vol_ratio computation (realized_vol / _target_vol_dyn with the same
-        # 200-bar baseline blend) so the two ratios are on the SAME scale and directly
-        # comparable. Used downstream as a soft ENTRY size shrink on alts whose vol_regime
-        # DIVERGES from the leader: an alt volatile while BTC is calm is an idiosyncratic
-        # alt-specific move (liquidation cascade, listing news) = noise, not a broad
-        # directional opportunity -> lower-quality entry -> smaller first-bar commitment.
-        # Distinct from _btc_vol_rise (BTC volume magnitude trend) and the per-symbol
-        # vol_ratio (own vol regime, already in combined_mult vol-targeting). Computed
-        # once per bar; falls to 1.0 (neutral) if BTC absent/short.
-        _btc_vol_ratio = 1.0
-        if "BTC" in bar_data and len(bar_data["BTC"].history) > max(VOL_LOOKBACK, 200) + 1:
-            _bvc = bar_data["BTC"].history["close"].values
-            _btc_rv = max(np.std(np.diff(np.log(_bvc[-VOL_LOOKBACK - 1:-1]))), 1e-6)
-            _btc_bl_n = min(200, len(_bvc) - 1)
-            _btc_bl_vol = max(np.std(np.diff(np.log(_bvc[-_btc_bl_n - 1:-1]))), 1e-6)
-            _btc_tv_dyn = 0.7 * TARGET_VOL + 0.3 * _btc_bl_vol
-            _btc_vol_ratio = _btc_rv / _btc_tv_dyn
-
         # Exp2 (architectural, indep): BTC (market leader) DIRECTIONAL VOLUME PRESSURE
         # (normalized OBV). NEW cross-symbol x cross-data-type dep: the validated volume
         # grid {own,BTC,partner}x{vol,price} has a vol-RISE column (total volume magnitude
@@ -1314,24 +1291,6 @@ class Strategy:
                 _vd_decline = max(0.0, min(1.0, np.tanh(-_vol_trend_r / 0.30)))
                 _vd_ct_shrink_bull = 1.0 - 0.12 * _vd_vl_w * _vd_decline * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull ct in multi-day downtrend
                 _vd_ct_shrink_bear = 1.0 - 0.12 * _vd_vl_w * _vd_decline * max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally)
-                # Exp (architectural, indep): cross-symbol VOL-REGIME AGREEMENT entry
-                # shrink. NEW data dep (uses _btc_vol_ratio precomputed once per bar):
-                # compare the alt's own vol_regime (vol_ratio) to the LEADER's vol_regime
-                # (_btc_vol_ratio). When the alt is volatile while BTC is calm (idiosyncratic
-                # alt-specific move = noise, not a broad directional opportunity) -> shrink
-                # first-bar commitment up to 10%. AGREEMENT (both calm or both volatile, e.g.
-                # crash where all symbols spike together) -> no shrink (spares crash, the
-                # return-limited regime whose bounces are broad-market). Divergence is
-                # symmetric: max(alt/btc, btc/alt) - 1.0 >= 0 captures either direction of
-                # regime mismatch. Deep-saturated /0.40 divergence scale (only sharp regime
-                # mismatches fire), continuous tanh, no boundary. Shrink-only (safe family,
-                # caps at 1.0). BTC self-referential -> vol_ratio == _btc_vol_ratio ->
-                # divergence 0 -> shrink 1.0 (byte-identical for BTC). First-bar-only.
-                if symbol != "BTC":
-                    _vr_div = max(vol_ratio / max(_btc_vol_ratio, 1e-6), _btc_vol_ratio / max(vol_ratio, 1e-6)) - 1.0
-                    _volregime_shrink = 1.0 - 0.10 * max(0.0, min(1.0, np.tanh(_vr_div / 0.40)))
-                else:
-                    _volregime_shrink = 1.0
                 # Exp5 (architectural, indep): volume-RISING trend-ALIGNED entry boost —
                 # bilateral counterpart to the Exp3 decline shrink. A trend-aligned entry on
                 # RISING volume has strong participation confirming the trend (rally longs on
@@ -1543,11 +1502,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _volregime_shrink
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _volregime_shrink
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
