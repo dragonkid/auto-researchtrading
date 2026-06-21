@@ -1155,8 +1155,14 @@ class Strategy:
                     _alt_own_bear = max(0.0, np.tanh(-ret_vlong / 0.03))      # alt own multi-day downtrend
                     _alt_btc_agree_bull = max(0.0, np.tanh(_btc_trend / 0.03))   # BTC confirms uptrend
                     _alt_btc_agree_bear = max(0.0, np.tanh(-_btc_trend / 0.03))  # BTC confirms downtrend
-                    _xasset_bull *= 1.0 + 0.06 * _alt_own_bull * _alt_btc_agree_bull
-                    _xasset_bear *= 1.0 + 0.06 * _alt_own_bear * _alt_btc_agree_bear
+                    # Branch step5 (simplification): REMOVED the Exp4 own-ret_vlong x
+                    # BTC-trend conjunction boost (+0.06). Plausibly redundant with the
+                    # _xasset_boost (alt-trend x BTC-agreement, +0.12) which already fires
+                    # on the same broad-market-trend entries; the alt's own ret_vlong is
+                    # highly correlated with the entry direction in trends. Test: stacks
+                    # step1's rally over-commit reduction.
+                    # _xasset_bull *= 1.0 + 0.06 * _alt_own_bull * _alt_btc_agree_bull  # removed
+                    # _xasset_bear *= 1.0 + 0.06 * _alt_own_bear * _alt_btc_agree_bear  # removed
                     # Exp2: cross-alt lead-lag confirmation boost (partner alt = the OTHER
                     # of ETH/SOL). ETH often leads SOL; a partner alt whose 20-bar momentum
                     # agrees with this entry direction is broad-alt-trend confirmation at a
