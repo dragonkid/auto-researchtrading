@@ -76,26 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Architectural (Exp1 this session): COUNTER-TREND peak-profit ACTIVATION floor
-# reduction. Prior session (04df4b0d) proved ct giveback-TOLERANCE tightening is
-# BYTE-IDENTICAL INERT: ct positions (rally pullback shorts) peak BELOW _pp_min,
-# so pp_pressure never ACTIVATES -> tightening its tolerance downstream has no
-# effect. The rally loss streak (4 consec losses -> streak_gate 0.873, the largest
-# removable rally drag) comes from ct shorts that peak in profit during a pullback
-# (slope agrees with the short) then give it ALL back and exit at the stop when the
-# trend resumes. The giveback trail never fires because peak < _pp_min (~2.1% in
-# rally's low vol). LOWER the pp_activation floor for ct positions so the giveback
-# trail engages at small ct peaks -> harvest ct winners above breakeven BEFORE they
-# give it all back -> converts a "small ct winner that reversed" from a LOSS into a
-# small WIN -> breaks the loss streak. DISTINCT from 04df4b0d (tightened TOLERANCE
-# downstream, inert) and 288ff0e1 (trend-aligned tolerance tightening, catastrophic
-# -0.105): this lowers the ACTIVATION FLOOR, the upstream lever 04df4b0d's inertness
-# pointed at. ct-gated by the validated fast-saturating /0.01 ret_vlong scale
-# (rally's solidly-positive ret_vlong sits in the flat tail -> gate is a near-
-# CONSTANT, noise-free); trend-aligned (gate 0) keeps base _pp_min byte-identical.
-# General principle: counter-trend positions are low-conviction -> protect even
-# small profits (lower harvest threshold) rather than riding them to the stop.
-CT_PP_MIN_REDUCE = 0.55   # max fractional reduction of _pp_min for deep-ct positions (-> ~0.45x base in rally)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -1739,14 +1719,6 @@ class Strategy:
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                # Exp1 (architectural): COUNTER-TREND _pp_min activation-floor
-                # reduction. See CT_PP_MIN_REDUCE. Lowers the peak-profit giveback-
-                # trail activation floor for ct positions so small ct peaks (rally
-                # pullback shorts) engage the giveback trail -> harvest above
-                # breakeven instead of riding to the stop (a loss) -> breaks the
-                # rally loss streak. Trend-aligned (gate 0) -> 1.0 -> byte-identical.
-                _ct_pp_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _pp_min = _pp_min * (1.0 - CT_PP_MIN_REDUCE * _ct_pp_str)
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
