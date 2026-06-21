@@ -2207,6 +2207,33 @@ class Strategy:
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
 
+            # Architectural (Exp2 this session): PORTFOLIO-DD-gated HELD-POSITION
+            # de-risk. The existing _port_dd_atten (line ~254) shrinks only NEW entry
+            # first-bar size when portfolio equity is in drawdown — HELD positions keep
+            # their size through the pullback, so portfolio DD keeps accumulating (the
+            # binding rally constraint: DD 7.58% sits AT the 8% dd_gate knee, dd_gate
+            # 1/(1+DD)=0.930 is the active penalty, and crossing 8% triggers the steep
+            # exp collapse). This adds the MISSING held-position counterpart: when
+            # portfolio DD fraction (1 - equity/peak_equity) exceeds a threshold, scale
+            # ALL same-sign held position targets toward 0 proportionally (de-risk, not
+            # binary cut). New control flow (portfolio-DD state -> held-position target)
+            # + new data dependency (equity/peak reads into HELD sizing, not just entry
+            # sizing). GENERAL risk-budgeting principle (cap portfolio exposure in DD),
+            # NOT regime detection: the regime effect falls out of which regimes actually
+            # reach the DD threshold. At 5x leverage only rally (DD 7.58%) breaches the
+            # 5.5% threshold; bull (4.18%), crash (3.01%), sideways (2.74%) stay under ->
+            # byte-identical for 3 of 4 regimes. Smooth tanh ramp (no boundary flip ->
+            # noise-robust; equity/peak is slow-moving, ~1/sqrt(N) attenuation of bar
+            # noise). Max 30% held-position cut at extreme DD (gentle: preserves most of
+            # the trend-aligned rally long's upside while capping the DD tail). Exempt:
+            # full exits (target==0) and sign flips (risk transitions hit exact targets);
+            # fresh entries (current_pos==0) are already shrunk by _port_dd_atten.
+            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                _port_dd_frac = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
+                _pdh_thresh = 0.055  # DD fraction above which held de-risk activates (only rally 7.58% breaches at 5x)
+                _pdh_scale = 1.0 - 0.30 * max(0.0, np.tanh((_port_dd_frac - _pdh_thresh) / 0.015))
+                target = target * _pdh_scale
+
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
             # gate previously fired on any move > 1.0 unit. Small same-sign resizes
