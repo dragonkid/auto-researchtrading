@@ -145,6 +145,28 @@ PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturat
 # invariance). LEVERAGE_K is a single named coupling constant.
 LEVERAGE_K = 5.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
+# Architectural (Exp1 this session): BOUNDED BOOST COMPOSITE. The entry-size
+# target multiplies ~10 independent confirmation boosts (xasset, vol_rise,
+# vol_partner, vol_btc, btcvol_partner, partnervol_btc, close_conv, dvp,
+# btcdvp, partnerdvp) -- each +0.05..0.12 max on deep-saturated near-constant
+# gates. On a fully-confirmed broad-market trend entry (rally/crash alts where
+# every gate saturates) they COMPOUND: 1.05^10 * 1.12 * 1.08 * 1.06 ~= 2.2x
+# base size. That full size is sustained through scale-in (the boosts live in
+# `size`, which full_target ramps toward), so the highest-conviction trend
+# entries are over-committed for the whole hold -> inflates DD on exactly the
+# entries whose giveback through pullbacks is the DD source (rally 6.36pct,
+# the binding low-score + std-outlier regime). Replacing the 10 multiplicative
+# boosts with ONE soft-capped product preserves the quality signal (more
+# confirmation -> bigger) while bounding the over-commitment: capped =
+# 1 + CAP*tanh((prod-1)/CAP) asymptotes at 1+CAP no matter how many gates
+# agree. Byte-identical when the product is near 1 (sparse/single-gate
+# entries: bull-2021 weak-trend, sideways). Only fires when boosts compound
+# past the cap (fully-confirmed broad-trend entries). New control flow + new
+# data dependency on the AGGREGATE boost product (was 10 independent chained
+# multiplies -> code structure changes to one bounded composite). Direction-
+# agnostic (same scalar both sides); shrink factors (<1, protective) are left
+# untouched -- only the >1 boost compounding is capped.
+ENTRY_BOOST_CAP = 0.50  # max total boost above 1.0 (2.2x -> ~1.50x fully confirmed)
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -1501,12 +1523,22 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp1 (architectural): BOUNDED BOOST COMPOSITE. Replace the 10
+                # multiplicative >1 boost factors with one soft-capped product so
+                # fully-confirmed broad-trend entries (where every deep-saturated
+                # gate fires and the chain would compound to ~2.2x) are capped at
+                # ~1+ENTRY_BOOST_CAP, bounding the over-commitment that inflates DD
+                # on the highest-conviction trend entries. Byte-identical near 1.
+                _boost_prod_bull = _xasset_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull
+                _boost_prod_bear = _xasset_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear
+                _boost_capped_bull = 1.0 + ENTRY_BOOST_CAP * np.tanh((_boost_prod_bull - 1.0) / ENTRY_BOOST_CAP)
+                _boost_capped_bear = 1.0 + ENTRY_BOOST_CAP * np.tanh((_boost_prod_bear - 1.0) / ENTRY_BOOST_CAP)
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _boost_capped_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _boost_capped_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
