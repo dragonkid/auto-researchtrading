@@ -1538,20 +1538,6 @@ class Strategy:
                 # to the scale-in TIMING, the one lever prior sessions found able to move
                 # stability.
                 _entry_full_bars_dyn = max(1.5, 2.0 + 1.0 * (1.0 - rsi_trend_str))  # [2.0, 3.0]
-                # Exp (architectural, indep): VOL-NORMALIZED scale-in pace. The scale-in
-                # window (_entry_full_bars_dyn, in BAR units) is trend-conditioned but vol-
-                # BLIND -- same family as the vol-normalized max_hold keep 637f5e53. In a
-                # vol-spike period, N scale-in bars = a larger real price move, so the
-                # position reaches full size in a bigger real move -> bigger early exposure
-                # before the move is confirmed -> larger giveback on pullback (the documented
-                # faster-scale-in-hurts-rally wall, here in real-move terms). Scale the
-                # scale-in window UP with vol_ratio (max +12pct at vol_ratio>=1.5) so scale-in
-                # is vol-normalized (same amount of REAL price move to reach full size) ->
-                # smaller early exposure in volatile periods -> less pullback giveback. Calm
-                # (vol_ratio<1) byte-identical (gate floored at 0). Continuous tanh, composed
-                # with the existing trend/win-accel pacing. New vol term in the scale-in pace.
-                _si_vol_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                _entry_full_bars_dyn *= 1.0 + 0.12 * _si_vol_ext
                 # Architectural (Exp3 this session): trend-gated realized-PnL scale-in
                 # ACCELERATION for early winners. Prior session removed a live-CONVICTION
                 # scale-in accelerator (it made pace depend on per-bar voter margin =
