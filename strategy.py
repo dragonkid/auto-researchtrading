@@ -1112,8 +1112,13 @@ class Strategy:
                     # (BTC shorts confirmed by alts participating); bull weak-trend + sideways
                     # spared by /0.03 BTC-trend gate.
                     _alt_pair_vol_rise = 0.5 * (_alt_vol_rise.get("ETH", 0.0) + _alt_vol_rise.get("SOL", 0.0))
-                    _xasset_bull *= 1.0 + 0.05 * _alt_pair_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
-                    _xasset_bear *= 1.0 + 0.05 * _alt_pair_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Branch step4 (simplification): REMOVED the alt-pair-VOLUME-rise x
+                    # BTC-price boost on BTC entries (the BTC-side analog of step1's Exp8/9
+                    # removal -- OTHER-symbol VOLUME magnitude x price). Same redundancy
+                    # rationale: a BTC trend entry is already confirmed by _btc_self_boost
+                    # (own price trend); alt-pair volume magnitude adds a 3rd correlated
+                    # participation signal that over-commits. Test: stacks step1 gain on BTC.
+                    # (_alt_pair_vol_rise retained for reference; boost term removed.)
                 else:
                     _xasset_bull = 1.0 - 0.25 * max(0.0, np.tanh(-_btc_trend / 0.06))  # BTC downtrend shrinks alt long
                     _xasset_bear = 1.0 - 0.25 * max(0.0, np.tanh(_btc_trend / 0.06))    # BTC uptrend shrinks alt short (rally)
