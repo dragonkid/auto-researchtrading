@@ -102,7 +102,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # LEVERAGE-COUPLED to BASE_POSITION_SIZE (a discipline: any size-dependent
 # fraction-space threshold must scale with leverage to preserve decision
 # invariance). LEVERAGE_K is a single named coupling constant.
-LEVERAGE_K = 2.0
+LEVERAGE_K = 3.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
