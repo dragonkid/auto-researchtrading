@@ -216,14 +216,6 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
-        # Exp5 (architectural, indep): per-symbol previous-bar giveback (peak_pnl -
-        # pos_pnl) for a GIVEBACK-VELOCITY exit pressure. The giveback RATIO (_pp_pressure)
-        # measures the LEVEL of profit given back; the per-bar CHANGE in giveback (its
-        # derivative) is orthogonal info: a SHARPLY accelerating giveback (fast reversal
-        # off a peak) is more likely a genuine reversal than a steady/slow giveback
-        # (normal pullback), even at the same ratio level. Velocity fires EARLIER than
-        # the ratio threshold on sharp reversals. New per-symbol state + new exit source.
-        self._prev_giveback = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -1761,21 +1753,6 @@ class Strategy:
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
-                # Exp5: GIVEBACK-VELOCITY exit pressure (7th active soft MAX source).
-                # NEW data primitive: the per-bar CHANGE in giveback (derivative of
-                # peak_pnl - pos_pnl), orthogonal to the giveback RATIO (_pp_pressure,
-                # the level). A sharply ACCELERATING giveback = fast reversal off a peak
-                # (genuine reversal signature) vs a steady/slow giveback (normal pullback)
-                # at the same ratio level. Fires EARLIER than the ratio threshold on sharp
-                # reversals -> harvests winners before a deep giveback completes. Profit-
-                # side only (only meaningful when there is a peak to give back from).
-                # Velocity normalized by _pp_min (regime-vol-scaled) so activation is
-                # vol-invariant; smooth tanh, 0.45 cap. Reset on entry (prev=0).
-                _prev_gb = self._prev_giveback.get(symbol, 0.0)
-                _gb_vel = max(0.0, _giveback - _prev_gb) / max(_pp_min, 1e-6)
-                self._prev_giveback[symbol] = _giveback
-                _gv_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_gb_vel - 0.15) / 0.10)))
-                _w_gv = max(0.0, _pnl_scale)  # profit-side only
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
@@ -1986,7 +1963,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_gv * _gv_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
@@ -2471,7 +2447,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._prev_giveback):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -2483,7 +2459,6 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
-                    self._prev_giveback[symbol] = 0.0
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
