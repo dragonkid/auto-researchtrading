@@ -143,10 +143,27 @@ PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturat
 # LEVERAGE-COUPLED to BASE_POSITION_SIZE (a discipline: any size-dependent
 # fraction-space threshold must scale with leverage to preserve decision
 # invariance). LEVERAGE_K is a single named coupling constant.
-LEVERAGE_K = 5.0
+LEVERAGE_K = 4.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
 CALM_BOOST_MAX = 0.8
-SIDEWAYS_BOOST_MAX = 0.50
+# Architectural (this session): LEVERAGE-COUPLED sideways mean-reversion boost. Under v2.2
+# (calmar return_reward, leverage-INVARIANT) the LEVERAGE_K=5 level is no longer optimal:
+# a 5->4 cut gives a real dd_gate gain on rally (DD 6.36->5.09) + bull + crash (prior Exp1
+# measured +0.002041 composite), BUT plain 4x was blocked by sideways dropping 52->48
+# trades (below the 50-trade sample_factor knee, sqrt(48/50)=0.980 = -2pct = the entire
+# sideways regression). The sideways Sharpe actually ROSE at 4x (2.001->2.006) but the
+# sample_factor penalty outweighed it. NEW STRUCTURAL COUPLING: at lower leverage, mean-
+# reversion regimes (sideways, low rsi_trend_str) have MORE DD headroom (sideways DD at 4x
+# is 2.21pct, far below the 8pct dd_gate knee), so the strategy can afford LARGER mean-
+# reversion positions to capture more return -> raise sideways Sh to offset the
+# sample_factor penalty from the lost marginal trades. SIDEWAYS_BOOST_MAX scales with
+# leverage headroom: 0.50 at LEVERAGE_K=5 (baseline), +0.15 per unit of leverage reduction
+# -> 0.65 at LEVERAGE_K=4. This is a general principle (DD headroom -> return-seeking in
+# mean-reversion), NOT regime-targeting: the boost is already low-trend-gated (rsi_trend_str,
+# fires in chop/sideways, ~off in trends -> spares rally grinding uptrend). The coupling
+# ties a sizing magnitude to the leverage level (new cross-subsystem data dep). Clamped to
+# keep the boost bounded.
+SIDEWAYS_BOOST_MAX = min(0.80, 0.50 + 0.15 * max(0.0, 5.0 - LEVERAGE_K))
 CROSS_ASSET_FIXED_BOOST = 0.15
 HIGH_VOTE_BOOST_MULT = 1.20
 STRENGTH_FLOOR_SIDEWAYS = 2.6
