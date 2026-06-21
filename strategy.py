@@ -2334,7 +2334,20 @@ class Strategy:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
-            if abs(target - current_pos) > 1.0:
+            # Branch step2 (behavior-preserving leverage): scale the ABSOLUTE
+            # minimum-trade emission threshold by LEVERAGE_K. The \$1 threshold
+            # (here + prepare.py line 471, unmodifiable) is an ABSOLUTE dollar
+            # floor, not a fraction -> it breaks scale-invariance under leverage:
+            # during rally quiet stretches no grid fires so targets are continuous,
+            # and sub-\$1 micro-resizes (suppressed at baseline) become ~2x at 2x
+            # leverage -> cross \$1 -> emitted as noise-driven trades (rally trades
+            # exploded 98->151, WR 84.7->70.9, stability crashed 1.0->0.235).
+            # Scaling the emission threshold by LEVERAGE_K (1.0->2.0) filters the
+            # sub-\$2 micro-resizes back out (the formerly sub-\$1 set, doubled),
+            # restoring the baseline trade set. prepare.py's \$1 execution floor
+            # is then moot (strategy already filters <\$2). This makes trade
+            # SELECTION leverage-invariant (the last size-dependent decision gate).
+            if abs(target - current_pos) > 1.0 * LEVERAGE_K:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
