@@ -820,30 +820,8 @@ class Strategy:
                 # the saturation knee) is preserved. New mechanism: near-binary saturated
                 # ct-shrink profile (vs step-3's mid-slope linear region).
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
-                # Exp3 (architectural, indep): DIRECTION-ASYMMETRIC ct_vlong shrink.
-                # The symmetric 0.40 shrink treats bull-ct (long-against-downtrend =
-                # capitulation-bounce mean-reversion longs, here crash's 100%-WR bounce
-                # longs) and bear-ct (short-against-uptrend = grinding-pullback fades,
-                # rally's losing pullback shorts) identically. But these are structurally
-                # DIFFERENT trades: a long entered after a sharp multi-day drop is a
-                # capitulation-bounce mean-reversion play (oversold -> snap back, high WR
-                # in crypto's down-thrashing regimes), while a short entered during a
-                # grinding multi-day uptrend is a counter-trend fade (the uptrend resumes,
-                # low WR). The symmetric shrink over-shrinks the high-quality bounce longs
-                # (costing crash return on its 100%-WR trades) while correctly shrinking
-                # the low-quality fade shorts (protecting rally). Make it DIRECTION-
-                # ASYMMETRIC: reduce the bull-ct shrink (0.40->0.20) so crash bounce longs
-                # commit more (capture more of the bounce move -> higher crash return via
-                # return_reward), keep the bear-ct shrink at 0.40 (rally pullback-short
-                # protection unchanged). General principle (no regime label): a counter-
-                # trend entry in the OVERSOLD direction (long vs down-trend) is a higher-
-                # quality mean-reversion entry than one in the OVERBOUGHT direction (short
-                # vs up-trend), so it earns a smaller counter-trend shrink. Same fast-
-                # saturating /0.01 ret_vlong ct indicator + _calm_ct churn gate (near-
-                # constant, noise-free). First-bar-only, shrink-only. New direction-
-                # asymmetric control flow at the ct_vlong sizing decision (was symmetric).
-                _bull_ct_vlong = 1.0 - 0.20 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend (capitulation bounce: smaller shrink)
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend (grinding pullback fade: full shrink)
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
                 # Exp3 (architectural): COUNTER-TREND-specific loss-streak size shrink.
                 # Distinct from Exp1's blanket escalation (which hurt bull by shrinking
                 # trend-aligned post-streak entries): this shrinks ONLY counter-trend
