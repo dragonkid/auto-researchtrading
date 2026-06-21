@@ -211,7 +211,18 @@ def ema(values, span):
 # via tanh: low vol -> larger initial frac (~0.50, capture rally/sideways momentum
 # with less first-bar lag); high vol -> smaller initial frac (~0.36, less DD on
 # wrong-side first bar in crash). Continuous, bounded ~[0.36, 0.50].
-ENTRY_INITIAL_FRAC_BASE = 0.43
+# Architectural (this session, Exp7): LEVERAGE-COUPLED initial commit fraction (return-
+# seeking via 4x DD headroom, entry-SIZE axis). The Exp3 keep established that lower
+# leverage opens DD headroom for return-seeking on ENTRY SIZE (sideways_boost coupling);
+# Exp6 confirmed the EXIT giveback is stability-sensitive (widening destabilizes bull).
+# This applies the same entry-size return-seeking to the FIRST-BAR commit fraction: at
+# lower leverage, commit a larger fraction of the full position on bar 1 (0.43 -> 0.48 at
+# LEVERAGE_K=4) -> capture more of trend entries upfront (less scale-in lag) -> more alpha
+# on the high-WR trend entries (rally 85pct, crash 100pct, bull 87pct). Entry-SIZE change
+# (grid-absorbed/safe, not exit-timing -> no stability penalty, per the Exp3/Exp6 lesson).
+# Byte-identical at LEVERAGE_K=5. General principle (DD headroom -> larger upfront commit),
+# no regime label. Bounded by the existing min(0.55, ...) cap at use.
+ENTRY_INITIAL_FRAC_BASE = 0.43 + 0.05 * max(0.0, 5.0 - LEVERAGE_K)
 ENTRY_INITIAL_FRAC_VOL_AMP = 0.07
 ENTRY_INITIAL_FRAC = 0.43  # retained for scale-in start anchor + flip-fraction path
 ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
