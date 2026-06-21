@@ -1702,20 +1702,7 @@ class Strategy:
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
-                # Branch step2: scope the tightening to TREND-ALIGNED positions only.
-                # The tightening caps DD from riding WINNERS THROUGH DEEP PULLBACKS -- a
-                # behavior of trend-aligned holds (rally longs riding uptrend pullbacks).
-                # Counter-trend positions (crash bounce LONGS long-against-downtrend) are
-                # quick mean-reversion plays that exit on reversion; they do NOT ride
-                # pullbacks, so tightening them harvests early with NO DD relief -- pure
-                # return_reward loss (the Exp1 crash -0.0055 regression: Sh rose but score
-                # fell on calmar). Scope via a smooth alignment factor: 1.0 when position
-                # direction matches the 96-bar structural trend (ret_vlong, very smooth ->
-                # noise-robust), 0.0 when counter-trend. General mechanism (pos-dir vs
-                # multi-day trend), no regime label. /0.02 saturates alignment at |ret_vlong|>=2%.
-                _pos_dir = 1.0 if current_pos > 0 else (-1.0 if current_pos < 0 else 0.0)
-                _trend_align = max(0.0, min(1.0, _pos_dir * ret_vlong / 0.02))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _trend_align * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
