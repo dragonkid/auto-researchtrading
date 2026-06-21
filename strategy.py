@@ -1776,21 +1776,10 @@ class Strategy:
                 # pressure terms while preserving net effect on exit decision.
                 _side_margin = _bull_margin if current_pos > 0 else _bear_margin
                 _opp_margin = _bear_margin if current_pos > 0 else _bull_margin
-                # Chop-amplified own-side subtraction. In chop (low abs(ret_long)),
-                # amplify the own-side hold (voter_bias subtraction) so winners ride
-                # chop noise; in trend, _chop_amp -> 1.0 (no amplification).
-                # Architectural simplification (Exp3 this session): REMOVED the 3-factor
-                # _div_taper (strong-sum divergence x chop-gate x ct-gate) that interpolated
-                # _chop_amp toward 1.0 in "pure sideways non-counter-trend holds." The taper
-                # was a narrow conjunction of 3 tanh gates each requiring near-saturated
-                # input -> fired in a sliver of bars overlapping with the existing
-                # trend-aligned opp-bias attenuator (_opp_atten) and the trend-magnitude
-                # opp-bias amp (_opp_trend_amp) which already handle the divergence case.
-                # Removing eliminates the redundant divergence-taper path; the simple chop
-                # factor (1 + 0.7*chop) is continuous and bounded. Test: if score-neutral/
-                # positive the taper was dead complexity (keep simpler, better OOS); if
-                # negative it was load-bearing for sideways exit timing.
-                _chop_amp = 1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))
+                # Chop-amplified own-side subtraction with divergence taper: in pure sideways
+                # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
+                _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
+                _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
