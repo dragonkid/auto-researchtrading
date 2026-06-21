@@ -94,7 +94,8 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # (both long/short), Sharpe-affecting (alters exit timing of WINNERS, not size).
 # Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
 PORT_DD_GIVEBACK_TIGHTEN = 0.30   # max fractional reduction of giveback at deep DD
-PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
+PORT_DD_GIVEBACK_ONSET = 0.05     # portfolio DD-fraction below which NO tightening (spares low-DD regimes like bull at ~4pct; the knee is absolute 8pct so onset is in absolute DD-fraction terms, not leverage-scaled)
+PORT_DD_GIVEBACK_SCALE = 0.02     # DD-fraction ramp width above onset (tightening saturates ~onset+2*scale)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1691,7 +1692,7 @@ class Strategy:
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh((_port_dd_frac - PORT_DD_GIVEBACK_ONSET) / PORT_DD_GIVEBACK_SCALE))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
