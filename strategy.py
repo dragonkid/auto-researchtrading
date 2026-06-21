@@ -76,30 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
-# At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
-# 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
-# score; the exp penalty starts at 8pct). At lower leverage the return_reward lever
-# dominated so return-seeking (wide giveback, ride winners) won; at 5x the marginal
-# value of DD relief may now EXCEED the marginal return_reward loss. This makes the
-# peak-profit giveback (how much profit is given back before pp_pressure harvests)
-# PORTFOLIO-DD-ADAPTIVE: as the portfolio draws down from its peak, progressively
-# TIGHTEN the giveback (harvest winners faster, lock gains) -> caps the DD that
-# comes from riding winners through deep pullbacks. DISTINCT from the walled
-# portfolio-DD HELD-position de-risk (row-1015: that cut HELD positions at a LOSS
-# during DD-pullbacks, missing rally's upward reversion -> -0.0025); this harvests
-# only at PEAK GIVEBACK (locks realized gains at peaks, never cuts a losing/open
-# position), so it cannot miss a recovery — it only decides how much paper profit
-# to ride vs lock. Continuous tanh on the DD fraction (no new boundary), symmetric
-# (both long/short), Sharpe-affecting (alters exit timing of WINNERS, not size).
-# Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
-PORT_DD_GIVEBACK_TIGHTEN = 0.30   # max fractional reduction of giveback at deep DD
-PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
-PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
-# Exp2 (architectural, indep): portfolio-DD-adaptive SLOPE-AGAINST pressure amplification.
-# Max fractional boost to _sl_slope_pressure at deep portfolio DD (same EMA-smoothed DD
-# signal + leverage-coupled scale as the giveback tightening keep).
-PORT_DD_SLOPE_AMP = 0.30
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -226,12 +202,6 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Exp1 branch step3: EMA-smoothed equity for the giveback-tightening DD
-        # fraction. Instantaneous equity is bar-noisy -> tightening amount noisy ->
-        # exit-timing noise -> stability penalty (step1 cost). Smoothing the equity
-        # makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation
-        # while preserving the pullback-depth signal that drives the rally DD relief.
-        self._equity_ema = 0.0
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
@@ -275,10 +245,6 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
-        # Exp1 branch step3: EMA-smoothed equity (for the giveback-tightening DD
-        # fraction only; _peak_equity still uses instantaneous for the entry circuit).
-        _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
-        self._equity_ema = _eq_alpha * equity + (1.0 - _eq_alpha) * (self._equity_ema if self._equity_ema > 0 else equity)
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -1669,21 +1635,6 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Exp2 (architectural, indep): portfolio-DD-adaptive SLOPE-AGAINST pressure
-                # amplification. The keep (giveback tightening) proved the EMA-smoothed
-                # portfolio-DD signal is a noise-robust DD-relief lever at 5x (dd_gate
-                # marginal value flipped favorable near the 8pct knee). Test whether the
-                # SAME signal generalizes to a SECOND exit dimension: amplify slope-against
-                # (momentum-reversal) pressure when portfolio DD is high -> adverse-momentum
-                # positions exit faster at high DD -> additional DD relief. Distinct from
-                # giveback tightening (which harvests WINNERS at peak giveback); this cuts
-                # positions on momentum REVERSAL -- a different exit pathway. Slope-against
-                # is signal (momentum reversal), not pure portfolio-DD, so it targets
-                # genuine adverse turns rather than blanket position-cutting (the walled
-                # held-position de-risk failure mode). Amplify up to PORT_DD_SLOPE_AMP.
-                _port_dd_frac_sa = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
-                _sl_slope_amp = 1.0 + PORT_DD_SLOPE_AMP * max(0.0, np.tanh(_port_dd_frac_sa / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _sl_slope_pressure = min(1.0, _sl_slope_pressure * _sl_slope_amp)
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
@@ -1714,16 +1665,7 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
-                # down from its peak, shrink the effective giveback tolerance so pp_pressure
-                # harvests winners faster (locks gains) -> caps DD from riding winners through
-                # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
-                # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
-                # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
-                _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
+                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
                 # boundary at peak == _pp_min creates noise discontinuity in stab tests.
@@ -1749,7 +1691,7 @@ class Strategy:
                 # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
