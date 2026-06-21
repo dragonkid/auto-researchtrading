@@ -1945,22 +1945,7 @@ class Strategy:
                 _vol_arr_e = bd.history["volume"].values[-21:-1]
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
-                # Exp1 (architectural, indep): STATELESS VARIANCE REDUCTION on the
-                # volume-climax exit input (the 9d730c7 archetype -- the only proven-
-                # productive lever class is a stateless formula change that REDUCES
-                # per-bar output variance; cf c265424d). _vc_pressure previously read
-                # a SINGLE-bar volume z-score -> one bar's volume realization drives
-                # the exit term -> per-bar output variance -> exit-timing wobble ->
-                # tracking error. Replace with the MEAN of the last 3 bars' volume
-                # z-scores (stateless recompute each bar, no frozen state -> self-
-                # correcting under AR(1) noise, the stable archetype per d2ad8cc).
-                # A volume climax persists >1 bar (exhaustion spikes cluster), so the
-                # 3-bar mean preserves clean-path firing while averaging single-bar
-                # volume noise out of the exit decision. Distinct from path-dependent
-                # smoothing (EMA/freeze) which the d2ad8cc/c265424d sessions proved
-                # collapses stability. Pure input transform, no new boundary/threshold.
-                _vol_z_recent = (bd.history["volume"].values[-3:].astype(float) - _vol_mean_e) / _vol_std_e
-                _vol_z = float(np.mean(_vol_z_recent))
+                _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
