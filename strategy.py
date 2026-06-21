@@ -2200,38 +2200,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp1 (architectural, indep): RETURN-AUTOCORRELATION persistence gate
-                        # on the de-risk convex cushion. NEW data axis barely explored (prior
-                        # AC experiments were entry-side, none on the de-risk cushion). Slope
-                        # measures trend DIRECTION, R^2 measures path LINEARITY, but NEITHER
-                        # measures whether recent returns PERSIST vs mean-revert. Lag-1
-                        # autocorrelation of log-returns does: positive AC = momentum persists
-                        # (a clean grinding trend whose per-bar returns keep the same sign ->
-                        # durable, ride the giveback); negative/zero AC = returns alternating
-                        # sign (choppy/exhausting trend even if net slope still confirms -> the
-                        # trend is losing momentum cohesion -> harvest before reversal).
-                        # Mechanism: the cushion (hold near-full through moderate giveback) is
-                        # currently earned by trend-alignment + slope-conf. A trend-aligned
-                        # winner whose slope STILL confirms BUT whose returns have gone
-                        # mean-reverting (AC<=0) is a trend whose momentum is FADING in
-                        # cohesion (lower highs, choppier bars) -> cut faster (linear ramp)
-                        # instead of riding the giveback. AC is the missing PERSISTENCE
-                        # dimension. 24-bar window (matches VOL_LOOKBACK; long enough to
-                        # estimate AC stably, short enough to be regime-current). Smooth tanh
-                        # on AC/0.15 (deep-saturated -> near-constant where it fires, noise-
-                        # free per the validated safe-family lesson); range [0,~1]. Blends
-                        # cushion strength 0.60..1.00 (gentle first probe: never zeroes the
-                        # cushion, just fades it for non-persistent trends). Direction-agnostic
-                        # (AC is sign-symmetric: a persistent downtrend has positive AC just
-                        # like a persistent uptrend -> crash shorts get the cushion too).
-                        # Smooth (continuous tanh, no zero-crossing boundary that can flip);
-                        # applies only in the de-risk path (bars_held>=2, in-pressure).
-                        _ac_rets = np.diff(np.log(closes[-25:]))
-                        _ac_mean = _ac_rets.mean()
-                        _ac_den = max(float(np.sum((_ac_rets - _ac_mean) ** 2)), 1e-12)
-                        _ac = float(np.sum((_ac_rets[:-1] - _ac_mean) * (_ac_rets[1:] - _ac_mean)) / _ac_den)  # lag-1 AC, [-1, +1]
-                        _ac_persist = max(0.0, np.tanh(_ac / 0.15))  # 0 mean-reverting/flat, ~1 persistent
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * (0.60 + 0.40 * _ac_persist)  # cushion fades to 0.60x for non-persistent trends
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
