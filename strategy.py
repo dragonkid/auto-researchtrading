@@ -167,25 +167,6 @@ TREND_GATE_DEADZONE = 0.018
 # Strong-consensus weighted sum: replaces hard count of voters above STRONG_CONF
 # with sum of (conf-0.5)*2 for conf>0.5, weighted by margin. Removes noise boundary at 0.65.
 STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions (scaled for 7 voters)
-# Architectural (Exp2 this session): voter-aggregation RAMP POWER -- QUARTIC (P=4).
-# Symmetric counterpart to Exp1 (sextic P=6, discarded: sharpening away medium-
-# conviction voters HURT trend regimes -- bull WR 82->69pct, rally WR 85->57pct,
-# both DD breached). That result inverted the hypothesis: medium-conviction voters
-# (conf 0.6-0.75) are NOT rally pullback noise -- they carry real TREND signal
-# (the filtered medium-conviction entries WERE the trend entries). Sextic
-# concentrated on the strongest voters and lost the broad coalition trend regimes
-# rely on. Quartic is the opposite direction: FLATTEN the conviction->contribution
-# map so medium-conviction voters get MORE weight (conf=0.7 contribution 0.031->
-# 0.0625; conf=0.8 0.237->0.316 vs quintic), broadening the coalition that passes
-# admission. Hypothesis: if medium voters carry trend signal (Exp1 evidence),
-# quartic admits more REAL trend entries -> bull/rally raw UP. Risk: also admits
-# more ct noise -> rally DD/streak; the dd_gate/streak_gate will reveal which
-# dominates. NORM renormalizes so a saturated voter (conf=0.9, margin 0.4) still
-# contributes 1.0. Smooth (continuous power, no new boundary). Same untested core
-# mechanism as Exp1, opposite direction -- characterizes whether the ramp-power
-# lever has ANY productive direction or is load-bearing at quintic both ways.
-VOTER_RAMP_POWER = 4
-VOTER_RAMP_NORM = 1.0 / (0.4 ** VOTER_RAMP_POWER)  # 39.0625 at P=4 (was 97.66 at P=5)
 # Architectural (this session): portfolio same-direction gross-exposure governor.
 # Shrinks new-entry first-bar size when aggregate same-sign notional across the OTHER
 # symbols is already high (correlated-regime concentration risk). Shrink-only.
@@ -605,8 +586,8 @@ class Strategy:
             # activation overlaps with _persistence_mult (per-voter sustained-conviction
             # tracking) and _wt_shift trend-confirming voter weight redistribution.
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
-            _bull_strong = sum(max(0.0, (c - 0.5) ** VOTER_RAMP_POWER * VOTER_RAMP_NORM) * w for c, w in zip(_bull_confs, _voter_weights))
-            _bear_strong = sum(max(0.0, (c - 0.5) ** VOTER_RAMP_POWER * VOTER_RAMP_NORM) * w for c, w in zip(_bear_confs, _voter_weights))
+            _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
+            _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
             # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
             # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
             # Used to gate flips on sustained conviction (filters single-bar noise spikes).
