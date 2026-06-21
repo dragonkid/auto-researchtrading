@@ -239,16 +239,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Architectural (Exp4 this session): portfolio equity EMA for a rate-of-
-        # change entry shrink. _port_dd_atten reads the DD LEVEL (equity vs peak);
-        # this reads the DD RATE (is equity currently declining?). A portfolio in
-        # an active drawdown (equity trending down) is adding risk into a losing
-        # stretch -> shrink new entries to cut peak DD (the binding constraint at
-        # high leverage: rally DD 7.58pct at the 8pct dd_gate knee). EMA-smoothed
-        # equity (alpha 0.3, span ~6) -> the slope is a portfolio-aggregate gradual
-        # signal (far less noisy than per-bar equity), stability-safe. Shrink-only.
-        self._equity_ema = None
-        self._equity_ema_prev = None
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -262,27 +252,6 @@ class Strategy:
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
-        # Architectural (Exp4 this session): portfolio equity-SLOPE entry shrink.
-        # Distinct from _port_dd_atten (DD level): this reads the RATE of equity
-        # change. Update a slow EMA of equity (alpha 0.3); the normalized slope
-        # (ema - prev_ema)/prev_ema is negative when the portfolio is in an active
-        # drawdown. Shrink new-entry size proportionally (shrink-only, max 0.20) so
-        # risk is not added into a losing stretch -> cuts peak DD (the dd_gate drag
-        # at high leverage). EMA slope of a portfolio aggregate is gradual/noise-
-        # robust (stability-safe). Scaled by LEVERAGE_K on the activation threshold
-        # so the shrink fires at the same equity-decline FRACTION as baseline
-        # (decision invariance under leverage, same discipline as _port_dd_atten).
-        _eq_ema_alpha = 0.3
-        if self._equity_ema is None:
-            self._equity_ema = equity
-            self._equity_ema_prev = equity
-        else:
-            self._equity_ema_prev = self._equity_ema
-            self._equity_ema = _eq_ema_alpha * equity + (1.0 - _eq_ema_alpha) * self._equity_ema
-        _eq_slope = (self._equity_ema - self._equity_ema_prev) / max(self._equity_ema_prev, 1e-10)
-        # Activate on equity decline; scale threshold by LEVERAGE_K (deeper per-bar
-        # equity swings at higher leverage -> normalize back to baseline fraction).
-        _eq_slope_atten = 1.0 - 0.20 * max(0.0, min(1.0, np.tanh(-_eq_slope / (0.0015 * LEVERAGE_K))))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1482,11 +1451,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _eq_slope_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _eq_slope_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
