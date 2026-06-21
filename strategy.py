@@ -117,6 +117,25 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Architectural (this session): PORTFOLIO-DD-ADAPTIVE SLOPE-PRESSURE amplification on the
+# PROFIT side. A THIRD distinct DD-reduction lever on a different exit path from the maxed
+# giveback-tightening (pp tolerance) + tp-harvest-relax (tp size scale-down): the slope-
+# against pressure WEIGHT (_w_slope) is DD-coupled. _w_slope today only amplifies in LOSS
+# (cut losers faster). During portfolio DD (rally pullbacks = the DD source, rally DD 6.36pct
+# the binding-regime dd_gate drag), AMPLIFY slope-against pressure for PROFIT positions too
+# so a winning trend showing the FIRST sign of slope reversal (directional weakening, earlier
+# in a reversal than giveback magnitude) gets harvested faster -> locks realized gains at the
+# turn -> caps the DD from riding winners through deep pullbacks. Peak-harvesting safe family
+# (harvests at first slope reversal when in profit; never cuts an open/losing position -- the
+# loss-side amplification is unchanged, and a loser with slope-against is already cut by the
+# loss-weighted _w_slope). Byte-identical at portfolio peak (dd_frac=0 -> term 0). Leverage-
+# coupled scale (same discipline as giveback tightening so the activation DD-LEVEL is invariant
+# under LEVERAGE_K). Continuous tanh on the DD fraction (no new boundary). Distinct from
+# giveback-tightening (which tightens the giveback TOLERANCE -- fires on giveback MAGNITUDE):
+# this amplifies the slope-against PRESSURE weight -- fires on directional slope, an earlier
+# and orthogonal reversal signal.
+PORT_DD_SLOPE_AMP = 0.20    # max profit-side slope-pressure weight amplification at deep DD
+PORT_DD_SLOPE_SCALE = 0.012  # base DD-fraction at which amplification saturates (scaled by LEVERAGE_K)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1816,6 +1835,13 @@ class Strategy:
                 # and _w_pp; both revert to single-factor weights.
                 _scale_in_w = 1.0
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
+                # Architectural (this session): portfolio-DD-adaptive PROFIT-side slope-pressure
+                # amplification (3rd DD lever, on the slope exit path). At portfolio peak the DD
+                # fraction is 0 -> term 0 -> byte-identical. During DD, amplify slope-against
+                # pressure for in-profit positions so the first slope reversal harvests the winner
+                # (locks gains, caps DD). Profit-side only (peak-harvesting safe family); the
+                # loss-side cut is unchanged. _port_dd_frac computed above in the pp block.
+                _w_slope += PORT_DD_SLOPE_AMP * max(0.0, _pnl_scale) * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_SLOPE_SCALE * LEVERAGE_K)))
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
