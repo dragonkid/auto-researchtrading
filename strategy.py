@@ -1814,7 +1814,29 @@ class Strategy:
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Architectural (indep): GATE the vol-hold extension on profit + trend-
+                # alignment + slope-confirmation. The +12pct high-vol hold extension was
+                # UNCONDITIONAL -- it lengthened the hold of EVERY high-vol position including
+                # LOSING and counter-trend ones (a losing rally/bull position in high vol was
+                # held 12pct LONGER -> bigger realized loss). Gate it so the extension applies
+                # ONLY to winning, trend-aligned, slope-confirmed positions (let genuine
+                # confirmed trend winners ride the larger real-move of high-vol bars -> bigger
+                # wins -> higher return in the return-limited high-vol regime, crash Sh1.274
+                # 100pct WR DD2.46pct with large headroom). Losers / counter-trend / slope-
+                # weakened positions revert to the BASE hold (exit faster -> smaller losses ->
+                # higher Sharpe). The slope-conf gate (16-bar OLS slope still confirming the
+                # position) protects bull-2021: when a correction starts (slope weakens) the
+                # gate turns off -> base hold -> exits instead of riding the correction.
+                # Mechanism is dual-action (shorter hold on losers, longer on confirmed winners)
+                # via one gated term. _slope_conf (line ~1587, computed unconditionally for
+                # held positions before this point) is reused -- no new price-derived read.
+                # Continuous tanh product (no decision boundary); direction-agnostic general
+                # principle (no regime label). New control flow on the time-pressure activation.
+                _vh_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _vh_align = max(0.0, np.tanh(ret_long * _vh_pos_dir / 0.04))  # trend-aligned
+                _vh_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # winning
+                _vol_hold_gate = _vh_profit * _vh_align * _slope_conf
+                _max_hold *= 1.0 + 0.12 * _vol_hold_ext * _vol_hold_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
