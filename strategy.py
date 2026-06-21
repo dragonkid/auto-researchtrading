@@ -223,6 +223,22 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
+# Architectural (Exp1 this session): TREND-ALIGNMENT-ADAPTIVE accumulator RHO. The
+# readiness EMA's memory constant was FIXED at 0.5 (a noise-robustness vs entry-lag
+# trade-off picked once). A fixed RHO treats a conviction spike in a confirmed trend
+# identically to one in chop: in a trend-aligned entry (bull in uptrend, bear in
+# downtrend) a conviction spike is SIGNAL (admit fast, capture the trend move); in chop
+# a conviction spike is NOISE (filter via more smoothing). Couple each SIDE's accumulator
+# RHO to that side's trend-ALIGNMENT: lower RHO (faster admission, less smoothing) when
+# the entry side is trend-aligned; RHO_BASE (full smoothing) when counter-trend. This
+# spares ct entries (rally pullback shorts = bear in uptrend get _acc_s at RHO_BASE, NOT
+# sped up -> the losing ct re-entries are not admitted faster) while speeding genuine
+# trend-aligned entries (bull longs in uptrend, crash shorts in downtrend). New cross-
+# timescale data dep at the admission accumulator: the readiness EMA memory depends on
+# the alignment of the entry side with the 20-bar trend. Continuous tanh on ret_long
+# (no decision boundary; the trend-alignment quantity is already smooth); one-sided
+# (only aligned side speeds up, ct side unchanged = byte-identical for ct entries).
+ENTRY_ACCUM_RHO_AMP = 0.15  # max reduction of RHO for fully trend-aligned entries (0.5 -> 0.35)
 
 
 class Strategy:
@@ -684,8 +700,13 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
-            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
+            # Exp1 (this session): trend-alignment-adaptive RHO per side. Trend-aligned
+            # side (bull in uptrend, bear in downtrend) gets a LOWER RHO (faster admission);
+            # counter-trend side keeps RHO_BASE (full smoothing, ct entries not sped up).
+            _rho_b = ENTRY_ACCUM_RHO - ENTRY_ACCUM_RHO_AMP * max(0.0, np.tanh(ret_long / 0.04))
+            _rho_s = ENTRY_ACCUM_RHO - ENTRY_ACCUM_RHO_AMP * max(0.0, np.tanh(-ret_long / 0.04))
+            _acc_b = _rho_b * _acc_b + (1.0 - _rho_b) * _bull_margin
+            _acc_s = _rho_s * _acc_s + (1.0 - _rho_s) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
