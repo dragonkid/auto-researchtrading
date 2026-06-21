@@ -477,29 +477,6 @@ class Strategy:
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
-            # Architectural (this session): MULTI-DAY TREND ACCELERATION (1st difference of the
-            # 96-bar ret_vlong). ret_vlong (the multi-day trend LEVEL/slope) is used extensively
-            # for counter-trend gating but its RATE OF CHANGE is never read. A trend-aligned entry
-            # taken while the multi-day trend is ACCELERATING in the entry direction (ret_vlong
-            # increasing for longs, decreasing for shorts) is a higher-quality trend entry (the
-            # trend is strengthening, not exhausting) -> larger first-bar commitment captures more
-            # of the strengthening move -> higher Sharpe in the trend regimes. Conversely a trend-
-            # aligned entry while the multi-day trend is DECELERATING (fading) is lower quality ->
-            # smaller commitment. NEW data dep: the change in ret_vlong, distinct from ret_vlong
-            # level (used for ct-gating) and short-term _lr_slope (16-bar). ret_vlong is a 96-bar
-            # OLS slope (very smooth, ~1/sqrt(96) noise attenuation); its 1st difference over a
-            # 12-bar lag is itself a slow, noise-free quantity. Trend-aligned gated (entry matches
-            # ret_vlong sign so ct entries are not boosted); deep-saturated (/0.02 -> near-constant
-            # where it fires, noise-free per the validated safe-family lesson); first-bar-only,
-            # small +/-0.05. Direction-agnostic general principle (no regime label).
-            _vlong_accel = 0.0
-            if len(closes) > VLONG_WINDOW + 12:
-                _hl2_vl_prev = (bd.history["high"].values[-(VLONG_WINDOW + 12):-12] + bd.history["low"].values[-(VLONG_WINDOW + 12):-12]) / 2.0
-                _vlong_accel = ret_vlong - (_fast_slope(np.log(_hl2_vl_prev)) * VLONG_WINDOW)
-            _vlong_align_bull = max(0.0, np.tanh(ret_vlong / 0.03))   # bull trend-aligned (multi-day up)
-            _vlong_align_bear = max(0.0, np.tanh(-ret_vlong / 0.03))  # bear trend-aligned (multi-day down)
-            _vlong_accel_boost_bull = 1.0 + 0.05 * _vlong_align_bull * np.tanh(_vlong_accel / 0.02)
-            _vlong_accel_boost_bear = 1.0 + 0.05 * _vlong_align_bear * np.tanh(-_vlong_accel / 0.02)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
@@ -1525,11 +1502,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _vlong_accel_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _vlong_accel_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
