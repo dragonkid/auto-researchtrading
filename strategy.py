@@ -179,10 +179,6 @@ MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
-# Exp1: portfolio loss-streak entry block. Block ALL new entries for this many
-# bars after the portfolio consecutive-loss streak reaches STREAK_BLOCK_THRESH.
-STREAK_BLOCK_BARS = 2
-STREAK_BLOCK_THRESH = 3
 
 
 def ema(values, span):
@@ -290,30 +286,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp1 (architectural, indep): PORTFOLIO consecutive-loss-streak ENTRY
-        # COOLDOWN -- a HARD time-based entry block (not an admission-threshold
-        # tighten) that fires ACROSS ALL symbols after the portfolio loss streak
-        # reaches >= STREAK_BLOCK_THRESH. Distinct from every prior streak lever
-        # tested: Exp3 (_streak_ct_shrink) and the loss-memory-EMA both TIGHTEN
-        # the COUNTER-TREND admission threshold (a soft size/threshold scale),
-        # and prior sessions proved ct-admission-tightening does NOT engage
-        # rally's actual 4-loss-streak source (the 4th loss is not a ct entry
-        # the ct gate could filter). A hard cross-symbol entry BLOCK after a deep
-        # streak is the one streak lever NOT yet tested: it removes the NEXT
-        # trade from the sequence entirely (a skipped trade is neither a win nor
-        # a loss -> caps max_consecutive_losses at the trigger level). Directly
-        # targets the streak_gate = exp(-max_consec/30): rally's 4-streak ->
-        # 0.875 is its largest non-walled drag (DD/Sharpe levers saturated);
-        # capping the streak at 3 -> 0.905 (+3.3pct rally) and at the portfolio
-        # level the block also brakes correlated multi-symbol loss pile-ups (the
-        # structural streak source). Noise-robustness: the trigger is the integer
-        # _loss_streak (driven by DECISIVE realized-loss closes in a 4-streak,
-        # not marginal flips) and the block duration is a bar-count (noise-
-        # immune); the only marginal boundary (streak==3) gates a 2-bar skip,
-        # bounded position impact -> stability cost bounded. Conservative: short
-        # 2-bar block, thresh 3 (fires only at the rally/bull streak depth, ~0
-        # in crash/sideways which have 0-1 consec losses -> byte-identical).
-        self._streak_block_until = 0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -713,11 +685,7 @@ class Strategy:
             _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
-            # Exp1: portfolio loss-streak entry block. Hard-skip new entries for
-            # STREAK_BLOCK_BARS after the portfolio streak reaches the trigger
-            # depth (armed on loss-close above). Cross-symbol (portfolio-level):
-            # blocks ALL symbols' new entries, braking correlated loss pile-ups.
-            in_cooldown = self.bar_count < self._streak_block_until
+            in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
@@ -2477,11 +2445,6 @@ class Strategy:
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
                             self._loss_streak += 1
-                            # Exp1: arm the cross-symbol entry block when the
-                            # portfolio streak reaches the trigger depth. The
-                            # block fires on subsequent bars (see in_cooldown).
-                            if self._loss_streak >= STREAK_BLOCK_THRESH:
-                                self._streak_block_until = self.bar_count + STREAK_BLOCK_BARS
                         else:
                             self._loss_streak = 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
