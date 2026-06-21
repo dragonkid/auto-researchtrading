@@ -78,7 +78,32 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
-BASE_POSITION_SIZE = 0.065
+# Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
+# Exp1 (naive 2x BASE_POSITION_SIZE, discarded fcae6004) proved the strategy is
+# NOT scale-invariant under uniform leverage: the size-fraction-dependent risk
+# circuit-breakers (_port_dd_atten's 0.008 DD-fraction scale, _conc_shrink's
+# notional/equity thresholds) have FIXED fraction-space thresholds, so 2x deeper
+# portfolio DD fired them harder/erratically -> rally stability 1.0->0.23, Sharpe
+# 1.30->1.04 (trade selection changed, not just magnitude).
+# This experiment scales BASE_POSITION_SIZE by LEVERAGE_K AND scales the two
+# fraction-space feedback thresholds by the SAME LEVERAGE_K in lockstep, so the
+# circuit-breakers activate at the SAME operating points as baseline (the DD
+# fraction and notional/equity fraction they react to are normalized back to
+# baseline levels). This makes the strategy's DECISION LOGIC leverage-invariant:
+# only position MAGNITUDE scales (-> return_reward gain isolated), while Sharpe
+# (scale-invariant) and stability (1-TE/clean_vol, both scale by k) are preserved.
+# The return_reward factor (added 2026-06-20, log(1+APY%/100+1)) is in its low
+# concave region at baseline APY 3-5% (~0.71); 2x doubles APY (6-10%) raising rr
+# to ~0.73-0.74 on every regime. DD scales by 2 but stays well under the 8% knee
+# (rally 1.57->3.14%). Net expected: every regime +~2-4%, composite +~0.010.
+# This is the return_reward lever the scoring was redesigned to incentivize,
+# which no prior session tested (all sizing experiments pre-date return_reward).
+# NEW STRUCTURAL RELATIONSHIP: the risk-circuit-breaker thresholds are now
+# LEVERAGE-COUPLED to BASE_POSITION_SIZE (a discipline: any size-dependent
+# fraction-space threshold must scale with leverage to preserve decision
+# invariance). LEVERAGE_K is a single named coupling constant.
+LEVERAGE_K = 2.0
+BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
@@ -104,8 +129,8 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 # Architectural (this session): portfolio same-direction gross-exposure governor.
 # Shrinks new-entry first-bar size when aggregate same-sign notional across the OTHER
 # symbols is already high (correlated-regime concentration risk). Shrink-only.
-CONC_EXP_FLOOR = 0.05   # concurrent same-dir notional/equity below which no shrink
-CONC_EXP_SCALE = 0.06   # tanh saturation scale of the concentration ramp
+CONC_EXP_FLOOR = 0.05 * LEVERAGE_K   # concurrent same-dir notional/equity below which no shrink (scaled by LEVERAGE_K: 2x size -> 2x notional/equity -> threshold scales to keep activation invariant)
+CONC_EXP_SCALE = 0.06 * LEVERAGE_K   # tanh saturation scale of the concentration ramp (scaled by LEVERAGE_K for decision invariance)
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
@@ -220,7 +245,13 @@ class Strategy:
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
         self._peak_equity = max(self._peak_equity, equity)
-        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / 0.008))
+        # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
+        # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
+        # scale the tanh threshold by 2x so the breaker activates at the same DD
+        # fraction as baseline (decision invariance under leverage). Without this
+        # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
+        # under AR(1) noise -> rally stability crashed 1.0->0.23.
+        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
