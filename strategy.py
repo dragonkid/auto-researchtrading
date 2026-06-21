@@ -117,22 +117,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Architectural (Exp2 this session): TREND-ALIGNED giveback-tolerance tightening (always-on).
-# Exp1 proved ct giveback tightening is INERT (rally's DD source is trend-aligned LONG
-# giveback, not ct-short giveback -- ct shorts are losers that don't reach meaningful peaks).
-# This targets the ACTUAL DD source: tighten giveback for TREND-ALIGNED positions (pos_dir
-# matches 96-bar ret_vlong) so their peaks harvest faster -> less giveback -> lower DD.
-# rally trend-aligned longs are the DD source (6.36pct near 8pct knee -> high dd_gate value
-# per %DD relief). DISTINCT from the maxed PORT_DD giveback-tightening (_pp_tighten, which
-# is DD-GATED and ~0 on rally because rally equity rises -> _port_dd_frac~0): this is
-# ALWAYS-ON, trend-aligned-gated, so it fires on rally long winners throughout, not just
-# during DD episodes. Mirror of run-up-velocity (widened grind-peak giveback -> rally DD UP
-# 6.36->7.58); tightening should lower rally DD. Risk: bull return loss (high-Sharpe,
-# return-sensitive trend-aligned longs harvest faster) + stability cliff. Peak-harvesting
-# family (rally-safe: never cuts an open/losing position, only harvests realized peaks sooner).
-# Fast-saturating /0.01 ret_vlong (near-constant, noise-free); only fires for positions
-# that reached a meaningful peak (pp_activation gate).
-TA_GIVEBACK_TIGHTEN = 0.15   # max fractional giveback-tolerance tightening for trend-aligned positions
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1740,14 +1724,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp2: trend-aligned giveback-tolerance tightening (always-on peak-harvesting
-                # DD lever, rally-safe family). Harvest trend-aligned-position peaks faster
-                # (less giveback) to lower rally DD (the DD source per Exp1); ct positions keep
-                # base giveback. See TA_GIVEBACK_TIGHTEN.
-                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
-                _ta_pp = max(0.0, np.tanh(_pos_dir_pp * ret_vlong / 0.01))  # ~0 counter-trend, ~1 trend-aligned (fast-saturating, noise-free)
-                _pp_ta_tighten = 1.0 - TA_GIVEBACK_TIGHTEN * _ta_pp
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_ta_tighten
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
