@@ -1253,6 +1253,50 @@ class Strategy:
                 _vol_std_en = max(float(np.std(_vol_arr_en)), 1e-10)
                 _vol_z_en = (float(bd.history["volume"].values[-1]) - _vol_mean_en) / _vol_std_en
                 _vol_entry_spike = 1.0 - 0.25 * max(0.0, min(1.0, np.tanh((_vol_z_en - 2.0) / 1.5)))  # max 25% shrink at deep spike
+                # Exp3 (architectural, indep): CONVICTION-DENSITY (volume/range) entry
+                # attenuator. NEW data axis genuinely orthogonal to every existing entry
+                # primitive: VWAP voter reads close vs a volume-weighted TYPICAL price (a
+                # LEVEL deviation), vol_entry_spike reads a volume LEVEL spike (z>2 =
+                # exhaustion shrink), vol_decline reads volume TREND (rising/declining),
+                # DVP reads volume DIRECTION (buy vs sell side), ATR stop reads range LEVEL
+                # for sizing. NONE measures the RATIO of participation to price range --
+                # volume PER UNIT of price movement. conviction_density = vol_z - range_z:
+                # HIGH (volume exceeds range) = accumulation on a tight range = high-
+                # conviction entry (smart money absorbing supply into a compressed bar);
+                # LOW/NEGATIVE (range exceeds volume) = a big price move on THIN volume =
+                # low-participation noise move (rally late-stage wicks on fading volume,
+                # crash thin dead-cat bounces) -> lower quality -> smaller first-bar
+                # commitment. Distinct from vol_entry_spike (which shrinks HIGH-volume
+                # spikes = exhaustion): this shrinks LOW-conviction (range>volume) moves --
+                # the symmetric counterpart on the volume/range RATIO. Computed as the
+                # difference of the 20-bar z-scores (volume z already at _vol_z_en; range z
+                # via 20-bar ATR_pct baseline). 3-bar mean of the conviction gap for noise-
+                # robustness (single-bar vol/range flips under AR(1)); deep-saturated gate
+                # (/1.5 -> near-constant where it fires, noise-free per the validated safe-
+                # family lesson); trend-gated (_vd_trend_w via |ret_long|/0.04 so it fires
+                # only in trending moves where participation confirmation matters; sideways
+                # low |ret_long| AND structurally low volume spared). Shrink-only (caps at
+                # 1.0, safe family), max 0.20, first-bar-only. New cross-data-type dep
+                # (volume x range conjunction). Targets rally/crash raw via smaller low-
+                # conviction entry losses.
+                _cd_h = bd.history["high"].values[-3:]
+                _cd_l = bd.history["low"].values[-3:]
+                _cd_c = closes[-3:]
+                _cd_prev_c = closes[-4:-1]
+                _cd_tr = np.maximum(_cd_h - _cd_l, np.maximum(np.abs(_cd_h - _cd_prev_c), np.abs(_cd_l - _cd_prev_c)))
+                _cd_range_pct = _cd_tr / mid  # 3-bar per-bar ATR_pct
+                _cd_h_b = bd.history["high"].values[-21:-1]
+                _cd_l_b = bd.history["low"].values[-21:-1]
+                _cd_c_b = closes[-22:-2]
+                _cd_tr_b = np.maximum(_cd_h_b - _cd_l_b, np.maximum(np.abs(_cd_h_b - _cd_c_b), np.abs(_cd_l_b - _cd_c_b)))
+                _cd_range_pct_b = _cd_tr_b / mid
+                _cd_r_mean = float(np.mean(_cd_range_pct_b))
+                _cd_r_std = max(float(np.std(_cd_range_pct_b)), 1e-10)
+                _cd_range_z = float(np.mean((_cd_range_pct - _cd_r_mean) / _cd_r_std))  # 3-bar mean range z
+                _cd_vol_z = _vol_z_en  # reuse entry-side 20-bar volume z (single-bar)
+                _cd_conv_gap = _cd_vol_z - _cd_range_z  # + volume>range (conviction), - range>volume (noise)
+                _cd_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                _conv_dens_atten = 1.0 - 0.20 * _cd_trend_w * max(0.0, min(1.0, np.tanh(-_cd_conv_gap / 1.5)))
                 # Exp3 (architectural, indep): volume-DECLINE entry shrink (volume-price
                 # divergence). Complementary to _vol_entry_spike (shrinks HIGH-volume spike
                 # entries = capitulation/exhaustion chases): this shrinks LOW-volume entries
@@ -1502,11 +1546,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _conv_dens_atten * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _conv_dens_atten * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
