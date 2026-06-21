@@ -1383,8 +1383,14 @@ class Strategy:
                     # directional -> larger first-bar commitment. Deep-saturated both gates
                     # (near-constant, noise-free, validated safe family). First-bar-only,
                     # +0.05 max. BTC self-referential -> not reached (alt branch).
-                    _btcdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_btc_dvp / 0.15)) * max(0.0, np.tanh(_btc_trend / 0.03))
-                    _btcdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_btc_dvp / 0.15)) * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Branch step3 (simplification): REMOVED Exp2 BTC-DVP x BTC-price and
+                    # Exp3 partner-DVP x partner-price boosts (other-symbol DVP mixed cells,
+                    # parallel to step1's other-symbol-VOLUME removal). Own-DVP (_dvp_boost,
+                    # the clean diagonal) is retained. Other-symbol directional volume is
+                    # redundant with the other-symbol PRICE boosts (xasset _btc_trend gate,
+                    # partner_lead) that already fire on the same broad-trend entries. Test.
+                    _btcdvp_boost_bull = 1.0
+                    _btcdvp_boost_bear = 1.0
                     # Exp3 (architectural, indep): partner-alt DVP x partner-alt-price-momentum-
                     # agreement conjunction boost (partner cell of the DVP column). _partner_dvp
                     # (partner volume-DIRECTION balance) x /0.02 partner-price-agreement gate
@@ -1394,8 +1400,8 @@ class Strategy:
                     # Deep-saturated both gates (near-constant, noise-free, validated safe
                     # family). First-bar-only, +0.05 max.
                     _partner_dvp = _alt_dvp.get(_partner, 0.0)
-                    _partnerdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * max(0.0, np.tanh(_partner_lead / 0.02))
-                    _partnerdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    _partnerdvp_boost_bull = 1.0
+                    _partnerdvp_boost_bear = 1.0
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
