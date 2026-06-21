@@ -1491,8 +1491,8 @@ class Strategy:
                 _upper_wick_frac = float(np.mean(np.maximum(_cl_high - _cl_body_high, 0.0) / _cl_span3))
                 _wk_bull_conv = max(0.0, np.tanh((_lower_wick_frac - 0.25) / 0.15))  # bull: dip-rejection of lows
                 _wk_bear_conv = max(0.0, np.tanh((_upper_wick_frac - 0.25) / 0.15))  # bear: rejection of highs
-                _wick_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _wk_bull_conv
-                _wick_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _wk_bear_conv
+                _wick_boost_bull = 1.0 + 0.08 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _wk_bull_conv
+                _wick_boost_bear = 1.0 + 0.08 * _cl_trend_w * _cl_er_w * _wk_bear_conv
                 # Exp1 (architectural, indep): DIRECTIONAL VOLUME PRESSURE (normalized
                 # OBV) trend-aligned entry boost. NEW data axis genuinely orthogonal to
                 # every existing volume primitive: VWAP voter reads close vs a volume-
