@@ -193,8 +193,8 @@ DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold thr
 # stability 0.807 at the fragile 0.80 knee) + better reversal timing (rally Sharpe). The chop
 # single-source attenuator is RETAINED (complementary). Core-mechanism rewrite (MAX -> top-2
 # agreement blend), not a gate/tweak/parameter change.
-AGREE_BONUS = 0.15       # fraction of the 2nd-highest term added to the max as an agreement bonus
-AGREE_FLOOR = 0.10       # 2nd term must exceed this to count as a real confirming source (else single-source == MAX)
+AGREE_BONUS = 0.05       # fraction of the 2nd-highest term added to the max as an agreement bonus
+AGREE_FLOOR = 0.40       # 2nd term must exceed this to count as a real confirming source (else single-source == MAX)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
