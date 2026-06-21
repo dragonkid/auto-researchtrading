@@ -303,11 +303,6 @@ class Strategy:
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
-        # Branch step6: portfolio-DD fraction computed ONCE at bar top (used by both
-        # the entry-branch xasset-DD cut and the held-position giveback/tp paths).
-        # Was previously only computed inside the held-position branch -> unavailable
-        # at entry -> NameError. Same definition (EMA-smoothed equity vs peak).
-        _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1139,17 +1134,6 @@ class Strategy:
                     # 1.0 (byte-identical). New cross-symbol bilateral data dep (was shrink-
                     # only). Continuous tanh, no boundary.
                     _xasset_boost = 0.12 * max(0.0, np.tanh(abs(_btc_trend) / 0.03))
-                    # Branch step6: portfolio-DD-adaptive reduction of the alt-trend x
-                    # BTC-agreement boost. Step1 proved entry-side pruning reduces rally DD
-                    # (over-commit on rally alt longs is a DD source). Extend into DD
-                    # episodes: during portfolio DD, scale DOWN the +0.12 alt-trend boost
-                    # (less over-commit on rally alt longs exactly when capping DD matters
-                    # under v2.2). Byte-identical at portfolio peak (dd_frac=0 -> factor 1.0).
-                    # Distinct from _port_dd_atten (uniform entry shrink): this targets the
-                    # trend-boost component specifically. Continuous tanh, leverage-coupled
-                    # scale (same as giveback tightening). Stacks step1's rally DD relief.
-                    _xasset_dd_cut = 1.0 - 0.40 * max(0.0, np.tanh(_port_dd_frac / (0.012 * LEVERAGE_K)))
-                    _xasset_boost = _xasset_boost * _xasset_dd_cut
                     _xasset_bull *= 1.0 + _xasset_boost * max(0.0, np.tanh(_btc_trend / 0.03))      # boost alt long when BTC uptrend
                     _xasset_bear *= 1.0 + _xasset_boost * max(0.0, np.tanh(-_btc_trend / 0.03))     # boost alt short when BTC downtrend
                     # Exp4 (architectural, combination): alt OWN-multi-day-trend boost gated
