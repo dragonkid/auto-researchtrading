@@ -1501,12 +1501,41 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp4 (architectural, indep): DOWNTREND BOUNCE-TOP bear-entry
+                # commitment boost (textbook "sell the bounce"). In a confirmed
+                # multi-day downtrend (ret_vlong<0), a bear entry taken AFTER a
+                # recent counter-trend bounce (ret_short>0 = price bounced up short-
+                # term) enters at the bounce top before downtrend resumption -> a
+                # higher-quality short than one entered mid-leg -> larger first-bar
+                # commitment captures more of the resumption down -> higher Sharpe
+                # in the return-limited regime (crash 100pct WR Sh1.274, DD3.04pct
+                # large headroom below 8pct knee). Genuinely signal-quality (concentrate
+                # size on bounce-top entries, NOT uniform size scale -> NOT leverage
+                # farming: calmar rises only if Sharpe rises). Distinct from every
+                # existing entry boost: those gate on BROAD-MARKET agreement (BTC
+                # trend, partner, volume, DVP); this gates on OWN intrabar bounce
+                # timing within the own multi-day downtrend -- a temporal entry-
+                # TIMING condition, not a cross-symbol agreement cell. Continuous
+                # tanh on ret_vlong (downtrend strength) x ret_short (bounce size);
+                # deep-saturated /0.03 and /0.02 (near-constant where it fires,
+                # noise-free per validated safe family). BEAR-side only: a bear
+                # entry in a downtrend is trend-aligned (the winning crash trade);
+                # the symmetric bull-in-uptrend bounce-buy is rally/bull, deliberately
+                # NOT boosted (rally entry-timing is a documented knife-edge; bull
+                # is over-commitment-fragile per Exp2/Exp3 this session). Gate
+                # ret_vlong<0 -> rally (uptrend) and bull (uptrend) BYTE-IDENTICAL
+                # (bear boost is ~0 there: ret_vlong>0 -> downtrend-strength gate 0).
+                # First-bar-only, +0.10 max. New cross-timescale data dep (multi-day
+                # trend x short-term bounce) at entry sizing.
+                _dt_strength = max(0.0, np.tanh(-ret_vlong / 0.03))  # 0 flat/uptrend, ~1 strong downtrend
+                _bounce = max(0.0, ret_short)  # recent short-term up-move (counter-trend bounce)
+                _bounce_boost_bear = 1.0 + 0.10 * _dt_strength * max(0.0, np.tanh(_bounce / 0.02))
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _bounce_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
