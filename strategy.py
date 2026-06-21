@@ -2025,6 +2025,27 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # Exp1 (architectural, indep): PROFIT-VELOCITY de-risk floor gate.
+                    # NEW data dependency at the de-risk decision: the per-bar change in
+                    # the position's OWN unrealized PnL (pos_pnl - _prev_pnl, the previous-
+                    # bar pos_pnl already tracked for confirmed-peak gating). Structurally
+                    # distinct from the trend-align gate (ret_long = a PRICE-WINDOW signal
+                    # shared by crash & sideways -> the documented crash-sideways coupling
+                    # wall). The position's PnL trajectory is a per-trade signal: a winner
+                    # whose PnL is STILL RISING this bar is on a genuine continuing move ->
+                    # lower the floor (ride through pullback noise, capture more trend
+                    # return -- targets crash, return-limited at Sh1.26 with 100pct WR +
+                    # 3.01pct DD headroom); a winner whose PnL is FALLING this bar is giving
+                    # back -> raise the floor (cut faster on real giveback). Sideways
+                    # winners mean-revert -> choppy/negative velocity -> cut (breaks the
+                    # coupling because the separator is PnL trajectory not price-window).
+                    # One-sided in profit only; smooth tanh on /0.006 (a 60bps one-bar PnL
+                    # move saturates); relax up to -0.08 (rising) / tighten up to +0.06
+                    # (falling). Floor stays bounded in [0.47, 0.91].
+                    _pnl_vel = pos_pnl - _prev_pnl
+                    _vel_gate = np.tanh(_pnl_vel / 0.006)
+                    _de_floor -= 0.08 * max(0.0, _vel_gate) * _ta_de_profit
+                    _de_floor += 0.06 * max(0.0, -_vel_gate) * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
