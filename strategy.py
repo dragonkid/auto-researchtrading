@@ -1354,32 +1354,19 @@ class Strategy:
                     # noise-free, validated safe family). First-bar-only, +0.05 max.
                     _vol_btc_boost_bull = 1.0 + 0.05 * _vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
                     _vol_btc_boost_bear = 1.0 + 0.05 * _vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
-                    # Exp8 (architectural, indep): BTC-volume-rise x PARTNER-alt-price-agreement
-                    # conjunction boost on ALT entries. A 3-symbol breadth-participation signal
-                    # (leader VOLUME x follower PRICE): an alt trend entry where the leader (BTC)
-                    # is participating (volume building) AND the partner alt confirms the direction
-                    # is a broad-market move with leader participation -> larger first-bar
-                    # commitment. Tests whether the MIXED cells of the {own,BTC,partner}x{vol,
-                    # price} grid add signal beyond the 5 clean 2-way keeps (Exp1/3/5/6/7).
-                    # Distinct from Exp1 (BTC-vol x BTC-PRICE, not partner) and Exp3 (PARTNER-vol
-                    # x partner-price, not BTC-vol). Deep-saturated both gates (/0.30 BTC vol,
-                    # /0.02 partner price -> near-constant, noise-free, validated safe family).
-                    # First-bar-only, +0.05 max. Risk: may be redundant with the existing Exp1
-                    # (BTC-vol) x Exp2-partner-boost (partner-price) which already multiply.
-                    _btcvol_partner_boost_bull = 1.0 + 0.05 * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
-                    _btcvol_partner_boost_bear = 1.0 + 0.05 * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
-                    # Exp9 (architectural, indep): PARTNER-alt-volume-rise x BTC-price-trend-
-                    # agreement conjunction boost on ALT entries. Symmetric mixed cell to Exp8
-                    # (BTC-vol x partner-price): follower VOLUME x leader PRICE. An alt trend
-                    # entry where the partner alt is participating (volume building) AND the
-                    # leader (BTC) confirms the direction is a broad-market move with follower
-                    # participation -> larger first-bar commitment. Last cell of the full
-                    # {own,BTC,partner}x{vol,price} 2-way grid. Distinct from Exp3 (PARTNER-vol
-                    # x PARTNER-price) and Exp8 (BTC-vol x partner-price). Deep-saturated both
-                    # gates (/0.30 partner vol, /0.03 BTC trend -> near-constant, noise-free,
-                    # validated safe family). First-bar-only, +0.05 max.
-                    _partnervol_btc_boost_bull = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
-                    _partnervol_btc_boost_bear = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    # Architectural simplification (Exp3 this session): REMOVED the two
+                    # double-cross volume-boost cells (Exp8 _btcvol_partner_boost = BTC-vol x
+                    # partner-price, Exp9 _partnervol_btc_boost = partner-vol x BTC-price).
+                    # These MIXED cells of the {own,BTC,partner}x{vol,price} grid were added to
+                    # "complete the grid" but flagged at creation as "Risk: may be redundant with
+                    # the existing Exp1 (BTC-vol) x Exp2-partner-boost (partner-price) which
+                    # already multiply." The single-cross cells (_vol_rise_boost, _vol_partner_boost,
+                    # _vol_btc_boost) already capture own-volume-modulated leader/partner price
+                    # confirmation; the double-cross cells add a second-order volume-x-price term
+                    # on top. At +0.05 max each with deep-saturated near-constant gates, their
+                    # marginal signal is below the noise floor. Test: if score holds, they were
+                    # dead alpha (simpler = better OOS); if it regresses, load-bearing. -2
+                    # entry-target multipliers, -16 LOC.
                     # Exp2 (architectural, indep): BTC leader DVP x BTC-price-trend-agreement
                     # conjunction boost on ALT entries (the directional-volume column of the
                     # {own,BTC,partner}x{vol,price} grid). _btc_dvp (leader volume-DIRECTION
@@ -1407,10 +1394,6 @@ class Strategy:
                     _vol_partner_boost_bear = 1.0
                     _vol_btc_boost_bull = 1.0
                     _vol_btc_boost_bear = 1.0
-                    _btcvol_partner_boost_bull = 1.0
-                    _btcvol_partner_boost_bear = 1.0
-                    _partnervol_btc_boost_bull = 1.0
-                    _partnervol_btc_boost_bear = 1.0
                     _btcdvp_boost_bull = 1.0
                     _btcdvp_boost_bear = 1.0
                     _partnerdvp_boost_bull = 1.0
@@ -1519,11 +1502,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
