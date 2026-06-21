@@ -1784,6 +1784,20 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
+                # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
+                # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
+                # crash bars = a much larger REAL price move (high vol) than 6 sideways bars.
+                # So time-pressure fires "too fast" in real-move terms in high-vol regimes,
+                # cutting crash/rally winners before the bigger per-bar move fully plays out
+                # -> contributes to crash being return-limited (Sh1.26, 100pct WR, DD3.04pct
+                # headroom). Scale max_hold UP with vol_ratio so the hold window is
+                # vol-normalized (same amount of REAL price move before time-pressure fires).
+                # Continuous tanh on (vol_ratio-1)/0.5, max +12pct at vol_ratio>=1.5; calm
+                # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
+                # term in the time-pressure activation. No per-regime labels.
+                _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
+                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
