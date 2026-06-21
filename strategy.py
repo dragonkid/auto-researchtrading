@@ -1948,6 +1948,44 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp (architectural, indep): ATR RANGE-EXPANSION exit pressure (7th soft
+                # MAX source). NEW data dep: the exit subsystem uses close-to-close vol
+                # (_ve = std of log-returns vol_6/vol_18) and VOLUME climax (_vc, bar
+                # volume z), but NEVER the INTRABAR price RANGE (high-low). ATR is computed
+                # for the stop-loss (line ~1660) but is NOT in the soft exit fusion. An ATR
+                # spike (intrabar range blowing out) after a winning run is a regime-shift /
+                # blow-off-top / capitulation signature DISTINCT from _ve (close-to-close vol
+                # expansion): a grinding trend can have STEADY close-to-close returns (low
+                # _ve) while individual bars have LARGE ranges (high ATR) — e.g. a bar that
+                # spikes down then recovers to close flat has zero close-to-close vol but a
+                # huge range. _ve misses that; ATR catches it. Computed as a z-score of the
+                # 14-bar ATR_pct against its OWN 20-bar rolling mean/std (rare-event gate
+                # z>2.0, saturate ~4) — the SAME rare-event discipline that makes _vc (volume
+                # z>2) the only safe 7th-source keep (per the MAX-fusion lesson: new sources
+                # gated on COMMON conditions cycle catastrophically; only RARE-event sources
+                # are safe). Profit-side only (lock gains at range-expansion regime shift;
+                # don't punish losers — slope-against handles adverse moves, same as _ve/_vc).
+                # Max 0.45 (between _vc 0.50 and _ve 0.60). New exit-pressure source + new
+                # control flow in the MAX fusion. Targets rally/crash raw (range-expansion
+                # tops/bottoms precede giveback).
+                _atr_n_e = 14
+                _atr_h_e = bd.history["high"].values[-_atr_n_e:]
+                _atr_l_e = bd.history["low"].values[-_atr_n_e:]
+                _atr_c_e = closes[-_atr_n_e - 1:-1]
+                _tr_e2 = np.maximum(_atr_h_e - _atr_l_e, np.maximum(np.abs(_atr_h_e - _atr_c_e), np.abs(_atr_l_e - _atr_c_e)))
+                _atr_pct_e2 = float(np.mean(_tr_e2[-1:])) / mid  # current-bar ATR_pct (range of the latest bar)
+                # 20-bar rolling ATR_pct baseline for the z-score (each bar's own ATR_pct).
+                _atr_hist_n = 20
+                _atr_h_h = bd.history["high"].values[-_atr_hist_n - 1:-1]
+                _atr_l_h = bd.history["low"].values[-_atr_hist_n - 1:-1]
+                _atr_c_h = closes[-_atr_hist_n - 2:-2]
+                _tr_h = np.maximum(_atr_h_h - _atr_l_h, np.maximum(np.abs(_atr_h_h - _atr_c_h), np.abs(_atr_l_h - _atr_c_h)))
+                _atr_pct_hist = _tr_h / mid  # per-bar ATR_pct over the baseline window
+                _atr_mean = float(np.mean(_atr_pct_hist))
+                _atr_std = max(float(np.std(_atr_pct_hist)), 1e-10)
+                _atr_z = (_atr_pct_e2 - _atr_mean) / _atr_std
+                _are_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_atr_z - 2.0) / 1.5)))
+                _w_are = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1963,6 +2001,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_are * _are_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
