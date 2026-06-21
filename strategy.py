@@ -96,6 +96,27 @@ PEAK_PROFIT_GIVEBACK = 0.22
 PORT_DD_GIVEBACK_TIGHTEN = 0.50   # max fractional reduction of giveback at deep DD (probing higher; step3 mag0.40 gave +0.0124 keep, rally DD 6.80pct has headroom below 8pct knee)
 PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
 PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
+# Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE PROFIT-TARGET HARVEST.
+# The giveback-tightening mechanism above is at its confirmed local optimum (mag
+# 0.50; 0.60 cliffs rally stability below the 0.80 knee + collapses sideways), so
+# the giveback-TOLERANCE DD-reduction lever is maxed. This adds a SECOND, DISTINCT
+# DD-reduction lever on a DIFFERENT exit path: the profit-target partial harvest
+# (_tp_scale, a position-SIZE scale-down at peak >= 1.6*_pp_min). That harvest is
+# normally SUPPRESSED for clean trend-aligned deep-peak winners by _ts_supp (let
+# winners run). During portfolio DD (rally pullbacks = the DD source), WEAKEN that
+# suppression so even clean trend winners get partially harvested (lock realized
+# gains at the peak -> the remaining position gives back less -> caps the DD that
+# comes from riding winners through deep pullbacks). Byte-identical at portfolio
+# peak (dd_frac=0 -> relax factor 1.0 -> _ts_supp unchanged -> clean trends still
+# run), so the return cost is ISOLATED to DD episodes (exactly when capping DD is
+# worth ~2x under v2.2). Distinct from the walled held-position de-risk (row 1015:
+# that cut HELD positions at a LOSS during DD-pullbacks, missing rally's upward
+# reversion): this harvests only at PEAK profit (locks gains, never cuts an
+# open/losing position), so it cannot miss a recovery. Continuous tanh on the DD
+# fraction; leverage-coupled scale (same discipline as giveback tightening);
+# symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
+PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
+PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -2021,6 +2042,19 @@ class Strategy:
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
+                    # trend-extension harvest suppression. _ts_supp normally PREVENTS
+                    # harvesting clean trend-aligned deep-peak winners (let them run).
+                    # During portfolio DD (rally pullbacks = the DD source), weaken the
+                    # suppression so even clean trend winners get partially harvested ->
+                    # lock realized gains at the peak -> the remaining position gives back
+                    # less -> caps the DD from riding winners through deep pullbacks. A
+                    # SECOND, distinct DD-reduction lever on a different exit path (tp
+                    # size scale-down) from the maxed giveback-tolerance tightening.
+                    # Byte-identical at portfolio peak (dd_frac=0 -> factor 1.0). Same
+                    # leverage-coupled DD-fraction scale as giveback tightening.
+                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
+                    _ts_supp = _ts_supp * _dd_tp_relax
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
