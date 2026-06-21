@@ -1501,44 +1501,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp2 (architectural, indep): PRICE-OVEREXTENSION entry shrink. NEW entry-
-                # side data primitive: every existing entry filter is either VOLUME-based
-                # (vol_spike/decline/rise/DVP) or bar-SHAPE (close_loc) or conviction (margin).
-                # NONE measures price overextension from a SLOW trend anchor. Compute a 48-bar
-                # EMA of close as a slow anchor (distinct timescale from the 12-bar VWAP voter
-                # and the 20-bar ret_long). Mechanism: a fresh entry taken when close is far
-                # ABOVE the slow EMA (bull, buying a local top) or far BELOW it (bear, selling
-                # a local bottom) is chasing an overextended move -> higher immediate adverse
-                # excursion on the first pullback -> contributes to rally pullback-DD (the
-                # documented rally drag) and crash bounce-DD. SHRINK first-bar size on these
-                # extended-in-entry-direction entries (shrink-only, safe family, can't raise DD).
-                # Trend-strength-gated so it fires only in trending moves where overextension
-                # is real (in chop price oscillates around the slow EMA normally -> no shrink).
-                # Direction-AWARE: only shrinks when extended in the ENTRY direction (a bull
-                # entry when close is BELOW the slow EMA is a pullback long, NOT overextended ->
-                # no shrink, that is a high-quality entry). Deep-saturated band (/0.025) so
-                # only genuine overextension fires (near-constant where active, noise-free per
-                # validated safe-family lesson). Max 0.20 shrink, first-bar-only, bilateral.
-                # New cross-timescale data dep (48-bar EMA anchor) at entry sizing.
-                _overext_n = 48
-                if len(closes) >= _overext_n:
-                    _overext_ema = ema(closes[-_overext_n:], _overext_n)[-1]
-                    _overext_dev = (mid - _overext_ema) / max(_overext_ema, 1e-10)  # signed: + close above slow EMA
-                    _overext_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
-                    # bull extended = close far above slow EMA; bear extended = far below
-                    _overext_bull = max(0.0, min(1.0, np.tanh(_overext_dev / 0.025)))
-                    _overext_bear = max(0.0, min(1.0, np.tanh(-_overext_dev / 0.025)))
-                    _overext_shrink_bull = 1.0 - 0.20 * _overext_trend_w * _overext_bull
-                    _overext_shrink_bear = 1.0 - 0.20 * _overext_trend_w * _overext_bear
-                else:
-                    _overext_shrink_bull = 1.0
-                    _overext_shrink_bear = 1.0
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _overext_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _overext_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
