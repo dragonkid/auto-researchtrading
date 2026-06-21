@@ -480,6 +480,21 @@ class Strategy:
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
+            # Exp2 (architectural, indep): RETURN AUTOCORRELATION (lag-1) over a 48-bar
+            # window. NEW data primitive: no existing signal measures return PERSISTENCE
+            # directly (voters use price LEVELS/slopes/MACD; vol_ratio uses vol magnitude).
+            # Lag-1 autocorrelation of log returns is the canonical regime-persistence
+            # estimator: high positive AC = returns trend/persist (momentum regime);
+            # near-zero/negative AC = mean-reverting chop. Smooth over 48 bars for bar-
+            # stability (short-window AC is noisy -> would add entry-timing noise). Used
+            # (below, at admission) as a downtrend-scoped bounce-long conviction gate.
+            _ac_n = 48
+            _ac_lr = np.diff(np.log(closes[-_ac_n - 1:]))
+            _ac_m = float(np.mean(_ac_lr))
+            _ac_v = float(np.var(_ac_lr)) + 1e-12
+            _ret_autocorr = float(np.mean((_ac_lr[:-1] - _ac_m) * (_ac_lr[1:] - _ac_m)) / _ac_v)
+            _ret_autocorr = max(0.0, min(1.0, _ret_autocorr))  # clip to [0,1] (negative AC = chop, treat as 0)
+
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
 
             # 5-bar median signal (maximum noise immunity, returns sacrificed for stability)
@@ -631,6 +646,18 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Exp2: downtrend-scoped bounce-long admission tightening gated on return
+            # autocorrelation. In a multi-day DOWNTREND (ret_vlong<0; crash-only -- rally/
+            # bull ret_vlong>0 -> gate 0 -> byte-identical), a bull entry is a counter-
+            # trend bounce long. When the down-leg is PERSISTENT (high lag-1 return AC =
+            # trending decline, not choppy), bounces are more likely dead-cat -> tighten
+            # the bull admission bar so only HIGHER-conviction bounces pass (filters
+            # crash falling-knife longs -> fewer crash losses -> higher crash Sharpe).
+            # In choppy downtrends (low AC) the bounce is more genuine -> no tighten.
+            # Shrink-only (factor >= 1.0), max +12%. Continuous tanh, no boundary.
+            _dc_dt = max(0.0, np.tanh(-ret_vlong / 0.03))  # ~1 strong downtrend, 0 uptrend/chop
+            _bull_dc_ac_admit = 1.0 + 0.12 * _dc_dt * _ret_autocorr
+            _bull_strong_min *= _bull_dc_ac_admit
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
