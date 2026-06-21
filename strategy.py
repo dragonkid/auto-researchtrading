@@ -117,6 +117,26 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Exp3 (architectural, indep): LOSS-GATED portfolio-DD-adaptive time-pressure
+# intensification. Exp2 (ungated DD-time-shorten) breached rally DD 6.36->12.71pct
+# because shortening max_hold cut WINNING trend-aligned positions during DD
+# pullbacks -- and rally pullbacks REVERT upward, so cutting winners mid-pullback
+# missed the recovery -> DD compounded (same failure as walled held-position
+# de-risk row 1015). This re-attempts the DD-time-intensification on a THIRD DD-
+# reduction path (TIME, distinct from maxed giveback-tightening + tp-harvest) but
+# GATED TO LOSING positions only (pos_pnl < 0): cut LOSERS faster during DD
+# (smaller realized losses -> DD down) while SPARING winners (no missed
+# reversion). Exp2 showed bull +0.037 from DD-time-relief on non-reversionary
+# corrections; loss-gating preserves that bull gain while removing the rally
+# breach (rally winners -- the reversionary longs -- are no longer cut). Byte-
+# identical at portfolio peak (dd_frac=0) AND for winners (gate=0 when
+# pos_pnl>=0). Leverage-coupled scale (decision invariance). Continuous tanh on
+# the DD fraction x loss-side tanh (no boundary). Validates whether the TIME path
+# can contribute DD-reduction on the LOSS side (where time IS sometimes binding
+# per the ct-loser exit-path findings) without the reversion-miss that killed
+# Exp2's winner-side version.
+PORT_DD_TIME_SHORTEN = 0.20       # max fractional max_hold reduction at deep DD (loss-side only)
+PORT_DD_TIME_SCALE = 0.012        # base DD-fraction at which shortening saturates (scaled by LEVERAGE_K at use)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1798,6 +1818,15 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp3: LOSS-GATED portfolio-DD-adaptive time-pressure
+                # intensification. Shorten max_hold during portfolio DD ONLY for
+                # losing positions (cut losers faster -> smaller realized losses
+                # -> DD down) while sparing winners (no missed reversion -- the
+                # Exp2 failure mode). Byte-identical at portfolio peak and for
+                # winners. Leverage-coupled scale. Continuous tanh x loss-side.
+                _port_dd_frac_tp = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _loss_side_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 winner, ~1 deep loser
+                _max_hold *= 1.0 - PORT_DD_TIME_SHORTEN * _loss_side_gate * max(0.0, np.tanh(_port_dd_frac_tp / (PORT_DD_TIME_SCALE * LEVERAGE_K)))
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
