@@ -117,6 +117,22 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Architectural (this session, Exp6): LEVERAGE-COUPLED giveback WIDENING (return-seeking).
+# The Exp3 keep established the principle: at lower leverage, DD headroom exists for
+# return-seeking (rally DD 5.19pct at 4x, all regimes well below the 8pct dd_gate knee:
+# bull 3.21, crash 2.46, sideways 2.21). Exp3 applied this to ENTRY size (sideways_boost
+# coupling -> rally pullback alpha). This applies the SAME principle to the EXIT giveback
+# tolerance: at lower leverage, WIDEN the peak-profit giveback slightly so trend-aligned
+# winners run LONGER (capture more of the trend move -> higher Sharpe via return_reward
+# calmar gain) -- the dd_gate cost of the resulting slightly-deeper DD is absorbed by the
+# 4x DD headroom. Distinct from the DYNAMIC run-up-velocity giveback widening (prior,
+# CATASTROPHIC: rally DD 6.36->7.58) which widened grind-peak giveback based on a noisy
+# per-bar velocity; this is a STATIC leverage-coupled widening (deterministic, leverage-
+# level-based, no per-bar noise -> no exit-timing noise -> stability preserved) at SMALL
+# magnitude (+0.08 at LEVERAGE_K=4). Byte-identical at LEVERAGE_K=5 (0 headroom -> 0
+# widening -> reverts to baseline giveback). New cross-subsystem coupling (exit giveback
+# magnitude depends on leverage level / DD headroom). General principle, no regime label.
+PORT_DD_GIVEBACK_WIDEN = 0.08 * max(0.0, 5.0 - LEVERAGE_K)  # 0 at LEVERAGE_K=5, +0.08 at LEVERAGE_K=4
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1741,7 +1757,13 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
+                # Exp6: leverage-coupled giveback WIDENING (return-seeking via 4x DD headroom).
+                # At LEVERAGE_K<5 the portfolio DD has headroom below the 8pct dd_gate knee, so
+                # widen the effective giveback tolerance -> trend-aligned winners run longer ->
+                # more trend capture -> higher Sharpe (calmar return_reward). Static (leverage-
+                # level-based, deterministic, no exit-timing noise). Byte-identical at LEVERAGE_K=5.
+                _pp_widen = 1.0 + PORT_DD_GIVEBACK_WIDEN * (1.0 - max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_widen
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
