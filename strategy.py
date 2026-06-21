@@ -1462,37 +1462,6 @@ class Strategy:
                 _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
                 _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
                 _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
-                # Exp5 (architectural, indep): WICK-REJECTION entry boost. NEW candle-shape
-                # primitive: close_loc (above) reads the close POSITION in the range
-                # ((close-low)/(high-low)); that quantity INCLUDES the body and is a linear
-                # transform of upper-vs-lower-wick (lower_wick+body = close-low; so close_loc
-                # alone cannot isolate intrabar DIP REJECTION). The genuine wick-rejection
-                # signal uses the OPEN: lower_wick = min(open,close) - low (the tail BELOW the
-                # body = intrabar rejection of lows, buyers absorbed selling = bullish);
-                # upper_wick = high - max(open,close) (rejection of highs = bearish). A bar can
-                # close at the high (close_loc=1.0) with NO lower wick (open=low, close=high --
-                # no dip rejection) OR with a LARGE lower wick (open dipped then closed high --
-                # strong dip rejection): close_loc identical, wick-rejection very different. NO
-                # existing primitive reads open-relative wick (HL2=midpoint, ATR=span,
-                # VWAP=level, close_loc=position, DVP=close-to-close sign). 3-bar mean
-                # lower-wick-frac = mean(lower_wick / (high-low)) for noise robustness (single-
-                # bar wicks flip under AR(1) high/low perturbation). Mirror the validated
-                # close-conv boost envelope EXACTLY for stability safety: trend_w (|ret_long|/
-                # 0.04) x ER grind gate (_er/0.25) x multi-day ret_vlong>0 bull gate (excludes
-                # crash dead-cat-bounce longs) x deep-saturated conviction (/0.15 -> near-
-                # constant where it fires, noise-free safe-family). Bear side ungated by
-                # ret_vlong (mirrors close-conv; crash shorts are the trend-aligned crash
-                # trade). First-bar-only, +0.05 max, bilateral. New cross-data-type dep.
-                _cl_open = bd.history["open"].values[-3:]
-                _cl_body_low = np.minimum(_cl_open, _cl_close)
-                _cl_body_high = np.maximum(_cl_open, _cl_close)
-                _cl_span3 = np.maximum(_cl_high - _cl_low, 1e-10)
-                _lower_wick_frac = float(np.mean(np.maximum(_cl_body_low - _cl_low, 0.0) / _cl_span3))  # [0,1], 3-bar mean
-                _upper_wick_frac = float(np.mean(np.maximum(_cl_high - _cl_body_high, 0.0) / _cl_span3))
-                _wk_bull_conv = max(0.0, np.tanh((_lower_wick_frac - 0.15) / 0.15))  # step4: LOOSENED 0.25->0.15 (fire on more dip-rejection bars for more rally signal)
-                _wk_bear_conv = max(0.0, np.tanh((_upper_wick_frac - 0.25) / 0.15))  # bear: rejection of highs
-                _wick_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _wk_bull_conv
-                _wick_boost_bear = 1.0  # step3: bear wick boost removed (fired on crash shorts + rally ct-short losers = leakage source; bull-only keeps the rally gain)
                 # Exp1 (architectural, indep): DIRECTIONAL VOLUME PRESSURE (normalized
                 # OBV) trend-aligned entry boost. NEW data axis genuinely orthogonal to
                 # every existing volume primitive: VWAP voter reads close vs a volume-
@@ -1533,11 +1502,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _wick_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _wick_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
