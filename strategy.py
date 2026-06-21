@@ -2052,13 +2052,21 @@ class Strategy:
                     # winners mean-revert -> choppy/negative velocity -> cut (breaks the
                     # coupling because the separator is PnL trajectory not price-window).
                     # One-sided in profit only; smooth tanh on /0.006 (a 60bps one-bar PnL
-                    # move saturates); relax up to -0.08 (rising) / tighten up to +0.06
-                    # (falling). Floor stays bounded in [0.47, 0.91].
-                    # Branch step2: use EMA-smoothed velocity (_pnl_vel_ema, ~3-bar) instead
-                    # of raw per-bar delta -- dampens 1-bar noise that crashed bull stability.
-                    _vel_gate = np.tanh(_pnl_vel_ema / 0.006)
-                    _de_floor -= 0.08 * max(0.0, _vel_gate) * _ta_de_profit
-                    _de_floor += 0.06 * max(0.0, -_vel_gate) * _ta_de_profit
+                    # move saturates). Floor stays bounded.
+                    # Branch step3: TIGHTEN-ONLY. Step1 (raw velocity, both sides) crashed
+                    # bull stability 1.0->0.532 (per-bar velocity flips -> floor jumps ->
+                    # wobble). Step2 (EMA both sides) blew sideways DD 2.74->12.06pct past
+                    # 10pct cutoff (EMA lag held relax-side winners through giveback -> DD
+                    # explosion; same noise-trajectory/lag-DD wall). The RELAX side (ride
+                    # rising winners) is structurally the DD-blower in mean-reverting
+                    # regimes. Drop it entirely; keep ONLY the tighten side (cut SUSTAINED
+                    # falling-PnL winners faster) using the EMA velocity (sustained-fall
+                    # confirmation, not 1-bar noise). Tighten-only cannot blow DD (only
+                    # cuts faster); EMA on tighten-only adds cut lag (missed fast giveback)
+                    # but no DD risk. Tests whether cutting sustained-falling sideways
+                    # winners helps without the relax-side DD blowout or relax-side wobble.
+                    _vel_fall = max(0.0, -np.tanh(_pnl_vel_ema / 0.006))
+                    _de_floor += 0.06 * _vel_fall * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
