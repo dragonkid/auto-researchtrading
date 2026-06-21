@@ -1715,6 +1715,36 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
+                # Exp3 (architectural, indep): REALIZED-SKEWNESS giveback-harvest
+                # modulator. NEW signal (0 prior). Slope measures trend DIRECTION,
+                # R^2 path LINEARITY, AC return PERSISTENCE, but NONE measures return
+                # ASYMMETRY (fat tail in one direction). Realized skewness of 24-bar
+                # log-returns does: a trend-aligned winner during high SAME-DIRECTION
+                # skew (crash short during persistent negative skew = fat downside
+                # tail; rally long during positive skew) is riding a trend whose tail
+                # is cohesive -> persistence intact -> NO extra harvest. When same-
+                # direction skew FADES (tail losing cohesion, returns becoming
+                # symmetric/opposite) the trend's momentum-asymmetry is breaking ->
+                # harvest earlier before reversal. Direction-aware: _skew_aligned =
+                # skew * pos_dir (positive when the fat tail is in the trade
+                # direction). Safe direction: only HARVESTS earlier (raises giveback
+                # ratio when persistence fades), NEVER rides longer -- consistent with
+                # the documented "harvesting works, holding longer backfires" (prior
+                # session -0.082 on hold-extension). Gated on trend-ALIGNMENT
+                # (ret_long*pos_dir) so sideways (low trend-align, structurally low/
+                # noisy skew) is byte-identical -> spared. 24-bar window (matches
+                # VOL_LOOKBACK). Deep-saturated tanh /0.25 (near-constant where it
+                # fires, noise-free per validated safe family). Max +12pct giveback
+                # ratio (earlier harvest) when a trend-aligned winner's skew fully
+                # fades. New cross-data-type dep on the pp giveback path.
+                _skew_rets = np.diff(np.log(closes[-25:]))
+                _skew_std = float(np.std(_skew_rets))
+                if _skew_std > 1e-10:
+                    _skew = float(np.mean(((_skew_rets - _skew_rets.mean()) / _skew_std) ** 3))  # realized skewness
+                    _skew_aligned = _skew * (1.0 if current_pos > 0 else -1.0)  # + when fat tail in trade direction
+                    _skew_persist = max(0.0, np.tanh(_skew_aligned / 0.25))  # 0 faded/symmetric, ~1 persistent
+                    _skew_align_gate = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))  # trend-aligned only
+                    _giveback_ratio = _giveback_ratio * (1.0 + 0.12 * (1.0 - _skew_persist) * _skew_align_gate)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
