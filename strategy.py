@@ -1891,6 +1891,23 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp4 (architectural, indep): PROFIT-MAGNITUDE coupling on _ve_pressure.
+                # Exp3 (this session) DISPROVED the prior belief that all exit paths are
+                # inert/giveback-driven: removing _ve crashed bull -0.257 -- _ve (vol-of-price
+                # expansion) is BULL's binding exit term, not giveback. Prior sessions never
+                # tuned _ve (assumed minor/inert). A vol-expansion regime shift at DEEP profit
+                # (peak_pnl >> _pp_min) is a sharper blow-off-top exhaustion signal than at
+                # shallow profit (where vol expansion may be early-trend participation noise).
+                # STRENGTHEN ve at deep profit (one-sided: factor 1.0 at shallow, up to 1.4 at
+                # deep) -> harvest deep winners harder on vol-expansion exhaustion -> caps
+                # deep-winner giveback -> lower DD. One-sided (no weakening) so NO removal-like
+                # crash risk (Exp3 showed weakening ve crashes bull). Byte-identical at shallow
+                # profit (pm~0 -> factor 1.0). New data dep: ve exit pressure depends on profit
+                # magnitude (peak/_pp_min). crash/sideways byte-identical (ve inert there,
+                # giveback fires first -> coupling never engages); rally near-inert (ve ~off).
+                # Targets bull (the ve-driven regime) DD relief at deep-profit exhaustion.
+                _ve_pm = max(0.0, np.tanh(_profit_magnitude / 0.7))
+                _ve_pressure = _ve_pressure * (1.0 + 0.4 * _ve_pm)
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
