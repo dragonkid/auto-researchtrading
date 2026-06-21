@@ -1716,23 +1716,6 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                # Exp (architectural, indep): PROFIT-MAGNITUDE-AWARE slope-against threshold
-                # loosening. NEW data dep: _slope_thresh (vol-conditioned only) never reads
-                # profit magnitude. A winner with a DEEP profit cushion (large peak_pnl vs
-                # _pp_min) can tolerate a LOOSER slope-against reversal threshold -- a small
-                # slope-against wobble cannot threaten a deep-cushion winner, so cutting it
-                # early on a minor slope dip forfeits trend/bounce continuation return (crash
-                # V-bounces: 100pct WR but return-limited Sh1.27 -- winners exit on slope-against
-                # before the full bounce plays out). Loosen the slope-against threshold UP for
-                # deep-profit winners (max +30pct), letting them ride minor slope wobbles; the
-                # giveback path (_pp_pressure, already AMPLIFIED for deep profit) still cuts fast
-                # on a REAL reversal (giveback rising), so the net profile is "ride small slope
-                # noise, cut on actual giveback" -- distinct from lagging-signal hold-longer
-                # (documented backfire). Profit-gated (pos_pnl<=0 -> _profit_magnitude 0 ->
-                # byte-identical for losers). Continuous tanh, no boundary. Recompute
-                # _sl_slope_pressure with the loosened threshold.
-                _slope_thresh_eff = _slope_thresh * (1.0 + 0.30 * np.tanh(_profit_magnitude / 0.7))
-                _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh_eff) / (_slope_band * _slope_thresh_eff)))
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
                 # harvests winners faster (locks gains) -> caps DD from riding winners through
