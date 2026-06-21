@@ -1965,6 +1965,33 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp (architectural, indep): STANDARD-DEVIATION-EXTENSION profit-harvest
+                # exit pressure (7th soft MAX source). NEW data dependency genuinely absent
+                # from the existing 6 soft sources: slope (direction), pp (giveback from
+                # peak), time (bar count), ve (vol-of-price expansion), ar (adverse recovery),
+                # vc (volume climax). NONE measures price EXTENSION from a rolling mean in
+                # std units -- a Bollinger-style overextension signal. A close far above its
+                # N-bar mean (high z) after a winning run is a classic mean-reversion-of-
+                # extremes exhaustion point (rally grind tops, crash capitulation bounces) ->
+                # harvest the winner before the reversion. Distinct from _vc_pressure (volume
+                # level spike, not price deviation) and _pp_pressure (giveback from the
+                # position's OWN peak, not deviation from a population mean). Profit-side only
+                # (lock gains at extension; losers face slope-against) -- same safe family as
+                # the validated _vc_pressure keep. 20-bar mean/std on closes (deep-saturated
+                # window, smooth), activate above ~2 sigma, saturate ~3.5 sigma. Continuous
+                # tanh, no boundary. New exit-pressure source + new control flow in the MAX
+                # fusion. Targets rally raw (extension tops precede pullback giveback).
+                _ext_n = 20
+                _ext_c = closes[-_ext_n:]
+                _ext_mean = float(np.mean(_ext_c))
+                _ext_std = max(float(np.std(_ext_c)), 1e-10)
+                _ext_z = (closes[-1] - _ext_mean) / _ext_std
+                # Sign by position direction: a LONG profits when price extended UP (z>0);
+                # a SHORT profits when price extended DOWN (z<0). Use signed z * pos_dir.
+                _ext_dir = 1.0 if current_pos > 0 else -1.0
+                _ext_signed = _ext_z * _ext_dir
+                _ext_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_ext_signed - 2.0) / 1.5)))
+                _w_ext = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1980,6 +2007,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_ext * _ext_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
