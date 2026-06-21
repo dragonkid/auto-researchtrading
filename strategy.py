@@ -1699,6 +1699,40 @@ class Strategy:
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
+                # Architectural (indep): VOLUME-WEIGHTED exit-slope blend. NEW data dep:
+                # the exit slope (mean of 12/16/22-bar OLS log-HL2 slopes) is currently
+                # UNWEIGHTED -- every bar carries equal weight. Volume is NOISE-IMMUNE in the
+                # AR(1) stability test (only close/high/low are perturbed, volume is not), so a
+                # volume-weighted OLS slope uses noise-immune weights on noisy prices -- the
+                # validated "safe family" property (like the integer-churn gates). Hypothesis:
+                # high-volume bars carry more conviction (institutional participation); weighting
+                # the slope toward them yields a more robust trend signal for the slope-against
+                # exit pressure + de-risk cushion + hold-bonus decisions -> less noise-driven
+                # false slope-reversal exits on winners (let them run) + sharper real-reversal
+                # cuts on losers -> higher Sharpe. Blend 50/50 with the unweighted mean (partial
+                # shift, bounded -- not a full replacement, lower risk to the load-bearing
+                # _exit_slope which feeds 3 exit paths). Continuous (volume is a smooth positive
+                # weight, no decision boundary). Direction-agnostic general principle.
+                _vw_slopes = []
+                _vol_full = bd.history["volume"].values
+                for _w in (12, 16, 22):
+                    _yw = np.log(_hl2[-_w:])
+                    _wv = _vol_full[-_w:].astype(float)
+                    _nw = len(_yw)
+                    _xw = np.arange(_nw)
+                    _wsum = _wv.sum()
+                    if _wsum > 1e-10:
+                        _xwm = (_wv * _xw).sum() / _wsum
+                        _ywm = (_wv * _yw).sum() / _wsum
+                        _xdw = _xw - _xwm
+                        _vden = (_wv * _xdw * _xdw).sum()
+                        if _vden > 1e-20:
+                            _vw_slopes.append(((_wv * _xdw) * (_yw - _ywm)).sum() / _vden)
+                        else:
+                            _vw_slopes.append(_slopes[len(_vw_slopes)])
+                    else:
+                        _vw_slopes.append(_slopes[len(_vw_slopes)])
+                _exit_slope = 0.5 * _exit_slope + 0.5 * float(np.mean(_vw_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
