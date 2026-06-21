@@ -76,6 +76,25 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
+# At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
+# 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
+# score; the exp penalty starts at 8pct). At lower leverage the return_reward lever
+# dominated so return-seeking (wide giveback, ride winners) won; at 5x the marginal
+# value of DD relief may now EXCEED the marginal return_reward loss. This makes the
+# peak-profit giveback (how much profit is given back before pp_pressure harvests)
+# PORTFOLIO-DD-ADAPTIVE: as the portfolio draws down from its peak, progressively
+# TIGHTEN the giveback (harvest winners faster, lock gains) -> caps the DD that
+# comes from riding winners through deep pullbacks. DISTINCT from the walled
+# portfolio-DD HELD-position de-risk (row-1015: that cut HELD positions at a LOSS
+# during DD-pullbacks, missing rally's upward reversion -> -0.0025); this harvests
+# only at PEAK GIVEBACK (locks realized gains at peaks, never cuts a losing/open
+# position), so it cannot miss a recovery — it only decides how much paper profit
+# to ride vs lock. Continuous tanh on the DD fraction (no new boundary), symmetric
+# (both long/short), Sharpe-affecting (alters exit timing of WINNERS, not size).
+# Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
+PORT_DD_GIVEBACK_TIGHTEN = 0.30   # max fractional reduction of giveback at deep DD
+PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1665,7 +1684,16 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                _pp_lower = PEAK_PROFIT_GIVEBACK * (1.0 - _pp_band)
+                # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
+                # down from its peak, shrink the effective giveback tolerance so pp_pressure
+                # harvests winners faster (locks gains) -> caps DD from riding winners through
+                # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
+                # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
+                # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
+                _port_dd_frac = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
+                _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
                 # boundary at peak == _pp_min creates noise discontinuity in stab tests.
@@ -1691,7 +1719,7 @@ class Strategy:
                 # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
-                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (PEAK_PROFIT_GIVEBACK * _pp_band)))
+                _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
