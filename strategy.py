@@ -78,35 +78,7 @@ PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 
 # Sizing multipliers
-# Architectural (this session): RETURN-SEEKING LEVERAGE. The strategy's per-regime
-# DD sits at 0.5-1.6% (rally 1.57%, crash 0.65%) — far below the 8% dd_gate soft
-# knee and the 10% hard cutoff. The return_reward factor (added 2026-06-20,
-# log(1+APY%/100+1)) was explicitly designed to "incentivize accepting higher DD
-# for more return", but no session tested GLOBAL leverage since: all 11 prior
-# sizing experiments pre-date return_reward and targeted Sharpe (scale-invariant
-# under uniform leverage, so they showed no gain). At the baseline's tiny APY
-# (3-5%), return_reward sits in its low concave region (~0.71); uniform 2x
-# leverage doubles APY (6-10%) raising return_reward to ~0.73-0.74 on EVERY
-# regime. MECHANISM (why this is safe and not a noise-fishing sweep):
-#  (1) Sharpe is scale-invariant under uniform leverage -> signal_quality unchanged.
-#  (2) Stability is scale-invariant: stability = 1 - std(clean_ret-pert_ret)/std
-#      (clean_ret); both numerator (tracking error) and denominator (clean_vol)
-#      scale by k under uniform leverage -> stability factor unchanged (verified
-#      vs noise_test.py compute_signal_stability). All regimes already at factor
-#      1.0 -> stay at 1.0.
-#  (3) DD scales by k but stays well under the 8% knee (rally 1.57->3.14%, crash
-#      0.65->1.30%) -> dd_gate barely moves (0.985->0.970 worst case).
-#  (4) sample_factor (trade count) and streak_gate unchanged (entry/exit logic
-#      untouched).
-# Net: every regime's score rises by the return_reward ratio (~+2-4%), composite
-# +~0.010. This is a single-parameter change (NOT architectural), but it is
-# mechanism-backed (deterministic consequence of the return_reward formula, not
-# a +0.01 noise artifact) and addresses the #1 structural fact (strategy is
-# drastically under-sized relative to its DD headroom). 2x chosen conservatively:
-# rally DD 3.14% leaves a 3.2x safety margin to the 10% hard cutoff under AR(1)
-# noise spikes (stability test runs 100 realizations; a 3.2x DD spike from noise
-# alone is implausible at baseline stability 0.82).
-BASE_POSITION_SIZE = 0.13
+BASE_POSITION_SIZE = 0.065
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
 CROSS_ASSET_FIXED_BOOST = 0.15
