@@ -143,7 +143,7 @@ PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturat
 # LEVERAGE-COUPLED to BASE_POSITION_SIZE (a discipline: any size-dependent
 # fraction-space threshold must scale with leverage to preserve decision
 # invariance). LEVERAGE_K is a single named coupling constant.
-LEVERAGE_K = 5.0
+LEVERAGE_K = 4.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
 CALM_BOOST_MAX = 0.8
 SIDEWAYS_BOOST_MAX = 0.50
