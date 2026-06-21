@@ -1906,18 +1906,29 @@ class Strategy:
                 # eliminates sub-peak giveback data dependency.
                 _ep_pressure = 0.0
                 _w_ep = 0.0
-                # Exp2 (architectural, SIMPLIFICATION): REMOVE the adverse-recovery
-                # exit pressure (_ar_pressure) from the MAX fusion entirely. Prior
-                # sessions found _ar_pressure "dead-code-adjacent" (3c394c1: positions
-                # in MAE-recovery exit via slope/pp/sl before _ar_pressure engages;
-                # "defer MAE updates" was flat). This tests removing the term outright
-                # (not just deferring MAE). If truly dead-code-adjacent, byte-identical
-                # + simpler code; if mildly load-bearing, measures the contribution.
-                # The _mae low-water-mark STATE is RETAINED (still drives the _ts_supp
-                # MAE-cleanliness gate on the tp-harvest at line ~2058) -- only the
-                # exit-pressure TERM is removed.
+                # Architectural: adverse-recovery exit pressure (5th soft source).
+                # New per-symbol state (MAE low-water mark) drives a new control flow:
+                # when current pos_pnl has substantially recovered from MAE but is still
+                # in modest loss, the position is "barely surviving" — recovery is at
+                # risk of reversing into another adverse leg. Exit pressure rises
+                # proportional to recovery fraction. Activates only when:
+                #   - MAE is meaningful (< -0.5 * |STOP_LOSS_PCT|)
+                #   - current pos_pnl is in modest loss territory (between MAE and 0)
+                # Distinct from pp_pressure (which measures peak giveback for winners)
+                # and from sl_pressure (binary stop). Targets the "recovered to small
+                # loss after dip" pattern — historically a dangerous holding zone.
                 _ar_pressure = 0.0
-                _w_ar = 0.0
+                _curr_mae_e = self._mae.get(symbol, 0.0)
+                _mae_floor = -0.5 * abs(STOP_LOSS_PCT)
+                if _curr_mae_e < _mae_floor and pos_pnl < 0:
+                    # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
+                    _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
+                    # Activate above 0.5 recovery (mild dip recoveries don't trigger);
+                    # ramp smoothly to 0.40 cap at full breakeven recovery.
+                    _ar_pressure = 0.40 * max(0.0, min(1.0, (_recovery_frac - 0.5) / 0.4))
+                # Weight: only fire on currently-losing positions (definitionally — gated above);
+                # full weight (this pressure measures recovery quality on losers, not profit lock-in).
+                _w_ar = 1.0
                 # Exp4 (architectural, indep): volume-climax exit pressure (6th soft source).
                 # NEW data dependency: volume is used in entry (VWAP voter, calm_boost) but
                 # NEVER in the exit subsystem — all 5 existing soft sources (slope/pp/time/
