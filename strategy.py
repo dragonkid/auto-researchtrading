@@ -74,6 +74,22 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
+# Architectural (Exp2 this session): COUNTER-TREND slope-against exit amplification.
+# Exp1 proved the ATR STOP is inert on ct losers (they exit via slope/time/giveback
+# before the stop band). Direct follow-up: target the SLOPE-against exit path -- the
+# slope-against pressure (_sl_slope_pressure) is currently trend-SYMMETRIC (the prior
+# trend-aligned attenuation was removed as redundant). Lower the slope-against
+# activation threshold for COUNTER-TREND positions so ct losers (crash dead-cat longs,
+# rally pullback shorts) cut on the FIRST slope-reversal signal (smaller realized
+# losses -> higher Sharpe in the return-limited binding regimes). Trend-aligned
+# positions keep the full threshold byte-identical (the profitable trend trades are
+# not cut early on pullback slope noise). Signal-quality RETURN-side lever (NOT
+# sizing/stop/DD-harvest). Continuous tanh on the signed ct indicator (fast-saturating
+# /0.01 -> near-constant where it fires, noise-free); low-ret_vlong sideways -> ~0 ->
+# byte-identical. Shrink-only (caps at full threshold), symmetric, max 40% threshold
+# reduction.
+CT_SLOPE_THRESH_CUT = 0.40   # max fractional reduction of the slope-against activation threshold for ct positions
+CT_SLOPE_SCALE = 0.01        # ret_vlong scale at which ct threshold cut saturates (fast-saturating, noise-free)
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -1684,6 +1700,16 @@ class Strategy:
                 _exit_slope = float(np.mean(_slopes))
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
+                # Exp2 (architectural): counter-trend slope-against threshold cut. Lower the
+                # slope-against activation threshold for COUNTER-TREND positions (pos_dir
+                # opposes the multi-day ret_vlong = crash dead-cat longs, rally pullback
+                # shorts -- the losing trades) so they cut on the FIRST slope-reversal sign
+                # -> smaller realized losses -> higher Sharpe. Trend-aligned (ct indicator 0)
+                # -> full threshold byte-identical. Fast-saturating /0.01 -> near-constant
+                # where it fires (noise-free); low-ret_vlong sideways -> ~0 -> byte-identical.
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _ct_slope_str = max(0.0, np.tanh(-_pos_dir_sl * ret_vlong / CT_SLOPE_SCALE))
+                _slope_thresh = _slope_thresh * (1.0 - CT_SLOPE_THRESH_CUT * _ct_slope_str)
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
