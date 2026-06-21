@@ -1601,26 +1601,7 @@ class Strategy:
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
-                    # Exp (architectural, indep): CONVEX scale-in curve SHAPE (new control
-                    # flow on the scale-in subsystem's core function form). Prior sessions
-                    # tuned scale-in PACE (_entry_full_bars_dyn, the win-accelerator) and the
-                    # adverse-freeze, but the FUNCTIONAL FORM of scale_frac has always been
-                    # LINEAR in progress. Replace with a CONVEX ramp: scale_frac =
-                    # INITIAL + (1-INITIAL) * progress^k, k=1.4. Convex commits LESS in the
-                    # early scale-in bars (progress^1.4 < progress for progress<1) then ramps
-                    # to full near the end. Mechanism: (a) smaller early-bar positions ->
-                    # smaller clean/perturbed position-value delta -> lower equity-curve
-                    # tracking error (stability); (b) the early bars of a counter-trend
-                    # re-entry (rally's losing pullback shorts) commit less -> smaller
-                    # realized losses if the adverse-freeze/exit fires mid-scale-in. The
-                    # existing win-accelerator (gated by trend-strength + slope-conf) still
-                    # SHORTENS the scale-in window for confirmed winners so trend-aligned
-                    # alpha capture is preserved (the convex curve reaches full at the same
-                    # end point; only the mid-curve is slower). Distinct from pace tuning:
-                    # same _entry_full_bars_dyn endpoints, different mid-curve shape. Smooth
-                    # (continuous progress^k, no new boundary). Direction-agnostic. New data
-                    # dep: scale_frac depends on progress^k (was progress^1).
-                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * (_eff_progress ** 1.4))
+                    scale_frac = min(1.0, ENTRY_INITIAL_FRAC + (1.0 - ENTRY_INITIAL_FRAC) * _eff_progress)
                     # Architectural: pnl-conditioned scale-in adverse-move freeze with
                     # COUNTER-TREND gating. Adverse moves during scale-in fall into two
                     # categories: (1) real reversal (counter-trend entries facing the
