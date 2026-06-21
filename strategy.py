@@ -286,17 +286,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp2 (architectural, indep): SLOW-DECAYING loss-memory EMA. The hard
-        # _loss_streak counter resets to 0 on ANY single win, so a single lucky
-        # winner mid-burst resets ct admission tightening -> the 4th consecutive
-        # ct re-entry in a pullback burst faces only streak=1 (weak) tightening.
-        # This EMA decays GRADUALLY (a win subtracts, doesn't zero) so tightening
-        # stays elevated through the whole burst -> filters late burst ct re-entries
-        # -> can break the 4-loss streak -> raise rally streak_gate (0.876, the
-        # documented binding-regime drag; 4->3 losses ~= rally +0.021). New state;
-        # used for ct admission tightening (replaces the hard counter at the
-        # admission gate only; sizing _streak_ct keeps the hard counter).
-        self._loss_streak_ema = 0.0
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -655,21 +644,9 @@ class Strategy:
             # directly targets the streak_gate 0.875 gap, the largest raw-vs-actual score
             # lever), Exp3 cuts magnitude. Same fast-saturating /0.01 ret_vlong ct
             # indicator (near-constant, noise-free) x streak ramp. Max 10% tighten.
-            # Exp2 (architectural, indep): use the SLOW-DECAYING loss-memory EMA for
-            # ct admission tightening (replaces the hard-reset _loss_streak counter
-            # at this gate). The hard counter resets on any single win, so a lucky
-            # mid-burst winner zeroes the tightening right before the 4th ct re-entry;
-            # the EMA stays elevated through the burst. Escalating ramp (no early
-            # saturation): tanh((ema-1)/2.5) keeps rising past streak 3 so a 4th
-            # consecutive ct re-entry faces a HIGHER bar than baseline -> filtered ->
-            # breaks the 4-loss streak -> streak_gate 0.876->~0.90. Max tighten raised
-            # 10pct->14pct (escalation needs a slightly higher ceiling to actually
-            # filter the marginal 4th re-entry; 10pct was calibrated for the saturating
-            # counter). Sizing _streak_ct (line ~890) keeps the hard counter. ct
-            # indicator is the fast-saturating /0.01 ret_vlong (near-constant, noise-free).
-            _streak_ct_admit = max(0.0, np.tanh((self._loss_streak_ema - 1) / 2.5))
-            _bull_strong_min *= 1.0 + 0.14 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
-            _bear_strong_min *= 1.0 + 0.14 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
+            _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
+            _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
+            _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -2470,11 +2447,6 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                        # Exp2: slow-decaying loss-memory EMA (a win subtracts 0.4,
-                        # a loss adds 0.6; clipped [0, 6]). Stays elevated through a
-                        # burst (single win doesn't zero it) -> keeps ct admission
-                        # tightening elevated for late burst re-entries.
-                        self._loss_streak_ema = max(0.0, min(6.0, self._loss_streak_ema + (0.6 if _exit_pnl_signed < 0 else -0.4)))
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
