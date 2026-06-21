@@ -175,26 +175,6 @@ CONC_EXP_SCALE = 0.06 * LEVERAGE_K   # tanh saturation scale of the concentratio
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-# STRUCTURAL_EXPLORATION (this session): EXIT-PRESSURE FUSION subsystem rewrite.
-# The fusion core is element-wise MAX of the 7 weighted soft pressure terms (slope/pp/
-# time/ve/ep/ar/vc). MAX is winner-take-all: only the single largest term contributes, so
-# MULTI-SOURCE AGREEMENT is lost (two moderate confirming pressures, e.g. giveback + time
-# both at 0.4, yield 0.4 under MAX -- the same as one source alone). The _agree_gate
-# attenuator was bolted on to PATCH this (penalize single-source), but it can only scale DOWN
-# (attenuate), never combine -- it does not restore the agreement signal MAX destroys. This
-# rewrites the fusion CORE: replace MAX with a BOUNDED TOP-2 AGREEMENT BLEND. Single source
-# (2nd term below floor) -> EXACTLY MAX (byte-identical where one source drives, no positive
-# bias). Two+ sources -> max + AGREE_BONUS * second_term (a bounded agreement bonus only when
-# a REAL second source is active). Step1 (LSE) failed: LSE is ALWAYS >= max -> systematic
-# positive pressure bias -> bull DD breached 13.5pct + stability crashed (LSE adds log(2)/tau
-# even for a near-zero 2nd term). This top-2 form has NO systematic bias (single-source ==
-# max exactly) and a BOUNDED bonus (capped, only fires when 2nd > floor). Goal: exits fire
-# earlier ONLY on confirmed multi-source weakness -> fewer noise single-source exits (rally
-# stability 0.807 at the fragile 0.80 knee) + better reversal timing (rally Sharpe). The chop
-# single-source attenuator is RETAINED (complementary). Core-mechanism rewrite (MAX -> top-2
-# agreement blend), not a gate/tweak/parameter change.
-AGREE_BONUS = 0.05       # fraction of the 2nd-highest term added to the max as an agreement bonus
-AGREE_FLOOR = 0.40       # 2nd term must exceed this to count as a real confirming source (else single-source == MAX)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 COOLDOWN_BARS = 1
@@ -1985,14 +1965,6 @@ class Strategy:
                     _w_vc * _vc_pressure,
                 )
                 _soft_max = max(_soft_terms)
-                # STRUCTURAL_EXPLORATION: replace winner-take-all MAX with a bounded top-2
-                # agreement blend (see AGREE_BONUS). Single source (2nd term <= AGREE_FLOOR)
-                # -> EXACTLY MAX (byte-identical, no positive bias). Real 2nd source ->
-                # max + AGREE_BONUS*2nd (bounded agreement bonus). Reuses _sorted_terms below.
-                _sorted_terms = sorted(_soft_terms, reverse=True)
-                _second = _sorted_terms[1] if len(_sorted_terms) > 1 else 0.0
-                if _second > AGREE_FLOOR:
-                    _soft_max = _soft_max + AGREE_BONUS * _second
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
@@ -2003,6 +1975,7 @@ class Strategy:
                 # axis) and threshold raising (boundary-axis) — operates on the
                 # pressure-source dimension. Top exit decision: 2nd-highest term
                 # ratio gates the strength of the MAX. New cross-source data dep.
+                _sorted_terms = sorted(_soft_terms, reverse=True)
                 _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
                 # Confirmation strength: 0 at single-source, 1 at full agreement
                 _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
