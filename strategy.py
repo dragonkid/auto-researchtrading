@@ -1948,6 +1948,34 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp (architectural, indep): CROSS-SYMBOL LEADER-DIVERGENCE exit pressure
+                # (loss-side only). NEW data dep at the EXIT decision: cross-symbol data
+                # (_btc_trend 96-bar leader momentum, _alt_lead 20-bar partner momentum) is
+                # used ONLY at entry sizing today, NEVER at exit. A LOSING position whose
+                # leader (BTC) / partner-alt momentum has turned AGAINST the position
+                # direction is in a broad-market-against move (the leader is no longer
+                # confirming the entry thesis) -> cut the loser faster. LOSS-SIDE ONLY
+                # (pos_pnl < 0): by definition a loser is not "recovering upside to miss",
+                # so this sidesteps the documented rally-pullback-reverts-up wall (cutting
+                # HELD longs during DD-pullbacks misses the recovery). Distinct from
+                # _sl_slope_pressure (OWN-price slope-against, single-symbol) -- this reads
+                # the LEADER's momentum, a genuinely cross-symbol confirmation of the loss.
+                # Composes with slope-against in the MAX fusion (whichever is more pressing).
+                # Deep-saturated /0.02 leader-trend scale (fires only on decisive leader move,
+                # near-constant noise-free per the validated safe-family lesson). Loss-side
+                # weight via max(0,-_pnl_scale). BTC self-referential: _btc_trend is BTC's own
+                # trend -> for a BTC position the "leader" IS itself; use _alt_lead (partner)
+                # for BTC positions instead so the signal is genuinely cross-symbol.
+                _xs_div_pressure = 0.0
+                if pos_pnl < 0:
+                    _pos_dir = 1.0 if current_pos > 0 else -1.0
+                    if symbol == "BTC":
+                        _btc_partner = "ETH" if "ETH" in bar_data else "SOL"
+                        _leader_against = -_pos_dir * _alt_lead.get(_btc_partner, 0.0)  # partner-alt momentum against the pos
+                    else:
+                        _leader_against = -_pos_dir * _btc_trend
+                    _xs_div_pressure = 0.35 * max(0.0, min(1.0, np.tanh(_leader_against / 0.02)))
+                _w_xs = max(0.0, -_pnl_scale)  # loss-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1963,6 +1991,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_xs * _xs_div_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
