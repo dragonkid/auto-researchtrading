@@ -1324,14 +1324,8 @@ class Strategy:
                 # safe family). First-bar-only, +0.05 max. BTC self-referential has no partner
                 # -> 1.0 byte-identical (guarded by _partner existence).
                 if symbol != "BTC":
-                    # Branch step2 (simplification): REMOVED Exp6 own-vol x partner-price
-                    # and Exp7 own-vol x BTC-price mixed-cell boosts (parallel to step1's
-                    # Exp8/9 removal). These are OWN-vol x OTHER-price cells; own-price,
-                    # partner-price, BTC-price are highly correlated in trends, so they
-                    # overlap with _vol_rise_boost (own-vol x OWN-price, the clean diagonal,
-                    # retained). Test: stacks the rally gain from step1 toward keep threshold.
-                    _vol_partner_boost_bull = 1.0
-                    _vol_partner_boost_bear = 1.0
+                    _vol_partner_boost_bull = 1.0 + 0.05 * _vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _vol_partner_boost_bear = 1.0 + 0.05 * _vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
                     # Exp7 (architectural, indep): OWN-volume-rise x BTC-price-trend-agreement
                     # conjunction boost on ALT entries. Last clean cell of the {own,BTC,partner}
                     # x{vol,price} agreement grid: own-vol x BTC-price -> alt. An alt trend entry
@@ -1341,10 +1335,8 @@ class Strategy:
                     # Distinct from Exp1 (BTC VOLUME, not own) and Exp6 (PARTNER price, not BTC).
                     # Deep-saturated both gates (/0.30 own vol, /0.03 BTC trend -> near-constant,
                     # noise-free, validated safe family). First-bar-only, +0.05 max.
-                    # Branch step2: REMOVED Exp7 own-vol x BTC-price (own-vol x other-price
-                    # mixed cell, same rationale as Exp6 above).
-                    _vol_btc_boost_bull = 1.0
-                    _vol_btc_boost_bear = 1.0
+                    _vol_btc_boost_bull = 1.0 + 0.05 * _vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _vol_btc_boost_bear = 1.0 + 0.05 * _vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
                     # Exp8 (architectural, indep): BTC-volume-rise x PARTNER-alt-price-agreement
                     # conjunction boost on ALT entries. A 3-symbol breadth-participation signal
                     # (leader VOLUME x follower PRICE): an alt trend entry where the leader (BTC)
