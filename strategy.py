@@ -1489,7 +1489,7 @@ class Strategy:
                 _cl_span3 = np.maximum(_cl_high - _cl_low, 1e-10)
                 _lower_wick_frac = float(np.mean(np.maximum(_cl_body_low - _cl_low, 0.0) / _cl_span3))  # [0,1], 3-bar mean
                 _upper_wick_frac = float(np.mean(np.maximum(_cl_high - _cl_body_high, 0.0) / _cl_span3))
-                _wk_bull_conv = max(0.0, np.tanh((_lower_wick_frac - 0.25) / 0.15))  # bull: dip-rejection of lows
+                _wk_bull_conv = max(0.0, np.tanh((_lower_wick_frac - 0.15) / 0.15))  # step4: LOOSENED 0.25->0.15 (fire on more dip-rejection bars for more rally signal)
                 _wk_bear_conv = max(0.0, np.tanh((_upper_wick_frac - 0.25) / 0.15))  # bear: rejection of highs
                 _wick_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _wk_bull_conv
                 _wick_boost_bear = 1.0  # step3: bear wick boost removed (fired on crash shorts + rally ct-short losers = leakage source; bull-only keeps the rally gain)
