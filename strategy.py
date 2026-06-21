@@ -1948,6 +1948,40 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): VWAP-OVEREXTENSION exit pressure (7th ACTIVE
+                # soft MAX source; _ep is dead=0 so this is +1 net). NEW data dep for the
+                # EXIT subsystem: a 24-bar VWAP (volume-weighted typical price) is computed
+                # here on a DISTINCT window from the 12-bar entry VWAP voter (line 510) so
+                # the two do not share AR(1) noise — same decoupling discipline as the
+                # multi-window exit slope (12/16/22 vs entry's single 16). The exit subsystem
+                # today has NO volume-weighted-ANCHOR primitive: _ve is vol-of-PRICE (close-to-
+                # close std), _vc is bar-volume climax (z-score), _pp is giveback magnitude.
+                # This measures price OVEREXTENSION from the volume-weighted mean anchor — a
+                # genuine exhaustion signature: when close has run far above (long) / below
+                # (short) the 24-bar volume-weighted typical price while in profit, the move
+                # is overextended on declining participation-weighted support -> harvest the
+                # winner before mean-reversion giveback. Distinct from _vc (volume spike) and
+                # _pp (giveback already happening): this fires at the OVEREXTENSION PEAK before
+                # giveback begins, on a price-vs-volume-anchor axis. Profit-side only (lock
+                # gains at exhaustion; never punish losers for reversion toward VWAP = that is
+                # recovery, handled by _ar). Activation band scaled by vol_ratio so high-vol
+                # regimes (crash/rally) need a larger absolute deviation to fire (avoid cutting
+                # normal trend extension). Continuous tanh, no boundary. New exit-pressure
+                # source + new control flow in the MAX fusion.
+                _vx_n = 24
+                if len(bd.history["volume"].values) >= _vx_n:
+                    _vx_vol = bd.history["volume"].values[-_vx_n:]
+                    _vx_tp = (bd.history["high"].values[-_vx_n:] + bd.history["low"].values[-_vx_n:] + closes[-_vx_n:]) / 3.0
+                    _vx_anchor = (_vx_tp * _vx_vol).sum() / max(_vx_vol.sum(), 1e-10)
+                    _vx_dev = (mid - _vx_anchor) / mid  # signed: + = close above VWAP (long overextended)
+                    # overextension magnitude in the position's favor (long wants _vx_dev>0, short <0)
+                    _vx_favor = _vx_dev * (1.0 if current_pos > 0 else -1.0)
+                    # vol-scaled activation band: high vol needs wider deviation to fire
+                    _vx_band = 0.0040 + 0.0040 * max(0.0, min(1.0, (vol_ratio - 0.7) / 0.8))
+                    _vx_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_vx_favor - _vx_band) / 0.0030)))
+                else:
+                    _vx_pressure = 0.0
+                _w_vx = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1963,6 +1997,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_vx * _vx_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
