@@ -362,34 +362,6 @@ class Strategy:
             _bdvp_rets = np.sign(np.diff(_bdvp_c))
             _btc_dvp = float(np.sum(_bdvp_v * _bdvp_rets) / max(np.sum(_bdvp_v), 1e-10))
 
-        # Exp2 (architectural, indep): BTC (market leader) VOL-OF-PRICE EXPANSION. NEW
-        # cross-symbol exit-side data dep: prior cross-symbol deps all feed ENTRY sizing
-        # (BTC trend/vol/DVP -> alt first-bar size); NONE feed the EXIT subsystem, which is
-        # purely per-symbol. The validated exit-inertness wall holds that new exit sources
-        # are inert on crash/sideways/rally UNLESS they capture a regime-shift the existing
-        # sources miss. BTC LEADS alts: the leader's vol-expansion (regime-shift / pullback-
-        # onset signature, the confirmed bull-BINDING exit trigger via own-symbol _ve) fires
-        # BEFORE the alt's own _ve_pressure -> a cross-symbol early-warning that the alt's
-        # own per-symbol exit sources structurally cannot see (they wait for the alt's own
-        # vol to expand, which lags the leader). When BTC vol-expansion signals a regime
-        # shift AND an alt is holding a profitable trend-aligned position (rally longs), the
-        # alt faces an imminent giveback the alt's own exit hasn't detected yet -> a small
-        # cross-symbol exit pressure harvests the alt winner EARLY (before the giveback that
-        # is rally's DD source) -> lower rally DD (the binding constraint, 6.36pct near the
-        # 8pct knee, all DD-reduction levers maxed). Rare-event-gated (activate >1.5x, the
-        # SAFE family -- only rare-event MAX sources avoid catastrophic cycling per the
-        # _vc_pressure keep and the giveback-velocity catastrophic lesson), profit-side only
-        # (lock gains, don't punish losers), trend-aligned only via _btc_trend agreement
-        # (spares crash bounces which are counter-trend to BTC's downtrend; spares sideways
-        # where BTC is flat). BTC self-referential -> _btc_xe falls to 0 for BTC symbol.
-        # Computed once per bar on BTC 6/18-bar log-return vol; falls to 0 if BTC absent.
-        _btc_xe = 0.0
-        if "BTC" in bar_data and len(bar_data["BTC"].history) > 19:
-            _bx_c = bar_data["BTC"].history["close"].values
-            _bx_v6 = max(np.std(np.diff(np.log(_bx_c[-7:-1]))), 1e-6)
-            _bx_v18 = max(np.std(np.diff(np.log(_bx_c[-19:-1]))), 1e-6)
-            _btc_xe = _bx_v6 / _bx_v18
-
         # Exp2 (architectural, indep): cross-alt lead-lag short-term momentum. ETH and SOL
         # are correlated alts where ETH frequently LEADS SOL on intraday-to-daily moves. A
         # NEW cross-symbol data dep distinct from the BTC 96-bar trend (different leader,
@@ -1976,25 +1948,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp2 (architectural, indep): BTC vol-expansion CROSS-SYMBOL exit pressure
-                # (7th soft MAX source). _btc_xe (leader 6/18-bar vol ratio, computed once
-                # per bar at the top) is the leader's regime-shift signature. BTC LEADS alts:
-                # the leader's vol-expansion fires BEFORE the alt's own _ve_pressure (which
-                # waits for the alt's own vol to expand) -> a cross-symbol early warning the
-                # per-symbol exit sources structurally cannot see. When BTC vol-expansion is
-                # rare-event-high (>1.5x) AND the alt is holding a profitable position aligned
-                # with BTC's trend (rally longs: alt long + BTC uptrend; crash shorts: alt
-                # short + BTC downtrend), the alt faces an imminent giveback its own exit
-                # hasn't detected -> harvest the winner EARLY -> lower giveback -> lower rally
-                # DD (the binding constraint). Alt-only (BTC self-referential -> _btc_xe feeds
-                # BTC's own _ve already; here symbol != BTC). Rare-event-gated (>1.5, the safe
-                # family), profit-side only (lock gains), trend-aligned only (alt pos_dir
-                # matches BTC trend sign -> spares crash counter-trend bounce longs which
-                # oppose BTC's downtrend; spares sideways where BTC flat). Smooth tanh, small
-                # magnitude (0.30 max). New cross-symbol exit subsystem data dep.
-                _w_btcxe = max(0.0, _pnl_scale)  # profit-side only
-                _btcxe_trend_align = max(0.0, np.tanh(_btc_trend * (1.0 if current_pos > 0 else -1.0) / 0.03))
-                _btcxe_pressure = 0.30 * max(0.0, min(1.0, np.tanh((_btc_xe - 1.5) / 0.4))) * _btcxe_trend_align if symbol != "BTC" else 0.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2010,7 +1963,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_btcxe * _btcxe_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
