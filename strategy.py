@@ -1948,6 +1948,26 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp4 (architectural, indep): RANGE-EXPANSION exit pressure (7th active soft
+                # source). NEW data primitive: NO existing voter/pressure reads the single-bar
+                # PRICE RANGE relative to ATR. _ve_pressure uses vol-of-PRICE (6/18-bar std of
+                # log returns -- a return-magnitude dispersion over a WINDOW); _vc_pressure uses
+                # VOLUME z-score; ATR_pct (stop sizing) uses the true-range MEAN. None measures
+                # whether the LAST bar's range is unusually large vs the recent ATR -- a
+                # breakout/exhaustion SHAPE statistic. A winning position whose entry bar (or a
+                # bar mid-hold) shows range >> ATR after a run is a climax/exhaustion signature
+                # (rally blow-off tops, crash capitulation bounces) -> harvest the winner before
+                # the pullback. Use 3-bar mean range (noise-robust vs single-bar flip), vs the
+                # 14-bar ATR already computed (_atr_pct). Profit-side only (lock gains at
+                # exhaustion; slope-against handles losers). Continuous tanh activation above
+                # 1.4x range/ATR, saturate ~2.2x; max 0.45. New exit-pressure source + new
+                # cross-data-type dep (bar range shape) in the MAX fusion.
+                _re_high = bd.history["high"].values[-3:]
+                _re_low = bd.history["low"].values[-3:]
+                _re_range_pct = float(np.mean(_re_high - _re_low) / mid)
+                _re_ratio = _re_range_pct / max(_atr_pct, 1e-8)  # 3-bar mean range / ATR
+                _re_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_re_ratio - 1.4) / 0.4)))
+                _w_re = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -1963,6 +1983,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_re * _re_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
