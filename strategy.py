@@ -181,6 +181,12 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # Branch (profit-velocity de-risk gate): EMA of per-bar unrealized PnL delta.
+        # Smooths the single-bar velocity (pos_pnl - prev_pos_pnl) so the de-risk
+        # floor gate responds to SUSTAINED PnL trend, not 1-bar noise (fixes the
+        # Exp1 bull stability crash: raw per-bar delta flipped sign on price noise
+        # -> floor jumped -> position wobbled -> stability penalty).
+        self._pnl_vel_ema = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -1588,6 +1594,12 @@ class Strategy:
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
+                # Branch step2: EMA-smooth the per-bar PnL velocity (alpha=0.35 ->
+                # ~3-bar effective lookback). Sustained PnL trend, not 1-bar noise.
+                _pnl_vel_raw = pos_pnl - _prev_pnl
+                _pv_prev = self._pnl_vel_ema.get(symbol, _pnl_vel_raw)
+                _pnl_vel_ema = (1.0 - 0.35) * _pv_prev + 0.35 * _pnl_vel_raw
+                self._pnl_vel_ema[symbol] = _pnl_vel_ema
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
                 # pos_pnl >= prev_pos_pnl (rising bar).
@@ -2042,8 +2054,9 @@ class Strategy:
                     # One-sided in profit only; smooth tanh on /0.006 (a 60bps one-bar PnL
                     # move saturates); relax up to -0.08 (rising) / tighten up to +0.06
                     # (falling). Floor stays bounded in [0.47, 0.91].
-                    _pnl_vel = pos_pnl - _prev_pnl
-                    _vel_gate = np.tanh(_pnl_vel / 0.006)
+                    # Branch step2: use EMA-smoothed velocity (_pnl_vel_ema, ~3-bar) instead
+                    # of raw per-bar delta -- dampens 1-bar noise that crashed bull stability.
+                    _vel_gate = np.tanh(_pnl_vel_ema / 0.006)
                     _de_floor -= 0.08 * max(0.0, _vel_gate) * _ta_de_profit
                     _de_floor += 0.06 * max(0.0, -_vel_gate) * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
@@ -2381,7 +2394,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_vel_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
