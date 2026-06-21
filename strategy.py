@@ -1814,26 +1814,7 @@ class Strategy:
                 # (vol_ratio<1) byte-identical (gate floored at 0). New control flow: a vol
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
-                # Architectural (indep): EXTRA high-vol hold extension for CONFIRMED trend
-                # winners. The base +12pct vol-hold extension (kept unchanged for ALL high-vol
-                # positions) helps crash (high-vol, 100pct WR, return-limited Sh1.274) by letting
-                # winners ride the larger real-move of high-vol bars. crash positions are all
-                # winning trend-aligned slope-confirmed shorts (Exp1 confirmed gate=1.0 for all
-                # crash trades). ADD a further +8pct hold extension GATED on profit + trend-
-                # alignment + slope-conf so confirmed high-vol trend winners (crash shorts, the
-                # return-limited binding-2 regime) run even longer -> bigger wins -> higher
-                # Sharpe, while the base 12pct is preserved unchanged for everyone else (avoids
-                # Exp1's failure of REMOVING the base extension from sideways/bull losing
-                # positions). The slope-conf gate (16-bar OLS slope still confirming) protects
-                # bull-2021: confirmed bull winners get the extra hold only while slope confirms;
-                # when a correction starts (slope weakens) the gate -> 0 -> reverts to base
-                # 12pct -> exits. Losers / ct / slope-weak get base only (no extra hold).
-                # _slope_conf (line ~1587) reused. Continuous tanh product; direction-agnostic.
-                _vh_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _vh_align = max(0.0, np.tanh(ret_long * _vh_pos_dir / 0.04))  # trend-aligned
-                _vh_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # winning
-                _vol_hold_gate = _vh_profit * _vh_align * _slope_conf
-                _max_hold *= 1.0 + 0.12 * _vol_hold_ext + 0.08 * _vol_hold_ext * _vol_hold_gate
+                _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
