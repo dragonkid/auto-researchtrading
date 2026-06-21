@@ -760,18 +760,22 @@ def compute_score(result: BacktestResult) -> float:
     # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
     streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
 
-    # Return reward (2026-06-20): log(1 + max(annualized_return,0)/100 + 1).
+    # Return reward (2026-06-20, revised 2026-06-21): risk-adjusted return
+    # reward = log(1 + min(calmar, 10)/10 + 1), where calmar = APY / MaxDD.
     # Uses ANNUALIZED return (APY) not raw total_return_pct — regime windows
     # differ in length (bull 273d, crash 426d, sideways 365d, rally 366d), so
     # raw total_return is not comparable across regimes. APY = (1+ret)^(1/years)-1.
-    # Without this, score = log(1+sharpe)×dd_gate×... rewards DD reduction
-    # but NOT return — at equal Sharpe, low-return+low-DD beats high-return+
-    # high-DD. Verified: 3x DD + 3x return (relaxing DD controls) wins under
-    # v2 but loses under v1. Real strategies have DD 0.45-1.70% (well below
-    # the 5% soft-exp knee), so dd_gate barely penalizes — the missing piece
-    # was return reward. Range: 0.693 (0% APY) to ~0.81 (25% APY).
-    # Negative return → floor at log(2)=0.693 (no reward; sharpe already <0
-    # returns early above).
+    #
+    # RISK-ADJUSTED (APY/MaxDD) not absolute APY (2026-06-21 revision): the
+    # original absolute-APY form let the agent farm score by raising LEVERAGE_K
+    # — leverage scales APY and DD proportionally, so APY rises but APY/MaxDD
+    # stays flat and Sharpe stays flat (pure scale-up, no signal improvement).
+    # The risk-adjusted form stops this: leverage raises APY and DD 1:1 →
+    # calmar unchanged → return_reward unchanged → no score gain. Meanwhile
+    # genuine signal-quality improvements (Sharpe up at same DD) raise APY/DD
+    # → return_reward rises, and 3x more than under absolute-APY (verified:
+    # +0.029 vs +0.009 for a Sharpe 1.89→2.0 improvement). Range 0.693
+    # (calmar=0) to ~1.0 (calmar≥10, capped).
     hours = len(result.equity_curve) if result.equity_curve else 0
     if hours > 0 and result.total_return_pct > -100.0:
         years = hours / 8760.0
@@ -782,7 +786,11 @@ def compute_score(result: BacktestResult) -> float:
             ann_return = result.total_return_pct  # degenerate, don't annualize
     else:
         ann_return = result.total_return_pct
-    return_reward = math.log(1.0 + max(ann_return, 0.0) / 100.0 + 1.0)
+    if result.max_drawdown_pct > 0 and ann_return > 0:
+        calmar = ann_return / result.max_drawdown_pct
+    else:
+        calmar = 0.0
+    return_reward = math.log(1.0 + min(calmar, 10.0) / 10.0 + 1.0)
 
     score = signal_quality * sample_factor * dd_gate * streak_gate * return_reward
     return score

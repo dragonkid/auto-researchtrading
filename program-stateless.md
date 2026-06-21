@@ -212,7 +212,7 @@ signal_quality = log(1 + max(sharpe, 0))
 sample_factor = sqrt(min(num_trades / 50, 1))
 dd_gate = 1/(1+DD%) × exp(-max(0,DD%-8)/2)   # soft@8%, scale=2 (0-8% mild, 8%+ steep)
 streak_gate = exp(-max_consecutive_losses / 30)
-return_reward = log(1 + max(APY, 0)/100 + 1)   # APY = (1+total_return)^(8760/hours)-1; 0.693 at 0%, ~0.81 at 25%
+return_reward = log(1 + min(calmar, 10)/10 + 1)   # calmar = APY/MaxDD; risk-adjusted, stops leverage farming
 
 Hard cutoffs: <10 trades → -999, >10% drawdown → -999, lost >15% → -999
 
@@ -223,7 +223,7 @@ Composite score = mean(regime_scores) - 0.3 * std(regime_scores)
 
 **std penalty lowered (2026-06-19):** `k` lowered 0.5 → 0.3. At k=0.5, 72% of composite gains came from std reduction; agent over-optimized for consistency at the expense of mean return. k=0.3 keeps consistency reward (prevents abandoning weakest regime) while giving mean-improvement room. Pure k=0 was rejected (rewards 3-strong-1-weak fragility).
 
-**return_reward added (2026-06-20):** `log(1+max(APY,0)/100+1)` factor (range 0.693-0.81), where APY = `(1+total_return)^(8760/hours)-1` annualizes the regime-window return. Without it, score rewarded DD/Sharpe but not absolute return — at equal Sharpe, low-return+low-DD beat high-return+high-DD. Verified: 3x-DD+3x-return simulation flips winner from low-DD (v1) to high-return (v2). Real DD 0.45-1.70% is well below 5% soft-exp knee, so dd_gate barely differentiates — return_reward provides the missing incentive to accept higher DD for more return. Uses APY not raw total_return because regime windows differ in length (bull 273d, crash 426d, sideways 365d, rally 366d).
+**return_reward added (2026-06-20, revised 2026-06-21):** `log(1+min(calmar,10)/10+1)` factor (range 0.693-1.0), where calmar = APY/MaxDD (risk-adjusted return). The original absolute-APY form let the agent farm score by raising LEVERAGE_K — leverage scales APY and DD proportionally (APY/DD stays flat, Sharpe stays flat = pure scale-up, no signal improvement). The risk-adjusted form stops this: leverage → calmar unchanged → return_reward unchanged → no score gain. Genuine signal-quality improvements (Sharpe up at same DD → APY/DD up) are rewarded 3x more than under absolute-APY (verified: +0.029 vs +0.009 for Sharpe 1.89→2.0). Uses APY not raw total_return because regime windows differ in length (bull 273d, crash 426d, sideways 365d, rally 366d).
 
 **dd_gate soft_start raised 5→8, scale 10→2 (2026-06-20):** the 5-8% DD range was over-penalized (5→8% lost 28% under soft@5), discouraging the agent from accepting 5-8% DD to capture more return. New curve: 0-8% only the mild 1/(1+DD) base (8% → 0.926, just -7.4%); 8%+ steep exp penalty (scale=2: 9% → 0.557, 10% → 0.334). Hard cutoff at 10% unchanged. Real strategies sit at DD 0.45-1.70% (far below 8%), so this mainly opens up the 5-8% range for return-seeking experiments.
 

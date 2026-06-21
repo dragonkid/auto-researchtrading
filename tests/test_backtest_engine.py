@@ -252,9 +252,10 @@ def test_compute_score_factors():
     sample_factor = math.sqrt(min(50 / 50.0, 1.0))          # = 1.0
     dd_gate = (1.0 / (1.0 + 5.0 / 100.0)) * math.exp(-max(0.0, 5.0 - 8.0) / 2.0)
     streak_gate = math.exp(-0 / 30.0)                        # = 1.0
-    # return_reward: APY = (1.05)^(1/1) - 1 = 5% (1 year, so APY == total)
-    ann_return = ((1.0 + 5.0/100.0) ** (1.0 / (8761/8760.0)) - 1.0) * 100.0
-    return_reward = math.log(1.0 + max(ann_return, 0.0) / 100.0 + 1.0)
+    # return_reward (2026-06-21 revision): risk-adjusted = log(1 + min(calmar,10)/10 + 1)
+    # calmar = APY / MaxDD. fixture: APY=5% (1 year so APY==total), MaxDD=5% → calmar=1.0
+    calmar = 5.0 / 5.0  # ann_return / max_drawdown_pct
+    return_reward = math.log(1.0 + min(calmar, 10.0) / 10.0 + 1.0)
     # vol_gate removed 2026-06-19 (double penalty with Sharpe's std denominator)
     expected = signal_quality * sample_factor * dd_gate * streak_gate * return_reward
     assert compute_score(r) == pytest.approx(expected, abs=TOL)
