@@ -1891,6 +1891,19 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp5 (architectural, indep): WEAKEN ve at SHALLOW profit, keep at deep.
+                # Exp4 showed ve fires at SHALLOW profit (pm~0), exiting bull positions EARLY
+                # (just-turned-profitable) on vol expansion, before they reach deep profit.
+                # Hypothesis: ve over-cuts bull WINNERS at shallow profit (bull 82pct WR, so
+                # most ve-exited positions would have run deeper); weakening shallow-profit
+                # ve lets winners ride vol-expansion pullbacks to deep profit -> capture more
+                # bull trend -> higher bull Sharpe. Factor 0.7 at shallow profit (pm~0, 30pct
+                # weaker), 1.0 at deep (pm~1, unchanged). Risk: partial removal -> bull holds
+                # longer -> crash (Exp3 full removal -0.257); but 0.7x + giveback/slope still
+                # fire. Tests the sweet spot: does PARTIAL shallow-profit weakening let winners
+                # run without the loser-drag crash? New data dep (ve x profit magnitude).
+                _ve_pm = max(0.0, np.tanh(_profit_magnitude / 0.7))
+                _ve_pressure = _ve_pressure * (0.7 + 0.3 * _ve_pm)
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
