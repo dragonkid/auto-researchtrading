@@ -667,7 +667,20 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            # Exp4 (architectural, indep): downtrend-scoped bull-accumulator responsiveness.
+            # Crash is a bounce-LONG regime (prior sessions: ~100pct crash entries are
+            # counter-trend bounce longs), return-limited (Sh1.274), but DD-SAFE (3.04pct)
+            # AND stability-safe (0.981, huge headroom) -> entry-TIMING changes here cannot
+            # trigger a stability penalty (unlike rally at 0.807). Lower the bull accumulator
+            # rho in a downtrend so it reacts FASTER to a sharp bounce (lower rho = more
+            # weight on the new margin = a sharp bounce crosses the readiness threshold
+            # sooner), catching genuine V-reversals earlier while gradual drift-up dead-cats
+            # accumulate more slowly. Byte-identical for bull-in-uptrend (rally/bull:
+            # ret_vlong>0 -> _dc_dt 0 -> rho unchanged) and for bear entries. New control
+            # flow: accumulator responsiveness depends on multi-day trend direction.
+            _dc_dt = max(0.0, np.tanh(-ret_vlong / 0.03))  # ~1 strong downtrend, 0 uptrend
+            _acc_rho_bull = ENTRY_ACCUM_RHO - 0.15 * _dc_dt  # 0.5 uptrend, 0.35 strong downtrend
+            _acc_b = _acc_rho_bull * _acc_b + (1.0 - _acc_rho_bull) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
