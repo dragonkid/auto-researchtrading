@@ -1686,46 +1686,6 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Exp1 (architectural, indep): TREND-DECELERATION exit pressure (7th soft
-                # MAX source). NEW data primitive: the multi-day trend's ACCELERATION (2nd
-                # derivative), distinct from ret_vlong (1st derivative = trend LEVEL/slope)
-                # and the 16-bar _exit_slope (short-term slope used in slope-against).
-                # acceleration = slope_48 - slope_96 (shorter-window slope minus longer-window
-                # slope, both OLS log-HL2 * n on the net-window-return scale). A trend-aligned
-                # winner whose multi-day trend is DECELERATING (acceleration < 0: the recent
-                # 48-bar slope has flattened below the 96-bar slope) is facing trend
-                # EXHAUSTION at the multi-day scale -- the structural precursor to the price
-                # giveback that _pp_pressure harvests. This fires BEFORE giveback (on slope
-                # curvature, which precedes the price reversal) -- the one axis an exit source
-                # can be NON-INERT under the documented "giveback fires first" wall (every
-                # prior new exit source -- range-expansion, peak-stall, cross-symbol-divergence
-                # -- was inert because it fired AFTER giveback). Mechanism: harvest trend-
-                # aligned winners early on multi-day deceleration -> lock gains before the
-                # giveback -> cap the giveback-driven DD (rally DD 6.36pct, the binding low
-                # score, is giveback-of-winners-driven). SAFETY (avoids the giveback-velocity
-                # catastrophic -999 blowup where a 7th source dominated the MAX fusion and
-                # forced exit/re-entry cycling): (a) PROFIT-side only (weight _w_td =
-                # max(0,_pnl_scale) -- never punishes losers, slope-against handles them);
-                # (b) TREND-ALIGNED gated (only trend-aligned winners can be harvested on
-                # deceleration; ct positions excluded -- a ct position's trend "decelerating"
-                # is actually the trend RESUMING in its favor, the opposite signal);
-                # (c) small magnitude 0.30 max; (d) deep-saturation gate /0.015 on the
-                # deceleration so only SIGNIFICANT curvature fires (noise-free per the
-                # validated safe-family lesson; acceleration of two ~50/96-bar smooth slopes
-                # is itself smooth -> stability-safe). Byte-identical for ct/losing/non-
-                # decelerating positions (gate 0 -> pressure 0). New control flow in MAX fusion.
-                _td_slope_long = ret_vlong  # slope_96 * n (already computed, the multi-day trend)
-                _td_n_short = min(48, len(closes) - 1)
-                _td_hl2_short = (bd.history["high"].values[-_td_n_short:] + bd.history["low"].values[-_td_n_short:]) / 2.0
-                _td_slope_short = _fast_slope(np.log(_td_hl2_short)) * _td_n_short
-                _td_accel = _td_slope_short - _td_slope_long  # + accelerating, - decelerating
-                _td_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _td_aligned = max(0.0, np.tanh(_td_pos_dir * _td_slope_long / 0.03))  # ~1 trend-aligned, ~0 ct
-                # deceleration-against-position: trend decelerating while long (accel<0), or
-                # decelerating-while-short (accel>0 means short-window rose = downtrend flattening)
-                _td_decel = max(0.0, -np.tanh(_td_pos_dir * _td_accel / 0.015))  # ~1 decelerating against pos
-                _td_pressure = 0.30 * _td_decel * _td_aligned
-                _w_td = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
@@ -2003,7 +1963,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_td * _td_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
