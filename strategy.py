@@ -96,6 +96,10 @@ PEAK_PROFIT_GIVEBACK = 0.22
 PORT_DD_GIVEBACK_TIGHTEN = 0.30   # max fractional reduction of giveback at deep DD
 PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
 PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
+# Exp2 (architectural, indep): portfolio-DD-adaptive SLOPE-AGAINST pressure amplification.
+# Max fractional boost to _sl_slope_pressure at deep portfolio DD (same EMA-smoothed DD
+# signal + leverage-coupled scale as the giveback tightening keep).
+PORT_DD_SLOPE_AMP = 0.30
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1665,6 +1669,21 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp2 (architectural, indep): portfolio-DD-adaptive SLOPE-AGAINST pressure
+                # amplification. The keep (giveback tightening) proved the EMA-smoothed
+                # portfolio-DD signal is a noise-robust DD-relief lever at 5x (dd_gate
+                # marginal value flipped favorable near the 8pct knee). Test whether the
+                # SAME signal generalizes to a SECOND exit dimension: amplify slope-against
+                # (momentum-reversal) pressure when portfolio DD is high -> adverse-momentum
+                # positions exit faster at high DD -> additional DD relief. Distinct from
+                # giveback tightening (which harvests WINNERS at peak giveback); this cuts
+                # positions on momentum REVERSAL -- a different exit pathway. Slope-against
+                # is signal (momentum reversal), not pure portfolio-DD, so it targets
+                # genuine adverse turns rather than blanket position-cutting (the walled
+                # held-position de-risk failure mode). Amplify up to PORT_DD_SLOPE_AMP.
+                _port_dd_frac_sa = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _sl_slope_amp = 1.0 + PORT_DD_SLOPE_AMP * max(0.0, np.tanh(_port_dd_frac_sa / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                _sl_slope_pressure = min(1.0, _sl_slope_pressure * _sl_slope_amp)
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
