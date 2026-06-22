@@ -2513,21 +2513,10 @@ class Strategy:
                     # trend-aligned winner -> de-risk ~off; ~0 otherwise -> full de-risk.
                     # Continuous (tanh products, no boundary); general principle (trend-
                     # aligned winners are spared from forced trims), no regime label.
-                    # Branch step 6: soften ONLY the profit co-factor of the spare (keep
-                    # step2's ret_long-only alignment). Diagnostic: in bull 74pct of
-                    # resizes are high-trend-aligned (>0.7) but the spare = align*profit
-                    # trims them when pos_pnl is still modest (early in a winning trade,
-                    # before profit accrues) -> bull -0.121 drag. mixed by contrast is only
-                    # 38pct high-aligned -> still trimmed. Floor the profit factor at 0.5
-                    # (a clearly trend-aligned position is at least half-spared regardless
-                    # of current profit), so a bull winner mid-build is spared but the
-                    # full spare still requires both alignment and profit. mixed's low-
-                    # alignment resizes keep ~full de-risk (align~0 -> spare~0). Isolates
-                    # the profit-gate softening from step4's failed alignment change.
                     _pos_dir_hr = 1.0 if current_pos > 0 else -1.0
-                    _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned (20-bar)
-                    _hr_profit = 0.5 + 0.5 * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0.5,1] floored
-                    _hr_spare = _hr_align * _hr_profit                            # trend-aligned, profit-weighted
+                    _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
+                    _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
+                    _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
                     _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
                     target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
