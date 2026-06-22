@@ -1502,8 +1502,8 @@ class Strategy:
                 # the trend-aligned crash trade). General principle: a close-loc LONG
                 # continuation boost requires multi-day uptrend confirmation.
                 _cl_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend confirmation
-                _close_conv_boost_bull = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bull_vlong * _cl_bull_conv
-                _close_conv_boost_bear = 1.0 + 0.05 * _cl_trend_w * _cl_er_w * _cl_bear_conv
+                _close_conv_boost_bull = 1.0  # Exp4: close-conv boost removal test
+                _close_conv_boost_bear = 1.0
                 # Exp1 (architectural, indep): DIRECTIONAL VOLUME PRESSURE (normalized
                 # OBV) trend-aligned entry boost. NEW data axis genuinely orthogonal to
                 # every existing volume primitive: VWAP voter reads close vs a volume-
