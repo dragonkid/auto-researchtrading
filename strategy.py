@@ -2029,22 +2029,6 @@ class Strategy:
                 # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
-                # Exp4 (architectural, indep): CONFIRMATION AMPLIFICATION. The agreement
-                # attenuator is currently ATTENUATE-ONLY (range 0.75-1.0: single-source
-                # spikes damped, agreement = no attenuation). The element-wise MAX fusion
-                # (chosen over weighted-sum to avoid correlated-noise ADDITION) takes only
-                # the most-pressing term -- it also DISCARDS agreement information: when
-                # TWO+ sources co-fire strongly, the exit is high-confirmation (more likely
-                # a real reversal than a single-source spike) but MAX treats it identically
-                # to a single dominant source. Extend the attenuator to ALSO AMPLIFY on
-                # strong agreement (up to +10pct at full 2nd-source agreement). Bounded
-                # (1.10x cap), trend-gated by _chop_atten_w (in trends single-source is real
-                # so amplification is muted the same as attenuation; chop gets both effects).
-                # Tests the MAX-fusion wall's boundary: does confirmation amplification add
-                # real exit signal, or just re-introduce the correlated-noise addition MAX
-                # was chosen to eliminate? New control flow: fusion modulates from
-                # attenuate-only to attenuate + amplify-on-confirmation.
-                _soft_atten *= 1.0 + 0.10 * _agree_gate * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
