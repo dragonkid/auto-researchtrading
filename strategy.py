@@ -1743,7 +1743,26 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                # Exp2 (architectural, indep): MULTI-DAY-TREND-SCALED profit-target floor.
+                # _pp_min (the peak threshold above which giveback-harvest activates) currently
+                # scales ONLY with vol_ratio. It has NO dependence on TREND STRENGTH — yet the
+                # optimal harvest aggressiveness depends on it: in a STRONG sustained trend,
+                # peaks keep extending so the floor should be HIGH (let winners run); in a WEAK/
+                # mean-reverting regime, peaks revert quickly so the floor should be LOW (harvest
+                # the small peak before it gives back). Diagnostic (this session): a uniform
+                # smaller pp_min lifts the two weak-trend binding regimes (mixed_2025 Sh
+                # 0.80->0.95, rally_2024 1.53->1.70) but COLLAPSES strong-trend bull
+                # (2.00->1.59) — exactly because bull's winners need the high floor to run.
+                # |ret_vlong| (96-bar OLS log-HL2 slope*n, the validated multi-day trend signal)
+                # cleanly separates them: bull ~0.075, rally ~0.046, sideways ~0.035, mixed
+                # ~0.033. Add a NEW cross-timescale data dep: scale pp_min by trend strength,
+                # 0.72x (aggressive harvest) in weak multi-day trends up to 1.0x (full let-run)
+                # in strong ones. Continuous tanh (no boundary), direction-agnostic GENERAL
+                # principle (no regime label) — the regime effects fall out of each window's
+                # realized multi-day trend magnitude. Strong trends keep baseline behavior
+                # (bull/crash spared); weak-trend regimes harvest peaks sooner.
+                _pp_trend_scale = 0.72 + 0.28 * max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.045)))
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * _pp_trend_scale
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
