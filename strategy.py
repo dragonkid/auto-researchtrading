@@ -2517,19 +2517,7 @@ class Strategy:
                     _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
                     _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
                     _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
-                    # Branch step 8: HOLD-DURATION ramp on the de-risk. Diagnosis of the
-                    # crash drag (step2 crash -0.054): crash is quick bounce-LONG scalps
-                    # (short holds), whereas mixed holds 3 longs for the WHOLE YEAR and
-                    # rally grinds long holds through pullbacks. The de-risk should target
-                    # LONG-LIVED held positions (the ones accumulating MTM-variance drag),
-                    # not fresh scalps. Ramp the de-risk in over the hold: ~off in the first
-                    # few bars (sparing crash's short bounce-scalps -> recover crash return),
-                    # full by ~bar 8 (mixed/rally long holds get the full trim). bars_held is
-                    # in scope here (set in the held-resize branch). General principle: only
-                    # de-risk positions held long enough to accumulate the variance drag.
-                    _hr_hold_ramp = max(0.0, min(1.0, (bars_held - 2.0) / 6.0))   # 0 at <=2 bars, 1 at >=8
-                    _hr_eff = (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare) * _hr_hold_ramp
-                    _hr_derisk = 1.0 - _hr_eff
+                    _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
                     target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
