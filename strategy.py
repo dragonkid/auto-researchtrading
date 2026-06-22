@@ -2311,24 +2311,30 @@ class Strategy:
             # -> byte-identical); low-ret_vlong sideways spared. Risk: more lag may slow
             # ct-loser exits -> rally raw cost (tension with Exp5's faster-exit raw gain);
             # branch iterates to balance.
-            # Exp2 (this session, architectural simplification): REMOVE the counter-trend
-            # emitted-target EMA. This block was a STABILITY-ERA mechanism — its own
-            # comment states it "was added when stability was the binding wall (k=0.5)"
-            # and explicitly TRADES RAW FOR STABILITY (the alpha-0.99 freeze holds
-            # counter-trend held positions near-constant to lift rally stability above
-            # the 0.80 knee, at the cost of rally raw — lagged ct-loser exits = larger
-            # losses). In the current 5-regime baseline ALL stability factors are 1.0
-            # (raw == score everywhere), so the stability benefit it buys is no longer
-            # scored at all, while its raw cost (lagged counter-trend exits in mixed_2025
-            # and rally — the two binding regimes whose positions are counter-trend to
-            # the multi-day trend during chop/pullbacks) is still paid. Hypothesis:
-            # removing the freeze lets counter-trend positions track their raw shrinking
-            # target -> faster de-risk -> smaller realized losses -> higher Sharpe in the
-            # binding regimes, with NO scored stability loss IF rally stability stays
-            # above the 0.80 knee (it has been removal-tested only in the 4-regime era;
-            # never since mixed_2025 was added). Removes one per-symbol EMA state path +
-            # control-flow branch (simpler = better OOS generalization). RISK: if rally
-            # stability drops below 0.80, rally gets a stability_factor penalty — measured.
+            if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                _pos_dir_te = 1.0 if current_pos > 0 else -1.0
+                _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
+                _te_alpha = 0.99 * _ct_te_str  # branch step5: alpha cap 0.97->0.99 (confirm peak)
+                # Profit-graduated smoothing (architectural, new data dep on pos_pnl
+                # sign). The _target_ema was added when stability was the binding wall
+                # (k=0.5); its strong alpha lifts rally stability above the 0.80 knee
+                # BUT costs rally raw -- the lag holds counter-trend LOSERS (rally's
+                # pullback shorts, the documented losing-trade drag) bigger longer ->
+                # larger realized losses -> lower Sharpe. Under k=0.3 the stability
+                # benefit is discounted while the raw cost remains, so the trade-off
+                # shifted. Weaken the smoothing selectively on LOSING ct positions:
+                # losers track the raw (shrinking) target faster -> de-risk/exit
+                # sooner -> smaller losses -> rally raw up; WINNING ct holds keep full
+                # alpha (preserve the position-value consistency that holds stability
+                # above the knee). Smooth tanh on pos_pnl/|stop| (no decision boundary
+                # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
+                # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
+                _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                if _te_alpha > 0.0:
+                    _prev_te = self._target_ema.get(symbol, target)
+                    target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
+                self._target_ema[symbol] = target
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
