@@ -1833,6 +1833,30 @@ class Strategy:
                 # and _w_pp; both revert to single-factor weights.
                 _scale_in_w = 1.0
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
+                # Exp2 (architectural, indep): COUNTER-TREND slope-against pressure WEIGHT
+                # boost in the exit MAX fusion. Exp1 this session PROVED the ct losers exit via
+                # the soft-pressure MAX fusion (slope-against/time/pp/ve/ar/vc), NOT the SL stop
+                # (stop tightening was byte-identical inert). For a rally ct short (short in a
+                # multi-day uptrend) the exit slope is UP = against the short -> _slope_against
+                # is high -> slope-against pressure is the early-firing soft term. Boosting its
+                # fusion weight for ct positions (ret_vlong ct indicator, fast-saturating /0.01
+                # near-constant noise-free) raises exit_pressure at a given slope-against ->
+                # the ct short crosses the de-risk floor (0.85 for losers) at a SMALLER slope-
+                # against -> exits sooner -> smaller realized loss -> higher rally Sharpe (raw,
+                # the binding lever, all stability factors 1.0). Distinct from the maxed entry-
+                # size ct shrinks (cuts entry MAGNITUDE) and the inert stop path (caps loss at
+                # exit): this ACCELERATES the ct-loser EXIT via the dominant soft-pressure term.
+                # Distinct from the walled ct giveback/pp/max_hold variants (giveback inert: ct
+                # peaks < _pp_min; pp activation refuted; max_hold shortening already in baseline
+                # via _ct_hold_sat). Trend-aligned (ct indicator 0) -> _w_slope byte-identical ->
+                # crash/bull/sideways trend legs unaffected. The ct indicator is near-constant so
+                # the weight boost is a near-constant multiplier (not a noise-tracking wobble);
+                # the slope-against term itself is already in the fusion, the boost only makes it
+                # dominate more for ct (where it IS the reversal signal). New cross-component data
+                # dep at the exit-fusion slope weight (ret_vlong ct gate was entry/scale-in/stop
+                # only; never applied to the fusion slope weight).
+                _ct_slope_w = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _w_slope = _w_slope * (1.0 + 0.30 * _ct_slope_w)
                 # Architectural: vol-conditioned profit-side _w_pp.
                 # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
