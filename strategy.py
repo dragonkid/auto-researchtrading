@@ -1048,6 +1048,20 @@ class Strategy:
                 # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
                 _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
                 _tq_atten = 0.25 + 0.75 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
+                # Exp5 (architectural simplification, indep): REMOVE the _tq_atten (R^2 trend-
+                # quality entry attenuator). TEST whether it is redundant with the Kaufman ER
+                # (path efficiency ratio, _er) which is ALREADY used in _er_adj, _close_conv_boost,
+                # and _dvp_boost gates. R^2 (OLS linearity) and ER (|net|/sum|diffs|) are both
+                # path-efficiency statistics -- highly correlated (a clean linear trend has both
+                # high R^2 and high ER). If redundant, removing _tq_atten is score-neutral or
+                # positive (simpler, fewer correlated noise-sensitive size terms -> better OOS
+                # generalization, the simplification-experiment rationale). If negative, the R^2
+                # signal captures something ER does not (linearity vs efficiency) and is load-
+                # bearing. Churn-gate (_tq_calm) and R^2 computation retained inertly to preserve
+                # the _tq_calm variable (used downstream? no -- only _tq_atten is); neutralize
+                # only the atten magnitude -> 1.0 (no shrink) for all entries. Code-structure
+                # simplification: -1 size-multiplier from the entry-target product.
+                _tq_atten = 1.0
                 # Branch step 6: CHURN-GATE the R^2 shrink (active in low-churn, OFF in
                 # high-churn bursts). The R^2 atten's raw gains live in sparse-entry regimes
                 # (low len(_eh)) but its noise COST falls on the bursty-entry regime whose
