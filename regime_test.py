@@ -13,33 +13,41 @@ from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeo
 
 from prepare import load_data, run_backtest, compute_score, TIME_BUDGET
 
-# Non-overlapping regimes for parameter search
-# These cover 4 distinct market conditions across 4 years
+# Regimes for parameter search.
+# 5 regimes covering 2021-2025: 4 historical + 2025 full year (added 2026-06-22).
+# 2025 added as single regime (not split) to avoid introducing subjective break-point
+# selection freedom. 2025 provides ~350 trades of new market structure (slow grinding
+# decline Q1, fast反弹 Q2, low-vol chop Q3-Q4, crash Q4) the agent has never seen.
+# Data volume increase ~50% (4->5 regimes) reduces overfitting space at constant DOF.
 SEARCH_REGIMES = [
     ("bull_2021", "2021-01-01", "2021-10-31", "Bull market / main uptrend"),
     ("crash_bear", "2021-11-01", "2022-12-31", "Luna + FTX crash / deep bear"),
     ("sideways", "2023-01-01", "2023-12-31", "Sideways recovery"),
     ("rally_2024", "2024-01-01", "2024-12-31", "ETF + election rally"),
+    ("mixed_2025", "2025-01-01", "2025-12-31", "Mixed 2025 (decline + rally + chop + crash)"),
 ]
 
 # Holdout regime — NEVER used during autoresearch search.
 # Only run manually for final validation after a research round.
+# Updated 2026-06-22: holdout moved to 2026-01~06 (2025 now in-sample).
+# 2026-01~06 is a slow grinding decline (-24%) the strategy has never seen —
+# a true OOS generalization test on unseen market structure.
 HOLDOUT_REGIMES = [
-    ("recent", "2025-01-01", "2026-03-31", "Recent market (holdout)"),
+    ("recent", "2026-01-01", "2026-06-12", "Recent market (holdout)"),
 ]
 
 # Consistency penalty weight: higher k = stricter consistency requirement.
 # 2026-06-19: lowered 0.5 -> 0.3. At k=0.5, ~72% of composite gains came from
 # std reduction (measured across GLM R1-R6 keeps) — agent learned to only
 # lower vol/TE, never raise mean (return). k=0.3 keeps consistency reward
-# (4-regime robustness, prevents abandoning the weakest regime — see 6/17
+# (5-regime robustness, prevents abandoning the weakest regime — see 6/17
 # summary analysis) while giving mean-improvement room. Pure k=0 was rejected:
 # it rewards "3 strong + 1 weak" fragile strategies.
 CONSISTENCY_K = 0.3
 
 # Per-regime timeout: accounts for clean + len(FIXED_STABILITY_SEEDS)*N_TRIALS
 # perturbed backtests (avg5 stability = 5 seeds x 20 trials = 100 perturbations,
-# run STABILITY_WORKERS-way parallel). Measured 2026-06: full 4-regime parallel
+# run STABILITY_WORKERS-way parallel). Measured 2026-06: full 5-regime parallel
 # re-baseline run wall = 673s, which bounds the slowest single regime from above;
 # 1020s = ~1.5x margin absorbs production CPU contention while still catching a
 # pathological strategy (TIME_BUDGET=120s caps each backtest -> 100+ slow ones

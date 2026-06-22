@@ -190,15 +190,15 @@ After your last experiment (or when the exit rule triggers), exit. The outer loo
 
 New schema (10 columns, tab-separated):
 ```
-commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
+commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	mixed_2025	status	description
 ```
 
 Legacy rows (6 columns) may remain in the file for historical reference but are ignored when computing the per-regime baseline. Always append new rows using the 10-column schema.
 
 - `score` = composite_score (mean - 0.3*std)
-- `mean_score` = average across 4 regimes
+- `mean_score` = average across 5 regimes
 - `std_score` = std across regimes (lower = more consistent)
-- `bull_2021 / crash_bear / sideways / rally_2024` = per-regime scores extracted from lines matching `^regime_<name>_score:` in run.log (e.g., `regime_bull_2021_score: 27.123456` → store `27.12`)
+- `bull_2021 / crash_bear / sideways / rally_2024 / mixed_2025` = per-regime scores extracted from lines matching `^regime_<name>_score:` in run.log (e.g., `regime_bull_2021_score: 27.123456` → store `27.12`)
 - Append one line per experiment. Use the short commit hash, or `-` for discarded.
 
 ## Scoring formula

@@ -81,7 +81,7 @@ COUNCIL_PASS / COUNCIL_ACCEPT Proposal X (philosophy)
 
 Also record each proposal test in `results.tsv` using the 10-column schema (same as the normal experiment loop):
 ```
-commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	status	description
+commit	score	mean_score	std_score	bull_2021	crash_bear	sideways	rally_2024	mixed_2025	status	description
 ```
 
 Use status `council_discard` or `council_keep` to distinguish from normal experiments.
