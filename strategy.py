@@ -551,7 +551,21 @@ class Strategy:
             _rc_intrabar = float(np.mean(_rc_high - _rc_low))
             _rc_interbar = float(np.mean(np.abs(np.diff(closes[-_rc_n - 1:]))))
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
-            _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
+            # Exp3 (architectural, indep): DECOUPLE the 8th voter sign lookback from the
+            # efficiency window. Efficiency stays 12-bar (_rc_n); the direction sign now
+            # uses a LONGER 24-bar net return. Rationale: a 12-bar binary sign flips on
+            # every 12-bar zero-crossing (frequent in sideways/transition), oscillating
+            # the voter's contribution and costing sideways -0.0014 (the 8th voter pushed
+            # sideways 0.996->0.995). A 24-bar sign has HALF the zero-crossing frequency
+            # -> more stable contribution in chop -> recover the sideways cost. Crucially,
+            # in genuine trends BOTH 12 and 24-bar nets are solidly one-signed -> sign
+            # saturates to +-1 either way -> bull/rally full conviction PRESERVED (unlike
+            # Exp2's tanh-magnitude smoothing which ATTENUATED moderate-trend conviction
+            # and lost bull -0.021 / rally -0.020). Binary +-1 sign retained; only the
+            # lookback decoupled (new 2-timescale structure: 12-bar efficiency x 24-bar
+            # direction).
+            _rc_dir_n = 24
+            _rc_dir = 1.0 if closes[-1] >= closes[-_rc_dir_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
