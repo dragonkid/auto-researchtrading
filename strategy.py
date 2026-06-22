@@ -76,11 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp5 (this session): emission-layer held-resize de-risk factor. Applied to the FINAL
-# emitted Signal target for same-sign held resizes (downstream of grid/snap/EMA, the one
-# placement Exp4 proved is not re-quantized away). Diagnostic-measured to lift the binding
-# regimes' Sharpe (mixed 0.804->1.30, rally 1.526->1.60 at 0.85) at the cost of sideways.
-HELD_RESIZE_DERISK = 0.88  # branch step11: k-scan 0.88
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -2481,44 +2476,7 @@ class Strategy:
             # restoring the baseline trade set. prepare.py's \$1 execution floor
             # is then moot (strategy already filters <\$2). This makes trade
             # SELECTION leverage-invariant (the last size-dependent decision gate).
-            # Exp5 (this session, architectural): EMISSION-LAYER held-resize de-risk.
-            # Exp4 proved an upstream target cut is NEUTRALIZED by the grid-quantize +
-            # snap-deadband + target_ema (they re-round a reduced target back onto the
-            # same lattice level). The monkeypatch diagnostic that lifted the binding
-            # regimes (mixed 0.804->1.30, rally 1.526->1.60 Sh at k=0.85) scaled the
-            # FINAL emitted Signal AFTER all quantization. Reproduce that faithfully: when
-            # a same-sign HELD resize is about to be emitted, emit a target scaled by
-            # HELD_RESIZE_DERISK (hold k less than the strategy wanted) — applied AFTER the
-            # emission-threshold gate fires on the UNSCALED delta (so the trade still
-            # emits; we only shrink the emitted size). Fresh entries (current_pos==0), full
-            # exits (target==0), and flips (sign change) are EXEMPT (risk transitions must
-            # hit exact target). General "hold smaller through resizes" risk principle; the
-            # asymmetric regime benefit falls out of each regime's resize structure (the
-            # binding regimes resize through chop -> benefit). This is the ONE placement the
-            # quantization layer cannot absorb (it is downstream of all of it). New control
-            # flow at the order-emission layer.
             if abs(target - current_pos) > 1.0 * LEVERAGE_K:
-                if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
-                    # Branch step 2: TREND-ALIGNED-WINNER spare on the emission-layer
-                    # held-resize de-risk. Step 1 (uniform k=0.90) lifted the binding
-                    # regimes (mixed +0.238, rally +0.062) but CATASTROPHICALLY regressed
-                    # bull_2021 (-0.539): uniformly trimming held longs harder destroys
-                    # bull's strong trend-riding (bull Sh2.0 comes from HOLDING/growing
-                    # trend winners; trimming them cuts trend capture). FIX: gate the
-                    # de-risk OFF for strong trend-aligned WINNERS (bull's signature =
-                    # position trend-aligned with the long-window trend AND in profit AND
-                    # in a strong trend) while keeping FULL de-risk for choppy /
-                    # counter-trend / losing / flat held resizes (mixed's 100pct-long-in-
-                    # a-downmarket and rally's pullback resizes). _spare ~1 for a strong
-                    # trend-aligned winner -> de-risk ~off; ~0 otherwise -> full de-risk.
-                    # Continuous (tanh products, no boundary); general principle (trend-
-                    # aligned winners are spared from forced trims), no regime label.
-                    _pos_dir_hr = 1.0 if current_pos > 0 else -1.0
-                    _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
-                    _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
-                    _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
-                    _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
-                    target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
