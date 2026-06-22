@@ -1920,21 +1920,6 @@ class Strategy:
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
-                # Exp5 (architectural, indep): EFFICIENCY-coupled exit bias. The 8th range/
-                # close efficiency voter (_rc_eff, _rc_dir) currently feeds ENTRY conviction
-                # only. This routes it to the EXIT additive bias: when the path is efficient
-                # AND the efficiency direction AGREES with the position (trend-aligned clean
-                # move), add a NEGATIVE bias (anti-exit) to let clean-trend winners run
-                # longer through pullback noise -- compounding the 8th voter's entry-side
-                # trend-stabilization. Only the trend-aligned lobe (eff-dir == pos-dir);
-                # counter-trend efficiency adds no bias (let existing loss-side pressures
-                # handle). New cross-subsystem data dep: entry-voter signal -> exit bias.
-                # Magnitude bounded to 0.15 (below the 0.20 chop/opp terms). Smooth tanh on
-                # efficiency excess over 1.0 (chop baseline).
-                _pos_dir_eff = 1.0 if current_pos > 0 else -1.0
-                _eff_align = max(0.0, 0.5 * (1.0 + _rc_dir * _pos_dir_eff))  # 1 if eff-dir agrees w/ pos, 0.5 neutral, 0 opposed
-                _eff_hold = 0.15 * _eff_align * max(0.0, np.tanh((_rc_eff - 1.0) / 0.5))
-                _voter_bias -= _eff_hold
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
