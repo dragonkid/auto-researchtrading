@@ -648,6 +648,28 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Exp2 (architectural, indep): BEAR trend-aligned admission RELAXATION
+            # (symmetric counterpart to bull's -10% relaxation in uptrend, line above).
+            # Bull admission relaxes up to -10% in a 20-bar uptrend; bear had NO symmetric
+            # relaxation in a downtrend (only the +15% ct-tightening in uptrend). This
+            # ASYMMETRY over-tightens crash bear shorts: crash_bear has 100pct WR but only
+            # 57 trades + Sh1.273 + 12.1pct APY (LOWEST Sharpe/return of any regime) -- the
+            # strategy is over-selective on the bear side, under-capturing the sustained
+            # crash downtrend. Exp1 (size boost) did NOT raise crash Sharpe (scale-invariant:
+            # size-up raises APY and DD together -> Sharpe flat), proving crash is SELECTION-
+            # limited, not size-limited. Add the bear relaxation: lower bear admission floor
+            # up to -10% in a downtrend, admitting more trend-continuation crash shorts
+            # (high-quality: 100pct WR preserved because a sustained-downtrend continuation
+            # short is a high-conviction trend entry). Gated on BOTH 20-bar ret_long<0 AND
+            # multi-day ret_vlong<0 (a SUSTAINED downtrend): EXCLUDES rally pullback shorts
+            # (ret_long<0 during a pullback BUT ret_vlong>0, uptrend intact = ct losers that
+            # extend the rally streak) -- the multi-day gate keeps the relaxation crash-only.
+            # Also excludes dead-cat bounces (ret_long>0 during a bounce -> 20-bar gate 0).
+            # Continuous tanh, no decision boundary; trend-direction general principle (no
+            # regime label). New cross-timescale data dep: bear admission floor depends on
+            # the conjunction of 20-bar + multi-day downtrend (bull's 20-bar relaxation
+            # hardened against rally-pullback / dead-cat-bounce false-fires by multi-day gate).
+            _bear_strong_min *= 1.0 - 0.10 * max(0.0, np.tanh(-ret_long / 0.04)) * max(0.0, np.tanh(-ret_vlong / 0.03))
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
