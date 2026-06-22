@@ -724,7 +724,24 @@ class Strategy:
             # loss-only outcome-conditioned stretch & first-bar size attenuator.
             _bars_since_exit = self.bar_count - self.exit_bar.get(symbol, -999)
             _loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only)
+            # Exp1 (architectural, indep): symmetric WIN-conditioned cooldown SHORTENING.
+            # The cooldown window already STRETCHES after losses (1+0.6*_loss_only -> slower
+            # re-deployment, throttle re-entry after a bad trade). It has NO symmetric win
+            # counterpart: after a CONFIRMED winning exit (the edge just paid off) the first-
+            # bar re-entry size is still throttled by exit-recency exactly as after a loss.
+            # mixed_2025 (the new binding regime) runs at 100pct WR but captures only 4.4pct
+            # return (Sharpe 0.80) — it is UNDER-DEPLOYED, taking small pieces and sitting in
+            # cash. Add the symmetric win term: a winning exit NARROWS the cooldown window so
+            # cooldown_factor recovers toward 1.0 faster -> larger first-bar size on the next
+            # qualified entry -> more time-deployed in high-WR regimes (mixed_2025 100pct,
+            # sideways 98pct, bull 86pct). Re-entry still passes ALL admission gates (strong-
+            # sum, trend admit, readiness EMA) — this only un-throttles the SIZE recency
+            # penalty for entries that already qualified. Continuous tanh (no boundary),
+            # symmetric to _loss_only; max 30pct window shortening at a deep win. New data
+            # dep: cooldown window depends on the win magnitude of the last exit (the missing
+            # half of the existing loss dependency).
+            _win_only = max(0.0, np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
+            _cd_window = max(0.6, 1.5 - 0.9 * cooldown_trend_strength) * (1.0 + 0.6 * _loss_only) * (1.0 - 0.30 * _win_only)
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
