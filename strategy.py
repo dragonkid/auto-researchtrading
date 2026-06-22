@@ -2517,7 +2517,23 @@ class Strategy:
                     _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
                     _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
                     _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
-                    _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
+                    # Branch step 9: CONCENTRATION gate on the de-risk. mixed_2025's
+                    # signature is 3 correlated SAME-SIDE longs held concurrently all year
+                    # (a portfolio-level pileup carrying combined MTM-variance drag), while
+                    # bull/crash more often hold fewer concurrent same-side positions. Gate
+                    # the de-risk by how many OTHER symbols hold a same-sign position: full
+                    # de-risk when the book is concentrated (2+ other same-side holds =
+                    # mixed's pileup), ~off when this is a more isolated position (sparing
+                    # bull/crash). Reads portfolio.positions (available at emission). General
+                    # portfolio-concentration risk principle (de-risk correlated pileups
+                    # harder), no regime label. _conc_n in {0,1,2} other same-sign holds.
+                    _conc_n = 0
+                    for _os, _op in portfolio.positions.items():
+                        if _os != symbol and _op != 0 and (_op > 0) == (current_pos > 0):
+                            _conc_n += 1
+                    _hr_conc = max(0.0, min(1.0, _conc_n / 2.0))   # 0 isolated, 1 at 2+ same-side concurrent
+                    _hr_eff = (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare) * _hr_conc
+                    _hr_derisk = 1.0 - _hr_eff
                     target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
