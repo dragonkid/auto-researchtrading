@@ -662,25 +662,8 @@ class Strategy:
             # lever), Exp3 cuts magnitude. Same fast-saturating /0.01 ret_vlong ct
             # indicator (near-constant, noise-free) x streak ramp. Max 10% tighten.
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
-            # Exp4 (architectural, indep): DEEP-STREAK ct admission ESCALATION TIER. Prior
-            # sessions found the base +10pct ct admission tighten (streak>=2) too WEAK to
-            # block high-conviction ct shorts (admission-inertness wall: ct shorts cross
-            # thresholds same-bar). The rally streak_gate (0.873 from 4 consec ct-short
-            # losses) is the largest un-maxed score lever; only ADMISSION BLOCKING breaks a
-            # streak (size-shrink cant: streak counts LOSSES not magnitude). The prior
-            # concern was that aggressive ct blocking hits the alpha-trade wall (cuts rally
-            # alpha). This tests a NEW ESCALATION TIER: at deep streaks (>=4, the actual
-            # rally streak depth), escalate the ct admission tighten to +35pct (vs base
-            # +10pct) -- strong enough to BLOCK the marginal Nth ct re-entry that would
-            # extend the streak to 5, while the base +10pct handles streak 2-3. New control
-            # flow (a second escalation tier gated on a deeper integer-streak threshold,
-            # distinct from the base ramp). Noise-IMMUNE (integer loss-streak, non-price-
-            # derived). Trend-aligned (ct indicator 0) byte-identical. Targets streak_gate
-            # directly (the one movable raw_score lever for rally).
-            _streak_ct_deep = max(0.0, np.tanh((self._loss_streak - 3) / 1.0))  # 0 streak<=3, ~1 streak>=4
-            _streak_ct_mag = 0.10 * _streak_ct_admit + 0.25 * _streak_ct_deep
-            _bull_strong_min *= 1.0 + _streak_ct_mag * max(0.0, np.tanh(-ret_vlong / 0.01))
-            _bear_strong_min *= 1.0 + _streak_ct_mag * max(0.0, np.tanh(ret_vlong / 0.01))
+            _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
+            _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
