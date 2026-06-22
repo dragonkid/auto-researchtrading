@@ -118,30 +118,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
 
-# Architectural (Exp1 this session): PORTFOLIO-HEALTH-COUPLED TREND-ALIGNED ENTRY BOOST.
-# The symmetric, return-seeking opposite of _port_dd_atten (which SHRINKS entries during
-# portfolio drawdown). _port_dd_atten == 1.0 when equity is at its peak (portfolio healthy,
-# no drawdown) and collapses toward 0 during DD episodes. crash_bear sits at DD 2.46pct
-# (the LOWEST of any regime, enormous headroom below the 8pct dd_gate knee) yet has the
-# LOWEST Sharpe (1.273) at 100pct WR + only 12.1pct APY — the strategy under-captures the
-# sustained crash downtrend because vol-targeting (TARGET_VOL/realized_vol)**0.85 shrinks
-# positions in high-vol crash. When the portfolio is HEALTHY (at peak equity, _port_dd_atten
-# ~1) AND the entry is trend-aligned to a strong multi-day trend, boost first-bar commitment
-# to capture more of the trend move -> higher APY/Sharpe in the under-captured trend regime.
-# Self-limiting via the SAME health signal: if sizing up triggers DD, _port_dd_atten falls
-# -> boost turns OFF (negative feedback), so it cannot compound a drawdown (unlike a uniform
-# size-up). Distinct from SIDEWAYS_BOOST (mean-reversion, leverage-coupled) and from the
-# discarded f92f71c1 trend-aligned DD-sparing (that sized up trend entries DURING DD by
-# sparing them from the shrink -> bigger rally pullback losers; THIS is gated OFF during DD
-# by _port_dd_atten, the opposite failure mode). Gates: multi-day ret_vlong strength (fires
-# in sustained trends crash/rally, ~off in choppy bull-2021 stretches + sideways) x entry-
-# direction x ret_long trend-alignment (only trend-aligned entries) x health (_port_dd_atten,
-# crash healthiest -> largest boost, rally pullbacky -> smallest). First-bar only, small
-# +0.06 max, continuous tanh, no decision boundary. New structural relationship: a
-# portfolio-health-coupled return-seeking boost (the symmetric opposite of the load-bearing
-# _port_dd_atten shrink).
-HEALTH_TREND_BOOST_MAX = 0.06
-
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
 # Exp1 (naive 2x BASE_POSITION_SIZE, discarded fcae6004) proved the strategy is
@@ -1542,22 +1518,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp1 (this session): portfolio-health-coupled trend-aligned entry boost.
-                # _port_dd_atten (~1 healthy, ~0 in DD) is the symmetric opposite of the
-                # shrink it already applies. Boost trend-aligned entries ONLY when the
-                # portfolio is healthy + multi-day trend is strong. Self-limiting: any DD
-                # the boost causes immediately cuts _port_dd_atten -> boost off (neg feedback).
-                _ht_trend = max(0.0, np.tanh(abs(ret_vlong) / 0.03))      # multi-day trend strength (sustained crash/rally)
-                _ht_align_bull = max(0.0, np.tanh(ret_long / 0.04))       # bull entry aligned with 20-bar uptrend
-                _ht_align_bear = max(0.0, np.tanh(-ret_long / 0.04))      # bear entry aligned with 20-bar downtrend
-                _health_trend_boost_bull = 1.0 + HEALTH_TREND_BOOST_MAX * _ht_trend * _ht_align_bull * _port_dd_atten
-                _health_trend_boost_bear = 1.0 + HEALTH_TREND_BOOST_MAX * _ht_trend * _ht_align_bear * _port_dd_atten
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _health_trend_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _health_trend_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
