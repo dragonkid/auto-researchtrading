@@ -1937,7 +1937,7 @@ class Strategy:
                 _ar_pressure = 0.0
                 _curr_mae_e = self._mae.get(symbol, 0.0)
                 _mae_floor = -0.5 * abs(STOP_LOSS_PCT)
-                if _curr_mae_e < _mae_floor and pos_pnl < 0:
+                if False and _curr_mae_e < _mae_floor and pos_pnl < 0:
                     # recovery_frac: 0 at MAE, 1 at pos_pnl=0 (full recovery to breakeven)
                     _recovery_frac = max(0.0, min(1.0, (pos_pnl - _curr_mae_e) / max(-_curr_mae_e, 1e-6)))
                     # Activate above 0.5 recovery (mild dip recoveries don't trigger);
