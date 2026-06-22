@@ -638,6 +638,10 @@ class Strategy:
             if len(_hist) > 3:
                 _hist = _hist[-3:]
             self._recent_strongs[symbol] = _hist
+            # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
+            # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
+            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
             # exceeds a threshold (>=2 in 30 bars), raise admission proportionally.
@@ -646,31 +650,6 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Exp2 (architectural, indep): LOW-CHURN relaxation of the sideways-aware
-            # chop-tightening on the admission floor. The +0.20*(1-rsi_trend_str) term
-            # (below) tightens admission in low-trend chop to filter noisy entries, BUT
-            # it pushes the sparse-entry sideways regime BELOW the 50-trade sample_factor
-            # knee (48 trades -> sample_factor 0.980 = a ~2pct penalty, the entire
-            # sideways regression vs the 5x baseline). NEW data dep: gate the chop-
-            # tightening magnitude on the symbol's OWN recent entry density (the same
-            # noise-IMMUNE integer len(_eh) the _freq_factor / churn grids read). In
-            # LOW churn (len<=1 = sparse-entry regimes: sideways, plus trend regimes
-            # where rsi_trend_str is high so the chop term is ~0 anyway -> no effect),
-            # HALVE the chop-tightening so marginal mean-reversion entries clear the
-            # floor -> recover sideways trades toward the sample_factor knee. In HIGH
-            # churn (len>=3 = rally pullback bursts), FULL chop-tightening is retained
-            # -> rally's noise-filtering is byte-identical (the binding regime spared).
-            # Continuous fast-saturating tanh (near-constant where it fires -> noise-
-            # robust per the validated safe-family lesson). General behavioral self-
-            # measurement (entry density), NOT a regime label. Targets the sideways
-            # sample_factor lever (the one concrete quantified penalty: +0.020 if 50
-            # trades recover at comparable Sharpe).
-            _chop_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 sparse, ~0 bursting
-            _chop_tighten_mult = 1.0 - 0.5 * _chop_calm  # 0.5 in deep calm, 1.0 in churn
-            # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
-            # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            # Exp2: chop-tightening magnitude relaxed in low-churn (sample_factor recovery).
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str) * _chop_tighten_mult
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
