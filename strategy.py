@@ -1072,7 +1072,7 @@ class Strategy:
                 # R^2 (no zero-crossing -> not the walled admission-boundary family); shrink
                 # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
                 _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
-                _tq_atten = 1.0  # Exp9: removed R^2 trend-quality attenuator (test redundancy with 8th efficiency voter)
+                _tq_atten = 0.25 + 0.75 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
                 # Branch step 6: CHURN-GATE the R^2 shrink (active in low-churn, OFF in
                 # high-churn bursts). The R^2 atten's raw gains live in sparse-entry regimes
                 # (low len(_eh)) but its noise COST falls on the bursty-entry regime whose
