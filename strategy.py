@@ -235,6 +235,16 @@ class Strategy:
         self._mae = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
+        # Exp3 (this session): per-symbol CUMULATIVE intra-position giveback (sum over the
+        # hold of peak-to-current pnl drops) and a rolling within-position peak for it.
+        # A position that has repeatedly given back and re-peaked is in a CHOPPY/reverting
+        # hold (high cum-giveback); a clean monotonic climber gives back little. Diagnostic
+        # (this session): cum-giveback/peak separates by Sharpe — bull/sideways (Sh2.0,
+        # clean) median ~400-690 vs rally/mixed_2025 (Sh1.5/0.8, choppy) median ~4000-4600.
+        # Used to make the harvest floor per-position-adaptive (choppy holds harvest sooner).
+        # Reset on full exit.
+        self._cum_giveback = {}
+        self._gb_peak = {}
         self.bar_count = 0
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
@@ -1743,7 +1753,37 @@ class Strategy:
                 # Peak-profit soft pressure: vol-adaptive band (same architectural pattern as SL).
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
-                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                # Exp3 (architectural, indep): PER-POSITION CUMULATIVE-GIVEBACK-ADAPTIVE
+                # harvest floor. Track, over the life of THIS position, the cumulative
+                # peak-to-current giveback (sum of drops from a rolling within-position high-
+                # water mark). A choppy/reverting hold repeatedly gives back and re-peaks ->
+                # large cumulative giveback; a clean monotonic trend climber gives back little.
+                # Diagnostic (this session, verifiable): cum-giveback / peak separates the
+                # regimes by SHARPE, not by trend-magnitude — bull/sideways (Sh~2.0, clean
+                # holds) median ~400-690 vs rally/mixed_2025 (Sh1.5/0.8, choppy holds) median
+                # ~4000-4600. This is the RIGHT axis: it groups the two must-protect high-Sharpe
+                # regimes (bull AND sideways) together on the LOW side and the two binding
+                # improvable regimes (rally + mixed_2025) on the HIGH side — unlike trend-
+                # magnitude (Exp2) which wrongly grouped sideways with mixed. Mechanism: when a
+                # position's hold has been choppy (high cum-giveback relative to its peak),
+                # SHRINK its harvest floor _pp_min so it harvests the NEXT peak sooner (lock the
+                # gain before the next reversion); a clean climber keeps the full floor (let it
+                # run). Fully per-position + live + orthogonal (nothing else uses cumulative
+                # giveback). NEW per-symbol state dep at the harvest floor. Continuous tanh on
+                # the cum-giveback ratio (no boundary), shrink-only (0.78x-1.0x), direction-
+                # agnostic GENERAL principle (no regime label) — regime effects fall out of
+                # each position's realized choppiness. The within-position peak (_gb_peak) uses
+                # pos_pnl directly (already noise-exposed legitimately, not the open artifact).
+                _gb_pk = self._gb_peak.get(symbol, pos_pnl)
+                if pos_pnl > _gb_pk:
+                    _gb_pk = pos_pnl
+                self._gb_peak[symbol] = _gb_pk
+                self._cum_giveback[symbol] = self._cum_giveback.get(symbol, 0.0) + max(0.0, _gb_pk - pos_pnl)
+                # Normalize by the position's peak magnitude (floored at _pp scale to avoid
+                # blow-up on near-zero peaks); saturate via tanh. Ratio ~ large for choppy holds.
+                _cg_ratio = self._cum_giveback[symbol] / max(_gb_pk, PEAK_PROFIT_MIN_BASE)
+                _cg_harvest = 1.0 - 0.22 * max(0.0, min(1.0, np.tanh(_cg_ratio / 8.0)))  # 1.0 clean, 0.78 choppy
+                _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5)) * _cg_harvest
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
@@ -2489,7 +2529,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._cum_giveback, self._gb_peak):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
