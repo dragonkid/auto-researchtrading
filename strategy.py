@@ -1350,8 +1350,8 @@ class Strategy:
                 _vol_rise = max(0.0, min(1.0, np.tanh(_vol_trend_r / 0.30)))  # 0 flat/decline, 1 deep rising
                 _vol_rise_align_bull = _vol_rise * max(0.0, np.tanh(ret_long / 0.04))      # bull aligned with uptrend
                 _vol_rise_align_bear = _vol_rise * max(0.0, np.tanh(-ret_long / 0.04))     # bear aligned with downtrend
-                _vol_rise_boost_bull = 1.0  # Exp5: own-vol-rise boost removal test
-                _vol_rise_boost_bear = 1.0
+                _vol_rise_boost_bull = 1.0 + 0.08 * _vol_rise_align_bull
+                _vol_rise_boost_bear = 1.0 + 0.08 * _vol_rise_align_bear
                 # Exp6 (architectural, indep): OWN-volume-rise x PARTNER-alt-price-agreement
                 # conjunction boost on ALT entries. Completes the {own,BTC,partner}x{vol,price}
                 # agreement grid: Exp1 = BTC-vol x BTC-price -> alt; Exp3 = partner-vol x
