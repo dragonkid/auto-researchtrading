@@ -705,6 +705,20 @@ class Strategy:
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
+            # Exp2 (architectural, indep): GRIND-GATE on calm_boost. Prior session
+            # (calm_boost leverage-coupling discard) found calm_boost OVER-BOOSTS rally
+            # GRIND entries (low-vol uptrend) raising DD without alpha gain; but fully
+            # removing calm_boost hurts rally -0.046 (dwell-point entries under-sized) and
+            # crash -0.035 (resume-leg sizing). The over-boost is specific to the GRIND
+            # condition (strong trend AND low vol); crash's beneficial calm_boost fires in
+            # HIGH-vol post-crash calming, bull-2021 is high-vol. Gate the calm_boost
+            # REDUCTION on the trend-strength x low-vol conjunction: reduce calm_boost by
+            # up to 30pct ONLY in strong-trend + low-vol (the grind), sparing crash/bull
+            # (high vol) and sideways (low trend). New cross-component data dep: calm_boost
+            # magnitude depends on trend-strength x vol-regime conjunction. Continuous tanh,
+            # one-sided (reduce only), no boundary. General grind-regime principle (no label).
+            _cb_grind_gate = _trend_strength_w * max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
+            calm_boost = 1.0 + (calm_boost - 1.0) * (1.0 - 0.30 * _cb_grind_gate)
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
