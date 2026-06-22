@@ -80,7 +80,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # emitted Signal target for same-sign held resizes (downstream of grid/snap/EMA, the one
 # placement Exp4 proved is not re-quantized away). Diagnostic-measured to lift the binding
 # regimes' Sharpe (mixed 0.804->1.30, rally 1.526->1.60 at 0.85) at the cost of sideways.
-HELD_RESIZE_DERISK = 0.90
+HELD_RESIZE_DERISK = 0.93  # branch step5: gentler trim (0.90->0.93) to reduce bull/crash mean drag while keeping mixed gain
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
