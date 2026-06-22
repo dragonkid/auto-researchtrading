@@ -76,20 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp1 (this session): PnL-PATH-CHOPPINESS harvest. New exit-side mechanism (NOT a
-# global harvest-threshold knob — those are documented invariant/bull-harmful). A
-# WINNING position whose OWN mark-to-market pos_pnl PATH has been choppy (net progress
-# small relative to path length = low path-efficiency = the mixed/sideways mean-reverting
-# chop signature) gets a proactive partial SIZE harvest each bar -> lock gains + SMOOTH
-# the equity curve -> raise Sharpe (the binding lever for mixed_2025: 100pctWR but Sh0.80
-# = choppy held-equity). A SMOOTH strong-trend hold (bull, Sh2.0, smooth rising pos_pnl
-# = HIGH path-efficiency) is SPARED BY CONSTRUCTION -> this is the orthogonal selector
-# the prior uniform/20-bar-trend-scaled pp_min harvests lacked (they harvested bull's
-# winners -> bull -0.41 Sh). Harvest direction = the proven-safe family. Profit-side
-# only (losers handled by slope/stop). New per-symbol state (_pnl_path). New data dep:
-# exit size depends on the realized choppiness of the position's own PnL trajectory.
-PNL_CHOP_HARVEST_MAX = 0.15   # max per-bar fractional size harvest on a choppy winner
-PNL_PATH_WINDOW = 10          # rolling window of pos_pnl values for path-efficiency
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -317,9 +303,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp1 (this session): per-symbol rolling pos_pnl path (mark-to-market history
-        # since entry) for the PnL-path-choppiness harvest. Reset on full exit.
-        self._pnl_path = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1573,13 +1556,6 @@ class Strategy:
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
-                # Exp1 (this session): maintain rolling pos_pnl PATH (mark-to-market
-                # trajectory since entry) for the path-choppiness harvest below.
-                _pp_path = self._pnl_path.get(symbol, [])
-                _pp_path.append(pos_pnl)
-                if len(_pp_path) > PNL_PATH_WINDOW:
-                    _pp_path = _pp_path[-PNL_PATH_WINDOW:]
-                self._pnl_path[symbol] = _pp_path
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -2138,55 +2114,6 @@ class Strategy:
                     _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                # Exp1 (this session): PnL-PATH-CHOPPINESS harvest. Harvest a profitable
-                # position proportional to how CHOPPY its own mark-to-market PnL path has
-                # been. path_eff = |net pos_pnl progress| / sum(|bar-to-bar pos_pnl moves|)
-                # over the rolling window, in [0,1]: ~1 = smooth monotone winner (bull/crash
-                # trend hold -> SPARED), low = choppy round-tripping winner (mixed/sideways
-                # mean-reverting chop -> harvested to lock gains + smooth equity -> raise
-                # Sharpe). Profit-side only (pos_pnl>0). Direction-agnostic (uses pos_pnl
-                # which is already direction-signed). Continuous tanh on (0.5 - eff) so the
-                # harvest fades to 0 for efficient trends with NO decision boundary. Gated
-                # by profit magnitude (only meaningful gains worth locking) and needs >=4
-                # path points (early bars un-harvested -> scale-in unaffected). Bull's
-                # smooth Sh2.0 trend has high path_eff -> ~0 harvest (the orthogonal
-                # selector the prior bull-harmful global pp_min harvests lacked). Harvest
-                # (shrink) direction = proven-safe family; SL/de-risk paths unchanged.
-                if target != 0 and pos_pnl > 0 and len(_pp_path) >= 4 and _sl_pressure < 0.5:
-                    _path_arr = np.array(_pp_path)
-                    _path_net = abs(_path_arr[-1] - _path_arr[0])
-                    _path_len = float(np.sum(np.abs(np.diff(_path_arr))))
-                    _path_eff = _path_net / max(_path_len, 1e-10)  # 1 smooth, ->0 choppy
-                    # Branch step2: GATE the chop-harvest by giveback-from-peak. The step1
-                    # harvest fired on path-choppiness alone, which cut sideways MOMENTUM
-                    # runs (choppy path but still making fresh highs -> forward-return is
-                    # momentum, harvesting loses Sharpe 2.0->1.81). A position that is
-                    # actively ROUNDING OVER (pulled back from its peak = the mixed
-                    # mean-reversion / rally-pullback signature) has positive giveback;
-                    # a still-rising winner (sideways/bull making new highs) has ~0
-                    # giveback. Gate by _giveback_ratio (peak-pos_pnl normalized, already
-                    # computed above) so only rounding-over choppy winners are harvested,
-                    # sparing still-climbing momentum runs. Continuous tanh (no boundary).
-                    _gb_gate = max(0.0, min(1.0, np.tanh(_giveback_ratio / 0.30)))
-                    # Branch step3: SPARE strong trend-aligned winners. Step2 left bull
-                    # -0.034 (Sh FLAT 1.9997->1.9973 = the harvest cut bull's size ->
-                    # return_reward cost, NOT signal damage). Bull's winners are strongly
-                    # trend-aligned longs in a deep multi-day uptrend (ret_vlong~0.075);
-                    # rally's harvested losers are COUNTER-trend pullback shorts (pos_dir
-                    # opposes ret_vlong) and mixed's are weak-trend choppy winners
-                    # (ret_vlong~0.033). Multiply the harvest by a (1 - trend_align)
-                    # factor so a strongly trend-aligned winner (pos_dir agrees the
-                    # multi-day ret_vlong) is largely spared, while counter-trend and
-                    # weak-trend winners keep full harvest. tanh(ret_vlong*pos_dir/0.05)
-                    # saturates near bull's 0.075 (spared ~1) but is small at mixed's
-                    # 0.033 (spared ~0.5) and ~0 / negative for rally ct shorts (full
-                    # harvest). Continuous, no boundary; direction-agnostic principle.
-                    _harv_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _harv_align = max(0.0, np.tanh(ret_vlong * _harv_pos_dir / 0.05))
-                    _harv_spare = 1.0 - 0.85 * _harv_align  # strong trend-aligned -> ~0.15x harvest
-                    _chop_harvest = PNL_CHOP_HARVEST_MAX * max(0.0, np.tanh((0.5 - _path_eff) / 0.25)) * _gb_gate * _harv_spare * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
-                    target = target * (1.0 - _chop_harvest)
-
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
                 # full-exit path AND de-risk ramp (which produces target=0 at boundary).
@@ -2562,7 +2489,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
