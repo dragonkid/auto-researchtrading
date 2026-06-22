@@ -2518,6 +2518,17 @@ class Strategy:
                     _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
                     _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
                     _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
+                    # Branch step 10: on GROWTH resizes of a strong trend-aligned winner,
+                    # not only spare the trim but slightly BOOST the add. Step2 recovers
+                    # bull via the spare (de-risk~off for trend winners) but bull is still
+                    # -0.121 (it lost some winner-growth vs baseline because even spared
+                    # resizes that were quantized differently shifted). Let bull's clearly
+                    # trend-aligned profitable GROWTH adds emit a touch larger (capture more
+                    # trend) to recover its mean drag, while reductions/mixed/chop are
+                    # untouched (boost gated on _hr_spare AND growth). Small (+ up to 4pct).
+                    _is_growth_hr = abs(target) > abs(current_pos)
+                    if _is_growth_hr:
+                        _hr_derisk = _hr_derisk * (1.0 + 0.04 * _hr_spare)
                     target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
