@@ -2283,37 +2283,6 @@ class Strategy:
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
-                # Exp3 (this session, architectural): SUSTAINED held-LONG de-risk in a
-                # multi-day DOWNTREND. Structural diagnosis: in mixed_2025 (the binding
-                # regime, score 0.405 Sh0.804) the strategy is 100pct LONG every bar all
-                # year (BTC -6pct, ETH -12pct, SOL -35pct = a DOWN year) — it opens 3
-                # longs and never flips, so it fights the tape and its Sharpe is crushed
-                # by holding full long size through the grind-down. Existing multi-day-ct
-                # shrinks (_bull_ct_vlong, _churn_ct_atten) are FIRST-BAR-ONLY and churn-
-                # gated, so they barely touch mixed's 3 long-lived held positions. This is
-                # the SUSTAINED counterpart: every bar a LONG is held while the own 96-bar
-                # trend (ret_vlong, the validated multi-day signal) is NEGATIVE, scale the
-                # held target down proportional to downtrend depth. Mechanism: a long held
-                # into a sustained multi-day decline is the wrong-side exposure dragging
-                # Sharpe — cutting it raises risk-adjusted return. KEY distinction from the
-                # documented "sustained sizing hurts rally" wall: this gates on the SIGN of
-                # ret_vlong (only NEGATIVE multi-day trend de-risks). Rally/bull/sideways
-                # have solidly POSITIVE ret_vlong (+0.008 to +0.010 mean) -> tanh(max(0,
-                # -ret_vlong)/..)=0 -> byte-identical (spared by construction). Only mixed
-                # (mean -0.001, 37pct of bars < -0.01) and crash (already strong, return-
-                # limited) see negative multi-day trend. Long-side only (the 100pct-long
-                # books); shorts unaffected. Continuous tanh (no boundary). Resizes only
-                # (full exits target==0 and flips are exempt — risk transitions). Applied
-                # BEFORE the target_ema so the EMA still smooths the result. New control
-                # flow: sustained held-long size depends on multi-day downtrend depth.
-                if current_pos > 0 and target > 0:
-                    _md_down = max(0.0, np.tanh(max(0.0, -ret_vlong) / 0.012))  # 0 in uptrend, ->1 deep multi-day downtrend
-                    _md_long_derisk = 1.0 - 0.40 * _md_down
-                    _md_target = target * _md_long_derisk
-                    # de-risk only (never grow); keep same sign
-                    if 0 < _md_target < target:
-                        target = _md_target
-
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
             # EMITTED position target (the final held-position LEVEL) — a NEW smoothing
             # POINT distinct from the prior exit-pressure EMA (734 keep) and voter_bias
