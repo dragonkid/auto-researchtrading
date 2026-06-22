@@ -2499,19 +2499,26 @@ class Strategy:
             # flow at the order-emission layer.
             if abs(target - current_pos) > 1.0 * LEVERAGE_K:
                 if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
-                    # Scale the emitted same-sign held-resize target toward zero by k.
-                    # Diagnostic isolated the active lever: the lift comes from scaling
-                    # resizes that REDUCE the held position (trim harder when trimming) —
-                    # an exit-acceleration on partial reductions, NOT a growth cap. For a
-                    # book that is wrong-side in a chop/down regime (mixed is 100pct long
-                    # all year in a -6/-12/-35pct market), trimming the held position more
-                    # aggressively each time cuts the MTM-variance drag on Sharpe and the
-                    # DD (mixed DD 2.80->0.82, Sh 0.804->1.328 at k=0.85 in the isolating
-                    # diagnostic). It also slightly de-grows growth resizes (smaller adds),
-                    # which is the proven-safe size-shrink direction. Emitted AFTER the
-                    # emission-threshold gate fired on the UNSCALED delta (trade still
-                    # emits; only the size shrinks).
-                    target = target * HELD_RESIZE_DERISK
+                    # Branch step 2: TREND-ALIGNED-WINNER spare on the emission-layer
+                    # held-resize de-risk. Step 1 (uniform k=0.90) lifted the binding
+                    # regimes (mixed +0.238, rally +0.062) but CATASTROPHICALLY regressed
+                    # bull_2021 (-0.539): uniformly trimming held longs harder destroys
+                    # bull's strong trend-riding (bull Sh2.0 comes from HOLDING/growing
+                    # trend winners; trimming them cuts trend capture). FIX: gate the
+                    # de-risk OFF for strong trend-aligned WINNERS (bull's signature =
+                    # position trend-aligned with the long-window trend AND in profit AND
+                    # in a strong trend) while keeping FULL de-risk for choppy /
+                    # counter-trend / losing / flat held resizes (mixed's 100pct-long-in-
+                    # a-downmarket and rally's pullback resizes). _spare ~1 for a strong
+                    # trend-aligned winner -> de-risk ~off; ~0 otherwise -> full de-risk.
+                    # Continuous (tanh products, no boundary); general principle (trend-
+                    # aligned winners are spared from forced trims), no regime label.
+                    _pos_dir_hr = 1.0 if current_pos > 0 else -1.0
+                    _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
+                    _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
+                    _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
+                    _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
+                    target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
