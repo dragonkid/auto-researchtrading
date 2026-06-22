@@ -1414,8 +1414,8 @@ class Strategy:
                     # directional -> larger first-bar commitment. Deep-saturated both gates
                     # (near-constant, noise-free, validated safe family). First-bar-only,
                     # +0.05 max. BTC self-referential -> not reached (alt branch).
-                    _btcdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_btc_dvp / 0.15)) * max(0.0, np.tanh(_btc_trend / 0.03))
-                    _btcdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_btc_dvp / 0.15)) * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    _btcdvp_boost_bull = 1.0  # Exp3: DVP-column removal
+                    _btcdvp_boost_bear = 1.0
                     # Exp3 (architectural, indep): partner-alt DVP x partner-alt-price-momentum-
                     # agreement conjunction boost (partner cell of the DVP column). _partner_dvp
                     # (partner volume-DIRECTION balance) x /0.02 partner-price-agreement gate
@@ -1425,8 +1425,8 @@ class Strategy:
                     # Deep-saturated both gates (near-constant, noise-free, validated safe
                     # family). First-bar-only, +0.05 max.
                     _partner_dvp = _alt_dvp.get(_partner, 0.0)
-                    _partnerdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * max(0.0, np.tanh(_partner_lead / 0.02))
-                    _partnerdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    _partnerdvp_boost_bull = 1.0  # Exp3: DVP-column removal
+                    _partnerdvp_boost_bear = 1.0
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
@@ -1541,8 +1541,8 @@ class Strategy:
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
                 _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
-                _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
-                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                _dvp_boost_bull = 1.0  # Exp3: DVP-column removal (own-DVP redundant with VWAP voter)
+                _dvp_boost_bear = 1.0
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
