@@ -1682,6 +1682,26 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Architectural (Exp1, indep): COUNTER-TREND stop tightening. The losing
+                # rally ct shorts (bear entry while multi-day uptrend ret_vlong>0 stays
+                # solidly positive) "ride to stop as losses" — the STOP is their exit path
+                # (NOT the inert time-pressure/giveback path prior sessions proved exit-
+                # timing-inert on rally). Distinct from the saturated ENTRY-SIZE shrink
+                # axis (ct_vlong/churn_ct/streak_ct shrink the entry MAGNITUDE): this caps
+                # the realized LOSS MAGNITUDE at exit by tightening the stop band for ct
+                # positions -> smaller realized losses -> higher rally Sharpe (raw_score,
+                # the binding lever since all stability factors are 1.0). The ct indicator
+                # uses the SAME fast-saturating /0.01 ret_vlong scale as the validated ct
+                # gates (rally's solidly-positive ret_vlong sits in the flat tail -> near-
+                # CONSTANT 1.0, not a noise-tracking wobble -> stability preserved). Trend-
+                # aligned positions (crash shorts ret_vlong<0, bull longs in uptrend) have
+                # ct indicator 0 -> _stop_abs byte-identical -> crash/bull/sideways trend
+                # legs unaffected. Continuous tanh (no decision boundary); shrink-only on
+                # the stop distance (caps loss smaller, never widens). New cross-component
+                # data dep at the stop-loss subsystem (ret_vlong ct gate was entry/scale-in
+                # only; never applied to the stop band).
+                _ct_stop = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _stop_abs = max(0.015, _stop_abs * (1.0 - 0.25 * _ct_stop))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
