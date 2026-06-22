@@ -553,27 +553,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp3 (architectural, indep): 9th VOTER -- STOCHASTIC %K range-position
-            # (0 prior results.tsv mentions of stochastic as a voter). %K = (close -
-            # lowest_low_N)/(highest_high_N - lowest_low_N) over 14 bars, range [0,1].
-            # Genuinely new derivation: NO existing voter reads where close sits within
-            # the recent HIGH-LOW RANGE -- ret_short reads close vs a MEDIAN, RSI reads
-            # up/down bar AVERAGE magnitudes, VWAP reads close vs a volume-weighted
-            # TYPICAL price, EMA_cross reads two EMAs, slope reads OLS trajectory. %K
-            # is a pure range-POSITION statistic. Centered (2*%K-1) in [-1,+1], signed
-            # by the 14-bar close direction so it contributes bull when close persistently
-            # presses the TOP of its range in an uptrend (continuation conviction), bear
-            # when pressing the bottom in a downtrend. Distinct from the 8th efficiency
-            # voter (interbar-move/intrabar-range RATIO = trend quality); this is a LEVEL-
-            # in-range conviction. Small fixed weight 0.55 appended (existing 8 weights
-            # untouched; _wt_shift only shifts indices 1-3). Tests whether a directional
-            # range-position signal adds conviction beyond existing co-firing voters.
-            _sk_n = 14
-            _sk_high = float(np.max(bd.history["high"].values[-_sk_n:]))
-            _sk_low = float(np.min(bd.history["low"].values[-_sk_n:]))
-            _sk_k = (mid - _sk_low) / max(_sk_high - _sk_low, 1e-10)  # [0,1]
-            _sk_dir = 1.0 if closes[-1] >= closes[-_sk_n] else -1.0
-            _sk_signal = (2.0 * _sk_k - 1.0) * _sk_dir  # [-1,+1], signed by trend
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -583,7 +562,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _sk_signal / 0.6,  # 9th voter: stochastic %K range-position (sharpness 0.6)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -610,7 +588,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency, 9th: stochastic %K (small fixed weights, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -638,7 +616,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
