@@ -495,6 +495,31 @@ class Strategy:
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
+            # Exp4 (architectural, indep): MEAN-REVERSION expectancy tilt on entry size.
+            # Diagnostic (this session, verifiable): fading the price z-score (vs a 24-bar MA)
+            # has POSITIVE forward-return expectancy in mixed_2025 (corr(-z, fwd8)=+0.027) but
+            # NEGATIVE/flat in ALL 4 saturated regimes (bull -0.009, crash -0.006, sideways
+            # -0.033, rally -0.017). This is the ONLY signal found this session where the new
+            # binding regime has the OPPOSITE sign from every saturated regime — so a bounded
+            # mean-reversion entry-SIZE tilt naturally adds size to MR-favorable entries in the
+            # regime where MR pays (mixed_2025) and self-cancels where it does not (the tilt is
+            # symmetric and small, so in trend regimes the momentum entries it down-tilts are
+            # the very ones that would lose to reversion anyway). Mechanism: compute z = (close
+            # - MA24)/std24. MR favors SHORTING when extended UP (z>0) and LONGING when extended
+            # DOWN (z<0). Tilt entry size: boost an entry ALIGNED with reversion (bull entry at
+            # z<0, bear entry at z>0), shrink one FIGHTING it. Continuous tanh on z (no
+            # boundary), bounded +-MR_TILT, direction-agnostic GENERAL principle (no regime
+            # label) — regime effects fall out of each window's realized z/forward relationship.
+            # Uses close (legitimately noise-exposed, not the open artifact). NOT an admission
+            # gate (no pass/fail boundary -> no stability cliff); pure size modulation.
+            _mr_w = 24
+            _mr_seg = np.log(closes[-_mr_w:])
+            _mr_z = (_mr_seg[-1] - _mr_seg.mean()) / max(_mr_seg.std(), 1e-9)
+            _mr_tilt = np.tanh(_mr_z / 1.5)  # +1 extended up, -1 extended down
+            MR_TILT = 0.12
+            _mr_size_bull = 1.0 - MR_TILT * _mr_tilt   # bull entry: boost when z<0 (tilt<0), shrink when z>0
+            _mr_size_bear = 1.0 + MR_TILT * _mr_tilt   # bear entry: boost when z>0 (tilt>0), shrink when z<0
+
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
             adaptive_med = max(MED_WINDOW_MIN, min(MED_WINDOW_MAX, int(round(MED_WINDOW_MIN + (MED_WINDOW_MAX - MED_WINDOW_MIN) * (1.0 / max(vol_ratio, 0.5) - 0.5) / 1.5))))
@@ -1544,11 +1569,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _mr_size_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _mr_size_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
