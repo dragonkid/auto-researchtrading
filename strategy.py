@@ -2347,29 +2347,6 @@ class Strategy:
             _is_resize = current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0)
             if _is_resize and abs(target - current_pos) < _deadband_frac * abs(current_pos):
                 target = current_pos  # snap-to-hold: suppress micro-resize, no residual gap
-            # Exp3 (architectural, indep): COUNTER-TREND TIME-GRID resize throttle. The
-            # explicitly-untried vehicle from the 26f4b23d session-summary (row 531): a
-            # NON-PRICE-DERIVED gate (integer-time / entry-anchored) to consolidate the
-            # partial-reduce shaves that feed the rally loss streak. Prior streak-breaking
-            # vehicles are all WALLED: per-step-$ gate = de-risk latch (catastrophic);
-            # |pos_pnl|-band = price-boundary noise (stability collapse); ratchet on
-            # exit-pressure HWM = in-sample OVERFIT (abfb9591 reverted fa18a3d7, failed
-            # cross-ex). This is the 4th, untried vehicle: a pure INTEGER-TIME gate
-            # (bars_held parity, noise-IMMUNE under AR(1) -- no price-derived boundary
-            # that flips per noise path). For ct positions only (ret_vlong ct indicator,
-            # fast-saturating /0.01 near-constant), suppress same-sign resizes on ODD
-            # bars_held -> halves ct resize emission frequency -> fewer realized partial-
-            # reduce loss events -> IF the rally 4-loss streak contains de-risk shaves
-            # from one held ct short, this breaks the streak (streak_gate 0.873 -> ~0.90).
-            # Trend-aligned (ct indicator 0) byte-identical; entries/exits/flips exempt
-            # (current_pos==0 / target==0 / sign change -> _is_resize False). Risk: a
-            # 1-bar lag on ct de-risk shrinks -> slightly larger per-shave loss (raw cost);
-            # the experiment tests whether the streak-break (streak_gate gain) outweighs
-            # the lag. New control flow at the order-emission layer (non-price-derived gate).
-            if _is_resize:
-                _ct_tg = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                if _ct_tg > 0.5 and (bars_held % 2) == 1:
-                    target = current_pos  # time-grid: skip ct resize on odd bars_held
             # Architectural: churn-gated ABSOLUTE-target grid quantization (rally-stab
             # lever, generalizes ef027049 snap-to-hold from the resize DELTA to the resize
             # LEVEL). ef027049 snaps target->current_pos only when the change is tiny; once
