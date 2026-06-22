@@ -303,6 +303,14 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp1 (this session): per-symbol EMA of the 1-bar pos_pnl delta (profit
+        # VELOCITY) and its previous value (for ACCELERATION). Drives a forward-looking
+        # pre-peak harvest exit source: a winner still rising (vel>0) but decelerating
+        # (accel<0) is peak-forming BEFORE giveback begins -- distinct from pp_pressure
+        # (backward giveback) so it fires when pp=0, evading the MAX-fusion dominance
+        # wall that made prior 7th/8th exit sources inert. Reset on full exit.
+        self._pnl_vel_ema = {}
+        self._pnl_vel_prev = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1681,6 +1689,17 @@ class Strategy:
                 # gating rule on the high-water mark, not a low-pass filter.
                 _prev_pnl = self._smoothed_pnl.get(symbol, pos_pnl)
                 self._smoothed_pnl[symbol] = pos_pnl
+                # Exp1 (this session): profit VELOCITY (EMA of 1-bar pos_pnl delta) and
+                # ACCELERATION (vel - prev_vel). Forward-looking peak-prediction signals
+                # distinct from the backward-looking peak/giveback stats above. Moderate
+                # EMA smoothing (alpha 0.4) damps single-bar AR(1) noise in the 2nd
+                # derivative so the pre-peak harvest source does not destabilize exits.
+                _pnl_delta = pos_pnl - _prev_pnl
+                _pnl_vel = 0.4 * _pnl_delta + 0.6 * self._pnl_vel_ema.get(symbol, _pnl_delta)
+                self._pnl_vel_ema[symbol] = _pnl_vel
+                _pnl_vel_prev = self._pnl_vel_prev.get(symbol, _pnl_vel)
+                self._pnl_vel_prev[symbol] = _pnl_vel
+                _pnl_accel = _pnl_vel - _pnl_vel_prev
                 _curr_peak = self.peak_pnl.get(symbol, 0.0)
                 # Confirmed-peak update: peak shifts only when pos_pnl > prev_peak AND
                 # pos_pnl >= prev_pos_pnl (rising bar).
@@ -1990,6 +2009,30 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): profit-DECELERATION pre-peak harvest
+                # (7th soft source in the MAX fusion). NEW forward-looking peak-
+                # prediction data dep: every prior soft source is backward-looking
+                # (pp=giveback from peak, slope=price direction, time=bars held,
+                # ve/vc=vol level, ar=recovery from MAE). This reads the 2nd derivative
+                # of realized pos_pnl. Fires when a winner is STILL RISING (vel>0) BUT
+                # DECELERATING (accel<0) -- the peak-forming moment BEFORE giveback
+                # begins, so pp_pressure=0 and slope is still WITH the position ->
+                # _sl_slope_pressure=0. It is therefore the SOLE firing source on those
+                # bars, evading the documented MAX-fusion dominance wall that made prior
+                # 7th/8th exit sources inert (they fired on the SAME bars as pp/vc so
+                # MAX took the bigger). Harvesting 1-2 bars BEFORE the giveback cap
+                # binds locks the peak earlier -> smaller realized giveback -> lower DD
+                # -> higher dd_gate + calmar (the rally DD=5.19pct lever, dd_gate 0.951).
+                # Profit-side only (only winners have a peak to predict); deep-saturated
+                # gates (near-constant where they fire -> noise-robust per the validated
+                # safe-family lesson); bounded magnitude 0.30. New per-symbol state
+                # (_pnl_vel_ema/_pnl_vel_prev) + new control flow in the MAX fusion.
+                _dec_stop = abs(STOP_LOSS_PCT)
+                _dec_profit = max(0.0, np.tanh((pos_pnl - 0.5 * _dec_stop) / _dec_stop))  # meaningful profit
+                _dec_rising = max(0.0, np.tanh(_pnl_vel / (0.2 * _dec_stop)))             # still rising (pre-peak)
+                _dec_decel = max(0.0, np.tanh(-_pnl_accel / (0.15 * _dec_stop)))           # decelerating (peak forming)
+                _dec_pressure = 0.30 * _dec_profit * _dec_rising * _dec_decel
+                _w_dec = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2005,6 +2048,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_dec * _dec_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
@@ -2489,7 +2533,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_vel_ema, self._pnl_vel_prev):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
