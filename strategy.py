@@ -76,6 +76,26 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Exp1 (this session, architectural): MTM-STAGNATION exit pressure — a NEW 8th soft
+# source in the exit MAX-fusion targeting the dead-capital / round-tripping signature.
+# mixed_2025 is the binding regime (score 0.405 vs 0.66-0.99 others): 100pct closed-
+# trade WR but Sharpe only 0.804 because held positions OSCILLATE in mark-to-market
+# while making little NET progress (choppy hour-to-hour equity -> low Sharpe even
+# though every trade eventually closes positive) AND it under-returns (4.4pct APY at
+# 2.8pct DD). A position whose own pos_pnl PATH has (a) been held a while, (b) made
+# little NET progress relative to its oscillation amplitude (path_eff low), and (c)
+# is currently NOT making a fresh high, is "dead capital" tying up the book in chop.
+# Adding EXIT PRESSURE (not a size harvest) frees that capital to redeploy. DISTINCT
+# from the reverted path_eff SIZE-harvest branch (which cut size proportional to
+# choppiness alone -> over-harvested smooth-but-wiggly CLIMBERS): this requires LOW
+# NET PROGRESS as a hard multiplicative gate, so a smooth climber (high net progress)
+# gets ZERO stagnation pressure BY CONSTRUCTION (spared, not just down-weighted).
+# Profit/flat-side activation envelope, fed into the existing MAX fusion (so it only
+# binds when it EXCEEDS slope/pp/time pressure -> a genuine stagnation that no other
+# source has caught). New per-symbol _pnl_path state; reuses the rolling-window pattern.
+STAG_PRESSURE_MAX = 0.45    # max stagnation exit pressure contributed to the MAX fusion
+STAG_PATH_WINDOW = 10       # rolling window of pos_pnl values for net-progress / oscillation
+STAG_MIN_BARS = 5           # only consider stagnation after this many bars held (let trades develop)
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -291,6 +311,9 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
+        # Exp1 (this session): per-symbol rolling pos_pnl PATH (mark-to-market history
+        # since entry) for the MTM-stagnation exit pressure. Reset on full exit.
+        self._pnl_path = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1556,6 +1579,13 @@ class Strategy:
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                # Exp1 (this session): maintain rolling pos_pnl PATH (mark-to-market
+                # trajectory since entry) for the MTM-stagnation exit pressure below.
+                _stag_path = self._pnl_path.get(symbol, [])
+                _stag_path.append(pos_pnl)
+                if len(_stag_path) > STAG_PATH_WINDOW:
+                    _stag_path = _stag_path[-STAG_PATH_WINDOW:]
+                self._pnl_path[symbol] = _stag_path
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -1997,6 +2027,38 @@ class Strategy:
                 # only the most-pressing term (MAX with weights): eliminates correlated
                 # noise addition. Weights preserved so profit-side terms dominate when
                 # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
+                # Exp1 (this session, architectural): MTM-STAGNATION exit pressure (8th
+                # soft source). Fires when a position has been held a while but its own
+                # mark-to-market PnL PATH is going nowhere while oscillating — the
+                # dead-capital / round-tripping signature behind mixed_2025's low Sharpe
+                # (100pct closed-WR but choppy held-equity). path_eff = |net pos_pnl
+                # progress| / sum(|bar-to-bar moves|) over the window, in [0,1]: ~1 =
+                # smooth monotone climber (SPARED — high net progress), ->0 = choppy
+                # round-tripper (PRESSURED). The LOW-net-progress requirement is a HARD
+                # multiplicative gate (1 - path_eff): a smooth climber's path_eff~1 ->
+                # gate~0 -> zero stagnation pressure BY CONSTRUCTION (this is the key
+                # distinction from the reverted path_eff SIZE-harvest, which down-weighted
+                # by choppiness alone and clipped smooth-but-wiggly climbers). Also gated
+                # on a minimum hold (STAG_MIN_BARS — let trades develop) and on NOT making
+                # a fresh high (giveback>0 — a still-climbing winner has ~0 giveback ->
+                # spared). Direction-agnostic (pos_pnl is already signed). Fed into the
+                # MAX fusion so it only binds when it EXCEEDS every other pressure — a
+                # genuine stagnation no slope/pp/time source has already caught. New
+                # control flow: a stagnation term in the exit-pressure MAX. No regime label.
+                _stag_pressure = 0.0
+                if len(_stag_path) >= STAG_MIN_BARS:
+                    _stag_arr = np.array(_stag_path)
+                    _stag_net = abs(_stag_arr[-1] - _stag_arr[0])
+                    _stag_len = float(np.sum(np.abs(np.diff(_stag_arr))))
+                    _stag_eff = _stag_net / max(_stag_len, 1e-10)  # 1 smooth-climb, ->0 round-trip
+                    # oscillation amplitude must be non-trivial (a near-flat path with
+                    # tiny moves is not "round-tripping", just quiet — don't pressure it)
+                    _stag_amp = max(0.0, np.tanh(_stag_len / abs(STOP_LOSS_PCT)))
+                    # NOT making a fresh high (rounding over): giveback from peak > 0
+                    _stag_giveback = max(0.0, min(1.0, np.tanh(_giveback_ratio / 0.30)))
+                    _stag_hold_w = max(0.0, min(1.0, (bars_held - STAG_MIN_BARS) / 4.0))
+                    _stag_pressure = STAG_PRESSURE_MAX * max(0.0, np.tanh((0.5 - _stag_eff) / 0.25)) * _stag_amp * _stag_giveback * _stag_hold_w
+                _w_stag = max(0.0, _pnl_scale)  # profit/flat-side only (losers handled by slope/SL)
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
@@ -2005,6 +2067,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_stag * _stag_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
@@ -2489,7 +2552,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
