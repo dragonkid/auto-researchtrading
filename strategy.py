@@ -2168,7 +2168,23 @@ class Strategy:
                     # computed above) so only rounding-over choppy winners are harvested,
                     # sparing still-climbing momentum runs. Continuous tanh (no boundary).
                     _gb_gate = max(0.0, min(1.0, np.tanh(_giveback_ratio / 0.30)))
-                    _chop_harvest = PNL_CHOP_HARVEST_MAX * max(0.0, np.tanh((0.5 - _path_eff) / 0.25)) * _gb_gate * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
+                    # Branch step3: SPARE strong trend-aligned winners. Step2 left bull
+                    # -0.034 (Sh FLAT 1.9997->1.9973 = the harvest cut bull's size ->
+                    # return_reward cost, NOT signal damage). Bull's winners are strongly
+                    # trend-aligned longs in a deep multi-day uptrend (ret_vlong~0.075);
+                    # rally's harvested losers are COUNTER-trend pullback shorts (pos_dir
+                    # opposes ret_vlong) and mixed's are weak-trend choppy winners
+                    # (ret_vlong~0.033). Multiply the harvest by a (1 - trend_align)
+                    # factor so a strongly trend-aligned winner (pos_dir agrees the
+                    # multi-day ret_vlong) is largely spared, while counter-trend and
+                    # weak-trend winners keep full harvest. tanh(ret_vlong*pos_dir/0.05)
+                    # saturates near bull's 0.075 (spared ~1) but is small at mixed's
+                    # 0.033 (spared ~0.5) and ~0 / negative for rally ct shorts (full
+                    # harvest). Continuous, no boundary; direction-agnostic principle.
+                    _harv_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _harv_align = max(0.0, np.tanh(ret_vlong * _harv_pos_dir / 0.05))
+                    _harv_spare = 1.0 - 0.85 * _harv_align  # strong trend-aligned -> ~0.15x harvest
+                    _chop_harvest = PNL_CHOP_HARVEST_MAX * max(0.0, np.tanh((0.5 - _path_eff) / 0.25)) * _gb_gate * _harv_spare * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
                     target = target * (1.0 - _chop_harvest)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
