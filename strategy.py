@@ -588,18 +588,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            # Exp5 (architectural, indep): trend-strength chop-dampener on the 8th voter
-            # (range/close efficiency), mirroring the VWAP voter's _vwap_wt pattern. The
-            # 8th voter (Exp4 keep 5a748c8a) helped bull +0.022 + rally +0.020 but slightly
-            # hurt sideways -0.0014 because a range/close efficiency signal in chop
-            # (low-trend mean-reverting) is noise-dominated (range dominates closes
-            # erratically). Scale the 8th weight from 0.35 (deep chop, lower than the
-            # fixed 0.55 -> spares sideways) up to 0.80 (strong trend -> boosts bull/rally
-            # trend-continuation further). Continuous via _trend_strength_w (no boundary).
-            # The trend-strength _wt_shift only shifts indices 1-3, leaving this weight
-            # trend-scaled independently. New cross-timescale dep on the 8th voter weight.
-            _rc_wt = 0.35 + 0.45 * _trend_strength_w  # in [0.35, ~0.80]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, _rc_wt)  # 8th: range/close efficiency voter (trend-scaled)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
