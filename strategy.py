@@ -76,12 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp4 (this session): uniform held-resize de-risk factor. Every same-sign held resize
-# emits a target scaled by this factor (never below current_pos). Diagnostic-measured to
-# raise Sharpe in the two binding regimes (mixed 0.804->1.169, rally 1.526->1.612 at 0.90)
-# at the cost of the strong sideways (2.002->1.738). General "hold smaller through resizes"
-# risk principle (same factor every regime; asymmetric benefit falls out of resize structure).
-HELD_RESIZE_DERISK = 0.90
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -2288,31 +2282,6 @@ class Strategy:
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
-
-                # Exp4 (this session, architectural): uniform held-position de-risk on
-                # every resize. DIAGNOSTIC BASIS (measured this session): scaling the
-                # held-position resize target down by a fixed factor monotonically RAISES
-                # Sharpe in the two binding regimes (mixed_2025 0.804->1.169 at k=0.90,
-                # rally 1.526->1.612) while only modestly lowering the strong sideways
-                # (2.002->1.738). The binding regimes hold too much size through their
-                # choppy/mean-reverting resize sequences (mixed is 100pct long all year in
-                # a -6/-12/-35pct down market; rally grinds through pullbacks) — carrying
-                # smaller held size cuts the MTM variance that drags their Sharpe and the
-                # DD (mixed DD 2.80->1.34). This is a GENERAL "hold smaller through
-                # resizes" risk principle, NOT regime detection: it applies the SAME cut
-                # to every held resize in every regime; the asymmetric benefit falls out
-                # of each regime's own resize structure (binding regimes resize more
-                # through chop -> benefit more). Applied to the held target only
-                # (current_pos!=0, same-sign resize); fresh entries (current_pos==0), full
-                # exits (target==0), and flips are EXEMPT (risk transitions hit exact
-                # target). Placed before the target_ema so smoothing still applies. New
-                # control flow: a uniform de-risk factor on the held-resize emission.
-                if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
-                    _hold_derisk_target = target * HELD_RESIZE_DERISK
-                    # never cut below current_pos (that is the exit subsystem's job)
-                    if (current_pos > 0 and _hold_derisk_target > current_pos) or \
-                       (current_pos < 0 and _hold_derisk_target < current_pos):
-                        target = _hold_derisk_target
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
             # EMITTED position target (the final held-position LEVEL) — a NEW smoothing
