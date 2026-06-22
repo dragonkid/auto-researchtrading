@@ -551,7 +551,19 @@ class Strategy:
             _rc_intrabar = float(np.mean(_rc_high - _rc_low))
             _rc_interbar = float(np.mean(np.abs(np.diff(closes[-_rc_n - 1:]))))
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
-            _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
+            # Exp2 (architectural, indep): SMOOTH the 8th voter's direction sign.
+            # Original: _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0 -- a HARD
+            # binary that flips discontinuously when the 12-bar net return crosses zero,
+            # a classic noise-boundary (the program warns zero-crossings create flip-rate
+            # under AR(1) perturbation). Replace with a CONTINUOUS tanh of the 12-bar net
+            # return so the direction transitions smoothly through zero: saturates to +-1
+            # for clean trends (|net| > ~4pct), ramps smoothly in the narrow band near zero
+            # where the binary flip lived. Scale 0.02 (2pct): a 12-bar net of +-2pct -> tanh
+            # ~+-0.76, +-4pct -> ~+-0.96. Removes the zero-crossing boundary without changing
+            # the voter's saturated-trend behavior. Mechanism: reduces the 8th voter's
+            # flip-rate under noise near flat 12-bar nets (sideways/transition bars).
+            _rc_net = (closes[-1] - closes[-_rc_n]) / mid
+            _rc_dir = np.tanh(_rc_net / 0.02)
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
