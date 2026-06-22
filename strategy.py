@@ -553,28 +553,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp1 (architectural, indep): 9th voter -- LAG-1 RETURN AUTOCORRELATION
-            # (trend-PERSISTENCE quality). Prior CROSS-EXPERIMENT CONCLUSION: new voters
-            # must be ORTHOGONAL QUALITY (not trend-direction). This is a quality signal
-            # no existing voter reads: the lag-1 serial correlation of log returns over 24
-            # bars. Positive AC = returns persist in sign (trending/persistent -> continuation
-            # quality); AC <= 0 = mean-reverting/chop (no persistence). Distinct from the 8th
-            # range/close EFFICIENCY (move-magnitude vs range) and from R^2 (path linearity):
-            # a path can be efficient (big net move) but gappy (low AC), or persistent (high
-            # AC) but low-efficiency (grinding). Prior sessions tried AC only as a SIZE
-            # modulator / de-risk gate / admission gate (all at OLD baselines, all failed as
-            # GATES), NEVER as a directional voter in the strong-sum. Only the POSITIVE lobe
-            # contributes (max(0,ac)), signed by the 24-bar net direction so it fires bull in
-            # a persistent uptrend, bear in a persistent downtrend. Small fixed weight 0.55
-            # appended WITHOUT touching existing _base_weights.
-            _ac_n = 24
-            _ac_log = np.log(closes[-_ac_n - 1:])
-            _ac_ret = np.diff(_ac_log)
-            _ac_mean = float(np.mean(_ac_ret))
-            _ac_var = float(np.mean((_ac_ret - _ac_mean) ** 2))
-            _ac = float(np.mean((_ac_ret[:-1] - _ac_mean) * (_ac_ret[1:] - _ac_mean))) / max(_ac_var, 1e-12)
-            _ac_dir = 1.0 if closes[-1] >= closes[-_ac_n] else -1.0
-            _ac_signal = max(0.0, _ac) / 0.3 * _ac_dir  # >0 persistent trend in dir
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -584,7 +562,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _ac_signal / 1.0,  # 9th voter: lag-1 return autocorrelation persistence (sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -611,7 +588,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: lag-1 autocorrelation persistence (small fixed weights, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -639,7 +616,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
