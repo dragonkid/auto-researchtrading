@@ -2498,13 +2498,20 @@ class Strategy:
             # quantization layer cannot absorb (it is downstream of all of it). New control
             # flow at the order-emission layer.
             if abs(target - current_pos) > 1.0 * LEVERAGE_K:
-                _emit_target = target
                 if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
-                    _dr_t = target * HELD_RESIZE_DERISK
-                    # never cut below current_pos (exit subsystem owns reductions past pos)
-                    if (current_pos > 0 and _dr_t > current_pos) or (current_pos < 0 and _dr_t < current_pos):
-                        _emit_target = _dr_t
-                target = _emit_target
+                    # Scale the emitted same-sign held-resize target toward zero by k.
+                    # Diagnostic isolated the active lever: the lift comes from scaling
+                    # resizes that REDUCE the held position (trim harder when trimming) —
+                    # an exit-acceleration on partial reductions, NOT a growth cap. For a
+                    # book that is wrong-side in a chop/down regime (mixed is 100pct long
+                    # all year in a -6/-12/-35pct market), trimming the held position more
+                    # aggressively each time cuts the MTM-variance drag on Sharpe and the
+                    # DD (mixed DD 2.80->0.82, Sh 0.804->1.328 at k=0.85 in the isolating
+                    # diagnostic). It also slightly de-grows growth resizes (smaller adds),
+                    # which is the proven-safe size-shrink direction. Emitted AFTER the
+                    # emission-threshold gate fired on the UNSCALED delta (trade still
+                    # emits; only the size shrinks).
+                    target = target * HELD_RESIZE_DERISK
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
