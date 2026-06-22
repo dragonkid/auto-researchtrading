@@ -2513,23 +2513,10 @@ class Strategy:
                     # trend-aligned winner -> de-risk ~off; ~0 otherwise -> full de-risk.
                     # Continuous (tanh products, no boundary); general principle (trend-
                     # aligned winners are spared from forced trims), no regime label.
-                    # Branch step 4: STRENGTHEN the trend-aligned-winner spare to recover
-                    # bull/crash mean drag (step2 mean -0.0006 just below the keep gate).
-                    # Two changes: (1) trend-alignment uses the MAX of the 20-bar (ret_long)
-                    # and multi-day (ret_vlong) alignment — a position trend-aligned at
-                    # EITHER horizon is spared (bull is aligned at both; crash bounce-longs
-                    # are counter to the multi-day downtrend so ret_vlong-align ~0 AND
-                    # ret_long-align weak -> still trimmed -> crash keeps its de-risk
-                    # benefit). (2) soften the profit co-requirement: spare a trend-aligned
-                    # hold once it is at/above breakeven (profit gate floored higher) so a
-                    # bull winner mildly pulled back is still spared rather than trimmed.
                     _pos_dir_hr = 1.0 if current_pos > 0 else -1.0
-                    _hr_align_st = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.03))   # 20-bar trend-aligned
-                    _hr_align_md = max(0.0, np.tanh(ret_vlong * _pos_dir_hr / 0.012)) # multi-day trend-aligned
-                    _hr_align = max(_hr_align_st, _hr_align_md)                       # aligned at EITHER horizon
-                    _hr_profit = max(0.0, np.tanh((pos_pnl + 0.2 * abs(STOP_LOSS_PCT)) / abs(STOP_LOSS_PCT)))  # spare from ~breakeven up
-                    _hr_profit = min(1.0, _hr_profit)
-                    _hr_spare = _hr_align * _hr_profit                            # trend-aligned (either horizon) winner
+                    _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
+                    _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
+                    _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
                     _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
                     target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
