@@ -2157,7 +2157,18 @@ class Strategy:
                     _path_net = abs(_path_arr[-1] - _path_arr[0])
                     _path_len = float(np.sum(np.abs(np.diff(_path_arr))))
                     _path_eff = _path_net / max(_path_len, 1e-10)  # 1 smooth, ->0 choppy
-                    _chop_harvest = PNL_CHOP_HARVEST_MAX * max(0.0, np.tanh((0.5 - _path_eff) / 0.25)) * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
+                    # Branch step2: GATE the chop-harvest by giveback-from-peak. The step1
+                    # harvest fired on path-choppiness alone, which cut sideways MOMENTUM
+                    # runs (choppy path but still making fresh highs -> forward-return is
+                    # momentum, harvesting loses Sharpe 2.0->1.81). A position that is
+                    # actively ROUNDING OVER (pulled back from its peak = the mixed
+                    # mean-reversion / rally-pullback signature) has positive giveback;
+                    # a still-rising winner (sideways/bull making new highs) has ~0
+                    # giveback. Gate by _giveback_ratio (peak-pos_pnl normalized, already
+                    # computed above) so only rounding-over choppy winners are harvested,
+                    # sparing still-climbing momentum runs. Continuous tanh (no boundary).
+                    _gb_gate = max(0.0, min(1.0, np.tanh(_giveback_ratio / 0.30)))
+                    _chop_harvest = PNL_CHOP_HARVEST_MAX * max(0.0, np.tanh((0.5 - _path_eff) / 0.25)) * _gb_gate * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
                     target = target * (1.0 - _chop_harvest)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
