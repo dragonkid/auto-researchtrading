@@ -2517,20 +2517,8 @@ class Strategy:
                     _hr_align = max(0.0, np.tanh(ret_long * _pos_dir_hr / 0.04))   # trend-aligned
                     _hr_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # in profit
                     _hr_spare = _hr_align * _hr_profit                            # strong trend-aligned winner
-                    # Branch step 3: apply the de-risk ONLY to REDUCTIONS (|target| <
-                    # |current_pos|), not to growth resizes. The isolating diagnostic
-                    # showed the binding-regime lift comes from trimming REDUCTIONS harder
-                    # (exit-acceleration on partial trims), while trimming GROWTH resizes
-                    # is what capped bull's trend-winner adds (the -0.539 step-1 damage).
-                    # Restricting to reductions keeps mixed's wrong-side-trim gain while
-                    # leaving bull's winner-GROWTH adds at full size. Combined with the
-                    # trend-aligned-winner spare (step 2), a bull pullback-trim of a
-                    # trend-aligned winner is doubly protected. General principle: only
-                    # accelerate trims, never cap growth.
-                    _is_reduction = abs(target) < abs(current_pos)
-                    if _is_reduction:
-                        _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
-                        target = target * _hr_derisk
+                    _hr_derisk = 1.0 - (1.0 - HELD_RESIZE_DERISK) * (1.0 - _hr_spare)
+                    target = target * _hr_derisk
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
