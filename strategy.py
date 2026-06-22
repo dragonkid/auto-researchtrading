@@ -76,6 +76,11 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
+# Exp5 (this session): emission-layer held-resize de-risk factor. Applied to the FINAL
+# emitted Signal target for same-sign held resizes (downstream of grid/snap/EMA, the one
+# placement Exp4 proved is not re-quantized away). Diagnostic-measured to lift the binding
+# regimes' Sharpe (mixed 0.804->1.30, rally 1.526->1.60 at 0.85) at the cost of sideways.
+HELD_RESIZE_DERISK = 0.90
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -2476,7 +2481,30 @@ class Strategy:
             # restoring the baseline trade set. prepare.py's \$1 execution floor
             # is then moot (strategy already filters <\$2). This makes trade
             # SELECTION leverage-invariant (the last size-dependent decision gate).
+            # Exp5 (this session, architectural): EMISSION-LAYER held-resize de-risk.
+            # Exp4 proved an upstream target cut is NEUTRALIZED by the grid-quantize +
+            # snap-deadband + target_ema (they re-round a reduced target back onto the
+            # same lattice level). The monkeypatch diagnostic that lifted the binding
+            # regimes (mixed 0.804->1.30, rally 1.526->1.60 Sh at k=0.85) scaled the
+            # FINAL emitted Signal AFTER all quantization. Reproduce that faithfully: when
+            # a same-sign HELD resize is about to be emitted, emit a target scaled by
+            # HELD_RESIZE_DERISK (hold k less than the strategy wanted) — applied AFTER the
+            # emission-threshold gate fires on the UNSCALED delta (so the trade still
+            # emits; we only shrink the emitted size). Fresh entries (current_pos==0), full
+            # exits (target==0), and flips (sign change) are EXEMPT (risk transitions must
+            # hit exact target). General "hold smaller through resizes" risk principle; the
+            # asymmetric regime benefit falls out of each regime's resize structure (the
+            # binding regimes resize through chop -> benefit). This is the ONE placement the
+            # quantization layer cannot absorb (it is downstream of all of it). New control
+            # flow at the order-emission layer.
             if abs(target - current_pos) > 1.0 * LEVERAGE_K:
+                _emit_target = target
+                if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
+                    _dr_t = target * HELD_RESIZE_DERISK
+                    # never cut below current_pos (exit subsystem owns reductions past pos)
+                    if (current_pos > 0 and _dr_t > current_pos) or (current_pos < 0 and _dr_t < current_pos):
+                        _emit_target = _dr_t
+                target = _emit_target
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
