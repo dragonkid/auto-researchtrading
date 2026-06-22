@@ -709,28 +709,8 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            # Exp2 (architectural, indep): TREND-ADAPTIVE entry-readiness EMA RHO. The
-            # accumulator's own rationale (line 696-710) identifies entry-TIMING divergence
-            # as rally's binding-constraint root cause. A FIXED RHO=0.5 smooths uniformly,
-            # but the optimal noise-vs-lag trade-off DIFFERS by regime: in strong trends
-            # (high _trend_strength_w) a conviction spike IS signal, so LESS smoothing
-            # (lower RHO = faster EMA) admits the trend entry 1 bar earlier -> captures
-            # more of the trend move -> higher Sharpe in the trend regimes (rally 1.526
-            # binding, crash 1.273 return-limited). In chop (low _trend_strength_w) MORE
-            # smoothing (higher RHO) filters single-bar marginal-conviction noise entries
-            # -> fewer sideways noise trades. This is the OPPOSITE direction of the prior
-            # Exp2 (rc_dir sign smoothing) which smoothed the voter SIGN and hurt trends
-            # (it added smoothing IN trends); here smoothing is REDUCED in trends and
-            # INCREASED in chop. _trend_strength_w = tanh(|ret_long|/0.04) is a smooth
-            # 20-window quantity (not per-bar noisy), so the RHO varies smoothly (no
-            # boundary). RHO_dyn in [0.65 chop, 0.35 strong trend] (baseline 0.5 at
-            # mid-trend). New control flow: EMA memory depends on long-window trend
-            # strength. Counter-trend ct admission still filtered by _streak_ct_admit +
-            # ct size shrinks (independent of RHO), so faster trend admission does not
-            # admit the losing ct re-entries.
-            _rho_dyn = 0.65 - 0.30 * _trend_strength_w
-            _acc_b = _rho_dyn * _acc_b + (1.0 - _rho_dyn) * _bull_margin
-            _acc_s = _rho_dyn * _acc_s + (1.0 - _rho_dyn) * _bear_margin
+            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
