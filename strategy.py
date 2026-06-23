@@ -2356,29 +2356,6 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                # Exp2 (this session): MTM-chop AMPLIFIER on the target-EMA loss-gate.
-                # The loss-gate above already cuts smoothing alpha for LOSING ct positions
-                # so they track the raw shrinking target faster (de-risk sooner). A losing
-                # ct position that is ALSO CHOPPY (low MTM-path-efficiency = whipsaws back-
-                # and-forth with little net progress, the dead-capital pattern) is even more
-                # likely to be a wrong-side persistent book (mixed's longs in a downtrend)
-                # -> amplify the alpha cut for choppy losers (track raw even faster). NEW
-                # data dep: the MTM-path-efficiency axis (proven at the emission reduction
-                # throttle, baseline 1d764b9f) now ALSO feeds the upstream target-EMA gate.
-                # Smooth (chop continuous, 0..1), reduction-style (faster de-risk only),
-                # reaches mixed (its wrong-side longs are ct+losing+choppy). Trend-aligned
-                # ct winners (gate 0 -> alpha 0) byte-identical; non-ct positions skipped
-                # before this block. Chop~0 smooth ct losers -> _te_chop_gate 1 -> no extra
-                # cut (only the loss-gate applies) -> byte-identical to baseline there.
-                _pp_te = self._pnl_path.get(symbol, [])
-                if len(_pp_te) >= 4:
-                    _ppa_te = np.array(_pp_te)
-                    _net_te = abs(_ppa_te[-1] - _ppa_te[0])
-                    _tot_te = float(np.sum(np.abs(np.diff(_ppa_te))))
-                    _te_eff = _net_te / max(_tot_te, 1e-10)
-                    _te_chop = max(0.0, min(1.0, 1.0 - _te_eff))
-                    _te_chop_gate = 1.0 - 0.30 * _te_chop  # cut alpha up to 30% more for choppy losers
-                    _te_alpha = _te_alpha * _te_chop_gate
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
