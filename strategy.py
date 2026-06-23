@@ -2572,6 +2572,48 @@ class Strategy:
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
+            # Exp2 (architectural, indep): COUNTER-TREND-SEVERITY-GATED GROWTH-RESIZE
+            # DE-RISK at the emission layer. Distinct from the reduction-only throttle
+            # above: that trims REDUCTIONS (|target|<|current_pos|), which prior
+            # sessions proved are re-quantized to zero on mixed (sub-grid deltas round
+            # to the same grid line -> no emission). GROWTH resizes (|target|>|current_pos|,
+            # same sign = a held position BUILDING UP) are LARGER deltas that cross grid
+            # lines and ARE emitted -- so a growth-side de-risk reaches mixed's held
+            # wrong-side longs (the build-ups of the losing position). The prior branch
+            # (row 1211 step2, uniform k=0.90 on ALL held resizes) moved mixed +0.151
+            # precisely via this growth channel, but failed keep because it ALSO trimmed
+            # bull/crash trend-aligned winner growth. THIS experiment separates them
+            # with the ct-severity gate: trim growth ONLY when the held position is
+            # counter-trend to the multi-day trend (ct_sev~1 = mixed's wrong-side longs
+            # in a downtrend; ct_sev~0 = bull/crash/rally trend-aligned winners -> byte-
+            # identical growth). Same fast-saturating /0.01 ret_vlong ct-severity level
+            # signal (near-constant, noise-free per the validated safe-family lesson).
+            # Winner-fade gated with a HIGHER onset (+1.0*stop vs the reduction throttle's
+            # +0.5*stop) so mixed's typical modest-PnL wrong-side longs keep full trim
+            # while any deep winner (a ct long that genuinely recovered) is spared.
+            # De-risk is shrink-toward-current_pos (never below -> never a flip/reduction
+            # -> respects risk-transition exemptions). New control flow at the emission
+            # layer: a growth-resize de-risk, ct-severity-gated, distinct from the
+            # reduction-only MTM-chop throttle.
+            _is_growth = (current_pos != 0 and target != 0
+                          and (current_pos > 0) == (target > 0)
+                          and abs(target) > abs(current_pos))
+            if _is_growth:
+                _pos_dir_g = 1.0 if current_pos > 0 else -1.0
+                _ct_sev_g = max(0.0, np.tanh(-_pos_dir_g * ret_vlong / 0.01))  # ~1 ct, ~0 trend-aligned (near-constant, noise-free)
+                # Winner-fade with onset +1.0*stop: full trim at pos_pnl<=+1.0*stop, fading
+                # to ~0 at pos_pnl>=+2.0*stop (spare deep winners only).
+                _growth_winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 1.0) / 1.0))
+                # Shrink the growth distance by up to 50% for full-ct-sev positions (k=0.50):
+                # new growth = (1 - 0.50*ct_sev*winner_fade) of the raw growth, added to
+                # current_pos. Never reduces below current_pos (growth-only, respects the
+                # same-sign + |target|>|current_pos| guard). 0.50 magnitude (vs prior
+                # branch's 0.90 uniform which over-trimmed bull/crash -- the ct_sev gate
+                # excludes them, allowing a gentler magnitude here).
+                _growth_shrink = 1.0 - 0.50 * _ct_sev_g * _growth_winner_fade
+                _new_target_g = current_pos + (target - current_pos) * _growth_shrink
+                if (_new_target_g > 0) == (current_pos > 0) and abs(_new_target_g) >= abs(current_pos):
+                    target = _new_target_g
             if abs(target - current_pos) > 1.0 * LEVERAGE_K:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
