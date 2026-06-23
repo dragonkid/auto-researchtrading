@@ -1680,6 +1680,33 @@ class Strategy:
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
+                    # Exp3 (architectural, indep): PROFIT-PLATEAU scale-in freeze. NEW
+                    # control-flow dependency at the scale-in decision, routed through the
+                    # scale_frac multiplier (NOT a new MAX-fusion exit source -- prior peak-stall
+                    # EXIT sources were walled under MAX-fusion, a2abd692/83ffa0a). When a
+                    # WINNING position's pos_pnl has STALLED -- declined from its recent local
+                    # peak during the scale-in window -- freeze further scale-in. Mechanism:
+                    # a stalling winner (trend that justified the entry is fading) should not
+                    # grow bigger; freeze scale-in until the trend resumes. Distinct from
+                    # _adv_freeze (loss-side, ct-gated) and from _pp_pressure (exits the
+                    # position): this modulates the BUILD pace of a currently-winning hold.
+                    # Byte-identical when losing (pos_pnl<=0 -> freeze 0) or when pos_pnl is at
+                    # its recent peak (no giveback -> stall 0). Uses _pnl_path (already
+                    # maintained for the emission throttle, baseline keep 1d764b9f) to compute
+                    # the recent local peak over the scale-in window; no new price-derived
+                    # computation. Smooth tanh on giveback-from-recent-peak ratio; shrink-side
+                    # only (freeze reduces scale_frac, never grows it -> never over-commits).
+                    # Direction-agnostic general principle (no regime label).
+                    if pos_pnl > 0:
+                        _pp_f = self._pnl_path.get(symbol, [])
+                        _stall_freeze = 0.0
+                        if len(_pp_f) >= 3:
+                            _pp_a = np.array(_pp_f[-min(len(_pp_f), 6):])
+                            _recent_peak = float(_pp_a.max())
+                            if _recent_peak > 1e-7:
+                                _giveback_from_peak = (_recent_peak - pos_pnl) / _recent_peak  # [0,1]
+                                _stall_freeze = 0.40 * max(0.0, min(1.0, np.tanh((_giveback_from_peak - 0.30) / 0.20)))
+                        scale_frac = scale_frac * (1.0 - _stall_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
                     # proportionally smaller for the whole hold instead of ramping back to
