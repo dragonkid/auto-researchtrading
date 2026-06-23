@@ -2176,7 +2176,7 @@ class Strategy:
                     # realized vol is a general principle (low-vol peaks give back to chop -> harvest
                     # harder; high-vol peaks ride a sharp trend -> let them run). New cross-
                     # component data dep: tp_harvest magnitude depends on realized vol_ratio.
-                    _tp_mag = 0.30 + 0.20 * max(0.0, np.tanh((0.75 - vol_ratio) / 0.3))
+                    _tp_mag = 0.30 + 0.35 * max(0.0, np.tanh((0.75 - vol_ratio) / 0.3))
                     _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
