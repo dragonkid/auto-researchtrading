@@ -1865,6 +1865,50 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp2 (architectural, indep): MTM-PATH-EFFICIENCY-gated max_hold extension
+                # for trend-aligned winners. NEW data dep at the time-pressure decision: the
+                # per-position pos_pnl path-efficiency (|net pos_pnl| / sum|bar-to-bar pos_pnl
+                # delta| over the 12-bar rolling path, in [0,1]) -- ALREADY maintained in
+                # self._pnl_path for the emission-layer MTM-chop throttle (baseline keep
+                # 1d764b9f) but consumed ONLY at emission; this reuses it at the time-pressure
+                # max_hold decision (a genuinely new control-flow dependency at a distinct
+                # subsystem point). Mechanism: a trend-aligned WINNING position (pos_dir matches
+                # ret_vlong sign) whose pos_pnl path is SMOOTH (high MTM-eff = steady climb
+                # with little giveback, e.g. crash's grinding downtrend shorts that capture
+                # down-legs smoothly) is a confirmed ongoing trend -> extend its hold window so
+                # time-pressure fires later -> capture more of the trend move -> higher Sharpe
+                # in the return-limited crash regime (Sh1.27, 100pct WR, DD2.46pct headroom).
+                # SEPARATOR (genuinely new vs the prior vol-stability winner-hold branch f5cd1b82
+                # which used vol_6/vol_18 + deep-trend + slope-conf + hump-profit): PATH-SMOOTHNESS
+                # distinguishes crash's smooth trend-climb from bull-2021's trend-aligned but
+                # CHOPPY climb (sharp corrections -> low MTM-eff despite trend-alignment). The
+                # prior branch bled bull/sideways (-0.022) because its separators could not
+                # exclude bull's trend-aligned corrective longs; MTM-eff is a per-position
+                # path statistic that directly measures whether the trend climb is SMOOTH (worth
+                # riding longer) vs CHOPPY (giveback-prone, should NOT extend). Profit-gated
+                # (pos_pnl>0) so only winners extend; trend-aligned-gated (ret_vlong*pos_dir>0)
+                # so counter-trend rally pullback shorts (the losing rally trades) do NOT extend.
+                # Smoothness-gated (MTM-eff high) so choppy-climb winners (bull corrective
+                # longs) do NOT extend. Small max extension (+0.08*max_hold = ~1 bar) bounded
+                # by the prior branch's documented crash stability wall at +5 magnitude (the
+                # +3-bar extension crashed crash stability 1.0->0.104; a ~1-bar extension is
+                # well below that cliff). Trend-aligned byte-identical by construction is NOT
+                # guaranteed here (this extends trend-aligned winners, unlike _ct_hold_sat which
+                # spares them) -- so this is NOT byte-identical on bull/crash/sideways/rally
+                # trend longs; the MTM-eff gate is what isolates crash's smooth climb.
+                _pp_hist_h = self._pnl_path.get(symbol, [])
+                if len(_pp_hist_h) >= 4 and pos_pnl > 0:
+                    _ppa_h = np.array(_pp_hist_h)
+                    _net_h = abs(_ppa_h[-1] - _ppa_h[0])
+                    _tot_h = float(np.sum(np.abs(np.diff(_ppa_h))))
+                    _mtm_eff_h = _net_h / max(_tot_h, 1e-10)  # [0,1], 1=smooth climb
+                    _pos_dir_h = 1.0 if current_pos > 0 else -1.0
+                    _trend_align_h = max(0.0, np.tanh(_pos_dir_h * ret_vlong / 0.02))  # ~0 sideways, ~1 strong trend-aligned
+                    # Smoothness gate: ramp from 0 at MTM-eff<=0.5 to 1 at MTM-eff>=0.8 (crash's
+                    # smooth downtrend shorts sit high; bull's corrective choppy longs sit low).
+                    _smooth_h = max(0.0, min(1.0, (_mtm_eff_h - 0.5) / 0.3))
+                    _hold_ext_mtm = 0.08 * _trend_align_h * _smooth_h
+                    _max_hold *= 1.0 + _hold_ext_mtm
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
