@@ -2151,7 +2151,27 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
+                    # Prior session walled magnitude raise at 0.50 (crash stability collapsed
+                    # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
+                    # trend-align factor used 20-bar ret_long, which during crash recovery bounces
+                    # (ret_long>0 for shorts = product<0 -> factor 0 -> _ts_supp 0 -> NO suppression
+                    # -> full harvest -> over-harvested crash recovery winners). Exp4 KEEP fixed the
+                    # root cause: _ts_supp now uses multi-day ret_vlong*pos_dir. Crash shorts in a
+                    # multi-day downtrend (ret_vlong<0, pos_dir=-1 -> product>0) -> _ts_supp HIGH ->
+                    # harvest SUPPRESSED -> crash protected at the magnitude raise. With crash now
+                    # correctly shielded by the multi-day factor, the magnitude ceiling may lift.
+                    # mixed's deep peaks (tp_ratio 16.47, MAE clean, already _ts_supp~0 = fully
+                    # unsuppressed) get a DEEPER harvest per fire (0.45 vs 0.30 = +50pct) -> more
+                    # paper PnL converted to realized per re-peak -> smaller remaining position ->
+                    # less giveback on the next oscillation -> lower MTM oscillation -> higher mixed
+                    # Sharpe (the binding floor 0.408, byte-identical across all prior tp_harvest
+                    # magnitude experiments which crash-wall blocked testing above 0.50). Continuous
+                    # (the 0.30 was a fixed scalar, not a gate; changing it scales the existing smooth
+                    # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
+                    # structural fix that unblocked the crash wall). Targets mixed; crash protected by
+                    # the multi-day _ts_supp.
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
