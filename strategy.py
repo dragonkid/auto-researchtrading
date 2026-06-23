@@ -667,6 +667,28 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            # Exp2 (architectural, indep): LOW-TRADE-DENSITY admission relaxation --
+            # the INVERSE regime of _freq_factor. _freq_factor RAISES the admission
+            # bar when a symbol's recent entry density is HIGH (suppress churn). This
+            # adds the symmetric counterpart: when a symbol has been PERSISTENTLY
+            # under-trading (long gap since last entry AND low recent density), RELAX
+            # the admission threshold slightly to admit marginal-conviction entries
+            # that would otherwise sit just below the bar. Mechanism: the sample_factor
+            # scoring term sqrt(min(trades/50,1)) penalizes regimes with <50 trades
+            # (mixed_2025 sits at 43 trades -> sqrt(43/50)=0.927 = ~7.6pct score drag).
+            # A symbol that trades rarely is leaving sample_factor on the table; a small
+            # threshold relaxation on the LONG-gap condition admits more trades without
+            # touching high-churn regimes (which never see a long gap). Self-measured
+            # behavioral feedback on the symbol's own realized trade rate (same signal
+            # _freq_factor reads, opposite regime) -- NOT a market-regime classifier;
+            # the regime effects fall out of each symbol's realized entry pace.
+            # Conservative: only fires after a 40-bar gap (rally ~86-bar avg gap / crash
+            # ~158-bar / mixed ~204-bar -> fires often for mixed, rarely for rally) AND
+            # only relaxes by max 8pct (marginal-conviction admissions, not noise). The
+            # EMA accumulator + 2-bar persist gate still filter single-bar noise spikes
+            # (relaxation lowers the bar but does not bypass the smoothing).
+            _bars_since_last_entry = self.bar_count - self._eh[0] if _eh else 999
+            _low_density_relax = 0.08 * max(0.0, min(1.0, (_bars_since_last_entry - 40.0) / 60.0))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -688,8 +710,8 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
-            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04))) * (1.0 - _low_density_relax)
+            _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 - _low_density_relax)
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
