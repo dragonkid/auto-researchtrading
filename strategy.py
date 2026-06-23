@@ -570,33 +570,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp (architectural, indep): 9th voter -- RANGE-EXPANSION-Z directional
-            # conviction. NEW orthogonal data axis: no existing voter reads the CURRENT
-            # bar's range relative to its OWN trailing range distribution as a DIRECTIONAL
-            # conviction signal. The 8th voter (range/close efficiency) reads the RATIO of
-            # interbar close-move to intrabar range (an efficiency/continuation statistic);
-            # _atr reads the range LEVEL (a magnitude, unsigned); _ve_pressure reads 6/18
-            # price-vol expansion (exit-side, unsigned, profit-only). NONE reads "is the
-            # current bar's range unusually large for this symbol AND closing in the trade
-            # direction" = a momentum-climax conviction signal. A bar whose range expansion_z
-            # is high (>1) AND that closes in the entry direction is a high-conviction
-            # directional momentum bar (trend acceleration / capitulation follow-through) ->
-            # contributes to the strong-sum. Signed by the 12-bar close direction (smooth,
-            # not a 1-bar zero-crossing -> noise-robust per the validated safe-family
-            # lesson). range_z = (current_range - mean_trailing_range) / std_trailing_range
-            # over 20 bars; tanh-bounded so a single outlier bar saturates (near-constant
-            # where it fires -> noise-free). Appended to _voter_signals_bull with a SMALL
-            # fixed weight (0.55, same as the 8th voter) WITHOUT modifying any existing
-            # _base_weights (trend-strength redistribution only shifts indices 1-3, leaving
-            # this 9th weight untouched). New orthogonal data-source voter.
-            _rz_n = 20
-            _rz_ranges = (bd.history["high"].values[-_rz_n - 1:-1] - bd.history["low"].values[-_rz_n - 1:-1])
-            _rz_mean = float(np.mean(_rz_ranges))
-            _rz_std = max(float(np.std(_rz_ranges)), 1e-10)
-            _rz_cur = float(bd.history["high"].values[-1] - bd.history["low"].values[-1])
-            _rz_z = (_rz_cur - _rz_mean) / _rz_std  # expansion z-score
-            _rz_dir = 1.0 if closes[-1] >= closes[-_rz_n] else -1.0  # 20-bar close direction
-            _rz_signal = (max(0.0, _rz_z) / 2.0) * _rz_dir  # >0 directional expansion (saturates ~1 at z>=2)
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -606,7 +579,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _rz_signal / 1.0,  # 9th voter: range-expansion-z directional conviction (sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -633,7 +605,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency voter; 9th: range-expansion-z voter (small fixed weights, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -655,13 +627,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9) -- 9 voters
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
