@@ -117,11 +117,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Exp1 (architectural, indep): portfolio-DD-headroom conviction-quality entry
-# boost magnitude. Small (the failed v2.1 attempt used +0.80 blanket and rally
-# stability collapsed); this is conviction+trend-gated so it lands on quality
-# winning trades (raises calmar, not pure scale-up). First-bar-only.
-PORT_DD_HEADROOM_BOOST = 0.10
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -342,31 +337,6 @@ class Strategy:
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
-        # Exp1 (architectural, indep): PORTFOLIO-DD-HEADROOM conviction-quality
-        # entry boost -- the symmetric counterpart to _port_dd_atten (which only
-        # SHRINKS as DD rises). _port_dd_atten is a one-directional DD-coupling: it
-        # shrinks entry size as the portfolio draws down, but there is NO symmetric
-        # mechanism that EXPANDS entry size when portfolio DD is far below the 8pct
-        # dd_gate knee (large headroom). This gap leaves capital idle in exactly the
-        # regimes with the most DD headroom and lowest Sharpe (low-DD 100pct-WR
-        # regimes where every trade wins but positions are tiny -> AnnReturn/Sharpe
-        # capped, MaxDD far below the 8pct knee). The v2.2 return_reward factor is
-        # calmar-based (APY/MaxDD): a pure uniform size boost raises APY AND DD
-        # proportionally (calmar flat -> no score gain, the leverage-farming trap the
-        # v2.2 form was designed to stop). So this boost is GATED on CONVICTION +
-        # TREND-ALIGNMENT at the entry path (where it lands on high-quality winning
-        # trades, raising APY without proportionally raising DD -> calmar up ->
-        # return_reward up, the genuine-signal path). _port_dd_headroom = unused
-        # fraction of an 8pct-knee DD budget (1.0 at peak equity, 0.0 at 8pct DD);
-        # leverage-coupled scale (same discipline as _port_dd_atten so activation is
-        # DD-LEVEL invariant under leverage). Smooth tanh (no boundary); symmetric
-        # (both long/short). The conviction+trend gate is applied at the entry target
-        # so the boost only amplifies decisive trend-aligned entries (the winners).
-        # Distinct from the failed v2.1 headroom boost (cabfb6f1 0.605): that used a
-        # blanket +0.8 size multiplier (raised DD proportionally, rally stability
-        # collapsed); this is conviction-gated +10pct first-bar-only on quality
-        # entries (captures alpha, not noise) under v2.2 calmar scoring.
-        _port_dd_headroom = max(0.0, 1.0 - np.tanh(max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10)) / (0.08 * LEVERAGE_K)))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1590,35 +1560,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp1: portfolio-DD-headroom conviction-quality entry boost.
-                # Gates the headroom signal (computed at top of on_bar) on conviction
-                # MARGIN (only decisive entries, margin>=0.30) AND trend-ALIGNMENT
-                # (entry dir matches ret_long sign, the winning-trade family) AND LOW
-                # CHURN (the noise-immune integer len(_eh) gate the baseline grids use).
-                # The conjunction ensures the boost lands on high-quality trend-aligned
-                # winners -> raises APY without proportional DD -> calmar up (the
-                # genuine-signal path the v2.2 return_reward rewards). Trend-alignment
-                # gate spares counter-trend entries (rally pullback shorts, crash
-                # dead-cat bounces -- the losers that would raise DD). The LOW-CHURN
-                # gate (branch step2) fixes the rally regression: rally operates at HIGH
-                # churn (102 trades, bursty, positions already actively managed near
-                # optimal size -> boost there raised DD 5.17->5.36 faster than return ->
-                # calmar down -> rally raw -0.002). Sparing high-churn entries keeps the
-                # boost on LOW-churn conservative books (mixed 44 trades, crash/sideways
-                # ~50) where positions are undersized relative to DD headroom. Same
-                # noise-immune behavioral gate the baseline uses (NOT a regime label);
-                # regime effects fall out of realized per-symbol entry density.
-                _headroom_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 bursting
-                _headroom_conv_bull = max(0.0, min(1.0, _bull_margin / 0.30)) * max(0.0, np.tanh(ret_long / 0.04)) * _headroom_calm
-                _headroom_conv_bear = max(0.0, min(1.0, _bear_margin / 0.30)) * max(0.0, np.tanh(-ret_long / 0.04)) * _headroom_calm
-                _headroom_boost_bull = 1.0 + PORT_DD_HEADROOM_BOOST * _port_dd_headroom * _headroom_conv_bull
-                _headroom_boost_bear = 1.0 + PORT_DD_HEADROOM_BOOST * _port_dd_headroom * _headroom_conv_bear
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _headroom_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _headroom_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
