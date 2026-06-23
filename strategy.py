@@ -2552,8 +2552,16 @@ class Strategy:
                     # max(0,..)=0 -> fade 1 -> full throttle), so mixed's wrong-side longs
                     # in a downtrend (ret_vlong<0) stay fully throttled. Smooth, no
                     # boundary. Documented bull/rally separator (multi-day trend strength).
+                    # Branch step6: SHIFTED fade transition (recover rally +0.05). Step5
+                    # faded from zero (/0.02) so rally (aligned ret_vlong ~0.006) got
+                    # fade 0.71 -> lost its gain. bull (~0.027) and rally (~0.006) are
+                    # well-separated; center a STEEP sigmoid at 0.016 so rally (below
+                    # center) keeps ~full throttle (fade ~0.9) while bull (above center)
+                    # is spared (fade ~0.05). Counter-trend/downtrend (aligned<=0) gets
+                    # fade ~1 -> mixed's wrong-side longs still fully throttled.
                     _pos_dir_mtm = 1.0 if current_pos > 0 else -1.0
-                    _strong_trend_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_mtm) / 0.02))
+                    _aligned_vlong = ret_vlong * _pos_dir_mtm
+                    _strong_trend_fade = max(0.0, min(1.0, 0.5 * (1.0 - np.tanh((_aligned_vlong - 0.016) / 0.006))))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade
