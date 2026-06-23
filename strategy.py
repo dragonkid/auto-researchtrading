@@ -194,6 +194,15 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
+# Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
+# emission layer (downstream of all quantization — the ONLY layer that reaches
+# mixed_2025 per prior session's root-cause finding), a same-sign REDUCTION resize
+# of a held position whose pos_pnl path is CHOPPY (low MTM-path-efficiency = whips
+# back-and-forth with little net progress, mixed's wrong-side-long book) is
+# AMPLIFIED — trim the choppy dead-capital position faster. Smooth-climbing winners
+# (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
+# identical by construction. Reduction-only (risk-reducing, safe family).
+MTM_CHOP_TRIM_AMP = 0.60
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -303,6 +312,14 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
+        # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
+        # trajectory since entry). Used to compute MTM-path-efficiency =
+        # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
+        # HIGH = the held position's mark-to-market climbs smoothly (bull/crash
+        # winners); LOW = the MTM whips back and forth with little net progress
+        # (mixed_2025's 100pct-long-in-a-down-year book, eq-autocorr -0.427).
+        # Drives the emission-layer reduction throttle. Reset on full exit.
+        self._pnl_path = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -1556,6 +1573,14 @@ class Strategy:
                 if current_pos < 0:
                     pos_pnl = -pos_pnl
                 bars_held = self.bar_count - self.entry_bar.get(symbol, 0)
+                # Exp1 (this session): maintain rolling pos_pnl PATH (12-bar) for the
+                # MTM-path-efficiency signal consumed at the emission layer. Append the
+                # CURRENT pos_pnl each held bar; efficiency computed below at emission.
+                _pp_hist = self._pnl_path.get(symbol, [])
+                _pp_hist.append(pos_pnl)
+                if len(_pp_hist) > 12:
+                    _pp_hist = _pp_hist[-12:]
+                self._pnl_path[symbol] = _pp_hist
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -2476,6 +2501,37 @@ class Strategy:
             # restoring the baseline trade set. prepare.py's \$1 execution floor
             # is then moot (strategy already filters <\$2). This makes trade
             # SELECTION leverage-invariant (the last size-dependent decision gate).
+            # Exp1 (this session): MTM-path-efficiency reduction throttle (emission
+            # layer, downstream of all quantization — the ONLY layer reaching mixed
+            # per prior session's root-cause finding). For a same-sign REDUCTION
+            # resize (|target|<|current_pos|, not a flip/exit/entry), amplify the
+            # trim proportional to how CHOPPY the held position's pos_pnl path is.
+            # MTM-path-efficiency = |net| / sum|delta| over the 12-bar pos_pnl path,
+            # in [0,1]: HIGH = smooth climber (bull/crash/sideways/rally trend longs),
+            # LOW = whipsaw dead-capital (mixed's wrong-side long book). chop = 1-eff;
+            # the reduction's distance-to-current is scaled up by (1+AMP*chop), pushed
+            # toward (never past) current_pos's own already-reduced target. Smooth
+            # winners (chop~0) -> byte-identical. Reduction-only (risk-reducing). The
+            # separator last session's trend-alignment emission de-risk lacked: it
+            # trimmed bull/crash too; MTM-path-efficiency spares smooth winners by
+            # construction. New per-position state + new control flow at emission.
+            _is_reduction = (current_pos != 0 and target != 0
+                             and (current_pos > 0) == (target > 0)
+                             and abs(target) < abs(current_pos))
+            if _is_reduction:
+                _ppp = self._pnl_path.get(symbol, [])
+                if len(_ppp) >= 4:
+                    _ppa = np.array(_ppp)
+                    _net = abs(_ppa[-1] - _ppa[0])
+                    _tot = float(np.sum(np.abs(np.diff(_ppa))))
+                    _mtm_eff = _net / max(_tot, 1e-10)  # [0,1]
+                    _mtm_chop = max(0.0, min(1.0, 1.0 - _mtm_eff))
+                    # Amplify the reduction distance; clamp so target stays same-sign
+                    # and never trims past full close (toward 0, not across it).
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop
+                    _new_target = current_pos + (target - current_pos) * _trim_mult
+                    if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
+                        target = _new_target
             if abs(target - current_pos) > 1.0 * LEVERAGE_K:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
@@ -2489,7 +2545,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
