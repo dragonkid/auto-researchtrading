@@ -2540,9 +2540,19 @@ class Strategy:
                     # spared; rally's low-vol grind -> gate ~1 -> trimmed. Continuous
                     # (no boundary). General vol-regime principle (no regime label).
                     _grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
+                    # Branch step4: DEEP-WINNER fade (recovers bull -0.153 residual).
+                    # Step3's grind gate left bull -0.153 from trimming bull's calm-
+                    # stretch WINNING longs (deep winners that still have some MTM chop).
+                    # rally's beneficial trims are MODEST-PnL grinders. Step2's fade
+                    # (scale 1x stop) was too aggressive (killed rally). Use a wider
+                    # DEEP-winner scale (2.5x stop): modest winners (rally grind, pos_pnl
+                    # ~0.01-0.03) keep most throttle (fade 0.6-0.9); deep winners (bull
+                    # big rides, pos_pnl >0.06) spared (fade <0.24). Multiplies with the
+                    # grind gate. Smooth (no boundary).
+                    _deep_fade = max(0.0, 1.0 - np.tanh(max(0.0, pos_pnl) / (2.5 * abs(STOP_LOSS_PCT))))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _deep_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
