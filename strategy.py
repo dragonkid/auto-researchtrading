@@ -2540,19 +2540,23 @@ class Strategy:
                     # spared; rally's low-vol grind -> gate ~1 -> trimmed. Continuous
                     # (no boundary). General vol-regime principle (no regime label).
                     _grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                    # Branch step4: DEEP-WINNER fade (recovers bull -0.153 residual).
-                    # Step3's grind gate left bull -0.153 from trimming bull's calm-
-                    # stretch WINNING longs (deep winners that still have some MTM chop).
-                    # rally's beneficial trims are MODEST-PnL grinders. Step2's fade
-                    # (scale 1x stop) was too aggressive (killed rally). Use a wider
-                    # DEEP-winner scale (2.5x stop): modest winners (rally grind, pos_pnl
-                    # ~0.01-0.03) keep most throttle (fade 0.6-0.9); deep winners (bull
-                    # big rides, pos_pnl >0.06) spared (fade <0.24). Multiplies with the
-                    # grind gate. Smooth (no boundary).
-                    _deep_fade = max(0.0, 1.0 - np.tanh(max(0.0, pos_pnl) / (2.5 * abs(STOP_LOSS_PCT))))
+                    # Branch step5: STRONG-UPTREND fade (replaces step4's deep-winner
+                    # fade, which ate rally without fixing bull). bull -0.155 is the
+                    # entire remaining gap; bull's trimmed positions are WINNING longs
+                    # in a STRONG multi-day uptrend (ret_vlong ~+0.027) whose pullbacks
+                    # recover, so trimming sells dips that bounce. rally's beneficial
+                    # trims are in a WEAK uptrend (ret_vlong ~+0.006). Fade the throttle
+                    # by trend-aligned multi-day strength: ret_vlong*pos_dir scaled /0.02
+                    # -> bull (0.027) fade ~0.13 (spared), rally (0.006) fade ~0.71
+                    # (kept). Only trend-ALIGNED strength fades (counter-trend/down gets
+                    # max(0,..)=0 -> fade 1 -> full throttle), so mixed's wrong-side longs
+                    # in a downtrend (ret_vlong<0) stay fully throttled. Smooth, no
+                    # boundary. Documented bull/rally separator (multi-day trend strength).
+                    _pos_dir_mtm = 1.0 if current_pos > 0 else -1.0
+                    _strong_trend_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_mtm) / 0.02))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _deep_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
