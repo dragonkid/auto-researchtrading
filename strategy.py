@@ -242,6 +242,20 @@ class Strategy:
         # has recovered from MAE but still in modest loss, position is "barely surviving"
         # — lock the recovery before another adverse leg. Distinct from peak_pnl (high-water).
         self._mae = {}
+        # BRANCH (Exp2 follow-on): per-symbol ENTRY-TIME vol_ratio cache. Exp2 tested a
+        # BILATERAL de-risk floor modulation (lower floor for high-vol-entry, RAISE for
+        # low-vol-entry) -- it crashed bull/sideways/rally (-0.0295) because raising the
+        # floor on low-vol-entry trend regimes cut their trend capture (Sh bull 2.00->1.70).
+        # But crash gained +0.006 (Sh 1.271->1.279, DD unchanged) from the high-vol-entry
+        # side alone -- a real micro-signal: crash shorts (entered in high vol) benefit
+        # from more GRADUAL de-risk (lower floor -> wider graduation band -> single-bar
+        # slope-against noise spikes during crash bounces don't force premature partial
+        # exits). This branch makes the modulation ONE-SIDED: only LOWER the floor for
+        # high-vol-entry positions (vol_ratio_entry>1), leaving low-vol-entry regimes
+        # byte-identical (no floor raise -> bull/sideways/rally spared). Crash is the
+        # second-lowest-Sharpe regime (1.271, return-limited); a cleaner de-risk there is
+        # the untested lever. Reset on full exit.
+        self._entry_vol_ratio = {}
         # Per-symbol last-exit PnL outcome (loss-only cooldown stretch).
         self._last_exit_pnl = {}
         self.bar_count = 0
@@ -1564,10 +1578,12 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._entry_vol_ratio[symbol] = vol_ratio  # BRANCH: cache entry-time vol regime
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._entry_vol_ratio[symbol] = vol_ratio  # BRANCH: cache entry-time vol regime
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2179,6 +2195,20 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # BRANCH step1: ONE-SIDED entry-vol de-risk floor modulation. Exp2's
+                    # bilateral version raised the floor on low-vol-entry regimes -> cut
+                    # their trend capture (bull Sh 2.00->1.70). Here ONLY LOWER the floor
+                    # for high-vol-entry positions (vol_ratio_entry>1): crash shorts entered
+                    # in high vol get a wider graduation band -> more gradual de-risk ->
+                    # single-bar slope-against noise during crash bounces doesn't force
+                    # premature partial exits. Low-vol-entry regimes (vol_ratio_entry<=1:
+                    # bull/sideways/rally) get ZERO modulation (max(0,..)=0 -> byte-identical).
+                    # One-sided (shrink-side: lower floor = hold more through noise, risk-
+                    # reducing on exit-timing). max -0.05 at deep high-vol entry. Symmetric
+                    # across long/short (direction-agnostic, no regime label).
+                    _evr = self._entry_vol_ratio.get(symbol, vol_ratio)
+                    _de_floor -= 0.05 * max(0.0, np.tanh((_evr - 1.0) / 0.4))  # one-sided: only high-vol-entry lowers floor
+                    _de_floor = max(0.40, min(0.95, _de_floor))  # keep ramp math valid
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -2585,7 +2615,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._entry_vol_ratio):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
@@ -2597,6 +2627,7 @@ class Strategy:
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
+                    self._entry_vol_ratio[symbol] = vol_ratio  # BRANCH: cache entry-time vol regime
                     _h = self._entry_bar_history.setdefault(symbol, [])
                     _h.append(self.bar_count)
 
