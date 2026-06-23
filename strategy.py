@@ -2267,7 +2267,40 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural, indep): FIRST cross-asset data dep at the
+                        # EXIT layer. The entire exit subsystem (slope/pp/time/ve/ar/vc
+                        # pressures, de-risk cushion, opp-gate, target EMA) is 100%
+                        # within-symbol -- it reads own pos_pnl/peak/MAE/ret_long/ret_vlong
+                        # /slopes/volume but NEVER a cross-asset signal, while ENTRY has ~9
+                        # cross-asset boost/shrink factors (the {own,BTC,partner}x{vol,
+                        # price,DVP} grid). The de-risk convex cushion (_dr_k up to 1.6)
+                        # lets trend-aligned+profit+slope-conf winners RIDE pullback
+                        # giveback (hold near full size through moderate pressure). It
+                        # gates on WITHIN-SYMBOL ret_long (alignment) -- but mixed's held
+                        # wrong-side LONGS pass that gate (own 20-bar ret_long briefly
+                        # turns positive during counter-trend bounces) while BTC (market
+                        # leader) is in a sustained multi-day DOWNTREND. mixed's binding
+                        # constraint is unrealized giveback on those held winners (per
+                        # prior session root-cause). Add a 4th gate: BTC 96-bar trend
+                        # confirmation. When an ALT's position direction OPPOSES BTC's
+                        # multi-day trend, REDUCE the cushion toward linear (k->1) ->
+                        # faster giveback trim -> smaller position during giveback -> less
+                        # unrealized giveback -> higher mixed raw Sharpe. When the alt
+                        # AGREES with BTC trend (rally longs in BTC uptrend, crash shorts
+                        # in BTC downtrend), gate=1.0 -> byte-identical. Byte-identical for
+                        # BTC itself (guarded symbol!="BTC": BTC's _btc_trend IS its own
+                        # ret_vlong -> the gate would double-count the within-symbol
+                        # _dr_align signal; mirroring the xasset pattern at line 1136).
+                        # Shrink-only (caps at 1.0), deep-saturating /0.03 (near-constant
+                        # where it fires -> noise-free, validated safe family), smooth tanh
+                        # (no boundary). General principle (no regime label): a held winner
+                        # disagreeing with the market leader's multi-day trend is
+                        # idiosyncratic/counter-market -> ride less giveback. New
+                        # cross-symbol data dep at the exit-decision (de-risk ramp) layer.
+                        _btc_cushion_gate = 1.0
+                        if symbol != "BTC":
+                            _btc_cushion_gate = 1.0 - 0.50 * max(0.0, np.tanh(-_dr_pos_dir * _btc_trend / 0.03))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _btc_cushion_gate  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
