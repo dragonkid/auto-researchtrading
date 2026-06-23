@@ -1903,6 +1903,30 @@ class Strategy:
                 # Following the regime-asymmetric insight from 5648b3a8: time pressure
                 # removal helped bull/crash but destroyed sideways/rally.
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
+                # Exp2 (architectural, indep): LOSS-SIDE time-pressure amplification
+                # (symmetric counterpart to the profit-side amp above). The existing
+                # _w_time amplifies time pressure only when PROFITABLE (max(0,_pnl_scale)
+                # = 0 for any losing position -> base weight 1.0). This is the same
+                # self-exclusionary pattern as the de-risk cushion (Exp1): the exit-
+                # weight amplification architecture systematically under-weights LOSING
+                # held positions -- exactly mixed's binding constraint. mixed_2025's
+                # held wrong-side LONGS are persistent LOSERS (pos_pnl<0 during the
+                # regime's giveback episodes, eq-autocorr -0.427 per the MTM-path
+                # diagnostic) in a LOW-trend chop regime (_trend_strength_w~0). They
+                # linger at base _w_time=1.0 while giving back -> the unrealized giveback
+                # that caps mixed raw Sharpe at 0.80. Add the symmetric amp on the LOSS
+                # side: amplify _w_time for LOSING positions in CHOP (low trend). The
+                # (1-_trend_strength_w) gate SPARES trend regimes: bull/crash/rally
+                # losers are mostly pullback noise that RECOVERS (trend persists ->
+                # _trend_strength_w~1 -> amp=0 -> trend losers keep base weight, not
+                # over-exited on noise). Same magnitude 0.20, same chop gate, same
+                # smooth tanh (no boundary). NOT self-exclusionary: fires when pos_pnl<0
+                # (the giveback path), unlike every existing profit-gated exit amp. New
+                # control flow in the exit-fusion weight: a loss-side branch that did
+                # not exist. Direction-agnostic (both long/short losers). General
+                # principle (no regime label): a losing held position in a directionless
+                # market should be exited faster (anti-overstay on dead capital).
+                _w_time += 0.20 * max(0.0, -_pnl_scale) * (1.0 - _trend_strength_w)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
