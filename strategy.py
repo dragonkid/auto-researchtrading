@@ -2507,13 +2507,7 @@ class Strategy:
                     _net_g = abs(_ppa_g[-1] - _ppa_g[0])
                     _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
                     _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
-                # Branch step4: REDUCE narrowing amplitude 0.5 -> 0.25. step1 (0.5, grid in
-                # [0.03,0.06]) was the best branch state (+0.002057) but bull regressed -0.031
-                # (the keep-blocker) -- the 0.5x narrowing was too aggressive on bull's choppy-
-                # but-winning held longs. Halve the amplitude: grid in [0.045,0.06]. Trades a
-                # smaller mixed/rally gain for a smaller bull regression; the net may clear the
-                # +0.003 keep bar if the bull cost scales down faster than the mixed/rally gain.
-                _grid_c = (0.06 * (1.0 - 0.25 * _grid_chop)) * equity * BASE_POSITION_SIZE
+                _grid_c = (0.06 * (1.0 - 0.5 * _grid_chop)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
