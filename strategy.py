@@ -2055,25 +2055,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Exp5 (architectural, indep): MULTI-SOURCE AGREEMENT BONUS -- the
-                # bilateral counterpart to the attenuator above. The attenuator PENALIZES
-                # single-source pressure (up to -25pct in chop). This adds the symmetric
-                # reward: when TWO+ independent pressure sources are co-active (high
-                # _agree_gate), the exit signal is genuine CONFIRMATION (not noise) ->
-                # commit slightly MORE exit pressure. Mechanism: MAX fusion was chosen
-                # over SUM to reject correlated-noise ADDITION, but MAX also discards the
-                # agreement signal -- when slope-against AND pp-giveback both fire, the
-                # reversal is more reliable than either alone, yet MAX takes only the top.
-                # A BOUNDED agreement bonus (max +10pct) on co-active INDEPENDENT sources
-                # is confirmation, not noise addition (unlike a full SUM which double-
-                # counts shared-input noise). Chop-gated INVERSELY to the attenuator:
-                # the attenuator acts in CHOP (single-source=noise); the bonus acts in
-                # TREND (multi-source=real reversal). _trend_w = 1-_chop_atten_w.
-                # Byte-identical when single-source (_agree_gate=0 -> bonus 0) or in chop
-                # (_trend_w=0 -> bonus 0). Conservative +0.10 cap (vs the 0.25 attenuator).
-                _trend_w_bonus = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend (mirror of _chop_atten_w)
-                _agree_bonus = 1.0 + 0.10 * _agree_gate * _trend_w_bonus
-                _soft_max = _soft_max * _agree_bonus
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
