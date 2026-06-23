@@ -1986,25 +1986,19 @@ class Strategy:
                 # tp-harvest gate, line ~2125, and by the MAE-update at line ~1719.)
                 _ar_pressure = 0.0
                 _w_ar = 0.0
-                # Exp4 (architectural, indep): volume-climax exit pressure (6th soft source).
-                # NEW data dependency: volume is used in entry (VWAP voter, calm_boost) but
-                # NEVER in the exit subsystem — all 5 existing soft sources (slope/pp/time/
-                # ve/ar) use price-derived series only. A volume spike after a winning run
-                # is a classic exhaustion/climax signature (rally tops, crash capitulation
-                # bounces) -> harvest the winner before the pullback. Distinct from
-                # _ve_pressure (vol-of-PRICE expansion, not volume) and _pp_pressure (peak
-                # giveback magnitude, not bar-volume). Profit-side only (lock gains at
-                # exhaustion; don't punish losers for volume - slope-against handles them).
-                # Compute 20-bar volume z-score; activate above ~2 sigma, saturate ~4 sigma.
-                # Continuous tanh, no boundary. New exit-pressure source + new control flow
-                # in the MAX fusion. Targets rally raw (volume-climax tops precede pullback
-                # giveback - the documented rally drag).
-                _vol_arr_e = bd.history["volume"].values[-21:-1]
-                _vol_mean_e = float(np.mean(_vol_arr_e))
-                _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
-                _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp6 (architectural simplification): REMOVED _vc_pressure (volume-climax
+                # exit pressure, 6th of 7 MAX-fusion terms). It was profit-gated
+                # (_w_vc=max(0,_pnl_scale)), fired only above volume z-score>2.0 (rare
+                # 20-bar volume spike), capped at 0.50, and was 1 of 7 MAX terms where only
+                # the largest binds. Completes the simplification survey of the MAX-fusion
+                # soft sources (Exp3 _ve_pressure load-bearing for mixed; Exp4 _ar_pressure
+                # dead code -> kept removed). Hypothesis: if _vc_pressure rarely wins the
+                # MAX argmax it is dead-code-adjacent -> removal score-neutral/positive
+                # (simpler, one fewer volume-derived term + 3 cross-bar volume reads). If
+                # negative, the volume-climax exhaustion harvest it targeted was real.
+                # Code-structure removal: -16 lines + -1 MAX term.
+                _vc_pressure = 0.0
+                _w_vc = 0.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2018,7 +2012,6 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
-                    _w_vc * _vc_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
