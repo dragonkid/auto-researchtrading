@@ -1732,6 +1732,33 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp2 (architectural, indep): COUNTER-TREND STREAK STOP-TIGHTEN. rally's
+                # streak_gate 0.875 (max_consecutive_losses ~4) is the largest raw-vs-actual
+                # score gap: losses CLUSTER as counter-trend re-entries during pullbacks. The
+                # prior Exp1 (BLOCK ct re-entries) collapsed stability because a block is a
+                # binary decision boundary the AR(1) test shatters (loss-exit bar shifts +-1
+                # -> the 2-bar block window shifts -> entry set diverges). This takes the
+                # proven SHRINK axis instead, applied to the STOP DISTANCE: tighten _stop_abs
+                # for counter-trend positions (pos_dir opposes the 96-bar ret_vlong) during an
+                # active portfolio loss streak, so the ct re-entry DIES FASTER -> smaller
+                # realized loss AND a losing trade exited before full stop may exit near
+                # breakeven (non-loss) -> cuts the consecutive-loss COUNT that drives
+                # streak_gate (the one lever size-shrink alone cannot move). Continuous on
+                # BOTH axes: _st_ct_ramp = tanh((streak-1)/2) (0 streak<=1, ~1 streak>=3,
+                # same ramp as _streak_ct) x _st_ct_ind = max(0, tanh(-pos_dir*ret_vlong/0.01))
+                # (fast-saturating /0.01 -> rally's solidly positive ret_vlong sits in the
+                # flat tail -> near-CONSTANT 1 for rally ct shorts, ~0 for trend-aligned
+                # bull longs/crash shorts -> byte-identical by construction; ~0 for mixed's
+                # choppy ~0 ret_vlong -> spared). Stop tighten max 0.20 (a ct-short re-entry
+                # during a streak stops at 0.80x the ATR distance). The band (_band_half)
+                # scales with _stop_abs so the WHOLE transition zone shifts smoothly (no new
+                # boundary -- the stop was already a smooth ramp, this just rescales its
+                # distance). Trend-aligned / no-streak -> 1.0 byte-identical. New cross-
+                # component data dep at the stop subsystem: stop width depends on ct x
+                # portfolio-loss-streak interaction.
+                _st_ct_ramp = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
+                _st_ct_ind = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _stop_abs = _stop_abs * (1.0 - 0.20 * _st_ct_ramp * _st_ct_ind)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
