@@ -2161,7 +2161,22 @@ class Strategy:
                     # winners (_ts_supp>=0.5) keep exactly baseline 0.30; only deep-chop / CT
                     # peaks (_ts_supp<0.5, where suppression is already mostly off) get the
                     # raised 0.50. Targets the mixed gain precisely while spares bull entirely.
-                    _tp_mag = 0.30 + 0.20 * max(0.0, (0.5 - _ts_supp) / 0.5)
+                    # BRANCH step3: steps1-2 showed _ts_supp CANNOT separate bull from mixed --
+                    # bull's tp-harvested positions ALSO have _ts_supp<0.5 (moderate peaks,
+                    # not deep-peak enough to saturate the _ts_supp deep-peak factor), so
+                    # gating magnitude on _ts_supp regresses bull identically to mixed's gain.
+                    # DIAGNOSTIC: vol_ratio is the clean discriminator -- bull_2021 vol_ratio
+                    # quartiles 0.54/0.72/0.96 (HIGH vol, sharp 2021 trend); mixed_2025 vol_ratio
+                    # 0.32/0.45/0.61 (LOW vol, grinding chop) -- the regimes are nearly DISJOINT
+                    # on vol_ratio (bull ~2x mixed). Gate the raised magnitude on LOW vol_ratio:
+                    # _tp_mag = 0.30 + 0.20*max(0, tanh((0.75 - vol_ratio)/0.3)). bull (vol_ratio
+                    # ~0.7-0.96) -> max(0, tanh(negative)) ~0 -> baseline 0.30 (byte-identical);
+                    # mixed (vol_ratio ~0.45) -> ~0.50 raised. vol_ratio is a continuous market-
+                    # state indicator (not a regime label); the harvest magnitude scaling with
+                    # realized vol is a general principle (low-vol peaks give back to chop -> harvest
+                    # harder; high-vol peaks ride a sharp trend -> let them run). New cross-
+                    # component data dep: tp_harvest magnitude depends on realized vol_ratio.
+                    _tp_mag = 0.30 + 0.20 * max(0.0, np.tanh((0.75 - vol_ratio) / 0.3))
                     _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
