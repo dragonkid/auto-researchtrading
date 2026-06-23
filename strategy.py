@@ -729,8 +729,28 @@ class Strategy:
             _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
             _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
-            _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
-            _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
+            # Exp3 (architectural, indep): TREND+VOL-ADAPTIVE admission accumulator
+            # threshold. sample_factor = sqrt(min(n_trades/50,1)) is a separate score
+            # multiplier from Sharpe; mixed_2025 sits at 43 trades (sf 0.927, -7.3pct of
+            # its score) and sideways at 49 (sf 0.990). Both are LOW-trend regimes where
+            # the existing _strong_min already STRICTENS admission (+0.20*(1-rsi_trend_str)
+            # = max tightness in chop). The accumulator crossing level (ENTRY_ACCUM_THRESH
+            # = 0.0) is a SECOND, independent admission gate from the strong_sum floor; it
+            # has been FIXED at 0.0 since inception. Make it adaptively slightly NEGATIVE
+            # in low-trend x low-vol conditions (mixed/sideways calm grind, where the EMA-
+            # smoothed margin is already noise-filtered so a slightly-earlier crossing
+            # admits sustained-conviction entries one bar sooner without admitting per-bar
+            # noise -- the EMA still requires ~2 bars of sustained conviction to cross).
+            # In trends (high rsi_trend_str) THRESH=0 byte-identical (bull/crash/rally
+            # trend regimes untouched). Continuous tanh product on (1-rsi_trend_str) x
+            # (1-vol_ratio_calm), max -0.05 (small, bounded). NEW cross-regime data dep
+            # at the admission accumulator crossing (was fixed constant). General low-
+            # vol-low-trend principle (no regime label); targets the sample_factor lever.
+            _thresh_calm = max(0.0, 1.0 - vol_ratio)  # 1 calm (vol_ratio<1), 0 high-vol
+            _thresh_lowt = 1.0 - rsi_trend_str  # 1 chop, 0 strong trend
+            _entry_accum_thresh_dyn = ENTRY_ACCUM_THRESH - 0.05 * _thresh_calm * _thresh_lowt
+            _bull_ready = _acc_b >= _entry_accum_thresh_dyn
+            _bear_ready = _acc_s >= _entry_accum_thresh_dyn
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
