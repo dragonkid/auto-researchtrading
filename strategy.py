@@ -210,7 +210,7 @@ MTM_CHOP_TRIM_AMP = 0.80
 # bleeding smoothly) that the per-symbol chop signal misses (a smooth bleed has
 # low per-symbol chop). Reduction-only, shares the protective grind/trend/winner
 # gates. Book-mean is continuous (no regime switch).
-MTM_BOOK_CHOP_AMP = 0.80
+MTM_BOOK_CHOP_AMP = 1.50  # branch step5: raised 0.80->1.50 to amplify rally ct-short trims toward keep threshold
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
