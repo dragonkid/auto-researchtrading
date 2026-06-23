@@ -203,14 +203,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
 MTM_CHOP_TRIM_AMP = 0.80
-# Exp2 (architectural): PORTFOLIO-AGGREGATE path-chop emission gate. Additive
-# 2nd term on the kept reduction throttle, driven by the MEAN per-symbol chop
-# across all concordant held positions (cross-position data dep). Captures the
-# book-level concordant dead-capital signature (mixed's 3 wrong-side longs all
-# bleeding smoothly) that the per-symbol chop signal misses (a smooth bleed has
-# low per-symbol chop). Reduction-only, shares the protective grind/trend/winner
-# gates. Book-mean is continuous (no regime switch).
-MTM_BOOK_CHOP_AMP = 0.40  # branch step7: lowered 0.80->0.40 (no trend-align fade) to test sub-linear mixed-gain/sideways-loss scaling
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -2534,34 +2526,6 @@ class Strategy:
                     _tot = float(np.sum(np.abs(np.diff(_ppa))))
                     _mtm_eff = _net / max(_tot, 1e-10)  # [0,1]
                     _mtm_chop = max(0.0, min(1.0, 1.0 - _mtm_eff))
-                    # Exp2: PORTFOLIO-AGGREGATE path-chop gate. The per-symbol
-                    # _mtm_chop (kept throttle) is LOW for a SMOOTH bleed (mixed's
-                    # wrong-side longs bleed monotonically = efficient), so it misses
-                    # mixed's signature: 3 CONCORDANT wrong-side longs ALL bleeding
-                    # at once. Per-symbol path cannot see the book-level concordance.
-                    # Compute the MEAN per-symbol chop across ALL held positions with
-                    # mature path history (len>=4). When the WHOLE book is chopping
-                    # (concordant dead capital = mixed signature), amplify the
-                    # reduction throttle further; when only this position chops in
-                    # isolation (bull/crash single trend), the book-mean is low -> no
-                    # extra amplification (the per-symbol chop term still binds). This
-                    # is a NEW cross-position data dep at the emission layer (prior
-                    # cross-symbol path attempt e131fbba was at ENTRY where peers have
-                    # <4 bars of path history -> inert; at emission, held positions
-                    # have thousands of bars of mature path state). Reduction-only,
-                    # bounded, shares the protective grind/trend/winner gates. Smooth
-                    # (no regime switch); book-mean is a continuous quantity.
-                    _book_chops = []
-                    for _sym, _pos in portfolio.positions.items():
-                        if _pos == 0 or (_pos > 0) != (current_pos > 0):
-                            continue
-                        _ppp_o = self._pnl_path.get(_sym, [])
-                        if len(_ppp_o) >= 4:
-                            _ppa_o = np.asarray(_ppp_o)
-                            _net_o = abs(_ppa_o[-1] - _ppa_o[0])
-                            _tot_o = float(np.sum(np.abs(np.diff(_ppa_o))))
-                            _book_chops.append(max(0.0, min(1.0, 1.0 - _net_o / max(_tot_o, 1e-10))))
-                    _book_chop = float(np.mean(_book_chops)) if _book_chops else _mtm_chop
                     # Branch step3: LOW-VOL GRIND gate (replaces step2's profit-fade,
                     # which killed rally's gain while not fixing bull). Step2 proved
                     # rally's benefit is trimming choppy GRINDING winners (not just
@@ -2603,13 +2567,8 @@ class Strategy:
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
                     # Amplify the reduction distance; clamp so target stays same-sign
-                    # and never trims past full close (toward 0, not across it). The
-                    # book-chop term is ADDITIVE (gated by the same protective gates)
-                    # so a position whose OWN path is smooth (per-symbol chop~0) but
-                    # whose whole book is concordantly chopping (mixed's 3 longs all
-                    # bleeding) gets an extra trim that the per-symbol chop term misses.
-                    _emit_gates = _grind_gate * _strong_trend_fade * _winner_fade
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _emit_gates + MTM_BOOK_CHOP_AMP * _book_chop * _emit_gates
+                    # and never trims past full close (toward 0, not across it).
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
