@@ -337,6 +337,27 @@ class Strategy:
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
+        # Exp1 branch step4 (architectural): PORTFOLIO-DD-HEADROOM-gated max_hold
+        # EXTENSION for trend-aligned winners. The binding weak regime mixed_2025
+        # (score 0.408) has 100pct WR but Sharpe 0.80 / AnnReturn +4.4pct -- every
+        # trade WINS but exits too small/too early, capping return while MaxDD
+        # (2.80pct) sits far below the 8pct dd_gate knee (huge DD headroom). The
+        # prior step1-3 headroom ENTRY-size boost helped mixed (+0.0075) but cost
+        # rally (-0.0021): both regimes have headroom + decisive trend-aligned
+        # winners, so a size boost raised rally's DD (5.17->5.36) faster than its
+        # return -> calmar down. PIVOT: instead of boosting ENTRY size (raises DD
+        # everywhere it fires), EXTEND the max_hold window for trend-aligned WINNING
+        # positions when portfolio DD-headroom is large -> mixed's tiny winners run
+        # LONGER -> bigger realized return per trade -> Sharpe/calmar up, WITHOUT
+        # raising entry size (no DD creep in rally). The headroom gate spares rally
+        # near its DD peak (headroom ~0) AND the trend-align + profit gates ensure
+        # only confirmed trend-aligned winners (not ct losers) run longer. _port_dd_
+        # headroom = unused fraction of an 8pct-knee DD budget (1.0 at peak equity,
+        # 0.0 at 8pct DD); leverage-coupled scale (same discipline as _port_dd_atten
+        # so activation is DD-LEVEL invariant under leverage). Smooth tanh, no
+        # boundary. New cross-subsystem data dep: time-pressure max_hold depends on
+        # portfolio-DD-headroom x trend-alignment x profit conjunction.
+        _port_dd_headroom = max(0.0, 1.0 - np.tanh(max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10)) / (0.08 * LEVERAGE_K)))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1865,6 +1886,22 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp1 branch step4: portfolio-DD-headroom-gated max_hold EXTENSION
+                # for trend-aligned winners. When portfolio DD-headroom is large (far
+                # below the 8pct knee) AND the held position is trend-aligned (pos_dir
+                # matches ret_long sign) AND currently winning (pos_pnl > 0), extend
+                # the max_hold window so the winner runs longer -> bigger realized
+                # return -> higher Sharpe/calmar (the genuine-signal path). Raises APY
+                # via longer winners, NOT larger entries -> avoids the rally DD-creep
+                # that killed the entry-boost variant (step1-3). Headroom gate spares
+                # rally near its DD peak (headroom ~0 -> no extension); trend-align +
+                # profit gates ensure only confirmed trend-aligned winners run longer
+                # (ct losers and chop positions byte-identical). Smooth tanh, max +25%
+                # hold extension at full headroom. New control flow on time-pressure.
+                _hh_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _hh_align = max(0.0, np.tanh(ret_long * _hh_pos_dir / 0.04))  # 0 ct, ~1 trend-aligned
+                _hh_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 deep profit
+                _max_hold *= 1.0 + 0.25 * _port_dd_headroom * _hh_align * _hh_profit
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
