@@ -1408,18 +1408,8 @@ class Strategy:
                     # /0.02 partner price -> near-constant, noise-free, validated safe family).
                     # First-bar-only, +0.05 max. Risk: may be redundant with the existing Exp1
                     # (BTC-vol) x Exp2-partner-boost (partner-price) which already multiply.
-                    # Exp4 (architectural simplification, this session): REMOVED the two MIXED-
-                    # cell boosts (Exp8 BTC-vol x partner-price, Exp9 partner-vol x BTC-price).
-                    # Prior session (5b1af270) measured these combined as sub-noise -0.000025
-                    # (microscopically load-bearing; "mixed cells double-count clean 2-way keeps"
-                    # -- Exp1 BTC-vol x BTC-price and Exp2 partner-lead boosts ALREADY multiply
-                    # on the same entries, so the mixed-cell conjunctions add ~zero independent
-                    # signal). Re-tested at current baseline 1d764b9f for the simplification
-                    # value: removes 2 multipliers (+0.05 each, +~26 LOC of conjunction
-                    # machinery) for better OOS generalization. If byte-identical or sub-noise,
-                    # the simpler version is kept per the simplification principle.
-                    _btcvol_partner_boost_bull = 1.0
-                    _btcvol_partner_boost_bear = 1.0
+                    _btcvol_partner_boost_bull = 1.0 + 0.05 * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _btcvol_partner_boost_bear = 1.0 + 0.05 * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
                     # Exp9 (architectural, indep): PARTNER-alt-volume-rise x BTC-price-trend-
                     # agreement conjunction boost on ALT entries. Symmetric mixed cell to Exp8
                     # (BTC-vol x partner-price): follower VOLUME x leader PRICE. An alt trend
@@ -1430,8 +1420,8 @@ class Strategy:
                     # x PARTNER-price) and Exp8 (BTC-vol x partner-price). Deep-saturated both
                     # gates (/0.30 partner vol, /0.03 BTC trend -> near-constant, noise-free,
                     # validated safe family). First-bar-only, +0.05 max.
-                    _partnervol_btc_boost_bull = 1.0
-                    _partnervol_btc_boost_bear = 1.0
+                    _partnervol_btc_boost_bull = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _partnervol_btc_boost_bear = 1.0 + 0.05 * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
                     # Exp2 (architectural, indep): BTC leader DVP x BTC-price-trend-agreement
                     # conjunction boost on ALT entries (the directional-volume column of the
                     # {own,BTC,partner}x{vol,price} grid). _btc_dvp (leader volume-DIRECTION
