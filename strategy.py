@@ -2526,9 +2526,18 @@ class Strategy:
                     _tot = float(np.sum(np.abs(np.diff(_ppa))))
                     _mtm_eff = _net / max(_tot, 1e-10)  # [0,1]
                     _mtm_chop = max(0.0, min(1.0, 1.0 - _mtm_eff))
+                    # Branch step2: PROFIT-FADE gate. Step1 regressed bull -0.283 by
+                    # amplifying trims on WINNING longs (bull winners have choppy intra-
+                    # hold MTM but are net-climbing -> early trim loses the up-move).
+                    # Rally's +0.045 came from trimming choppy LOSING/breakeven pullback
+                    # positions (less giveback). Gate the throttle by a profit fade:
+                    # full at pos_pnl<=0, fading to ~0 for strong winners (pos_pnl >>
+                    # |stop|). Spares bull's deep winners (pos_pnl 2-5pct -> gate ~0)
+                    # while keeping rally's choppy low-PnL trims. Smooth (no boundary).
+                    _profit_fade = max(0.0, 1.0 - np.tanh(max(0.0, pos_pnl) / abs(STOP_LOSS_PCT)))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _profit_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
