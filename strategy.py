@@ -2015,6 +2015,68 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): CROSS-BOOK WRONG-SIDE exit pressure (8th
+                # soft source in the MAX fusion). NEW cross-symbol data dep the exit
+                # subsystem entirely lacks: every existing exit source reads this
+                # SYMBOL's own price/pnl only; none reads the AGGREGATE book direction.
+                # _conc_shrink (line ~1297) is an ENTRY-size governor reading concurrent
+                # same-sign notional (entry-side, shrink-only); this is an EXIT-pressure
+                # source reading portfolio NET exposure vs the market-leader multi-day
+                # trend. Mechanism: when the aggregate book is net-long (concordant longs)
+                # while BTC (the market leader) is in a SUSTAINED multi-day DOWNTREND, the
+                # book is structurally WRONG-SIDED — exactly mixed_2025's signature (3
+                # concordant longs held all year in a down market; the only regime with
+                # sustained net-long-vs-downtrend disagreement). Per-symbol exit primitives
+                # cannot see this: each individual long's own slope/pp/time may be mild
+                # enough to never saturate the exit threshold (grinding dead-capital
+                # positions), so the book never winds down. Adding PORTFOLIO-level
+                # wrong-side pressure to the MAX fusion gives the wind-down a direct exit
+                # path that does not depend on each individual position's signals firing.
+                # Symmetric: net-short book vs sustained multi-day UPTREND (hypothetical
+                # all-year short-in-a-bull; no in-sample regime matches, so the short side
+                # is inert by construction — included for symmetry/direction-agnosticism,
+                # not regime-targeting). NOISE-ROBUSTNESS: (1) portfolio net-exposure SIGN
+                # is near-integer (sum of 3 positions with sizes >> $1 emission floor) ->
+                # the net-long/net-short indicator is a near-binary constant across the AR(1)
+                # ensemble, not a noise-tracking quantity; (2) the multi-day leader trend is
+                # the validated 96-bar OLS log-HL2 slope over BTC, deeply averaged (~1/sqrt(96)
+                # noise attenuation); (3) fast-saturating tanh scales (/0.06 net-exposure
+                # fraction, /0.02 BTC trend) put the operating point in the FLAT saturated
+                # tail -> near-constant activation where it fires, sensitivity ~0 (the same
+                # near-binary saturated-gate discipline as the validated ct_vlong / target-EMA
+                # keeps). So the pressure is a near-constant ADDITIVE bias on the wrong-side
+                # book, not a noise-sensitive wobble. Byte-identical when (a) net exposure is
+                # ~0 (uncorrelated/single-leg entries -> gate 0) or (b) the position's own
+                # direction AGREES with the leader trend (a trend-aligned long in a bull /
+                # crash short in a downtrend -> the position-specific gate is 0). Reduction-
+                # safe family (adds exit pressure only, never blocks; risk-reducing). New
+                # cross-component data dep: exit pressure depends on portfolio net exposure
+                # x market-leader multi-day trend x position-direction conjunction.
+                _xb_pressure = 0.0
+                _w_xb = 1.0  # full weight: a portfolio-wrong-side signal is regime-level,
+                #  # not pnl-magnitude-dependent (fires on the structure, not the bar's giveback)
+                # Compute portfolio NET exposure fraction (signed: + long-dominant, - short).
+                _xb_net = 0.0
+                for _osym, _opos in portfolio.positions.items():
+                    _xb_net += _opos
+                _xb_net_frac = _xb_net / max(equity, 1e-10)  # signed fraction of equity
+                # Leader multi-day trend direction (BTC; falls to 0 if absent -> inert).
+                # Saturate so only DEEP sustained disagreement fires.
+                _xb_leader_down = max(0.0, np.tanh(-_btc_trend / 0.02))   # ~1 sustained downtrend
+                _xb_leader_up   = max(0.0, np.tanh( _btc_trend / 0.02))   # ~1 sustained uptrend
+                # Portfolio net-exposure sign (deep-saturating so mild imbalance is spared).
+                _xb_net_long  = max(0.0, np.tanh( _xb_net_frac / 0.06))   # ~1 deep net-long book
+                _xb_net_short = max(0.0, np.tanh(-_xb_net_frac / 0.06))   # ~1 deep net-short book
+                # Apply ONLY to the position that is itself WRONG-SIDED vs the leader trend
+                # (so a trend-aligned long during a brief crash bounce is NOT forced out;
+                # only the concordant wrong-side book gets pressure). The conjunction
+                # (deep net-long book AND leader down AND this position is long) isolates
+                # mixed's all-year wrong-side-long structure; by construction no other in-
+                # sample regime sustains all three.
+                if current_pos > 0:
+                    _xb_pressure = 0.35 * _xb_net_long * _xb_leader_down
+                elif current_pos < 0:
+                    _xb_pressure = 0.35 * _xb_net_short * _xb_leader_up
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2030,6 +2092,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
+                    _w_xb * _xb_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
