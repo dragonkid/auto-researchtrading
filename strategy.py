@@ -2195,20 +2195,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # BRANCH step1: ONE-SIDED entry-vol de-risk floor modulation. Exp2's
-                    # bilateral version raised the floor on low-vol-entry regimes -> cut
-                    # their trend capture (bull Sh 2.00->1.70). Here ONLY LOWER the floor
-                    # for high-vol-entry positions (vol_ratio_entry>1): crash shorts entered
-                    # in high vol get a wider graduation band -> more gradual de-risk ->
-                    # single-bar slope-against noise during crash bounces doesn't force
-                    # premature partial exits. Low-vol-entry regimes (vol_ratio_entry<=1:
-                    # bull/sideways/rally) get ZERO modulation (max(0,..)=0 -> byte-identical).
-                    # One-sided (shrink-side: lower floor = hold more through noise, risk-
-                    # reducing on exit-timing). max -0.05 at deep high-vol entry. Symmetric
-                    # across long/short (direction-agnostic, no regime label).
-                    _evr = self._entry_vol_ratio.get(symbol, vol_ratio)
-                    _de_floor -= 0.05 * max(0.0, np.tanh((_evr - 1.0) / 0.4))  # one-sided: only high-vol-entry lowers floor
-                    _de_floor = max(0.40, min(0.95, _de_floor))  # keep ramp math valid
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
@@ -2297,7 +2283,24 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # BRANCH step2: ENTRY-VOL amplification of the convex cushion exponent.
+                        # Step1 (floor modulation) leaked into bull/sideways (vol-spike entries
+                        # there too) and crash was byte-identical (no real mechanism). This
+                        # targets a DIFFERENT lever -- the cushion SHAPE (_dr_k), already gated
+                        # on profit x trend-align x slope-conf (so only trend-aligned winning
+                        # positions with confirmed slope earn cushion). A high-vol-entry
+                        # position (crash shorts, entered in high vol) has wider natural noise
+                        # -> amplify the convex cushion so it holds near full size through MORE
+                        # mid-range slope-against noise (single-bar bounce noise) -> only the
+                        # SUSTAINED slope reversal (deep pressure) cuts. Low-vol-entry positions
+                        # (vol_ratio_entry<=1) get zero amplification (max(0,..)=0 -> byte-
+                        # identical cushion). The trend-align+slope-conf gate already excludes
+                        # counter-trend vol-spike entries (bull/sideways pullbacks are ct ->
+                        # _dr_align~0 -> no cushion to amplify) -- the gate step1's floor lacked.
+                        # max +0.3 to _dr_k at deep high-vol entry. Symmetric (direction-agnostic).
+                        _evr = self._entry_vol_ratio.get(symbol, vol_ratio)
+                        _evr_amp = 0.3 * max(0.0, np.tanh((_evr - 1.0) / 0.4))  # one-sided: only high-vol-entry
+                        _dr_k = 1.0 + (DERISK_CONVEX_AMP + _evr_amp) * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.9 trend-aligned+profit+slope-conf+high-vol-entry
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
