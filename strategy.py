@@ -1791,35 +1791,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp1 (architectural, indep): COUNTER-TREND giveback tolerance tightening.
-                # NEW per-position data dep on the held position's own multi-day ret_vlong
-                # state, consumed at the giveback-TOLERANCE layer (distinct subsystem point
-                # from the portfolio-DD tightening above). Prior sessions' convergent insight:
-                # mixed's binding constraint is UNREALIZED giveback on held WINNING longs that
-                # are COUNTER-trend (mixed is 100pct-long-in-a-down-year = longs against a
-                # negative ret_vlong), and the giveback levers are PORTFOLIO-DD-gated so they
-                # fire only AFTER portfolio DD deepens -- but mixed's own DD (2.80pct) may not
-                # deepen the PORTFOLIO enough to trigger aggressive giveback on mixed's longs
-                # specifically. A per-POSITION ct signal keys directly on the held trade's own
-                # multi-day-trend disagreement (pos_dir*ret_vlong<0 = the wrong-side family),
-                # firing on mixed's longs without needing portfolio DD to deepen -- distinct
-                # from portfolio-DD headroom (which confounds with the other low-DD regimes
-                # bull/sideways/crash that are already optimized) and from realized-PnL
-                # feedback (walled: mixed is 100pct WR -> no realized losses to feed back).
-                # Uses the SAME fast-saturating /0.01 ret_vlong ct indicator as _ct_hold_sat /
-                # _ct_vlong (the validated noise-immune scale: rally's solidly-positive
-                # ret_vlong sits in the flat saturated tail -> the indicator is a near-CONSTANT,
-                # not a noise-tracking wobble -> tightening AMOUNT is bar-to-bar stable under
-                # AR(1) -> no exit-timing noise -> stability preserved). Trend-aligned holds
-                # (pos_dir*ret_vlong>0 -> ct indicator 0) byte-identical by construction,
-                # sparing bull/crash/sideways/rally trend longs. Low-ret_vlong sideways spared.
-                # Reduction-only in effect (tighter tolerance only harvests giveback faster;
-                # never loosens below PEAK_PROFIT_GIVEBACK). Small max tighten (0.20) to bound
-                # the raw cost on any ct trade whose trend later resumes.
-                _pp_ct_dir = 1.0 if current_pos > 0 else -1.0
-                _pp_ct = max(0.0, np.tanh(-_pp_ct_dir * ret_vlong / 0.01))
-                _pp_ct_tighten = 1.0 - 0.20 * _pp_ct
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_ct_tighten
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
