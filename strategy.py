@@ -2153,7 +2153,15 @@ class Strategy:
                     # multiplies max(0,1-1.5*_ts_supp) -- step1 makes the MAGNITUDE itself
                     # conditional on (1-_ts_supp), so the raised harvest concentrates where
                     # suppression is OFF. Continuous, no boundary.
-                    _tp_mag = 0.30 + 0.20 * (1.0 - _ts_supp)
+                    # BRANCH step2: step1's _tp_mag = 0.30 + 0.20*(1-_ts_supp) still raised the
+                    # cap for PARTIAL-_ts_supp bull positions (e.g. _ts_supp=0.5 -> 0.40 cap ->
+                    # bull still -0.128 vs baseline). Tighten the ramp so the magnitude only
+                    # rises when _ts_supp is LOW (<0.5 = genuinely chop/CT peaks, not partial-
+                    # trend bull): _tp_mag = 0.30 + 0.20*max(0,(0.5-_ts_supp)/0.5). Bull clean
+                    # winners (_ts_supp>=0.5) keep exactly baseline 0.30; only deep-chop / CT
+                    # peaks (_ts_supp<0.5, where suppression is already mostly off) get the
+                    # raised 0.50. Targets the mixed gain precisely while spares bull entirely.
+                    _tp_mag = 0.30 + 0.20 * max(0.0, (0.5 - _ts_supp) / 0.5)
                     _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
