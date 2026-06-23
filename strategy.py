@@ -1865,28 +1865,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp3 (architectural, indep): MULTI-DAY trend-ALIGNED max_hold EXTENSION.
-                # The existing _ct_hold_sat term SHORTENS counter-trend holds (positions
-                # opposing the 96-bar ret_vlong -> exit faster, the validated rally ct-loser
-                # trim). There is no SYMMETRIC term that EXTENDS trend-ALIGNED holds on the
-                # multi-day scale: a crash short in a sustained downtrend, or a bull/rally
-                # long in a sustained uptrend, currently hits time-pressure at the same bar
-                # count as a chop hold, even though the multi-day trend is still intact. The
-                # short-term _hold_adj already extends on 12/16/22-bar slope agreement, but
-                # that is MOMENTARY slope (whipsaws in crash's sharp bounces); ret_vlong is
-                # the SMOOTHER multi-day trend (96-bar OLS, the validated ct signal). Extend
-                # max_hold for trend-aligned positions so winners ride the multi-day trend
-                # longer -> higher Sharpe in the trend regimes (crash 1.271 100pctWR return-
-                # limited; rally 1.530). Symmetric counterpart to _ct_hold_sat (which uses
-                # the SAME ret_vlong signal to shorten ct). Trend-aligned (pos_dir matches
-                # ret_vlong sign -> gate 0) and low-ret_vlong sideways byte-identical. Fast-
-                # saturating /0.01 (rally's solidly-positive ret_vlong sits in the flat tail
-                # -> near-constant extension, noise-free per the validated branch-step-9
-                # lesson). Profit-only (max(0,_pnl_scale)) so LOSERS are never held longer
-                # (only extend winning trend-aligned positions). New cross-timescale data dep
-                # at the time-pressure subsystem (ret_vlong feeds max_hold on the trend side).
-                _ta_vlong = max(0.0, np.tanh((1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _max_hold *= 1.0 + 0.15 * _ta_vlong * max(0.0, _pnl_scale)
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
