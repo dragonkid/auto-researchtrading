@@ -1732,9 +1732,29 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
+                # Exp3 (architectural, indep): PROFIT-SCALED stop-loss width.
+                # NEW data dependency at the stop subsystem core: the stop-loss width
+                # now depends on the position's UNREALIZED PROFIT. A winning position
+                # that has built profit is directionally CONFIRMED -> it can afford a
+                # TIGHTER stop (lock gains toward breakeven+, less room needed since the
+                # trade is proven). A losing position keeps the FULL ATR stop (let it
+                # breathe to its full adverse-excursion tolerance -- cutting losers fast
+                # on the first adverse tick is the walled winner-cut-too-fast pattern).
+                # Mechanism: as pos_pnl rises from 0 to ~1 stop-width of profit, the
+                # effective stop tightens from _stop_abs down toward a 0.60 floor (lock
+                # ~40% of the gain as protected profit). Continuous via tanh on
+                # pos_pnl/|_stop_abs|; BYTE-IDENTICAL for losers (pos_pnl<=0 -> gate 0 ->
+                # full _stop_abs). Distinct from _pp_pressure (peak-giveback harvest, a
+                # TRAILING stop on PROFIT) -- this tightens the DOWNSIDE stop on winners,
+                # converting a confirmed winner into a "can't lose much from here" position
+                # -> directly caps DD from riding winners through deep pullbacks (rally's
+                # documented DD drag at 5.17pct near the 8pct knee). Reduction-only on the
+                # stop width (tighter only, never wider) -- risk-reducing family.
+                _profit_stop_gate = max(0.0, np.tanh(pos_pnl / max(_stop_abs, 1e-6) / 1.0))  # 0 loser, ~1 deep winner
+                _stop_abs_eff = _stop_abs * (1.0 - 0.40 * _profit_stop_gate)  # tighter stop on winners (floor 0.60x)
                 _loss = -pos_pnl
-                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
-                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs_eff
+                _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs_eff - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
