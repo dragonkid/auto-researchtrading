@@ -2483,7 +2483,31 @@ class Strategy:
             self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
-                _grid_c = 0.06 * equity * BASE_POSITION_SIZE
+                # Exp4 (architectural, indep): CHOP-ADAPTIVE low-churn grid width. The
+                # low-churn coarse grid (0.06*equity*BASE) rounds same-sign resizes onto a
+                # fixed lattice -- proven to cut crash/sideways turnover (4a40af0). But for
+                # a CHOPPY held book (mixed's whippy ~breakeven wrong-side longs, low MTM-
+                # path-efficiency), the 0.06 step OVER-ROUNDS reductions: the continuous
+                # reduction target gets snapped to a grid level up to 0.06*size away, which
+                # is a large fraction of the small choppy reduction -> over-trim (realizes
+                # more loss than the de-risk ramp intended) OR under-trim (snaps back to
+                # current). Make the grid step NARROW for choppy held books (more granular
+                # reductions -> less over-rounding -> less whipsaw -> higher mixed Sharpe)
+                # and keep it at 0.06 for smooth-climbing winners (crash/sideways trend legs,
+                # chop~0 -> byte-identical). New cross-component data dep: emission grid
+                # width depends on the held position's MTM-path-efficiency (the same signal
+                # the baseline reduction throttle reads). Chop = 1 - |net|/sum|delta| over
+                # the 12-bar pos_pnl path; grid step = 0.06*(1 - 0.5*chop) in [0.03, 0.06].
+                # Reduction-only path benefits (increases are rarer in low-churn regimes);
+                # smooth winners (chop~0) byte-identical to baseline 0.06.
+                _ppp_g = self._pnl_path.get(symbol, [])
+                _grid_chop = 0.0
+                if len(_ppp_g) >= 4:
+                    _ppa_g = np.array(_ppp_g)
+                    _net_g = abs(_ppa_g[-1] - _ppa_g[0])
+                    _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
+                    _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
+                _grid_c = (0.06 * (1.0 - 0.5 * _grid_chop)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
