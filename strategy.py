@@ -2483,48 +2483,7 @@ class Strategy:
             self._churn_hist[symbol] = _cm
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
-                # Exp4 (architectural, indep): CHOP-ADAPTIVE low-churn grid width. The
-                # low-churn coarse grid (0.06*equity*BASE) rounds same-sign resizes onto a
-                # fixed lattice -- proven to cut crash/sideways turnover (4a40af0). But for
-                # a CHOPPY held book (mixed's whippy ~breakeven wrong-side longs, low MTM-
-                # path-efficiency), the 0.06 step OVER-ROUNDS reductions: the continuous
-                # reduction target gets snapped to a grid level up to 0.06*size away, which
-                # is a large fraction of the small choppy reduction -> over-trim (realizes
-                # more loss than the de-risk ramp intended) OR under-trim (snaps back to
-                # current). Make the grid step NARROW for choppy held books (more granular
-                # reductions -> less over-rounding -> less whipsaw -> higher mixed Sharpe)
-                # and keep it at 0.06 for smooth-climbing winners (crash/sideways trend legs,
-                # chop~0 -> byte-identical). New cross-component data dep: emission grid
-                # width depends on the held position's MTM-path-efficiency (the same signal
-                # the baseline reduction throttle reads). Chop = 1 - |net|/sum|delta| over
-                # the 12-bar pos_pnl path; grid step = 0.06*(1 - 0.5*chop) in [0.03, 0.06].
-                # Reduction-only path benefits (increases are rarer in low-churn regimes);
-                # smooth winners (chop~0) byte-identical to baseline 0.06.
-                _ppp_g = self._pnl_path.get(symbol, [])
-                _grid_chop = 0.0
-                if len(_ppp_g) >= 4:
-                    _ppa_g = np.array(_ppp_g)
-                    _net_g = abs(_ppa_g[-1] - _ppa_g[0])
-                    _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
-                    _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
-                # Branch step6: match the BASELINE THROTTLE's full mixed-specific gate
-                # stack (the validated partition that isolates mixed's breakeven dead capital).
-                # Prior steps each tried a single gate (grind, dead_cap, strong_trend_fade,
-                # amplitude) and all were non-monotonic / did not cleanly spare bull. This
-                # ANDs ALL FOUR gates the baseline MTM-chop throttle uses to isolate exactly
-                # mixed's beneficial-trim partition: grind_gate (low-vol) x strong_trend_fade
-                # (spare bull strong-uptrend winners) x winner_fade (spare crash profit-take
-                # clear winners) x chop (dead-capital path). If the grid narrowing fires ONLY
-                # where the baseline throttle fires (mixed's breakeven dead capital, already
-                # proven the isolated mixed partition), it should capture mixed's +0.005 grid
-                # gain without the bull/crash/sideways resonance costs. pos_pnl and pos_dir
-                # are in scope here (grid acts only on _is_resize -> current_pos != 0).
-                _pos_dir_g = 1.0 if current_pos > 0 else -1.0
-                _g_grind = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                _g_strong_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_g) / 0.02))
-                _g_winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0)) if pos_pnl > 0 else 1.0
-                _grid_narrow = _grid_chop * _g_grind * _g_strong_fade * _g_winner_fade
-                _grid_c = (0.06 * (1.0 - 0.5 * _grid_narrow)) * equity * BASE_POSITION_SIZE
+                _grid_c = 0.06 * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
