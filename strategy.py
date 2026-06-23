@@ -2500,6 +2500,17 @@ class Strategy:
                 # the 12-bar pos_pnl path; grid step = 0.06*(1 - 0.5*chop) in [0.03, 0.06].
                 # Reduction-only path benefits (increases are rarer in low-churn regimes);
                 # smooth winners (chop~0) byte-identical to baseline 0.06.
+                # Branch step2: LOW-VOL GRIND gate on the grid narrowing (the bull-2021 keep-
+                # blocker). bull-2021 is a HIGH-vol SHARP uptrend whose held longs have
+                # choppy MTM paths DESPITE being net winners (sharp pullbacks = low MTM-eff at
+                # positive net) -> step1's finer grid over-rounded bull reductions -> churn
+                # (-0.031). Gate the narrowing by the SAME low-vol grind envelope the baseline
+                # throttle uses (_grind_gate = clamp((1.3-vol_ratio)/0.5)): fire the finer
+                # grid only in LOW-vol choppy books (mixed/rally grind, where choppy MTM =
+                # dead-capital whipsaw); high-vol bull keeps the 0.06 baseline (its choppy MTM
+                # is high-vol noise, recovers fast). crash (high vol) also gated off -> its
+                # validated 0.06 grid unchanged. sideways (low vol, smooth winners, chop~0)
+                # -> narrowing ~0 -> byte-identical. Continuous (no boundary).
                 _ppp_g = self._pnl_path.get(symbol, [])
                 _grid_chop = 0.0
                 if len(_ppp_g) >= 4:
@@ -2507,7 +2518,9 @@ class Strategy:
                     _net_g = abs(_ppa_g[-1] - _ppa_g[0])
                     _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
                     _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
-                _grid_c = (0.06 * (1.0 - 0.5 * _grid_chop)) * equity * BASE_POSITION_SIZE
+                _grid_grind = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))  # 0 high-vol, 1 low-vol grind
+                _grid_narrow = _grid_chop * _grid_grind  # fire only low-vol AND choppy
+                _grid_c = (0.06 * (1.0 - 0.5 * _grid_narrow)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
