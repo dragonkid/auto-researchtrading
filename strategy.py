@@ -2303,26 +2303,6 @@ class Strategy:
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
-                    # Exp2 (architectural, indep): MAE-fragility factor on opp-gate
-                    # graduation. The graduated partial-exit (preserve a trend-aligned
-                    # winning position through an opp-side voter spike) currently engages
-                    # whenever trend-align x profit both hold. But a position that has a
-                    # DEEP maximum-adverse-excursion (MAE) since entry is FRAGILE -- it
-                    # already dipped hard into loss and recovered, so an opp-side reversal
-                    # signal is more likely the start of the NEXT adverse leg than noise
-                    # on a clean trend. Factor the position's own MAE into graduation: a
-                    # CLEAN-MAE position (small adverse excursion, clean trend climb) keeps
-                    # full graduation; a DEEP-MAE position (fragile, large prior dip)
-                    # reduces graduation toward full binary exit (cut the fragile position
-                    # on the opp signal instead of preserving it). NEW cross-state data
-                    # dep at the opp-gate: MAE (currently feeds only _ar_pressure exit and
-                    # _ts_supp tp-harvest suppression) now also gates the opp-side reversal
-                    # graduation. Continuous tanh on -MAE/|stop| (no boundary); direction-
-                    # agnostic (MAE is symmetric low-water mark). Deep-MAE onset at -0.5*stop
-                    # (same floor as _ar_pressure) so clean trend holds (MAE ~0) are byte-
-                    # identical; only fragile positions with a real prior dip are affected.
-                    _mae_clean_og = 1.0 - 0.50 * max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.5)))
-                    _grad_gate = _grad_gate * _mae_clean_og
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
