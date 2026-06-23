@@ -2267,7 +2267,41 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural, indep): MTM-PATH-EFFICIENCY magnitude on the
+                        # de-risk convex cushion. NEW control-flow dependency at the de-risk
+                        # decision: the per-position pos_pnl path-efficiency (already maintained
+                        # in _pnl_path for the emission throttle, baseline keep 1d764b9f) is now
+                        # ALSO consumed as a magnitude-scaling factor on the cushion exponent.
+                        # MTM-eff = |net|/sum|delta| in [0,1]: HIGH = the held position's mark-
+                        # to-market climbs SMOOTHLY (genuine trending winner -- bull/crash/rally
+                        # trend legs); LOW = the MTM whipsaws with little net progress (choppy
+                        # dead-capital hold -- mixed's wrong-side book, or a stalling winner).
+                        # Distinct from slope-conf (near-term price-slope direction confirmation,
+                        # a price series) and from _dr_align (long-window trend alignment): MTM-
+                        # eff measures the POSITION's OWN PnL-path cleanliness, the only per-
+                        # position statistic here. Mechanism: a smooth-climbing winner is a
+                        # genuine trending position that recovers from pullback giveback -> ride
+                        # the giveback harder (stronger convex cushion = more return capture ->
+                        # helps the return-limited regimes crash Sh1.27 100pctWR + rally Sh1.53);
+                        # a choppy hold reverts toward the linear fast-cut (don't cushion a
+                        # whipsawing position). Routed as a MAGNITUDE on the existing cushion
+                        # (multiplies _dr_k's excess over 1.0), NOT a new gate -- so it only
+                        # modulates the cushion where the profit x trend-align x slope-conf gates
+                        # already admit it (byte-identical for losers/ct/slope-weak by
+                        # construction: those have cushion excess 0 regardless of MTM-eff).
+                        # Smooth ramp /0.50 -> /1.00 (only HIGH path-efficiency strengthens the
+                        # cushion; mid/choppy keep baseline cushion). No new price-derived
+                        # computation (_pnl_path already maintained per held bar). Smooth tanh,
+                        # no boundary, direction-agnostic general principle (no regime label).
+                        _dr_pp = self._pnl_path.get(symbol, [])
+                        _dr_mtm_mult = 1.0
+                        if len(_dr_pp) >= 4:
+                            _dr_pa = np.array(_dr_pp)
+                            _dr_net = abs(_dr_pa[-1] - _dr_pa[0])
+                            _dr_tot = float(np.sum(np.abs(np.diff(_dr_pa))))
+                            _dr_mtm_eff = _dr_net / max(_dr_tot, 1e-10)  # [0,1]
+                            _dr_mtm_mult = 0.70 + 0.30 * max(0.0, min(1.0, np.tanh((_dr_mtm_eff - 0.50) / 0.25)))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_mtm_mult  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf+smooth-path
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
