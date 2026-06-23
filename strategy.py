@@ -202,7 +202,7 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # AMPLIFIED — trim the choppy dead-capital position faster. Smooth-climbing winners
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
-MTM_CHOP_TRIM_AMP = 0.60
+MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
