@@ -66,6 +66,34 @@ case "$MODEL" in
   *)
     THINKING_BUDGET=0
     EFFORT="high"
+    # Non-Anthropic models via litellm need a thinking-block stripping proxy.
+    # GLM-5.2 (on sglang) always returns reasoning_content → litellm converts
+    # to Anthropic thinking blocks → on next turn Claude Code sends them back
+    # → litellm forwards to sglang OpenAI endpoint → 400 (thinking type not
+    # in OpenAI schema). The proxy strips thinking blocks from both request
+    # and response. Only needed when the upstream is litellm (not skyapi).
+    if [ "$PROVIDER" = "litellm" ] || [ "$PROVIDER" = "litellmqa" ]; then
+      PROXY_PORT=18769
+      PROXY_LOG="/tmp/thinking_strip_proxy_${PROXY_PORT}.log"
+      # Start proxy if not already running
+      if ! curl -s --output /dev/null "http://127.0.0.1:${PROXY_PORT}/" 2>/dev/null; then
+        echo "Starting thinking-strip proxy on port ${PROXY_PORT}..."
+        python3 "$PROJECT_DIR/scripts/thinking_strip_proxy.py" \
+          "$PROVIDER_BASE_URL" "$PROXY_PORT" \
+          >>"$PROXY_LOG" 2>&1 &
+        PROXY_PID=$!
+        echo "  proxy PID: $PROXY_PID, log: $PROXY_LOG"
+        # Wait for proxy to be ready
+        for _ in $(seq 1 10); do
+          if curl -s --output /dev/null "http://127.0.0.1:${PROXY_PORT}/" 2>/dev/null; then
+            break
+          fi
+          sleep 0.3
+        done
+      fi
+      # Redirect Claude Code through the proxy
+      PROVIDER_BASE_URL="http://127.0.0.1:${PROXY_PORT}"
+    fi
     ;;
 esac
 
