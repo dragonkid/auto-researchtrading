@@ -2177,7 +2177,14 @@ class Strategy:
                     # harder; high-vol peaks ride a sharp trend -> let them run). New cross-
                     # component data dep: tp_harvest magnitude depends on realized vol_ratio.
                     _tp_mag = 0.30 + 0.20 * max(0.0, np.tanh((0.75 - vol_ratio) / 0.3))
-                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # BRANCH step5: lower the tp activation ramp start 1.6 -> 1.45 (ramp width
+                    # 0.6 kept). Captures mixed's MODERATE peaks (peak > 1.45*_pp_min instead of
+                    # 1.6) at the vol_ratio-gated raised magnitude, harvesting slightly more of
+                    # the large-but-moderate peaks mixed reaches. Small, additive to step3's
+                    # magnitude gate (keeps the crash-safe 0.50 ceiling). crash peaks are deep
+                    # (recoveries extend well past 1.45) -> already saturated -> near byte-
+                    # identical for crash; mixed's moderate peaks newly captured.
+                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.45) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
