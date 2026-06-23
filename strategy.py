@@ -2500,17 +2500,6 @@ class Strategy:
                 # the 12-bar pos_pnl path; grid step = 0.06*(1 - 0.5*chop) in [0.03, 0.06].
                 # Reduction-only path benefits (increases are rarer in low-churn regimes);
                 # smooth winners (chop~0) byte-identical to baseline 0.06.
-                # Branch step2: LOW-VOL GRIND gate on the grid narrowing (the bull-2021 keep-
-                # blocker). bull-2021 is a HIGH-vol SHARP uptrend whose held longs have
-                # choppy MTM paths DESPITE being net winners (sharp pullbacks = low MTM-eff at
-                # positive net) -> step1's finer grid over-rounded bull reductions -> churn
-                # (-0.031). Gate the narrowing by the SAME low-vol grind envelope the baseline
-                # throttle uses (_grind_gate = clamp((1.3-vol_ratio)/0.5)): fire the finer
-                # grid only in LOW-vol choppy books (mixed/rally grind, where choppy MTM =
-                # dead-capital whipsaw); high-vol bull keeps the 0.06 baseline (its choppy MTM
-                # is high-vol noise, recovers fast). crash (high vol) also gated off -> its
-                # validated 0.06 grid unchanged. sideways (low vol, smooth winners, chop~0)
-                # -> narrowing ~0 -> byte-identical. Continuous (no boundary).
                 _ppp_g = self._pnl_path.get(symbol, [])
                 _grid_chop = 0.0
                 if len(_ppp_g) >= 4:
@@ -2518,22 +2507,7 @@ class Strategy:
                     _net_g = abs(_ppa_g[-1] - _ppa_g[0])
                     _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
                     _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
-                _grid_grind = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))  # 0 high-vol, 1 low-vol grind
-                # Branch step3: DEAD-CAPITAL gate (the bull keep-blocker separator). step2's
-                # grind_gate alone did not spare bull (bull's vol_ratio is moderate, not >1.3,
-                # so the gate fired partially -> bull still -0.031). The real separator between
-                # mixed's beneficial trims and bull's harmful trims is POS_PNL MAGNITUDE:
-                # mixed's wrong-side longs are ~BREAKEVEN dead capital (pos_pnl near 0, whippy);
-                # bull's trimmed positions are CLEAR WINNERS (pos_pnl strongly positive) whose
-                # choppy MTM is sharp-pullback noise, not dead capital. Gate the narrowing by a
-                # near-breakeven requirement (the SAME winner_fade logic the baseline throttle
-                # uses): full narrowing at pos_pnl<=+0.5*stop (dead capital), fading to 0 at
-                # pos_pnl>=+1.5*stop (clear winner). bull's deep winners -> gate 0 -> 0.06
-                # baseline (byte-identical); mixed's ~breakeven longs -> full narrowing. AND'd
-                # with grind_gate so only LOW-VOL near-breakeven choppy books narrow (mixed).
-                _dead_cap = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0)) if pos_pnl > 0 else 1.0
-                _grid_narrow = _grid_chop * _grid_grind * _dead_cap  # fire only low-vol AND choppy AND near-breakeven
-                _grid_c = (0.06 * (1.0 - 0.5 * _grid_narrow)) * equity * BASE_POSITION_SIZE
+                _grid_c = (0.06 * (1.0 - 0.5 * _grid_chop)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
