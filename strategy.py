@@ -1819,30 +1819,7 @@ class Strategy:
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
-                # Exp4 (architectural, indep): GIVEBACK-VELOCITY amplifier on pp_pressure.
-                # NEW data dep at the harvest subsystem: the RATE of pos_pnl decline from
-                # its recent peak (giveback VELOCITY), computed from _pnl_path. _pp_raw
-                # above is the giveback MAGNITUDE (how far from peak). This adds an
-                # ORTHOGONAL dimension: how FAST is it giving back. A SHARP pullback from
-                # peak (high giveback velocity) is momentum-against-the-winner and more
-                # likely to continue deepening than a slow grind giveback (normal chop).
-                # Amplify pp_pressure by up to +40% when the recent 3-bar giveback
-                # velocity is high relative to the position's own stop scale. Fires on
-                # the SAME condition as _pp_pressure (winning position giving back from a
-                # peak >= _pp_min) -> NOT self-exclusionary (unlike the profit-scaled stop
-                # and direction-asymmetric giveback, which targeted paths firing on the
-                # opposite condition). Byte-identical when no giveback is in progress
-                # (velocity<=0 -> amp 0) and when pp is inactive (activation 0).
-                _ppp_v = self._pnl_path.get(symbol, [])
-                _gb_vel = 0.0
-                if len(_ppp_v) >= 4:
-                    _ppa_v = _ppp_v[-4:]
-                    _peak_recent = max(_ppa_v)
-                    _recent_decline = _peak_recent - _ppa_v[-1]
-                    # normalize by the position's stop scale so velocity is comparable across symbols
-                    _gb_vel = max(0.0, _recent_decline / max(_stop_abs, 1e-6))
-                _pp_vel_amp = 1.0 + 0.40 * _pp_activation * max(0.0, min(1.0, np.tanh((_gb_vel - 0.15) / 0.30)))
-                _pp_pressure = _pp_raw * _pp_activation * _pp_vel_amp
+                _pp_pressure = _pp_raw * _pp_activation
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
