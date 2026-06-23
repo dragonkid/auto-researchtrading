@@ -74,13 +74,6 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
-# Exp3 (architectural, indep): post-loss fresh-entry stop-tighten. A fresh entry opened
-# within POSTLOSS_STOP_FADE bars of a per-symbol loss gets a tighter ATR stop (max tighten
-# POSTLOSS_STOP_MAX at bars_since_exit=0, fading to 0 at POSTLOSS_STOP_FADE). Continuous
-# ramp; cached at entry so the tighten is deterministic for the whole hold (no per-bar
-# boundary). Reuses the same _loss_only gate and /8 fade shape as _outcome_size_mult.
-POSTLOSS_STOP_MAX = 0.20
-POSTLOSS_STOP_FADE = 8
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -307,14 +300,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Exp3 (architectural, indep): per-symbol post-loss stop-tighten cached at ENTRY.
-        # A fresh entry opened shortly after a per-symbol loss gets a tighter ATR stop,
-        # cached here and applied to _stop_abs for the held position. Continuous fade over
-        # POSTLOSS_STOP_FADE bars (the factor is fixed at entry, deterministic thereafter).
-        # Reset on full exit. Targets the consecutive-loss COUNT (a fresh post-loss entry
-        # that pulls back exits at smaller loss / breakeven -> may not register as a loss ->
-        # breaks the streak that drives rally's streak_gate 0.875).
-        self._postloss_stop_tighten = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1575,26 +1560,14 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp3 (architectural, indep): post-loss fresh-entry STOP-TIGHTEN factor
-                # (cached at entry). A fresh entry opened shortly after a per-symbol loss
-                # gets a tighter ATR stop: max POSTLOSS_STOP_MAX at bars_since_exit=0 (immediate
-                # re-entry), fading to 0 at POSTLOSS_STOP_FADE. Reuses the SAME _loss_only gate
-                # as _outcome_size_mult (crash 100pctWR -> _loss_only==0 -> 1.0 byte-identical).
-                # Cached here so the held position's stop is tightened deterministically (no
-                # per-bar boundary). Targets the consecutive-loss COUNT: a post-loss re-entry
-                # that pulls back exits at smaller loss / breakeven -> may not register as a
-                # loss -> breaks the streak driving rally's streak_gate 0.875.
-                _postloss_tighten = 1.0 - POSTLOSS_STOP_MAX * _loss_only * max(0.0, 1.0 - _bars_since_exit / POSTLOSS_STOP_FADE)
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._postloss_stop_tighten[symbol] = _postloss_tighten  # Exp3: cache stop tighten
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._postloss_stop_tighten[symbol] = _postloss_tighten  # Exp3: cache stop tighten
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1759,13 +1732,6 @@ class Strategy:
                 # Stop scales as 2.5x ATR_pct, clamped to [0.018, 0.035]: keeps in
                 # similar range to original 0.024 but adapts per-symbol/per-regime.
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
-                # Exp3 (architectural, indep): apply the ENTRY-CACHED post-loss stop-tighten
-                # to the held position's stop distance. A fresh entry opened within
-                # POSTLOSS_STOP_FADE bars of a per-symbol loss has a tighter stop (factor
-                # cached at entry, deterministic thereafter -> no per-bar boundary). The band
-                # (_band_half) scales with _stop_abs so the WHOLE transition zone shifts
-                # smoothly. Byte-identical when no recent loss (cache default 1.0).
-                _stop_abs = _stop_abs * self._postloss_stop_tighten.get(symbol, 1.0)
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
@@ -2619,7 +2585,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._postloss_stop_tighten):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
