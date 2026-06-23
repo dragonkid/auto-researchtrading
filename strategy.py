@@ -205,6 +205,10 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 MTM_CHOP_TRIM_AMP = 0.80
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
+# Exp1 (architectural, indep): re-entry BLOCK window after a per-symbol loss, for the
+# strong-trend counter-trend re-entry block (see _loss_ct_block). 2 bars = blocks only the
+# immediate same-pullback re-cluster (the streak source), not a fresh entry hours later.
+LOSS_BLOCK_BARS = 2
 
 
 def ema(values, span):
@@ -745,6 +749,35 @@ class Strategy:
             _cooldown_factor = max(0.0, min(1.0, np.tanh(_bars_since_exit / _cd_window)))
             _outcome_size_mult = 1.0 - 0.45 * max(0.0, 1.0 - _bars_since_exit / 8.0) * _loss_only
             in_cooldown = False
+            # Exp1 (architectural, indep): STRONG-TREND COUNTER-TREND RE-ENTRY BLOCK after
+            # a per-symbol loss. rally_2024's streak_gate is 0.875 (max_consecutive_losses ~4),
+            # the single largest raw-vs-actual score gap of any regime: rally's losses CLUSTER
+            # as counter-trend SHORT re-entries taken during pullbacks (a 96-bar uptrend stays
+            # solidly positive while the 20-bar window dips -> the short looks mildly ct at 20
+            # bars but is catastrophically ct at the multi-day scale). The existing per-symbol
+            # cooldown (_cooldown_factor) only SHRINKS size; it never BLOCKS re-entry, so a
+            # losing ct short can be re-opened the very next bar -> the streak. This makes
+            # in_cooldown a genuine BLOCK under a three-way CONFLUENCE:
+            #   (1) recent exit was a LOSS (_loss_only>0; crash is 100pctWR -> _loss_only==0
+            #       the whole regime -> byte-identical, spared by construction);
+            #   (2) within LOSS_BLOCK_BARS of that loss (short window -> only blocks the
+            #       immediate re-cluster, not a fresh entry hours later);
+            #   (3) the prospective re-entry is COUNTER-TREND at the multi-day scale, gated
+            #       by a STRONG trend (fast-saturating /0.01 ret_vlong: rally's solidly
+            #       positive ret_vlong sits in the flat tail -> near-CONSTANT 1, noise-free;
+            #       mixed_2025's choppy ~0 ret_vlong -> gate ~0 -> NOT blocked).
+            # The /0.01 saturation is the documented separator between rally (strong uptrend)
+            # and mixed (weak/choppy) ct trades -- it spares mixed's dead-capital longs while
+            # blocking rally's losing pullback shorts. ret_vlong is a 96-bar OLS slope over
+            # log(HL2) (each bar's AR(1) noise carries ~1/96 weight -> boundary is smooth in
+            # practice, not a noise-sensitive zero-crossing). New control flow: a loss- and
+            # trend-conditioned entry BLOCK (cooldown was always False before).
+            _loss_ct_block = (_loss_only > 0.0
+                              and _bars_since_exit <= LOSS_BLOCK_BARS
+                              and (max(0.0, np.tanh(-ret_vlong / 0.01)) > 0.5
+                                   or max(0.0, np.tanh(ret_vlong / 0.01)) > 0.5))
+            if _loss_ct_block:
+                in_cooldown = True
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
