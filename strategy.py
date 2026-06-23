@@ -1591,26 +1591,28 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 # Exp1: portfolio-DD-headroom conviction-quality entry boost.
-                # Gates the headroom signal (computed at top of on_bar) on conviction
-                # MARGIN (only decisive entries, margin>=0.30) AND trend-ALIGNMENT
-                # (entry dir matches ret_long sign, the winning-trade family) AND LOW
-                # CHURN (the noise-immune integer len(_eh) gate the baseline grids use).
-                # The conjunction ensures the boost lands on high-quality trend-aligned
-                # winners -> raises APY without proportional DD -> calmar up (the
-                # genuine-signal path the v2.2 return_reward rewards). Trend-alignment
-                # gate spares counter-trend entries (rally pullback shorts, crash
-                # dead-cat bounces -- the losers that would raise DD). The LOW-CHURN
-                # gate (branch step2) fixes the rally regression: rally operates at HIGH
-                # churn (102 trades, bursty, positions already actively managed near
-                # optimal size -> boost there raised DD 5.17->5.36 faster than return ->
-                # calmar down -> rally raw -0.002). Sparing high-churn entries keeps the
-                # boost on LOW-churn conservative books (mixed 44 trades, crash/sideways
-                # ~50) where positions are undersized relative to DD headroom. Same
-                # noise-immune behavioral gate the baseline uses (NOT a regime label);
-                # regime effects fall out of realized per-symbol entry density.
+                # Gates the headroom signal (computed at top of on_bar) on a MARGINAL-
+                # CONVICTION band-pass AND trend-ALIGNMENT AND LOW CHURN. The conjunction
+                # ensures the boost lands on UNDERSIZED MARGINAL WINNERS -> raises their
+                # APY without proportional DD -> calmar up (genuine-signal path). Branch
+                # step3: the conviction gate is a BAND-PASS (peaks at marginal conviction
+                # margin~0.15, fades to 0 at margin>=0.40) instead of the step1/2 ramp.
+                # SEPARATOR (mixed vs rally, both low-churn trend-aligned winners): mixed
+                # entries are MARGINAL-conviction tiny winners (100pct WR but low Sharpe =
+                # each trade barely wins, margin sits in the 0.10-0.25 band); rally entries
+                # are DECISIVE-conviction big winners (margin >0.40, already well-sized ->
+                # extra size just adds DD). Boosting UNDERSIZED marginal winners (mixed)
+                # raises their return; sparing already-large decisive winners (rally) caps
+                # the DD creep. Principle: boost undersized marginal winners, not already-
+                # large decisive winners. Trend-alignment gate spares ct losers; low-churn
+                # gate (step2, kept) spares burst entries. New conviction-band data dep.
                 _headroom_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 bursting
-                _headroom_conv_bull = max(0.0, min(1.0, _bull_margin / 0.30)) * max(0.0, np.tanh(ret_long / 0.04)) * _headroom_calm
-                _headroom_conv_bear = max(0.0, min(1.0, _bear_margin / 0.30)) * max(0.0, np.tanh(-ret_long / 0.04)) * _headroom_calm
+                # Band-pass conviction: peak at margin~0.15 (undersized marginal winners),
+                # fade to 0 at margin<=0 (noise) and margin>=0.40 (already-large decisive).
+                _headroom_conv_gate_bull = max(0.0, 1.0 - abs(_bull_margin - 0.15) / 0.30)
+                _headroom_conv_gate_bear = max(0.0, 1.0 - abs(_bear_margin - 0.15) / 0.30)
+                _headroom_conv_bull = _headroom_conv_gate_bull * max(0.0, np.tanh(ret_long / 0.04)) * _headroom_calm
+                _headroom_conv_bear = _headroom_conv_gate_bear * max(0.0, np.tanh(-ret_long / 0.04)) * _headroom_calm
                 _headroom_boost_bull = 1.0 + PORT_DD_HEADROOM_BOOST * _port_dd_headroom * _headroom_conv_bull
                 _headroom_boost_bear = 1.0 + PORT_DD_HEADROOM_BOOST * _port_dd_headroom * _headroom_conv_bear
                 if _bull_ready and _bull_admit:
