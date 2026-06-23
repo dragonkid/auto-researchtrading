@@ -16,10 +16,8 @@ COUNCIL_THRESHOLD="${3:-5}"
 # (git-tracked) script. MODEL overrides the provider's default model.
 #   provider names live under custom_providers: in
 #   ~/.hermes/profiles/quant-trading/config.yaml  (currently: skyapi, litellm, litellmqa)
-# Default (no provider arg): preserve historical behaviour — skyapi + opus 1M.
 PROVIDER="${4:-skyapi}"
 # MODEL: explicit 5th arg wins; else the provider's configured default model.
-# Special-case: default skyapi run keeps the historical 1M-context opus tag.
 MODEL_OVERRIDE="${5:-}"
 ROUND_COUNT=0
 COUNCIL_COUNT=0
@@ -39,12 +37,7 @@ unset _resolved
 # Anthropic SDK appends /v1/messages itself; strip a trailing /v1 from base_url.
 PROVIDER_BASE_URL="${PROVIDER_BASE_URL%/v1}"
 # CLI model arg: explicit override wins, else the provider's configured default.
-# Special-case: a default skyapi run (no model arg) keeps the historical
-# 1M-context opus tag "claude-opus-4-8[1m]" that this loop has always used.
 MODEL="${MODEL_OVERRIDE:-$PROVIDER_MODEL}"
-if [ -z "$MODEL_OVERRIDE" ] && [ "$PROVIDER" = "skyapi" ] && [ "$PROVIDER_MODEL" = "claude-opus-4-8" ]; then
-  MODEL="claude-opus-4-8[1m]"
-fi
 if [ -z "$MODEL" ]; then
   echo "ERROR: no model resolved for provider '$PROVIDER' and none given" >&2
   exit 1
@@ -53,6 +46,28 @@ if [ -z "$PROVIDER_BASE_URL" ] || [ -z "$PROVIDER_API_KEY" ]; then
   echo "ERROR: provider '$PROVIDER' missing base_url or api_key in $HERMES_CONFIG" >&2
   exit 1
 fi
+
+# ── Reasoning-mode configuration ──
+# Claude Code's Anthropic SDK emits `{"type":"thinking", ...}` content blocks
+# when extended thinking is enabled. Non-Anthropic OpenAI-compatible endpoints
+# (sglang/vLLM/litellm-proxy with GLM, Qwen, etc.) reject `thinking` blocks
+# with HTTP 400 because their OpenAI schema only accepts text/image/audio/
+# tool_reference parts. Native reasoning models (GLM-5.2, etc.) do their own
+# chain-of-thought via reasoning_content and don't need Claude's thinking
+# blocks — so we disable extended thinking for non-Anthropic models.
+#
+# Detection: model name pattern. Anthropic-native models (claude-*) keep
+# thinking enabled; everything else (GLM, Qwen, DeepSeek, etc.) disables it.
+case "$MODEL" in
+  claude-*)
+    THINKING_BUDGET=64000
+    EFFORT="max"
+    ;;
+  *)
+    THINKING_BUDGET=0
+    EFFORT="high"
+    ;;
+esac
 
 # Ensure Ctrl+C stops the entire script
 trap 'echo ""; echo "Interrupted. Cleaning up..."; git checkout -- strategy.py 2>/dev/null; exit 130' INT TERM
@@ -106,7 +121,7 @@ run_council() {
     CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
     --dangerously-skip-permissions \
     --model "$MODEL" \
-    --effort max \
+    --effort "$EFFORT" \
     --system-prompt-file "$PROJECT_DIR/program-council.md" \
     --allowedTools "Read,Edit,Write,Bash(git:*),Bash(uv run:*),Bash(grep:*),Bash(tail:*),Bash(head:*),Bash(cat:*),Bash(echo:*),Grep,Glob" \
     "Run Council Mode. Read program-council.md for instructions. This is Council Session #${council_num}." \
@@ -160,11 +175,11 @@ echo "=== Round $ROUND_COUNT ($(date '+%H:%M:%S')) ==="
 ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL" \
   ANTHROPIC_AUTH_TOKEN="$PROVIDER_API_KEY" \
   ANTHROPIC_MODEL="$MODEL" \
-  MAX_THINKING_TOKENS=64000 CLAUDE_CODE_EFFORT_LEVEL=max \
+  MAX_THINKING_TOKENS="$THINKING_BUDGET" CLAUDE_CODE_EFFORT_LEVEL="$EFFORT" \
   CLAUDE_CONFIG_DIR=~/.claude-autoresearch claude -p \
     --dangerously-skip-permissions \
     --model "$MODEL" \
-    --effort max \
+    --effort "$EFFORT" \
     --system-prompt-file "$PROJECT_DIR/program-stateless.md" \
     --allowedTools "Read" "Edit" "Write" "Bash(git:*)" "Bash(uv run:*)" "Bash(grep:*)" "Bash(tail:*)" "Bash(head:*)" "Bash(cat:*)" "Grep" "Glob" \
     -- \
