@@ -2125,33 +2125,7 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    # Exp3 (architectural, indep): MAE-GATED tp_harvest magnitude with GRID-CLEARING
-                    # amplification. DIAGNOSTIC (this session, verifiable): mixed_2025 tp_harvest DOES
-                    # fire (tp_scale mean 0.109, n=1.1M rows, tp_ratio mean 16.47 = deep peaks) BUT Exp2's
-                    # 1.5x MAE-gated amp left mixed BYTE-IDENTICAL. Root cause: the calm-grid
-                    # quantization (0.06*equity*BASE_POSITION_SIZE) ABSORBS mixed's small tp_harvest
-                    # resizes -- 1.5x amp on a 0.109 tp_scale = ~0.055 position delta = ~0.9 grid steps,
-                    # barely crossing a lattice line -> usually snaps back to the same quantized target
-                    # -> emitted position unchanged -> byte-identical. The MAE separator IS clean
-                    # (DIAGNOSTIC: crash MAE/|stop| mean 1.8 [clean trend shorts], mixed mean 13.5
-                    # [whipsaw longs] -- DISJOINT, unlike vol_ratio where mixed/crash overlap 0.40-0.61),
-                    # so Exp2's failure was the amp magnitude (grid-absorbed), NOT the separator. This
-                    # raises the amp to 2.5x so mixed's harvest (tp_scale ~0.27) reliably clears 2+
-                    # grid steps -> emitted target actually changes -> the partial-realize reaches
-                    # mixed -> converts oscillating paper PnL to realized -> cuts the re-peak "ride
-                    # again" churn -> lower MTM oscillation -> higher mixed Sharpe. Crash (MAE/|stop|
-                    # ~1.8, small) -> amp ~1.0x -> BYTE-IDENTICAL (the crash-overlap wall that killed
-                    # the prior vol-gated tp_mag branch is bypassed: crash gets no amp regardless of
-                    # vol). bull risk: amp fires on bull too (large pullback MAE). Mitigation: _ts_supp
-                    # ALREADY protects deep clean-MAE trend-aligned peaks (bull trend longs have small
-                    # MAE early -> ts_supp high -> harvest suppressed); amp only multiplies the
-                    # UNSUPPRESSED harvest. Continuous tanh on -MAE/|stop|, no new decision boundary.
-                    # New cross-component data dep: tp_harvest magnitude depends on MAE-cleanliness at
-                    # sufficient amplitude to clear the emission grid.
-                    _mae_ratio = max(0.0, -self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT))  # 0 clean, large whipsaw
-                    _tp_mae_amp = 1.0 + 1.50 * max(0.0, min(1.0, np.tanh((_mae_ratio - 2.0) / 3.0)))  # 1.0 clean(crust/bull-trend), up to 2.5x whipsaw(mixed); onset MAE/stop=2 (above crash mean 1.8)
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * _tp_mae_amp * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    _tp_scale = min(_tp_scale, 0.70)  # safety cap: never harvest >70% of position in one bar (avoids over-exit noise)
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
