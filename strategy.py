@@ -2621,28 +2621,15 @@ class Strategy:
                     # sideways behavior is the kept baseline).
                     _book_pos_dir = 1.0 if current_pos > 0 else -1.0
                     _book_trend_fade = 1.0 - max(0.0, np.tanh(max(0.0, ret_vlong * _book_pos_dir) / 0.004))
-                    # Branch step4: DEADZONE on the book-chop term. step2 recovered
-                    # sideways (trend-align fade) but LOST mixed's +0.0021 gain because
-                    # mixed's longs are trend-aligned during Q2 rebound sub-periods
-                    # (ret_vlong>0 -> trend-align fade zeros book-chop amp on those bars).
-                    # mixed's 3 concordant longs have HIGH book-level chop (108 sign-flips,
-                    # whipsaw); sideways's 2-3 trend longs have LOWER book-chop (smoother
-                    # trend). Add a deadzone: book-chop amp only fires when book-chop
-                    # exceeds ~0.4 (deep concordant chop = mixed signature), zeroing the
-                    # amp for sideways's milder book-chop. This recovers mixed's gain on
-                    # high-chop bars (regardless of trend-align fade) while keeping
-                    # sideways's low-chop bars unamplified. Continuous tanh deadzone
-                    # (no hard regime switch); general principle (only amplify when
-                    # book-level chop is meaningfully high).
-                    _book_chop_gate = max(0.0, np.tanh(max(0.0, _book_chop - 0.40) / 0.15))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it). The
-                    # book-chop term is ADDITIVE (gated by the shared protective gates,
-                    # its own trend-align fade, AND the deadzone) so a position whose OWN
-                    # path is smooth but whose whole book is DEEPLY concordantly chopping
-                    # (mixed's 3 longs all bleeding/whipsawing) gets an extra trim.
+                    # book-chop term is ADDITIVE (gated by the shared protective gates
+                    # AND its own steeper trend-align fade) so a position whose OWN path
+                    # is smooth (per-symbol chop~0) but whose whole book is concordantly
+                    # chopping (mixed's 3 longs all bleeding) gets an extra trim that the
+                    # per-symbol chop term misses.
                     _emit_gates = _grind_gate * _strong_trend_fade * _winner_fade
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _emit_gates + MTM_BOOK_CHOP_AMP * _book_chop_gate * _emit_gates * _book_trend_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _emit_gates + MTM_BOOK_CHOP_AMP * _book_chop * _emit_gates * _book_trend_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
