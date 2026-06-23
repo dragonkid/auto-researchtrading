@@ -2507,7 +2507,24 @@ class Strategy:
                     _net_g = abs(_ppa_g[-1] - _ppa_g[0])
                     _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
                     _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
-                _grid_c = (0.06 * (1.0 - 0.5 * _grid_chop)) * equity * BASE_POSITION_SIZE
+                # Branch step6: match the BASELINE THROTTLE's full mixed-specific gate
+                # stack (the validated partition that isolates mixed's breakeven dead capital).
+                # Prior steps each tried a single gate (grind, dead_cap, strong_trend_fade,
+                # amplitude) and all were non-monotonic / did not cleanly spare bull. This
+                # ANDs ALL FOUR gates the baseline MTM-chop throttle uses to isolate exactly
+                # mixed's beneficial-trim partition: grind_gate (low-vol) x strong_trend_fade
+                # (spare bull strong-uptrend winners) x winner_fade (spare crash profit-take
+                # clear winners) x chop (dead-capital path). If the grid narrowing fires ONLY
+                # where the baseline throttle fires (mixed's breakeven dead capital, already
+                # proven the isolated mixed partition), it should capture mixed's +0.005 grid
+                # gain without the bull/crash/sideways resonance costs. pos_pnl and pos_dir
+                # are in scope here (grid acts only on _is_resize -> current_pos != 0).
+                _pos_dir_g = 1.0 if current_pos > 0 else -1.0
+                _g_grind = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
+                _g_strong_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_g) / 0.02))
+                _g_winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0)) if pos_pnl > 0 else 1.0
+                _grid_narrow = _grid_chop * _g_grind * _g_strong_fade * _g_winner_fade
+                _grid_c = (0.06 * (1.0 - 0.5 * _grid_narrow)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
