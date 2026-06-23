@@ -2602,52 +2602,14 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
-                    # Branch step2: TREND-ALIGN fade on the book-chop term ONLY.
-                    # step1 (Exp2) moved mixed +0.0021 and rally +0.0049 (concordant
-                    # wrong-side-long book + ct-short trims) but sideways regressed
-                    # -0.0091 (its 2-3 concordant trend-aligned long reductions over-
-                    # amplified). The shared _strong_trend_fade (/0.02) only PARTIALLY
-                    # fades sideways's modest trend alignment. Add a DEDICATED steeper
-                    # fade on the book-chop term: full amplification when the position
-                    # is counter-trend / down (mixed's wrong-side longs: ret_vlong<0
-                    # for a long -> ret_vlong*pos_dir<0 -> max(0,..)=0 -> fade 0 -> full
-                    # book-chop amp), fading to ~0 for trend-aligned positions (sideways/
-                    # bull/rally trend longs: ret_vlong*pos_dir>0 -> faded). Steep /0.004
-                    # so sideways's modest trend alignment (~0.006) saturates the fade
-                    # (~0.77) while mixed's counter-trend stays full. rally's ct SHORTS
-                    # (pos_dir=-1, ret_vlong>0 -> product<0 -> counter-trend) keep full
-                    # book-chop amp -> rally's gain preserved. ct trend-aligned longs
-                    # spared. The per-symbol chop term keeps the shared gates (its
-                    # sideways behavior is the kept baseline).
-                    _book_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _book_trend_fade = 1.0 - max(0.0, np.tanh(max(0.0, ret_vlong * _book_pos_dir) / 0.004))
-                    # Branch step6: LOSER re-enable on the book-chop gate. step2's
-                    # trend-align fade recovered sideways but LOST mixed's +0.0021 gain
-                    # because mixed's longs are trend-aligned during Q2 rebound sub-
-                    # periods (ret_vlong>0 -> fade zeros book-chop amp). mixed's rebound
-                    # longs are LOSING (cumulative pos_pnl<0 -- a down year); sideways's
-                    # trend longs are WINNING (pos_pnl>>0). Re-enable the book-chop amp
-                    # for LOSING positions even when trend-aligned: _book_gate = MAX of
-                    # (trend-align fade) and (loser flag). A counter-trend position keeps
-                    # full amp (trend_fade=1); a trend-aligned LOSER (mixed rebound long)
-                    # gets amp via the loser flag; a trend-aligned WINNER (sideways trend
-                    # long) gets no amp (trend_fade~0, loser_flag~0). Distinguishes by
-                    # CUMULATIVE pos_pnl (does not flip on mixed rebound legs) not per-bar
-                    # trend. loser_flag = max(0, tanh(-pos_pnl/|stop|/0.3)) -> 1 at deep
-                    # loss, ~0.5 at -0.3*stop, 0 at breakeven+. Step3's winner fade (onset
-                    # 0) failed because it FADED winners (zeroed breakeven); this is the
-                    # INVERSE -- it BOOSTS losers (keeps breakeven at trend_fade level).
-                    _book_loser_flag = max(0.0, np.tanh(max(0.0, -pos_pnl / abs(STOP_LOSS_PCT)) / 0.3))
-                    _book_gate = max(_book_trend_fade, _book_loser_flag)
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it). The
-                    # book-chop term is ADDITIVE (gated by the shared protective gates
-                    # AND _book_gate) so a position whose OWN path is smooth (per-symbol
-                    # chop~0) but whose whole book is concordantly chopping (mixed's 3
-                    # longs all bleeding) gets an extra trim that the per-symbol chop
-                    # term misses; winning trend longs (sideways) spared.
+                    # book-chop term is ADDITIVE (gated by the same protective gates)
+                    # so a position whose OWN path is smooth (per-symbol chop~0) but
+                    # whose whole book is concordantly chopping (mixed's 3 longs all
+                    # bleeding) gets an extra trim that the per-symbol chop term misses.
                     _emit_gates = _grind_gate * _strong_trend_fade * _winner_fade
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _emit_gates + MTM_BOOK_CHOP_AMP * _book_chop * _emit_gates * _book_gate
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _emit_gates + MTM_BOOK_CHOP_AMP * _book_chop * _emit_gates
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
