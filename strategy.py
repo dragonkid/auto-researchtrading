@@ -2179,35 +2179,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp1 (architectural, indep): SYMMETRIC COUNTER-TREND LOSER floor
-                    # RAISE. The existing _ta_de term (above) lowers the de-risk floor for
-                    # trend-aligned WINNERS (ride pullback noise gradually). This adds the
-                    # symmetric counterpart on the LOSS side: a COUNTER-TREND LOSER (pos
-                    # against the 20-bar ret_long AND losing) gets a HIGHER de-risk floor
-                    # -> the graduated ramp engages nearer saturation -> exits faster
-                    # through the binary _exit_thresh path instead of lingering on the
-                    # gradual mid-range de-risk ramp. Mechanism: a counter-trend losing
-                    # position is a genuine reversal (the trend it bet against is real),
-                    # so riding the gradual de-risk ramp just accumulates more loss before
-                    # the binary exit fires; cut it fast. Trend-aligned LOSERS (a winning-
-                    # trend long facing a pullback) keep the lower floor (ride the pullback
-                    # -- it is the mirror of the profit-side relaxation: trend-aligned
-                    # positions ride noise, counter-trend positions cut). NEW control-flow
-                    # data dep on the de-risk floor: the existing _ta_de_align x _pnl_scale
-                    # product is extended from profit-only to a BILATERAL form via the
-                    # (1-align) x max(0,-pnl_scale) conjugate. Continuous tanh product, no
-                    # boundary (same family as _ta_de_profit). Max raise 0.10 (mirrors the
-                    # 0.10 max lower on the profit side, so the floor stays symmetric about
-                    # the 0.55 base within +-0.10 of the trend-alignment axis). Targets
-                    # rally's binding streak_gate (rally's 4-consecutive-loss streak is
-                    # clustered ct re-entry losers; faster ct-loser exit -> smaller loss ->
-                    # may flip one loser to a smaller-magnitude exit, and shortens the hold
-                    # so a re-entry can't immediately re-lose). General principle (no regime
-                    # label): counter-trend losers de-risk faster than trend-aligned losers.
-                    _ta_de_ct = 1.0 - _ta_de_align  # 0 trend-aligned, 1 counter-trend
-                    _ta_de_loss = max(0.0, -_pnl_scale)
-                    _de_floor += 0.10 * _ta_de_ct * _ta_de_loss
-                    _de_floor = max(0.55, min(0.95, _de_floor))
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
