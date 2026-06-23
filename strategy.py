@@ -320,20 +320,6 @@ class Strategy:
         # (mixed_2025's 100pct-long-in-a-down-year book, eq-autocorr -0.427).
         # Drives the emission-layer reduction throttle. Reset on full exit.
         self._pnl_path = {}
-        # Exp2 (architectural, indep): per-symbol DIRECTIONAL realized-PnL EMA.
-        # NEW data dependency distinct from _last_exit_pnl (1-trade, sign-less) and
-        # _loss_streak (portfolio-wide, count-only): this tracks the EMA of realized
-        # exit PnL SEPARATELY per direction (long-exit EMA, short-exit EMA) per symbol.
-        # Used at the ADMISSION gate: when recent LONG exits have systematically lost
-        # (long_ema<0) AND a fresh bull entry is counter-trend to the multi-day trend,
-        # tighten the bull admission threshold; symmetric for bear. This is a realized-
-        # outcome feedback (orthogonal to price-derived voters, which see only current-
-        # bar data) -> "reduce commitment to the direction that has been empirically
-        # losing trades recently", a generic risk-off principle. The ct-gate spares
-        # trend-aligned entries (bull/rally winners) so trend regimes are byte-identical,
-        # mirroring the validated _streak_ct_admit ct-gating pattern. Symmetric (no
-        # regime label, no directional bias). Reset on full exit (per-symbol state only).
-        self._dir_pnl_ema = {}  # {symbol: (long_ema, short_ema)}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -720,28 +706,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp2 (architectural, indep): DIRECTIONAL REALIZED-PnL admission feedback
-            # (ct-gated). NEW data dependency at the admission gate: the per-symbol EMA of
-            # realized exit PnL BY DIRECTION (long-exit EMA, short-exit EMA) feeds back into
-            # the admission threshold. When recent LONG-side exits have systematically lost
-            # (long_ema<0) AND a fresh bull entry is counter-trend to the multi-day trend
-            # (ret_vlong<0, the /0.01 fast-saturating ct indicator validated noise-free),
-            # tighten the bull admission threshold proportionally to the loss magnitude;
-            # symmetric for bear. This is a REALIZED-OUTCOME signal (orthogonal to the 8
-            # price-derived voters, which see only current-bar data) capturing "this
-            # direction has been empirically losing trades recently." The ct-gate (same
-            # indicator as _streak_ct_admit) spares trend-aligned entries: bull longs in an
-            # uptrend (bull/rally winners, ret_vlong>0 -> ct indicator 0) are byte-identical;
-            # only counter-trend longs (mixed's wrong-side book in a down year) get tightened.
-            # Scaled by the loss magnitude (|long_ema|/|stop|, tanh-saturated) so a single
-            # small loss does not fire; max 12% tighten at deep sustained directional loss.
-            # Symmetric (no regime label, no directional bias); smooth (continuous tanh).
-            _dir_le, _dir_se = self._dir_pnl_ema.get(symbol, (0.0, 0.0))
-            _loss_mag = abs(STOP_LOSS_PCT)
-            _bull_dir_admit = max(0.0, np.tanh(-_dir_le / _loss_mag / 0.5)) * max(0.0, np.tanh(-ret_vlong / 0.01))
-            _bear_dir_admit = max(0.0, np.tanh(-_dir_se / _loss_mag / 0.5)) * max(0.0, np.tanh(ret_vlong / 0.01))
-            _bull_strong_min *= 1.0 + 0.12 * _bull_dir_admit
-            _bear_strong_min *= 1.0 + 0.12 * _bear_dir_admit
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
@@ -2621,19 +2585,6 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                        # Exp2: update per-symbol DIRECTIONAL realized-PnL EMA. Routes
-                        # the realized exit PnL to the long-EMA (if the closed position
-                        # was long, current_pos>0) or short-EMA (current_pos<0). EMA
-                        # alpha=0.35 (span ~3.8 trades) — slow enough to integrate a
-                        # regime-of-losing, fast enough to recover when the direction
-                        # starts winning again. Persists ACROSS positions (NOT reset
-                        # here) so the feedback has memory of recent directional outcomes.
-                        _le, _se = self._dir_pnl_ema.get(symbol, (0.0, 0.0))
-                        if current_pos > 0:
-                            _le = 0.35 * _exit_pnl_signed + 0.65 * _le
-                        else:
-                            _se = 0.35 * _exit_pnl_signed + 0.65 * _se
-                        self._dir_pnl_ema[symbol] = (_le, _se)
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
