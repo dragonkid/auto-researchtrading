@@ -2143,7 +2143,18 @@ class Strategy:
                     # chop (low |ret_long| -> trend-align gate ~0 -> _ts_supp ~0 -> FULL harvest),
                     # so the raised cap fires exactly on mixed's large-peak chop winners. New
                     # control-flow dep: tp_harvest magnitude (the existing mechanism's cap).
-                    _tp_scale = 0.50 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # BRANCH step1: the uniform 0.50 cap over-harvested bull (-0.647) because
+                    # _ts_supp is only ~1 for the CLEANEST bull trend longs -- bull positions
+                    # with PARTIAL _ts_supp (mid-MAE or sub-deep-peak) leaked 0.50 harvest
+                    # instead of baseline 0.30. Route the raised magnitude through _ts_supp so
+                    # the cap is 0.30 at full trend-extension suppression (bull clean trend
+                    # winners) and rises to 0.50 only at low _ts_supp (mixed chop / CT peaks,
+                    # where giveback-prone peaks SHOULD be harvested harder). _ts_supp already
+                    # multiplies max(0,1-1.5*_ts_supp) -- step1 makes the MAGNITUDE itself
+                    # conditional on (1-_ts_supp), so the raised harvest concentrates where
+                    # suppression is OFF. Continuous, no boundary.
+                    _tp_mag = 0.30 + 0.20 * (1.0 - _ts_supp)
+                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
