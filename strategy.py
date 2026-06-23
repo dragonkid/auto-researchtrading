@@ -1945,17 +1945,23 @@ class Strategy:
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
-                # Exp3 (architectural simplification): REMOVED _ve_pressure (vol-expansion
-                # exit pressure, 5th source). It was profit-gated (_w_ve=max(0,_pnl_scale)),
-                # fired only above vol_expansion>1.3x (6-bar/18-bar vol ratio -- rare), and
-                # was 1 of 7 terms in the element-wise MAX fusion where only the LARGEST
-                # term binds. The vol_expansion signal is itself noisy (6-bar vol is AR(1)-
-                # sensitive) and profit-gated like every other exit amp (self-exclusionary on
-                # the mixed giveback path). Hypothesis: it rarely wins the MAX argmax on the
-                # binding regimes -> dead-code-adjacent -> removal is score-neutral OR
-                # positive (one fewer noisy price-derived term, better OOS generalization).
-                # If negative, it was load-bearing (the regime-shift detection was real).
-                # Code-structure removal: -10 lines + -2 cross-bar vol reads + -1 MAX term.
+                # Architectural: volatility-expansion exit pressure (5th source).
+                # When recent 6-bar realized vol substantially exceeds 18-bar
+                # realized vol (vol-of-vol expansion), the price regime has
+                # shifted — earlier slope/peak/time signals may be stale. Compute
+                # vol_expansion = vol_6 / vol_18, smooth via tanh, contribute
+                # smooth pressure [0, 0.6]. Acts as a regime-shift detector
+                # orthogonal to slope (direction) and pp (magnitude). New
+                # data-dependent exit pressure term in the fusion sum.
+                _vol_6 = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+                _vol_18 = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+                _vol_expansion = _vol_6 / _vol_18
+                # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
+                _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Profit-side weight: only fire when in profit (lock gains on
+                # regime shift); don't punish losing positions for vol expansion
+                # since slope-against already handles adverse moves.
+                _w_ve = max(0.0, _pnl_scale)  # in [0, 1], only positive pos_pnl
                 # Architectural simplification: removed early-profit-lock exit pressure.
                 # _ep_pressure fired on small-peak giveback below _pp_min activation.
                 # In rally (low-vol grind-up), positions frequently have small peaks
@@ -2020,6 +2026,7 @@ class Strategy:
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
                     _w_time * _time_pressure,
+                    _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
