@@ -194,12 +194,6 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
-# Exp4 (architectural, indep): post-loss conviction admission tightening. Raise the
-# strong-sum admission threshold for ALL re-entries within POSTLOSS_ADMIT_FADE bars of a
-# per-symbol loss (continuous ramp, _loss_only gated, not ct-gated, not a block). Targets
-# the consecutive-loss COUNT (rally streak_gate 0.875) via count-reduction at admission.
-POSTLOSS_ADMIT_MAX = 0.12
-POSTLOSS_ADMIT_FADE = 8
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
 # emission layer (downstream of all quantization — the ONLY layer that reaches
 # mixed_2025 per prior session's root-cause finding), a same-sign REDUCTION resize
@@ -712,25 +706,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp4 (architectural, indep): POST-LOSS CONVICTION ADMISSION TIGHTEN (not ct-gated).
-            # The existing _streak_ct_admit (above) tightens admission ONLY for counter-trend
-            # entries after a portfolio streak. But Exp2/Exp3 this session PROVED rally's
-            # consecutive losers are trend-aligned LONGS (the ct-shrink/stop-tighten were byte-
-            # identical because held losers are trend-aligned, not ct). The streak is structural
-            # (entry COUNT during pullback sequences), and the losers are trend-aligned re-entries
-            # that give back in pullbacks. This raises the admission threshold for ALL re-entries
-            # within POSTLOSS_ADMIT_FADE bars of a per-symbol LOSS (continuous ramp, _loss_only
-            # gated -> crash 100pctWR byte-identical; NOT a block -> no binary decision boundary).
-            # Cuts the re-entry COUNT that drives rally's streak_gate 0.875 (a fresh post-loss
-            # re-entry that doesn't clear the higher bar is skipped -> not a losing trade -> breaks
-            # the streak). The margin EMA (_bull_ready) already smooths the crossing, so a higher
-            # _strong_min shifts the readiness crossing later by a smooth amount (no new boundary).
-            # Max tighten POSTLOSS_ADMIT_MAX at bars_since_exit=0, fading to 0 over FADE bars.
-            _pl_bars = self.bar_count - self.exit_bar.get(symbol, -999)
-            _pl_loss_only = max(0.0, -np.tanh(self._last_exit_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)))
-            _pl_admit_tighten = 1.0 + POSTLOSS_ADMIT_MAX * _pl_loss_only * max(0.0, 1.0 - _pl_bars / POSTLOSS_ADMIT_FADE)
-            _bull_strong_min *= _pl_admit_tighten
-            _bear_strong_min *= _pl_admit_tighten
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
