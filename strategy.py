@@ -2574,6 +2574,32 @@ class Strategy:
                     _tot = float(np.sum(np.abs(np.diff(_ppa))))
                     _mtm_eff = _net / max(_tot, 1e-10)  # [0,1]
                     _mtm_chop = max(0.0, min(1.0, 1.0 - _mtm_eff))
+                    # Exp3 (this session): EFFICIENCY-TREND modulator (second-order path
+                    # signal). The chop signal above is the LEVEL of MTM-path-efficiency.
+                    # Its DERIVATIVE is a genuinely new, orthogonal axis: is the position's
+                    # path efficiency DECLINING (second half choppier than first =
+                    # deteriorating dead capital, the position is getting whippier) or
+                    # RISING (second half smoother than first = recovering into a trend,
+                    # turning into a winner)? Amplify the chop for DECLINING efficiency
+                    # (deteriorating dead capital -> trim harder) and attenuate it for
+                    # RISING efficiency (a position turning smooth is becoming a winner ->
+                    # spare it, less giveback). Splits the 12-bar path into halves, compares
+                    # per-half efficiency, maps the delta through a symmetric tanh centered
+                    # at 0 (rising) so smooth-recovering positions (eff_trend ~+0.5) get
+                    # chop attenuated toward 0 (spared), deteriorating ones (eff_trend ~-0.5)
+                    # get chop amplified up to +50%. NEW data axis (efficiency DERIVATIVE, not
+                    # level) + new control flow at the emission reduction layer (the ONE layer
+                    # reaching mixed). Byte-identical when the two halves have equal
+                    # efficiency (eff_trend 0 -> modulator 1.0). Reduction-style (modulates an
+                    # existing risk-reducing throttle only). Smooth, no regime label.
+                    if len(_ppp) >= 8:
+                        _half = len(_ppa) // 2
+                        _a1, _a2 = _ppa[:_half], _ppa[_half:]
+                        _eff1 = abs(_a1[-1] - _a1[0]) / max(float(np.sum(np.abs(np.diff(_a1)))), 1e-10)
+                        _eff2 = abs(_a2[-1] - _a2[0]) / max(float(np.sum(np.abs(np.diff(_a2)))), 1e-10)
+                        _eff_trend = _eff2 - _eff1  # [-1,1]: + rising efficiency, - declining
+                        _eff_trend_mod = 1.0 + 0.50 * np.tanh(_eff_trend / 0.25)  # [0.5,1.5]
+                        _mtm_chop = max(0.0, min(1.0, _mtm_chop * _eff_trend_mod))
                     # Branch step3: LOW-VOL GRIND gate (replaces step2's profit-fade,
                     # which killed rally's gain while not fixing bull). Step2 proved
                     # rally's benefit is trimming choppy GRINDING winners (not just
