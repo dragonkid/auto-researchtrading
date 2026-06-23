@@ -2125,59 +2125,7 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    # Exp3 (architectural, indep): raise tp_harvest max scale 0.30 -> 0.50.
-                    # DIAGNOSTIC this session (peak_pnl distribution on mixed_2025): mixed's
-                    # held positions reach LARGE unrealized peaks -- peak/|stop| quartiles
-                    # 5.6 / 13.3 / 16.4 (peak_pnl 13-39pct of price) -- yet REALIZED return
-                    # is only 4.4pct with 100pct WR. The positions ride to +30pct, give back to
-                    # ~+24pct (22pct giveback tolerance), partially realize small pieces, ride
-                    # again -- 43 partial-realizes capture only a fraction of the large peaks
-                    # (high turnover 856912 from constant resizing). The tp_harvest scale-down
-                    # (cap 0.30) is the proactive peak-harvest lever; RAISING it captures more
-                    # of mixed's large peaks at realization -> higher mean return -> higher
-                    # Sharpe (mixed Sh0.80, the binding regime). SAFETY: the _ts_supp factor
-                    # (MAE-clean x trend-align x deep-peak) STILL suppresses harvest on clean
-                    # trend-aligned deep-peak winners (bull longs in uptrend at MAE-clean
-                    # peaks -> _ts_supp ~1 -> max(0,1-1.5*_ts_supp) ~0 -> no harvest -> bull/rally
-                    # trend winners byte-identical, no overstay/over-harvest wall). mixed is
-                    # chop (low |ret_long| -> trend-align gate ~0 -> _ts_supp ~0 -> FULL harvest),
-                    # so the raised cap fires exactly on mixed's large-peak chop winners. New
-                    # control-flow dep: tp_harvest magnitude (the existing mechanism's cap).
-                    # BRANCH step1: the uniform 0.50 cap over-harvested bull (-0.647) because
-                    # _ts_supp is only ~1 for the CLEANEST bull trend longs -- bull positions
-                    # with PARTIAL _ts_supp (mid-MAE or sub-deep-peak) leaked 0.50 harvest
-                    # instead of baseline 0.30. Route the raised magnitude through _ts_supp so
-                    # the cap is 0.30 at full trend-extension suppression (bull clean trend
-                    # winners) and rises to 0.50 only at low _ts_supp (mixed chop / CT peaks,
-                    # where giveback-prone peaks SHOULD be harvested harder). _ts_supp already
-                    # multiplies max(0,1-1.5*_ts_supp) -- step1 makes the MAGNITUDE itself
-                    # conditional on (1-_ts_supp), so the raised harvest concentrates where
-                    # suppression is OFF. Continuous, no boundary.
-                    # BRANCH step2: step1's _tp_mag = 0.30 + 0.20*(1-_ts_supp) still raised the
-                    # cap for PARTIAL-_ts_supp bull positions (e.g. _ts_supp=0.5 -> 0.40 cap ->
-                    # bull still -0.128 vs baseline). Tighten the ramp so the magnitude only
-                    # rises when _ts_supp is LOW (<0.5 = genuinely chop/CT peaks, not partial-
-                    # trend bull): _tp_mag = 0.30 + 0.20*max(0,(0.5-_ts_supp)/0.5). Bull clean
-                    # winners (_ts_supp>=0.5) keep exactly baseline 0.30; only deep-chop / CT
-                    # peaks (_ts_supp<0.5, where suppression is already mostly off) get the
-                    # raised 0.50. Targets the mixed gain precisely while spares bull entirely.
-                    # BRANCH step3: steps1-2 showed _ts_supp CANNOT separate bull from mixed --
-                    # bull's tp-harvested positions ALSO have _ts_supp<0.5 (moderate peaks,
-                    # not deep-peak enough to saturate the _ts_supp deep-peak factor), so
-                    # gating magnitude on _ts_supp regresses bull identically to mixed's gain.
-                    # DIAGNOSTIC: vol_ratio is the clean discriminator -- bull_2021 vol_ratio
-                    # quartiles 0.54/0.72/0.96 (HIGH vol, sharp 2021 trend); mixed_2025 vol_ratio
-                    # 0.32/0.45/0.61 (LOW vol, grinding chop) -- the regimes are nearly DISJOINT
-                    # on vol_ratio (bull ~2x mixed). Gate the raised magnitude on LOW vol_ratio:
-                    # _tp_mag = 0.30 + 0.20*max(0, tanh((0.75 - vol_ratio)/0.3)). bull (vol_ratio
-                    # ~0.7-0.96) -> max(0, tanh(negative)) ~0 -> baseline 0.30 (byte-identical);
-                    # mixed (vol_ratio ~0.45) -> ~0.50 raised. vol_ratio is a continuous market-
-                    # state indicator (not a regime label); the harvest magnitude scaling with
-                    # realized vol is a general principle (low-vol peaks give back to chop -> harvest
-                    # harder; high-vol peaks ride a sharp trend -> let them run). New cross-
-                    # component data dep: tp_harvest magnitude depends on realized vol_ratio.
-                    _tp_mag = 0.30 + 0.28 * max(0.0, np.tanh((0.70 - vol_ratio) / 0.3))
-                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
