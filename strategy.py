@@ -1298,6 +1298,54 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                # Exp1 (architectural, indep): CROSS-SYMBOL MTM-PATH-CHOPPINESS entry
+                # shrink. NEW cross-symbol x cross-state data dep: the existing
+                # _conc_shrink reads the AGGREGATE SAME-DIRECTION NOTIONAL of other
+                # held positions (a magnitude/exposure gate); this reads their
+                # aggregate MTM-PATH QUALITY (the _pnl_path state the kept emission
+                # reduction throttle validated, baseline 1d764b9f). When the OTHER
+                # same-direction held positions are CHOPPY dead capital (low path-
+                # efficiency = whipsaw with little net progress), a new CORRELATED
+                # same-direction entry is a low-quality pile-up of choppy dead capital
+                # (mixed_2025's binding regime: 3 correlated longs whipsaw in a down
+                # year) -> smaller first-bar commitment -> smaller realized losses on
+                # the correlated whipsaw book -> higher mixed Sharpe (the binding raw
+                # constraint, all stability factors 1.0 so raw IS the score). Distinct
+                # from _conc_shrink (notional magnitude, not path quality): the new
+                # entry is shrunk when the existing book is PATH-DEGENERATE, even at
+                # modest notional. Shrink-only (safe family, caps at 1.0), max 0.20.
+                # Sparing by construction: trend-aligned smooth climbers (bull/crash/
+                # sideways/rally trend longs have chop~0 -> aggregate chop ~0 ->
+                # ~byte-identical); only fires when same-direction held positions are
+                # genuinely whipsawing. NEW cross-symbol state read (other symbols'
+                # _pnl_path), direction-aware (only same-sign positions aggregate).
+                _peer_chop_bull = 0.0
+                _peer_chop_w_bull = 0.0
+                _peer_chop_bear = 0.0
+                _peer_chop_w_bear = 0.0
+                for _osym, _opos in portfolio.positions.items():
+                    if _osym == symbol or _opos == 0:
+                        continue
+                    _opp = self._pnl_path.get(_osym, [])
+                    if len(_opp) < 4:
+                        continue
+                    _oppa = np.array(_opp)
+                    _onet = abs(_oppa[-1] - _oppa[0])
+                    _otot = float(np.sum(np.abs(np.diff(_oppa))))
+                    _oeff = _onet / max(_otot, 1e-10)
+                    _ochop = max(0.0, min(1.0, 1.0 - _oeff))
+                    # weight by |pos| so a large choppy position dominates the peer signal
+                    _ow = abs(_opos)
+                    if _opos > 0:
+                        _peer_chop_bull += _ochop * _ow
+                        _peer_chop_w_bull += _ow
+                    elif _opos < 0:
+                        _peer_chop_bear += _ochop * _ow
+                        _peer_chop_w_bear += _ow
+                _peer_chop_bull = _peer_chop_bull / max(_peer_chop_w_bull, 1e-10) if _peer_chop_w_bull > 0 else 0.0
+                _peer_chop_bear = _peer_chop_bear / max(_peer_chop_w_bear, 1e-10) if _peer_chop_w_bear > 0 else 0.0
+                _peer_chop_shrink_bull = 1.0 - 0.20 * _peer_chop_bull
+                _peer_chop_shrink_bear = 1.0 - 0.20 * _peer_chop_bear
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
@@ -1561,11 +1609,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _peer_chop_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _peer_chop_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
