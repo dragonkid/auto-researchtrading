@@ -1444,24 +1444,6 @@ class Strategy:
                     _partner_dvp = _alt_dvp.get(_partner, 0.0)
                     _partnerdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * max(0.0, np.tanh(_partner_lead / 0.02))
                     _partnerdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * max(0.0, np.tanh(-_partner_lead / 0.02))
-                    # Exp5 (architectural, indep): PARTNER-alt-DVP x BTC-leader-VOLUME-RISE
-                    # conjunction boost on ALT entries -- the last missing cell of the full
-                    # {own,BTC,partner}x{vol,price,DVP} 3-way agreement grid. Existing DVP boosts
-                    # are clean 2-way (btcdvp x btcprice, partnerdvp x partnerprice); existing
-                    # vol-column mixed cells (btcvol x partnerprice, partnervol x btcprice, Exp4
-                    # confirmed load-bearing on mixed) show the mixed-cell conjunctions add real
-                    # signal on mixed's alt entries. THIS is the DVP-column mixed cell: partner
-                    # alt's volume-DIRECTION balance (partner buy/sell-side pressure) x BTC leader
-                    # volume-participation rise. An alt trend entry where the partner alt's volume
-                    # is directionally on-side AND the leader is participating (volume building) is
-                    # a broad-market move with follower-directional + leader-magnitude
-                    # confirmation -> larger first-bar commitment. Distinct from partnerdvp x
-                    # partnerprice (DVP clean 2-way) and btcvol x partnerprice (vol mixed cell).
-                    # Deep-saturated both gates (/0.15 partner DVP, /0.30 BTC vol -> near-constant,
-                    # noise-free, validated safe family). First-bar-only, +0.05 max. Builds on
-                    # Exp4 finding that mixed-cell breadth boosts help mixed (lowest regime).
-                    _partnerdvp_btcvol_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * _btc_vol_rise
-                    _partnerdvp_btcvol_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * _btc_vol_rise
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
@@ -1475,8 +1457,6 @@ class Strategy:
                     _btcdvp_boost_bear = 1.0
                     _partnerdvp_boost_bull = 1.0
                     _partnerdvp_boost_bear = 1.0
-                    _partnerdvp_btcvol_boost_bull = 1.0
-                    _partnerdvp_btcvol_boost_bear = 1.0
                 # Exp (architectural, indep): close-POSITION-WITHIN-BAR conviction
                 # entry boost. NEW data dependency: where the close sits in the bar's
                 # own high-low range, close_loc = (close-low)/(high-low) in [0,1]. NO
@@ -1581,11 +1561,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _partnerdvp_btcvol_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _partnerdvp_btcvol_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
