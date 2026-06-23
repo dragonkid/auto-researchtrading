@@ -1462,22 +1462,6 @@ class Strategy:
                     # Exp4 finding that mixed-cell breadth boosts help mixed (lowest regime).
                     _partnerdvp_btcvol_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * _btc_vol_rise
                     _partnerdvp_btcvol_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * _btc_vol_rise
-                    # Branch step4: INVERSE-PORTFOLIO-DD gate on the boost. Exp5 decomposition:
-                    # mixed gain = real Sharpe +0.005 (genuine signal), rally regression = MaxDD
-                    # creep 5.17->5.24pct (boost over-commits rally longs -> DD toward 8pct knee;
-                    # Sharpe flat). The boost's harm is DD-driven, and rally's DD IS the portfolio
-                    # DD during rally. Mute the boost as portfolio DD rises (risk-off: don't over-
-                    # commit breadth-boosted entries when DD is creeping). This protects rally
-                    # (its DD creep fires the gate) while keeping the boost active in mixed's low-
-                    # DD environment (mixed MaxDD 2.81pct, portfolio DD stays low). Distinct from
-                    # the walled headroom-EXPANSION attempts (those USED headroom to grow size;
-                    # this INVERSELY mutes a boost as DD rises = risk-off, the safe direction).
-                    # Uses _port_dd_atten (top-level, line ~339: 1 - tanh(dd_frac/(0.008*LEVERAGE_K)),
-                    # already a 0..1 inverse-DD signal). Byte-identical at portfolio peak (dd_frac=0
-                    # -> _port_dd_atten 1.0 -> gate 1.0).
-                    _pdvbv_dd_gate = _port_dd_atten
-                    _partnerdvp_btcvol_boost_bull = 1.0 + (_partnerdvp_btcvol_boost_bull - 1.0) * _pdvbv_dd_gate
-                    _partnerdvp_btcvol_boost_bear = 1.0 + (_partnerdvp_btcvol_boost_bear - 1.0) * _pdvbv_dd_gate
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
