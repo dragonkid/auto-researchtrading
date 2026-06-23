@@ -2566,41 +2566,9 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
-                    # Exp1 (architectural, indep): COUNTER-TREND-SEVERITY emission
-                    # reduction throttle -- a SECOND level-axis amplifier parallel to
-                    # the MTM-path-chop throttle above. Motivation: the baseline MTM
-                    # throttle reaches only WHIPSAW dead capital (low path-efficiency =
-                    # high chop). Prior session (row 1236) found mixed's WRONG-SIDE
-                    # longs in a downtrend have a SMOOTHLY DECLINING pos_pnl path whose
-                    # path-efficiency is HIGH (smooth monotonic bleed is "efficient" even
-                    # though losing) -> chop~0 -> MTM throttle inert on them. The
-                    # derivative axis (row 1236 Exp3) was tried and failed (conflates
-                    # smooth-with-good). This uses a genuinely orthogonal LEVEL axis:
-                    # the COUNTER-TREND SEVERITY = how strongly the held position OPPOSES
-                    # the multi-day (96-bar ret_vlong) trend, a LEVEL quantity (no zero-
-                    # crossing, no derivative). mixed's wrong-side longs are deeply
-                    # counter-trend (pos_dir>0, ret_vlong<0 -> ct_sev~1); bull/crash/
-                    # rally trend-aligned winners are trend-aligned (ct_sev~0 -> byte-
-                    # identical). Same fast-saturating /0.01 ret_vlong scale as the
-                    # validated ct gates (rally's solidly-positive ret_vlong sits in the
-                    # flat tail -> near-CONSTANT, noise-free per branch-step-9 lesson).
-                    # Gate stack: winner_fade (spare crash clear-winner profit-takes, same
-                    # onset +0.5*stop as baseline so mixed's ~breakeven dead capital keeps
-                    # full throttle). NO grind_gate (that vol-regime separator is specific
-                    # to the chop axis separating bull's high-vol sharp pullbacks from
-                    # rally's low-vol grind; the ct-severity axis is already trend-
-                    # direction-specific). NO strong_trend_fade (that fade spares trend-
-                    # ALIGNED strength, which is already ct_sev~0 here -> redundant).
-                    # FUSION: take the MAX of the MTM-chop trim and the ct-severity trim
-                    # (not the sum) so each position is trimmed by whichever mechanism
-                    # flags it more strongly -- avoids double-amplification on positions
-                    # that are BOTH choppy AND counter-trend (keeps the trim bounded at
-                    # one AMP's worth). Reduction-only, same-sign clamped, never past
-                    # full close. New data dep at the emission reduction layer.
-                    _ct_sev = max(0.0, np.tanh(-_pos_dir_mtm * ret_vlong / 0.01))  # ~1 ct, ~0 trend-aligned (near-constant, noise-free)
-                    _trim_mult_chop = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
-                    _trim_mult_ctsev = 1.0 + MTM_CHOP_TRIM_AMP * _ct_sev * _winner_fade
-                    _trim_mult = max(_trim_mult_chop, _trim_mult_ctsev)
+                    # Amplify the reduction distance; clamp so target stays same-sign
+                    # and never trims past full close (toward 0, not across it).
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
