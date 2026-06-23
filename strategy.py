@@ -1735,6 +1735,52 @@ class Strategy:
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
+                # Exp2 (architectural, indep): CROSS-SYMBOL CORRELATED-LOSS sl_pressure
+                # AMPLIFIER. NEW cross-symbol data dep at the EXIT subsystem, routed through
+                # the DOMINANT loss-bar term (_sl_pressure) rather than as a new MAX-fusion soft
+                # source. Prior sessions proved a NEW soft MAX source is structurally inert
+                # under MAX-fusion (max<1.0 firing in loss bars is dominated by _sl_pressure
+                # itself, fff42d33/4bf5f622). Routing a cross-symbol signal as a MULTIPLIER on
+                # _sl_pressure sidesteps that wall: when this LOSING position is part of a
+                # same-direction correlated drawdown across the book (other same-sign symbols
+                # also currently losing), amplify the within-symbol stop pressure so the
+                # correlated loser exits faster. Mechanism: a same-direction losing book is a
+                # correlated-regime adverse move (crash: BTC/ETH/SOL shorts all draw down
+                # together on a dead-cat bounce) -- the portfolio-level risk no within-symbol
+                # primitive sees -- cutting the marginal loser faster caps the correlated DD.
+                # Byte-identical when (a) winning (pos_pnl>=0 -> _loss<=0 -> _sl_pressure 0,
+                # amp moot) or (b) no other same-sign losing positions (amp 1.0). Continuous
+                # tanh on the fraction of same-sign notional currently losing; shrink-side-only
+                # (amplifies pressure, never reduces -> never holds a loser longer). Symmetric
+                # (both long/short). Direction-agnostic general principle (no regime label).
+                # New control flow: a cross-symbol state dep at the stop-pressure computation.
+                if _sl_pressure > 0.0 and pos_pnl < 0:
+                    _same_dir_losing = 0.0
+                    _same_dir_total = 0.0
+                    for _osym, _opos in portfolio.positions.items():
+                        if _osym == symbol or _opos == 0:
+                            continue
+                        # same sign as current position
+                        if (_opos > 0) == (current_pos > 0):
+                            _oep = self.entry_prices.get(_osym)
+                            _obd = bar_data.get(_osym)
+                            if _oep is not None and _obd is not None and len(_obd.history) > 0:
+                                _omid = _obd.close
+                                _opnl = (_omid - _oep) / _oep
+                                if _opos < 0:
+                                    _opnl = -_opnl
+                                _onot = abs(_opos)
+                                _same_dir_total += _onot
+                                if _opnl < 0:
+                                    _same_dir_losing += _onot
+                    if _same_dir_total > 0.0:
+                        _frac_losing = _same_dir_losing / _same_dir_total  # [0,1]
+                        _corr_amp = 1.0 + 0.20 * max(0.0, np.tanh((_frac_losing - 0.5) / 0.3))
+                        # Cap below the 0.95 stop-loss-exempt threshold so the amp amplifies
+                        # the SOFT pressure (raising the MAX-fusion floor) without forcing
+                        # the binary full-exit path (target=0) unless the original already met
+                        # it -- avoids inventing hard exits on correlated soft-pressure bars.
+                        _sl_pressure = min(0.94, _sl_pressure * _corr_amp) if _sl_pressure < 0.95 else _sl_pressure
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
                 # robustness. Single _lr_slope (16-bar) is shared with entry voter — coupling
