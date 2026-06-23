@@ -1782,6 +1782,35 @@ class Strategy:
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
+                # Exp1 (architectural, indep): SMALL-PEAK giveback ATTENUATION -- bilateral
+                # counterpart to the profit-magnitude AMPLIFIER above. The amplifier harvests
+                # LARGE-peak winners faster (factor >= 1.0, saturates above ~0.7*_pp_min
+                # excess); for SMALL peaks (peak near or below _pp_min) it is exactly 1.0 (no
+                # effect), so a position that has only peaked at a tiny fraction of its risk
+                # budget gets the SAME 22% giveback tolerance as a deep winner. In a grinding
+                # low-trend regime (mixed_2025: 100% WR but 0.10%/trade, Sh0.80), positions
+                # peak small and exit on the first small giveback -> per-trade gain capped ->
+                # low mean return -> low Sharpe (the binding regime's binding lever). The
+                # overstay wall blocks raising giveback GLOBALLY (bull/rally trend winners
+                # over-hold). This attenuates giveback ONLY while peak is small RELATIVE TO
+                # THE STOP (peak/|stop| < ~0.5 = hasn't captured meaningful profit yet vs the
+                # risk taken) -- a genuinely different data axis from _profit_magnitude
+                # (which scales peak vs the VOL-scaled _pp_min). Stop-relative peak measures
+                # "how much of the risk budget has been captured" -- structurally a risk/R
+                # framing, not a vol-magnitude framing. Large-peak winners (peak/|stop| > 0.5,
+                # the bull/rally trend winners that hit the overstay wall) keep the UNAMPLIFIED
+                # giveback (factor 1.0 -- the existing amplifier still applies on top for the
+                # very deepest peaks). Small-peak positions ride transient giveback longer ->
+                # larger per-trade capture in grind -> higher mean -> higher Sharpe in mixed.
+                # Trend-strength gated (mirror of _pm_trend_atten): in strong trends small
+                # peaks are likely pullback-noise on real trend winners (which the amplifier
+                # + cushion already handle) -> keep tight giveback; in chop (low |ret_long|,
+                # mixed's regime) small peaks ARE the typical peak -> full attenuation.
+                # Continuous tanh on (0.5 - peak/|stop|), no boundary; max -25% attenuation.
+                _pk_stop_ratio = self.peak_pnl[symbol] / abs(STOP_LOSS_PCT)
+                _small_pk_gate = max(0.0, np.tanh((0.5 - _pk_stop_ratio) / 0.20))  # 0 at peak>=0.5*stop, ~1 at peak near 0
+                _small_pk_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], chop full / trend muted
+                _giveback_ratio = _giveback_ratio * (1.0 - 0.25 * _small_pk_gate * _small_pk_trend_atten)
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
