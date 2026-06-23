@@ -1462,22 +1462,6 @@ class Strategy:
                     # Exp4 finding that mixed-cell breadth boosts help mixed (lowest regime).
                     _partnerdvp_btcvol_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * _btc_vol_rise
                     _partnerdvp_btcvol_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * _btc_vol_rise
-                    # Branch step1: CONVICTION-MARGIN gate on the boost. Exp5 (opening) gave
-                    # mixed +0.0068 (target lowest regime gained) but rally -0.0017 (the docu-
-                    # mented low-DD-regime over-commit confound -- breadth boost fires on rally
-                    # decisive trend longs too, redundant over-commit there). Separator: a breadth-
-                    # confirmation boost is most valuable for MARGINAL-conviction entries (where
-                    # the cross-symbol confirmation tips entry quality, mixed's marginal alts) and
-                    # redundant/over-committal for DECISIVE entries (rally grinding trend longs,
-                    # high margin). Gate the boost by (1 - decisiveness): fade it as the entry's
-                    # own-side conviction margin rises above the admission floor. Decisive entries
-                    # (margin>=0.6) get ~0 boost (spared); marginal entries (margin~0) get full.
-                    # Smooth tanh, no boundary, general principle (no regime label). Uses the
-                    # already-computed _bull_margin/_bear_margin (admission-relative conviction).
-                    _pdvbv_margin_gate_bull = 1.0 - max(0.0, min(1.0, np.tanh((_bull_margin - 0.15) / 0.30)))
-                    _pdvbv_margin_gate_bear = 1.0 - max(0.0, min(1.0, np.tanh((_bear_margin - 0.15) / 0.30)))
-                    _partnerdvp_btcvol_boost_bull = 1.0 + (_partnerdvp_btcvol_boost_bull - 1.0) * _pdvbv_margin_gate_bull
-                    _partnerdvp_btcvol_boost_bear = 1.0 + (_partnerdvp_btcvol_boost_bear - 1.0) * _pdvbv_margin_gate_bear
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
