@@ -76,24 +76,6 @@ MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservati
 STOP_LOSS_PCT = -0.024
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
-# Exp1 (architectural, indep): DIRECTION-ASYMMETRIC peak-profit giveback. Crypto
-# adverse excursion is direction-asymmetric by mechanism: SHORT positions face short
-# squeezes (fast vertical re-traces of an open winner — a crash-bear short rallys
-# violently on a liquidation cascade), while LONG positions face grinding pullbacks
-# (a bull/rally long gives back gradually over many bars). A SINGLE symmetric
-# giveback (0.22) over-lets shorts re-trace through squeezes (crash gives back
-# realized gains on dead-cat bounces) AND over-tightens longs. Make the base
-# giveback tolerance DIRECTION-CONDITIONAL: shorts (current_pos<0) lock gains
-# faster (tighter giveback), longs keep baseline. New data dependency on POSITION
-# DIRECTION at the harvest subsystem's core parameter — structurally distinct from
-# prior giveback levers (always symmetric, or DD-gated which is direction-agnostic).
-# General mechanism (all shorts/longs across all regimes, NOT regime-detection):
-# the squeeze-vs-grind asymmetry is a property of direction, not of any named
-# regime. Crash-bear is short-dominated so it sees the most effect, but rally/bull
-# shorts and sideways shorts get the same treatment. Continuous blend via tanh on
-# pos_dir so the transition between long/short is not a hard switch (a position
-# never has ambiguous sign, but the blend keeps the form smooth for stability).
-PEAK_PROFIT_GIVEBACK_SHORT = 0.15   # tighter giveback for shorts (squeeze protection) vs 0.22 longs
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
 # At LEVERAGE_K=5 the binding constraint (rally) sits at DD 7.58pct, just under the
 # 8pct dd_gate knee (dd_gate base 1/(1+DD) is already costing ~7pct of every regime's
@@ -1809,15 +1791,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp1 (architectural): direction-asymmetric base giveback. Shorts use
-                # the tighter PEAK_PROFIT_GIVEBACK_SHORT (squeeze protection); longs use
-                # PEAK_PROFIT_GIVEBACK. _dir_blend = 1.0 for a pure short, 0.0 for a pure
-                # long (tanh blend on -pos_dir keeps the form smooth; sign is never
-                # ambiguous in practice so this selects one branch cleanly). The DD-
-                # tightening multiplier applies identically to both (DD risk is direction-
-                # agnostic) -- only the BASE giveback differs by direction.
-                _pp_base_giveback = PEAK_PROFIT_GIVEBACK + (PEAK_PROFIT_GIVEBACK_SHORT - PEAK_PROFIT_GIVEBACK) * max(0.0, np.tanh(-current_pos * 1e6))
-                _pp_giveback_eff = _pp_base_giveback * _pp_tighten
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
