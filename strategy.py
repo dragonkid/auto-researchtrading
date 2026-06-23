@@ -657,7 +657,28 @@ class Strategy:
             self._recent_strongs[symbol] = _hist
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
-            _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
+            _chop_tighten = 0.20 * (1.0 - rsi_trend_str)
+            # Exp2 (architectural, indep): LINEARITY-CONDITIONED admission relaxation.
+            # The chop-tightening above assumes low rsi_trend_str = choppy/noisy -> filter
+            # harder. But a low-trend regime can also be a CLEAN mini-trend (high R^2 path
+            # = closes travel in a straight low-slope line), which is the sideways
+            # mean-reversion signature the strategy WANTS to admit. The tightening filters
+            # a marginal high-quality sideways trade (sideways sits at 49 trades, just below
+            # the 50-trade sample_factor knee -> sqrt(49/50)=0.9899 damps sideways score ~1pct).
+            # NEW data dep at the ADMISSION boundary: path-linearity (R^2 of log-HL2 over
+            # LINREG_PERIOD) x trend-strength conjunction. When the path is highly linear
+            # (high R^2) the chop-tightening is PARTIALLY OFFSET (up to 40% of it), because
+            # a clean-line low-trend signal is real trend continuation, not chop. When the
+            # path is non-linear (low R^2 = true chop) the tightening stays fully active.
+            # Distinct from the entry-SIZE _tq_atten (which shrinks size on low-R^2): this
+            # acts on the admission THRESHOLD (count), gated to high-R^2 (the opposite tail).
+            # Continuous tanh on R^2 (no zero-crossing -> not the walled admission-boundary
+            # family); reduction-safe (relaxes threshold only, never blocks entry; can only
+            # ADD a marginal trade, never remove one). Byte-identical when R^2 is low (chop
+            # -> offset 0 -> tightening unchanged).
+            _admit_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+            _linear_offset = 0.40 * max(0.0, min(1.0, np.tanh((_admit_r2 - 0.45) / 0.20)))
+            _strong_min = STRONG_WEIGHT_MIN + _chop_tighten * (1.0 - _linear_offset)
 
             # Architectural: trade-frequency self-regulator. Per-symbol rolling
             # entry-bar history over a 30-bar window. When recent entry density
