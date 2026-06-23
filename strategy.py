@@ -2552,8 +2552,17 @@ class Strategy:
                     # max(0,..)=0 -> fade 1 -> full throttle), so mixed's wrong-side longs
                     # in a downtrend (ret_vlong<0) stay fully throttled. Smooth, no
                     # boundary. Documented bull/rally separator (multi-day trend strength).
+                    # Branch step8: tighten fade scale 0.02->0.012 to spare crash's
+                    # trend-aligned shorts MORE (crash -0.0056 is the keep-blocker).
+                    # crash positions are trend-aligned shorts (ret_vlong<0, pos_dir<0 ->
+                    # aligned_vlong>0); /0.02 under-fades them so the throttle trims
+                    # crash's bounce-recovery shorts. Faster saturation (/0.012) spares
+                    # any meaningful trend-aligned position (bull AND crash) while
+                    # sideways/mixed (aligned_vlong<=0) are UNAFFECTED (max(0,..)=0 ->
+                    # fade 1 regardless of scale), so their working gains are untouched.
+                    # rally (aligned 0.006) fade ~0.61 (still mostly kept).
                     _pos_dir_mtm = 1.0 if current_pos > 0 else -1.0
-                    _strong_trend_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_mtm) / 0.02))
+                    _strong_trend_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_mtm) / 0.012))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade
