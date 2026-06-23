@@ -1593,20 +1593,24 @@ class Strategy:
                 # Exp1: portfolio-DD-headroom conviction-quality entry boost.
                 # Gates the headroom signal (computed at top of on_bar) on conviction
                 # MARGIN (only decisive entries, margin>=0.30) AND trend-ALIGNMENT
-                # (entry dir matches ret_long sign, the winning-trade family). The
-                # conjunction ensures the boost lands on high-quality trend-aligned
+                # (entry dir matches ret_long sign, the winning-trade family) AND LOW
+                # CHURN (the noise-immune integer len(_eh) gate the baseline grids use).
+                # The conjunction ensures the boost lands on high-quality trend-aligned
                 # winners -> raises APY without proportional DD -> calmar up (the
                 # genuine-signal path the v2.2 return_reward rewards). Trend-alignment
-                # gate (tanh(ret_long*pos_dir/0.04)) spares counter-trend entries
-                # (rally pullback shorts, crash dead-cat bounces -- the losers that
-                # would raise DD). Deep-saturated margin gate (/0.30) keeps the boost
-                # near-constant where it fires (noise-free, validated safe family).
-                # First-bar-only, +0.10 max. Byte-identical when headroom=0 (deep DD,
-                # e.g. rally near its DD peak) OR margin<0.30 (marginal entries) OR
-                # counter-trend (gate 0). New cross-component data dep: first-bar size
-                # depends on portfolio-DD-headroom x conviction x trend-alignment.
-                _headroom_conv_bull = max(0.0, min(1.0, _bull_margin / 0.30)) * max(0.0, np.tanh(ret_long / 0.04))
-                _headroom_conv_bear = max(0.0, min(1.0, _bear_margin / 0.30)) * max(0.0, np.tanh(-ret_long / 0.04))
+                # gate spares counter-trend entries (rally pullback shorts, crash
+                # dead-cat bounces -- the losers that would raise DD). The LOW-CHURN
+                # gate (branch step2) fixes the rally regression: rally operates at HIGH
+                # churn (102 trades, bursty, positions already actively managed near
+                # optimal size -> boost there raised DD 5.17->5.36 faster than return ->
+                # calmar down -> rally raw -0.002). Sparing high-churn entries keeps the
+                # boost on LOW-churn conservative books (mixed 44 trades, crash/sideways
+                # ~50) where positions are undersized relative to DD headroom. Same
+                # noise-immune behavioral gate the baseline uses (NOT a regime label);
+                # regime effects fall out of realized per-symbol entry density.
+                _headroom_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 low churn, ~0 bursting
+                _headroom_conv_bull = max(0.0, min(1.0, _bull_margin / 0.30)) * max(0.0, np.tanh(ret_long / 0.04)) * _headroom_calm
+                _headroom_conv_bear = max(0.0, min(1.0, _bear_margin / 0.30)) * max(0.0, np.tanh(-ret_long / 0.04)) * _headroom_calm
                 _headroom_boost_bull = 1.0 + PORT_DD_HEADROOM_BOOST * _port_dd_headroom * _headroom_conv_bull
                 _headroom_boost_bear = 1.0 + PORT_DD_HEADROOM_BOOST * _port_dd_headroom * _headroom_conv_bear
                 if _bull_ready and _bull_admit:
