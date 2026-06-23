@@ -117,23 +117,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Architectural (Exp2 this session): PORTFOLIO-DD-ADAPTIVE SCALE-IN PACE SLOWING. The two
-# existing DD-reduction levers (giveback-tightening PORT_DD_GIVEBACK_TIGHTEN, tp-harvest
-# PORT_DD_TP_HARVEST_RELAX) are both documented MAXED at their local optima (mag 0.50/0.60;
-# higher cliffs rally stability below the 0.80 knee). Both act on EXIT timing/magnitude
-# (harvest winners faster / lock gains). This adds a THIRD, DISTINCT DD-reduction lever on
-# the BUILD side: during portfolio DD (rally pullbacks = the DD source), SLOW the scale-in
-# pace so new/early entries commit LESS per bar -> lower peak exposure during the DD
-# episode -> smaller drawdown. Distinct from giveback (harvest timing of winners) and tp-
-# harvest (peak size scale-down): this alters the BUILD pace of positions, a path neither
-# touches. Mechanism: lengthen _entry_full_bars_dyn (the bars-to-full-size window) by a
-# tanh fraction of the DD depth, so each scale-in step is smaller during DD. Byte-identical
-# at portfolio peak (dd_frac=0 -> factor 1.0 -> no slowing). Leverage-coupled scale (same
-# discipline as the other two DD levers: scaled by LEVERAGE_K so activation DD-LEVEL is
-# invariant). Continuous tanh on the DD fraction (no new boundary). Symmetric (both
-# long/short). Sharpe-affecting (alters build timing). Max +50% pace lengthening at deep DD.
-PORT_DD_SCALEIN_SLOW = 0.50    # max fractional lengthening of the scale-in window at deep DD
-PORT_DD_SCALEIN_SCALE = 0.012  # base DD-fraction at which slowing saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1665,15 +1648,6 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
-                # Exp2 (architectural): portfolio-DD-adaptive SCALE-IN PACE SLOWING. During
-                # portfolio DD (rally pullbacks = the DD source), lengthen the scale-in window
-                # so new/early entries commit less per bar -> lower peak exposure during the DD
-                # episode -> smaller drawdown. THIRD distinct DD-reduction lever (giveback +
-                # tp-harvest act on EXIT; this acts on BUILD pace). Byte-identical at portfolio
-                # peak (dd_frac=0 -> factor 1.0). Leverage-coupled scale. Continuous tanh.
-                _port_dd_frac_si = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
-                _si_slow = 1.0 + PORT_DD_SCALEIN_SLOW * max(0.0, np.tanh(_port_dd_frac_si / (PORT_DD_SCALEIN_SCALE * LEVERAGE_K)))
-                _entry_full_bars_dyn = _entry_full_bars_dyn * _si_slow
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
