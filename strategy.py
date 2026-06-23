@@ -2519,7 +2519,20 @@ class Strategy:
                     _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
                     _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
                 _grid_grind = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))  # 0 high-vol, 1 low-vol grind
-                _grid_narrow = _grid_chop * _grid_grind  # fire only low-vol AND choppy
+                # Branch step3: DEAD-CAPITAL gate (the bull keep-blocker separator). step2's
+                # grind_gate alone did not spare bull (bull's vol_ratio is moderate, not >1.3,
+                # so the gate fired partially -> bull still -0.031). The real separator between
+                # mixed's beneficial trims and bull's harmful trims is POS_PNL MAGNITUDE:
+                # mixed's wrong-side longs are ~BREAKEVEN dead capital (pos_pnl near 0, whippy);
+                # bull's trimmed positions are CLEAR WINNERS (pos_pnl strongly positive) whose
+                # choppy MTM is sharp-pullback noise, not dead capital. Gate the narrowing by a
+                # near-breakeven requirement (the SAME winner_fade logic the baseline throttle
+                # uses): full narrowing at pos_pnl<=+0.5*stop (dead capital), fading to 0 at
+                # pos_pnl>=+1.5*stop (clear winner). bull's deep winners -> gate 0 -> 0.06
+                # baseline (byte-identical); mixed's ~breakeven longs -> full narrowing. AND'd
+                # with grind_gate so only LOW-VOL near-breakeven choppy books narrow (mixed).
+                _dead_cap = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0)) if pos_pnl > 0 else 1.0
+                _grid_narrow = _grid_chop * _grid_grind * _dead_cap  # fire only low-vol AND choppy AND near-breakeven
                 _grid_c = (0.06 * (1.0 - 0.5 * _grid_narrow)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
