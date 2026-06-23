@@ -2298,9 +2298,24 @@ class Strategy:
                         # counter-trend vol-spike entries (bull/sideways pullbacks are ct ->
                         # _dr_align~0 -> no cushion to amplify) -- the gate step1's floor lacked.
                         # max +0.3 to _dr_k at deep high-vol entry. Symmetric (direction-agnostic).
+                        # BRANCH step3: MAE-cleanliness gate on the entry-vol cushion amp. Step2
+                        # showed sideways +0.0163 (vol-burst mean-reversion winners held through
+                        # mid-range noise) but bull -0.0165 (cushion held trend longs into 2021
+                        # sharp corrections). Separator: bull's sharp-correction trend longs
+                        # develop a DEEPER MAE (real adverse move) than sideways vol-burst mean-
+                        # reverters (shallow MAE, recover fast). Gate the entry-vol cushion amp
+                        # by MAE-cleanliness: full amp when MAE shallow (|MAE|<0.3*|stop|),
+                        # fading to 0 at |MAE|>=0.8*|stop|. A position that has already faced a
+                        # deep adverse excursion is in a real correction (bull), not a vol-burst
+                        # (sideways) -> no extra cushion. The base cushion (DERISK_CONVEX_AMP)
+                        # is UNCHANGED; only the entry-vol AMPLIFICATION is MAE-gated. Smooth tanh
+                        # on -MAE/|stop| (no boundary). New cross-state dep: cushion amp depends
+                        # on entry-vol x MAE-cleanliness.
                         _evr = self._entry_vol_ratio.get(symbol, vol_ratio)
                         _evr_amp = 0.3 * max(0.0, np.tanh((_evr - 1.0) / 0.4))  # one-sided: only high-vol-entry
-                        _dr_k = 1.0 + (DERISK_CONVEX_AMP + _evr_amp) * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.9 trend-aligned+profit+slope-conf+high-vol-entry
+                        _evr_mae_gate = max(0.0, min(1.0, 1.0 - np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.4)))  # 1 shallow MAE, 0 deep MAE
+                        _evr_amp = _evr_amp * _evr_mae_gate
+                        _dr_k = 1.0 + (DERISK_CONVEX_AMP + _evr_amp) * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.9 trend-aligned+profit+slope-conf+high-vol-entry+shallow-MAE
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
