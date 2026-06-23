@@ -2125,7 +2125,25 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp3 (architectural, indep): raise tp_harvest max scale 0.30 -> 0.50.
+                    # DIAGNOSTIC this session (peak_pnl distribution on mixed_2025): mixed's
+                    # held positions reach LARGE unrealized peaks -- peak/|stop| quartiles
+                    # 5.6 / 13.3 / 16.4 (peak_pnl 13-39pct of price) -- yet REALIZED return
+                    # is only 4.4pct with 100pct WR. The positions ride to +30pct, give back to
+                    # ~+24pct (22pct giveback tolerance), partially realize small pieces, ride
+                    # again -- 43 partial-realizes capture only a fraction of the large peaks
+                    # (high turnover 856912 from constant resizing). The tp_harvest scale-down
+                    # (cap 0.30) is the proactive peak-harvest lever; RAISING it captures more
+                    # of mixed's large peaks at realization -> higher mean return -> higher
+                    # Sharpe (mixed Sh0.80, the binding regime). SAFETY: the _ts_supp factor
+                    # (MAE-clean x trend-align x deep-peak) STILL suppresses harvest on clean
+                    # trend-aligned deep-peak winners (bull longs in uptrend at MAE-clean
+                    # peaks -> _ts_supp ~1 -> max(0,1-1.5*_ts_supp) ~0 -> no harvest -> bull/rally
+                    # trend winners byte-identical, no overstay/over-harvest wall). mixed is
+                    # chop (low |ret_long| -> trend-align gate ~0 -> _ts_supp ~0 -> FULL harvest),
+                    # so the raised cap fires exactly on mixed's large-peak chop winners. New
+                    # control-flow dep: tp_harvest magnitude (the existing mechanism's cap).
+                    _tp_scale = 0.50 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
