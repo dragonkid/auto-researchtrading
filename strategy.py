@@ -203,23 +203,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
 MTM_CHOP_TRIM_AMP = 0.80
-# Exp (architectural): GIVEBACK-PATH emission reduction-throttle gate. A 5th
-# multiplicative gate on the kept MTM-chop reduction throttle. The existing
-# chop signal is the LEVEL of path efficiency (chop=1-eff); prior session
-# proved this is correct while the DERIVATIVE is wrong, but it is LOW for a
-# SMOOTHLY BLEEDING position (monotonic decline = efficient) — exactly
-# mixed_2025's wrong-side-long book (peak at entry, then bleeds down). So the
-# current throttle barely fires on mixed's losing longs. This adds an ORTHOGONAL
-# level-based path signal: how much paper profit has been given BACK from the
-# position's peak (peak_pnl - pos_pnl, normalized by stop). LARGE for a
-# bleed-from-peak (mixed wrong-side longs), ~0 for a smooth climber (bull/crash
-# winners near their peak). Reuses self.peak_pnl (no new state). Onset at 0.5*stop
-# of giveback so a fresh/peaking winner is byte-identical; saturates ~1 by ~1*stop
-# of giveback. Composes with _winner_fade (winners have pos_pnl>+0.5*stop ->
-# winner_fade~0 -> whole throttle ~0 regardless, so winning pullbacks are already
-# spared by the winner gate; giveback_gate only binds on NON-winners that have
-# also given back = wrong-side dead capital = mixed's signature). Reduction-only.
-MTM_GIVEBACK_GATE_AMP = 0.80  # additive (not gated by chop) so it reaches smooth-bleed (mixed)
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -2583,30 +2566,9 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
-                    # Exp: GIVEBACK-PATH gate (orthogonal level-based path signal).
-                    # Giveback = how far pos_pnl has fallen BELOW its entry-to-now
-                    # peak (self.peak_pnl). ~0 for a position at/above its peak
-                    # (smooth climber, fresh winner); saturating ~1 once giveback
-                    # exceeds ~1*stop (a bleed-from-peak). Onset 0.5*stop so a
-                    # peaking winner is byte-identical. NORMAL winning pullbacks are
-                    # already spared by _winner_fade (pos_pnl>+0.5*stop -> winner_fade~0
-                    # -> throttle~0); this gate only binds on NON-winners that have
-                    # given back from peak = wrong-side dead capital (mixed signature:
-                    # peak~entry, pos_pnl now negative -> large giveback). The prior
-                    # session's efficiency (chop) signal is LOW for such a smooth
-                    # bleed, so this is the complementary level-based lever.
-                    _pp_peak = self.peak_pnl.get(symbol, 0.0)
-                    _giveback_amt = max(0.0, _pp_peak - pos_pnl)
-                    _giveback_gate = max(0.0, min(1.0, np.tanh((_giveback_amt / abs(STOP_LOSS_PCT) - 0.5) / 0.5)))
                     # Amplify the reduction distance; clamp so target stays same-sign
-                    # and never trims past full close (toward 0, not across it). The
-                    # giveback term is ADDITIVE (not multiplied by chop) so it reaches
-                    # a SMOOTHLY BLEEDING position (chop~0, giveback high = mixed's
-                    # wrong-side-long book) that the chop term alone misses. Both
-                    # terms share the protective gates (grind/trend/winner) so
-                    # bull/crash winners stay spared.
-                    _emit_gates = _grind_gate * _strong_trend_fade * _winner_fade
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _emit_gates + MTM_GIVEBACK_GATE_AMP * _giveback_gate * _emit_gates
+                    # and never trims past full close (toward 0, not across it).
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
