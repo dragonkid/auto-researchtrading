@@ -2507,7 +2507,25 @@ class Strategy:
                     _net_g = abs(_ppa_g[-1] - _ppa_g[0])
                     _tot_g = float(np.sum(np.abs(np.diff(_ppa_g))))
                     _grid_chop = max(0.0, min(1.0, 1.0 - _net_g / max(_tot_g, 1e-10)))
-                _grid_c = (0.06 * (1.0 - 0.5 * _grid_chop)) * equity * BASE_POSITION_SIZE
+                # Branch step5: STRONG-UPTREND fade on the grid narrowing (the baseline
+                # throttle's own proven bull-sparer). step1 ungated narrowing helped mixed/
+                # rally (+0.002/+0.021) but bull regressed -0.031 (keep-blocker); step2 grind
+                # gate + step3 dead_cap gate + step4 amplitude all failed to spare bull
+                # cleanly. Use the EXACT separator the baseline MTM-chop throttle uses to spare
+                # bull: _strong_trend_fade = 1 - tanh(max(0,ret_vlong*pos_dir)/0.02). bull's
+                # winners are in a STRONG multi-day uptrend (ret_vlong ~+0.027, pos long ->
+                # ret_vlong*pos_dir ~+0.027 -> fade ~0.13 -> narrowing ~off -> bull spares to
+                # 0.06 baseline); mixed's wrong-side longs are in a DOWNTREND (ret_vlong<0,
+                # pos long -> ret_vlong*pos_dir <0 -> max(0,..)=0 -> fade 1 -> full narrowing);
+                # rally's trend longs have ret_vlong ~+0.006 (WEAK uptrend) -> fade ~0.71 ->
+                # partial narrowing kept (rally's grinding uptrend benefits from finer grid).
+                # This is the documented bull/rally separator (multi-day trend strength), not
+                # a new gate family. Only trend-ALIGNED strength fades (ct/down gets max(0,..)=0
+                # -> fade 1 -> full narrowing). Smooth tanh, no boundary.
+                _pos_dir_g = 1.0 if current_pos > 0 else -1.0
+                _grid_strong_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_g) / 0.02))
+                _grid_narrow = _grid_chop * _grid_strong_fade
+                _grid_c = (0.06 * (1.0 - 0.5 * _grid_narrow)) * equity * BASE_POSITION_SIZE
                 if _grid_c > 0:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
