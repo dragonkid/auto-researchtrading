@@ -1460,8 +1460,8 @@ class Strategy:
                     # Deep-saturated both gates (/0.15 partner DVP, /0.30 BTC vol -> near-constant,
                     # noise-free, validated safe family). First-bar-only, +0.05 max. Builds on
                     # Exp4 finding that mixed-cell breadth boosts help mixed (lowest regime).
-                    _partnerdvp_btcvol_boost_bull = 1.0 + 0.08 * max(0.0, np.tanh(_partner_dvp / 0.15)) * _btc_vol_rise
-                    _partnerdvp_btcvol_boost_bear = 1.0 + 0.08 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * _btc_vol_rise
+                    _partnerdvp_btcvol_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_partner_dvp / 0.15)) * _btc_vol_rise
+                    _partnerdvp_btcvol_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_partner_dvp / 0.15)) * _btc_vol_rise
                 else:
                     _vol_partner_boost_bull = 1.0
                     _vol_partner_boost_bear = 1.0
