@@ -2125,32 +2125,7 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
-                    # Exp2 (architectural, indep): MAE-CLEANLINESS-gated tp_harvest magnitude
-                    # amplification. The prior session's tp_harvest branch found the ONE productive
-                    # exit lever for mixed (+0.0025 Sharpe) but walled at +0.003 because raising
-                    # magnitude/threshold over-harvested CRASH (crash stability collapsed 1.0->0.225
-                    # at magnitude 0.65). The wall is that mixed and crash OVERLAP on vol_ratio
-                    # (both low-vol 0.40-0.61) so a vol-gated magnitude cannot separate them. MAE
-                    # (maximum adverse excursion) is an ORTHOGONAL separator: mixed's held longs
-                    # WHIPSAW (large MAE relative to peak -- the intrinsic MTM oscillation, return_vol
-                    # 5.54pct vs 4.4pct net); crash's trend shorts have SMALL MAE (clean directional
-                    # trend, 100pct WR). Amplify the tp_harvest magnitude for LARGE-MAE (whipsaw/
-                    # oscillating) peaks (mixed -- convert oscillating paper PnL to realized gains,
-                    # cut the re-peak "ride again" churn) while clean-MAE trend winners (crash) keep
-                    # the baseline magnitude. _ts_supp already uses MAE for SUPPRESSION (clean-MAE ->
-                    # suppress harvest, let run) -- but that only controls whether the 0.30 magnitude
-                    # fires AT ALL, not the magnitude itself; mixed (counter-trend, trend-align factor
-                    # 0) already bypasses _ts_supp -> gets full 0.30 -> the magnitude is the ceiling
-                    # and it is the SAME 0.30 for crash. This makes magnitude ITSELF MAE-dependent:
-                    # amplify up to ~1.5x at large MAE/|stop|, baseline 1.0x at clean MAE. Crash
-                    # (clean trend, MAE/|stop| small) -> ~1.0x byte-identical; mixed (whipsaw) ->
-                    # ~1.5x -> deeper harvest per re-peak -> less MTM oscillation -> higher mixed
-                    # Sharpe. Continuous tanh on -MAE/|stop| (no new decision boundary; MAE is a
-                    # low-water mark, monotone smooth). New cross-component data dep: tp_harvest
-                    # magnitude depends on MAE-cleanliness (the separator vol_ratio lacked).
-                    _mae_ratio = max(0.0, -self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT))  # 0 clean, large whipsaw
-                    _tp_mae_amp = 1.0 + 0.50 * max(0.0, min(1.0, np.tanh((_mae_ratio - 0.5) / 0.5)))  # 1.0 clean, up to 1.5x whipsaw
-                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * _tp_mae_amp * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = 0.30 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
