@@ -1752,6 +1752,29 @@ class Strategy:
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
+                # Exp2 (architectural, indep): SMALL-PEAK WINNER slope-against threshold
+                # relaxation. Exp1 this session proved mixed's giveback/pp path is NON-BINDING
+                # (mixed exits via slope-against / time / opp-gate before pp binds). The binding
+                # exit for mixed's tiny winners (0.10pct/trade, Sh0.80) is slope-against: a
+                # grinding low-trend regime (low |ret_long|) produces small directional moves
+                # whose slope reverses on noise at the 0.0003 slope threshold -> mixed winners
+                # exit on the first noise slope reversal before the small move extends -> capped
+                # per-trade gain -> low mean -> low Sharpe. Raising _slope_thresh GLOBALLY
+                # would delay exits on real reversals (the documented removal of trend-aligned
+                # slope attenuation: delaying slope-against exits cost bull/crash). This raises
+                # the effective slope threshold ONLY for positions that are (a) currently WINNING
+                # (pos_pnl > 0 -- losers keep the tight slope, cut fast on real reversal) AND
+                # (b) SMALL-PEAK relative to the stop (peak/|stop| < 0.5 = hasnt captured a
+                # meaningful fraction of the risk budget -- a winner that has ALREADY captured
+                # a large peak is a real trend winner whose slope reversal is signal, keep
+                # tight). For mixed's small-peak winners this rides transient slope noise;
+                # large-peak winners (bull/rally trend winners) AND all losers keep baseline.
+                # New cross-component data dep at the slope-against activation: the effective
+                # threshold depends on peak-to-stop magnitude x current-win sign. Continuous
+                # tanh on (0.5 - peak/|stop|), no boundary; max +60pct threshold widening.
+                _pk_stop_ratio_s = self.peak_pnl.get(symbol, 0.0) / abs(STOP_LOSS_PCT)
+                _small_pk_win = max(0.0, np.tanh((0.5 - _pk_stop_ratio_s) / 0.20)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) if pos_pnl > 0 else 0.0
+                _slope_thresh = _slope_thresh * (1.0 + 0.60 * _small_pk_win)
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
