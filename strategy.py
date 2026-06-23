@@ -1691,7 +1691,30 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
+                    # Exp5 (architectural, indep): PORTFOLIO-DD-ATTENUATED scale-in. The
+                    # entry first-bar already shrinks under portfolio DD via _port_dd_atten
+                    # (the portfolio-DD circuit-breaker, leverage-coupled + smooth), BUT
+                    # scale-in (this path) is DD-BLIND: it ramps the position back toward
+                    # full `size` over 2-3 bars regardless of whether the portfolio is
+                    # drawing down. rally's DD (5.17pct, the binding constraint sitting
+                    # just under the 8pct dd_gate knee) comes from CORRELATED pullbacks
+                    # (BTC/ETH/SOL longs pulling back together = portfolio DD). During such
+                    # a pullback, scale-in currently GROWS the position even as DD deepens
+                    # -> larger position when the pullback extends -> larger DD. Apply the
+                    # SAME validated _port_dd_atten signal to the scale-in full_target:
+                    # under portfolio DD, scale-in grows the position LESS -> smaller
+                    # position when DD deepens -> lower rally DD (directly targets the
+                    # binding regime's binding constraint via DD relief, the lever the
+                    # v2.2 scoring redesign made dominant at near-knee DD). Shrink-only
+                    # (atten in [1-DD_MAX, 1.0] <= 1.0), continuous (smooth tanh, no
+                    # boundary), leverage-coupled (decision-invariant under leverage),
+                    # BYTE-IDENTICAL at portfolio peak (dd_frac=0 -> atten=1.0 -> no
+                    # effect, same as at entry). New control flow: scale-in now respects
+                    # portfolio DD (was DD-blind). Uses the already-computed _port_dd_atten
+                    # (no new price-derived term -> no new noise source). General risk-off
+                    # principle (no regime label): don't grow a position while the portfolio
+                    # is drawing down.
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _port_dd_atten
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
