@@ -2554,9 +2554,21 @@ class Strategy:
                     # boundary. Documented bull/rally separator (multi-day trend strength).
                     _pos_dir_mtm = 1.0 if current_pos > 0 else -1.0
                     _strong_trend_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_mtm) / 0.02))
+                    # Branch step9: WINNER fade (recovers crash -0.0056, the keep-blocker).
+                    # crash's throttle drag is trimming WINNING shorts being reduced
+                    # (crash is 100pctWR, its reductions are profit-takes on winners ->
+                    # the throttle front-runs them = sells the winner early). mixed's
+                    # beneficial trims are LOW-PnL dead capital (whippy ~breakeven longs).
+                    # Fade the throttle for clear winners: full at pos_pnl<=+0.5*stop,
+                    # fading to ~0 at pos_pnl>=+1.5*stop. This is DISTINCT from step2's
+                    # symmetric profit-fade (which faded from 0 and killed rally's modest-
+                    # PnL grind trims): here the fade ONSET is at +0.5*stop so mixed's
+                    # ~breakeven and rally's modest-PnL trims keep full throttle, only
+                    # CLEAR winners (crash profit-take shorts) are spared. Smooth.
+                    _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
