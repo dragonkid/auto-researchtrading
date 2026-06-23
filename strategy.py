@@ -2526,18 +2526,23 @@ class Strategy:
                     _tot = float(np.sum(np.abs(np.diff(_ppa))))
                     _mtm_eff = _net / max(_tot, 1e-10)  # [0,1]
                     _mtm_chop = max(0.0, min(1.0, 1.0 - _mtm_eff))
-                    # Branch step2: PROFIT-FADE gate. Step1 regressed bull -0.283 by
-                    # amplifying trims on WINNING longs (bull winners have choppy intra-
-                    # hold MTM but are net-climbing -> early trim loses the up-move).
-                    # Rally's +0.045 came from trimming choppy LOSING/breakeven pullback
-                    # positions (less giveback). Gate the throttle by a profit fade:
-                    # full at pos_pnl<=0, fading to ~0 for strong winners (pos_pnl >>
-                    # |stop|). Spares bull's deep winners (pos_pnl 2-5pct -> gate ~0)
-                    # while keeping rally's choppy low-PnL trims. Smooth (no boundary).
-                    _profit_fade = max(0.0, 1.0 - np.tanh(max(0.0, pos_pnl) / abs(STOP_LOSS_PCT)))
+                    # Branch step3: LOW-VOL GRIND gate (replaces step2's profit-fade,
+                    # which killed rally's gain while not fixing bull). Step2 proved
+                    # rally's benefit is trimming choppy GRINDING winners (not just
+                    # losers) and bull's loss is NOT winning-trim. The real separator is
+                    # VOL REGIME: bull-2021 is a HIGH-vol SHARP uptrend where pullbacks
+                    # recover fast (trimming = selling a dip that bounces back -> the
+                    # -0.283 loss); rally-2024 is a LOW-vol GRIND where pullbacks are
+                    # deeper and giveback-prone (trimming a choppy held position = less
+                    # giveback -> the +0.045 gain). Gate the throttle on low vol_ratio:
+                    # full at vol_ratio<=0.8 (calm grind), fading to 0 at vol_ratio>=1.3
+                    # (sharp/high-vol). bull's high-vol sharp pullbacks -> gate ~0 ->
+                    # spared; rally's low-vol grind -> gate ~1 -> trimmed. Continuous
+                    # (no boundary). General vol-regime principle (no regime label).
+                    _grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _profit_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
