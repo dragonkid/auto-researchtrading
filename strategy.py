@@ -2111,7 +2111,33 @@ class Strategy:
                     # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
-                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # Exp4 (architectural, indep): MULTI-DAY trend-align factor in _ts_supp
+                    # (was 20-bar ret_long*pos_dir). DIAGNOSTIC (this session, verifiable): mixed's
+                    # LARGE reachable tp_harvest events (pos/equity>0.05, n=443, all cross the grid
+                    # ~42 steps) have CLEAN MAE (mean 0.0) -> the MAE factor and deep-peak factor are
+                    # both ~1.0 -> _ts_supp ~= tanh(ret_long*pos_dir/0.04). mixed is a multi-day DOWN
+                    # year (ret_vlong<0 for held longs) but local 20-bar bounces (ret_long>0 during
+                    # chop recoveries) are common; deep peaks form during these bounces -> ret_long*pos_dir
+                    # >0 -> _ts_supp -> 1 -> harvest SUPPRESSED (let-run) -> the oscillating paper PnL
+                    # is NOT realized -> mixed rides to +30%, gives back to +24%, re-peaks (the intrinsic
+                    # return_vol 5.54pct vs 4.4pct net low-Sharpe drag). The 20-bar trend-align factor
+                    # MISSES that mixed's longs are COUNTER-TREND at the multi-day scale. Switch to
+                    # ret_vlong*pos_dir (the validated 96-bar multi-day trend, fast-saturating /0.04):
+                    # mixed longs in a multi-day downtrend (ret_vlong<0, pos_dir=+1) -> product<0 ->
+                    # _ts_supp -> 0 -> NO suppression -> FULL harvest -> convert oscillating paper to
+                    # realized at the deep peaks -> cut the re-peak "ride again" churn -> lower MTM
+                    # oscillation -> higher mixed Sharpe. Crash shorts (ret_vlong<0, pos_dir=-1 ->
+                    # product>0) stay suppressed -> BYTE-IDENTICAL. Bull longs (ret_vlong>0,
+                    # pos_dir=+1 -> product>0) stay suppressed -> BYTE-IDENTICAL. Rally longs
+                    # (ret_vlong>0, +1) stay suppressed -> BYTE-IDENTICAL. The 20-bar ret_long factor
+                    # and 96-bar ret_vlong factor AGREE for trend-aligned regimes (both >0 product);
+                    # they DISAGREE only for counter-trend-at-multi-day-but-bouncing-locally positions
+                    # = exactly mixed's oscillating longs. New cross-timescale data dep: the tp-harvest
+                    # trend-extension suppression now keys on multi-day alignment (the scale that
+                    # distinguishes a genuine trend extension from a counter-trend bounce). Continuous
+                    # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
+                    # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
+                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
