@@ -74,6 +74,11 @@ HOLD_DECAY_START = 6   # bars after which exit pressure begins
 HOLD_DECAY_RATE = 0.25  # exit pressure per bar beyond start (0.25 = exit at bar 10 with no momentum)
 MOMENTUM_HOLD_BONUS = 2  # max extra bars when slope strongly agrees (conservative cap)
 STOP_LOSS_PCT = -0.024
+# Exp5 (architectural, indep): trend-aligned slope-confirmed WINNER hold extension. Extra
+# max_hold bars for trend-aligned (pos_dir matches multi-day ret_vlong) + in-profit + slope-
+# confirmed positions. Targets rally raw (let confirmed-uptrend longs run longer -> more calmar).
+# Continuous on all gates (tanh, fast-saturating /0.01 ret_vlong -> noise-free near-constant).
+TREND_WIN_HOLD_BARS = 2.0
 PEAK_PROFIT_MIN_BASE = 0.025
 PEAK_PROFIT_GIVEBACK = 0.22
 # Architectural (Exp1 this session): portfolio-DD-adaptive giveback tightening.
@@ -1851,6 +1856,29 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp5 (architectural, indep): TREND-ALIGNED SLOPE-CONFIRMED WINNER hold
+                # extension. _hold_adj already extends max_hold for slope-agreeing positions
+                # (short-term _exit_slope), but that uses the 12/16/22-bar MEAN slope and fires
+                # for ANY slope-agreeing position (including chop noise). This adds a LONGER-
+                # timescale trend-aligned extension: a position that is (1) trend-aligned at the
+                # MULTI-DAY scale (pos_dir matches 96-bar ret_vlong), (2) currently in profit
+                # (pos_pnl>0, a confirmed winner not a loser riding noise), AND (3) slope-
+                # confirmed (_slope_strength high -> near-term slope still agrees) gets extra
+                # max_hold bars. Mechanism: a confirmed trend WINNER (rally long in a multi-day
+                # uptrend, slope still confirming, in profit) is the highest-quality trend-
+                # following position -> let it run longer to capture more of the trend move ->
+                # higher calmar (APY/DD) -> higher return_reward -> rally raw up (the binding
+                # regime, raw==score so raw IS the lever). Continuous on all gates: trend-align
+                # via fast-saturating /0.01 ret_vlong (rally's solidly-positive ret_vlong sits in
+                # the flat tail -> near-CONSTANT, noise-free per branch-step-9 lesson), profit via
+                # tanh(pos_pnl/|stop|), slope via _slope_strength. Counter-trend (ct indicator 0),
+                # losers (pos_pnl<0 -> profit gate 0), and slope-weak (slope_strength 0) ->
+                # byte-identical. New control flow: max_hold depends on multi-day trend-align x
+                # profit x slope-conf conjunction (distinct from _hold_adj's short-term slope).
+                _tw_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _tw_align = max(0.0, np.tanh(_tw_pos_dir * ret_vlong / 0.01))  # ~1 trend-aligned, ~0 ct
+                _tw_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))   # ~1 deep profit, 0 loss
+                _max_hold += TREND_WIN_HOLD_BARS * _tw_align * _tw_profit * _slope_strength
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
