@@ -1771,33 +1771,16 @@ class Strategy:
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
+                # Architectural: profit-magnitude-aware giveback amplification
+                # with trend-strength attenuation. In strong long-window trends
+                # (|ret_long| > 0.06), amplification attenuates toward 0 to let
+                # winning trend positions run longer (prevents premature trailing
+                # in rally/crash). In chop/moderate trend, full amplification
+                # preserves sideways/bull tight-trailing benefit. New cross-
+                # timescale data dependency: pp amplification depends on
+                # long-window trend magnitude. Continuous via tanh.
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                # Exp1 (architectural, indep): TREND-ALIGNMENT-gated giveback amplification.
-                # The prior form attenuated amplification by direction-AGNOSTIC trend STRENGTH
-                # (|ret_long|), so it protected COUNTER-TREND winners identically to trend-aligned
-                # ones. mixed_2025 (the binding regime) holds ~3 long-lived LONGS in a multi-day
-                # DOWNtrend (ret_vlong<0 for held longs) whose MTM oscillates over the long hold
-                # (return_vol 5.54pct vs 4.4pct net realized -- the intrinsic low-Sharpe drag).
-                # Giving mixed's counter-trend oscillating winners the SAME ride-the-giveback
-                # protection as bull/crash trend winners is backwards: counter-trend gains are
-                # less durable (no structural trend backing them), so they should be harvested
-                # FASTER (full giveback amplification -> tighter trailing -> less giveback ->
-                # smaller MTM oscillation -> higher mixed Sharpe). Switch the gate to trend-
-                # ALIGNMENT (ret_vlong * pos_dir, multi-day): trend-aligned winners (bull longs,
-                # crash shorts, rally longs -- all have ret_vlong*pos_dir>0) keep the protective
-                # attenuation (~byte-identical); counter-trend + chop winners get full amplification.
-                # ret_vlong is the validated multi-day trend (96-bar OLS, smooth -> noise-robust);
-                # the /0.03 scale matches the validated xasset/ct gates (near-constant where it
-                # fires). Continuous tanh product (no new decision boundary). New cross-timescale
-                # data dep: giveback amplification depends on multi-day trend ALIGNMENT, not
-                # magnitude. Trend-aligned regimes byte-identical by construction (attenuation
-                # ~0.3 there already via the saturated alignment term -- the prior form reached
-                # 0.3 only at |ret_long|>0.12; the alignment form reaches 0.3 for any strongly-
-                # aligned winner regardless of |ret_long|, but the trend regimes' winners ARE
-                # aligned so they get the SAME 0.3 floor).
-                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
-                _pm_align = max(0.0, np.tanh(ret_vlong * _pos_dir_pp / 0.03))  # 0 ct/chop, ~1 trend-aligned
-                _pm_trend_atten = 1.0 - 0.7 * _pm_align  # in [0.3, 1]: trend-aligned -> 0.3 (protect), ct/chop -> 1.0 (full amplification)
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
