@@ -2015,43 +2015,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp4 (architectural, indep): PORTFOLIO SAME-DIRECTION LOSING-CORRELATED
-                # exit pressure (7th soft source). NEW cross-symbol x cross-state data dep
-                # at the EXIT subsystem: entry-side has the _conc_shrink governor (shrinks
-                # NEW entries when concurrent same-sign notional is high) but the EXIT side
-                # reads NO portfolio state -- each position's exit is decided in isolation.
-                # A correlated same-direction LOSING book (BTC/ETH/SOL all long and all
-                # underwater together during a rally pullback = the documented rally DD
-                # source) is a portfolio-level reversal signal no within-position primitive
-                # sees: when THIS position is losing AND other same-direction positions are
-                # ALSO losing, the broad correlated move is more likely a genuine regime
-                # reversal than idiosyncratic noise -> amplify exit pressure (cut the
-                # correlated losers faster, before the DD compounds). Loss-only (only fires
-                # when this position is losing -- profit-side winners keep their harvest
-                # logic); direction-aware (only same-direction OTHER positions count).
-                # Continuous tanh on the losing-correlated notional fraction (no boundary);
-                # leverage-coupled scale (CONC_EXP_SCALE*LEVERAGE_K, same discipline as the
-                # entry-side governor so activation is leverage-invariant). Max 0.40. New
-                # exit-pressure source + new cross-symbol control flow in the MAX fusion.
-                _cl_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _cl_losing_notional = 0.0
-                for _osym, _opos in portfolio.positions.items():
-                    if _osym != symbol and _opos != 0 and np.sign(_opos) == _cl_pos_dir:
-                        # peer is same-direction; is it losing? approximate via entry-price
-                        # distance (read peer entry price if tracked, else treat as unknown=0)
-                        _peer_ep = self.entry_prices.get(_osym, None)
-                        if _peer_ep is not None and _peer_ep > 0:
-                            _peer_sym_bd = bar_data.get(_osym, None)
-                            if _peer_sym_bd is not None:
-                                _peer_mid = _peer_sym_bd.close
-                                _peer_pnl = (_peer_mid - _peer_ep) / _peer_ep
-                                if _opos < 0:
-                                    _peer_pnl = -_peer_pnl
-                                if _peer_pnl < 0:
-                                    _cl_losing_notional += abs(_opos)
-                _cl_losing_frac = _cl_losing_notional / max(equity, 1e-10)
-                _cl_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_cl_losing_frac - CONC_EXP_FLOOR) / (CONC_EXP_SCALE * LEVERAGE_K))))
-                _w_cl = max(0.0, -_pnl_scale)  # loss-side only (this position must be losing)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2067,7 +2030,6 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_ar * _ar_pressure,
                     _w_vc * _vc_pressure,
-                    _w_cl * _cl_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
