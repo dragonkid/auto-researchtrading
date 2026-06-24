@@ -570,6 +570,34 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
+            # Exp4 (architectural, indep): 9th voter -- PRICE ACCELERATION (2nd derivative
+            # of log price). Prior-session CROSS-EXPERIMENT CONCLUSION (keep 5a748c8a):
+            # the ONLY un-disproven axis for moving a regime raw is "a new orthogonal
+            # DATA-SOURCE voter added WITHOUT touching existing voter weights." The 8
+            # existing voters measure: ret_short (price move), EMA_cross (MA gap), RSI
+            # (level), MACD (MA-crossover diff), slope_16 (1st derivative / trend rate),
+            # EMA_slope (EMA 1st derivative), VWAP_dev (volume-weighted level deviation),
+            # range/close_eff (path efficiency / 1st-vs-intrabar ratio). NONE measures
+            # the 2nd derivative -- the rate of CHANGE of momentum. Acceleration is
+            # genuinely orthogonal: a trend can have positive slope (1st deriv >0) but
+            # DECELERATING (2nd deriv <0 = slope flattening = weakening trend) vs
+            # ACCELERATING (2nd deriv >0 = steepening = strengthening). Computed as the
+            # difference of two OLS log-HL2 slopes (8-bar recent minus 8-bar lagged,
+            # non-overlapping) -> acceleration = slope_recent - slope_older. Signed by
+            # the 12-bar close direction so it contributes bull when accelerating UP,
+            # bear when accelerating DOWN (a decelerating uptrend reduces bull conviction).
+            # Multi-bar OLS (not 1-bar diff) -> each bar's AR(1) noise carries ~1/8
+            # weight per slope, and the DIFFERENCE of two smooth slopes averages further
+            # -> noise-robust. Appended with SMALL fixed weight 0.55 (like the 8th range/
+            # close voter, untouched by _wt_shift) so it cannot dominate; new orthogonal
+            # data-source voter. Direction-agnostic general principle (no regime label).
+            _acc_w = 8
+            _acc_hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
+            _acc_slope_recent = _fast_slope(np.log(_acc_hl2[-_acc_w:]))
+            _acc_slope_older = _fast_slope(np.log(_acc_hl2[-(2 * _acc_w):-_acc_w]))
+            _acc_raw = (_acc_slope_recent - _acc_slope_older) / 1e-4  # acceleration (slope-of-slope)
+            _acc_dir = 1.0 if closes[-1] >= closes[-12] else -1.0
+            _acc_signal = _acc_raw * _acc_dir  # >0 = accelerating in trade direction
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -579,6 +607,7 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
+                _acc_signal / 1.0,  # 9th voter: price acceleration (2nd derivative, sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -605,7 +634,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: price acceleration (both small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -633,7 +662,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(9)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
