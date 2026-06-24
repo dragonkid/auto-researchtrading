@@ -2234,24 +2234,16 @@ class Strategy:
                     _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
                     _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
                     _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
-                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion.
-                    # BRANCH step6: replace vol gate with EFFICIENCY-RATIO gate. Step5 proved
-                    # vol_ratio does NOT separate bull from rally (bull-2021 vol_ratio <0.9 ->
-                    # tighter vol gate still admitted bull -> bull re-regressed -0.253). Step4's
-                    # remaining cost was sideways -0.038 (cushion fired on sideways mean-
-                    # REVERTING winners -> rode giveback that reverted). The clean separator
-                    # between rally (cushion HELPS, directional grind) and sideways (cushion
-                    # HURTS, mean-reverting chop) is path EFFICIENCY: high ER = directional
-                    # trend (rally) -> ride giveback; low ER = chop (sideways) -> cut. _er
-                    # (Kaufman, already computed) cleanly separates them. bull-2021 has high
-                    # ER (directional) so the cushion still fires for bull (coupling remains) --
-                    # this step targets ONLY the sideways recovery (recover the -0.038 sideways
-                    # cost while keeping rally +0.023). Gate: full at ER>=0.40, fading to 0 at
-                    # ER<=0.15. Magnitude 0.04 (step4's bull-safe level).
-                    _cushion_er_gate = max(0.0, min(1.0, (_er - 0.15) / 0.25))
+                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. bull-2021 is
+                    # HIGH-vol SHARP (pullbacks reverse); rally/mixed are LOW-vol GRINDS
+                    # (pullbacks recover -> ride giveback). Gate by low vol_ratio (same band
+                    # as _grind_gate): full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.3.
+                    _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
                     # BRANCH step4: full-gate stack matching _dr_k (trend-align + slope-conf +
-                    # profit + conviction).
-                    _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_er_gate * max(0.0, _pnl_scale)
+                    # profit + vol + conviction). Halve magnitude 0.08->0.04: rally/mixed
+                    # gains are less sensitive (small positions, small absolute floor effect)
+                    # so preserved at half-magnitude; bull over-hold cost halved.
+                    _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
