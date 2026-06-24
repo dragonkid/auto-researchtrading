@@ -1901,18 +1901,7 @@ class Strategy:
                 # uptrend keeps extension; sideways weak drift excluded by the /0.02 bar.
                 _md_slope_conf = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.02))
                 _st_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_mh / 0.0004))
-                # Branch step5: TREND-STRENGTH-GATED extension magnitude. Step4 (vol-scaled)
-                # failed: crash vol_ratio is moderate (episodic spikes, mean moderate) so crash
-                # did not get a strong extension while sideways low-vol still extended. vol_ratio
-                # is the WRONG separator. The STRUCTURALLY correct separator is _trend_strength_w
-                # (|ret_long|/0.04): sideways is a LOW-trend-strength mean-reverting regime (the
-                # positions that should exit on time); crash is a HIGH-trend-strength trending
-                # regime (positions that should ride). Scale extension magnitude UP with
-                # _trend_strength_w: chop (sideways, ~0) -> mag ~0.04 (gentle, near-baseline);
-                # strong trend (crash/rally, ~1) -> mag ~0.18 (strong, restores crash gain).
-                # This is the same _trend_strength_w the de-risk cushion + win-accelerator use.
-                _md_hold_mag = 0.04 + 0.14 * _trend_strength_w  # 0.04 chop, 0.18 strong trend
-                _max_hold *= 1.0 + _md_hold_mag * _md_slope_conf * _st_slope_conf
+                _max_hold *= 1.0 + 0.10 * _md_slope_conf * _st_slope_conf
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
