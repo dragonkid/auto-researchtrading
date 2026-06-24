@@ -2399,8 +2399,13 @@ class Strategy:
                 # on the SAME sign as the count gate (the trend confirmation is correct; only the
                 # voter condition is replaced). bars_held>ENTRY_FULL_BARS avoids firing during
                 # scale-in. |pos_pnl|<0.5*|stop| = near-breakeven band. Continuous tanh gates.
-                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg < 0
-                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg > 0
+                # Step7: nudge the near-breakeven band 0.5*stop -> 0.65*stop to catch more of
+                # rally's ct pullback shorts (step4's +0.0105 came from the 0.5 band; a slightly
+                # wider band reaches shorts that oscillate a bit further from breakeven before
+                # reverting). trend_avg<0 guard retained (protects crash dead-cat longs which
+                # have trend_avg>0 on bounce bars). bars_held>ENTRY_FULL_BARS retained.
+                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.65 * abs(STOP_LOSS_PCT) and trend_avg < 0
+                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.65 * abs(STOP_LOSS_PCT) and trend_avg > 0
                 _opp_gate = (current_pos > 0 and (bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min) and trend_avg < 0) or \
                             (current_pos > 0 and _osc_long) or \
                             (current_pos < 0 and (bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min) and trend_avg > 0) or \
