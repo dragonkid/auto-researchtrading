@@ -2172,25 +2172,6 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
-                    # Branch step7: position-size-conditioned tp_harvest magnitude DEEPENING
-                    # for small positions. Step1-6 made small-position reductions grid-EXEMPT
-                    # so they execute, but mixed's Sharpe is stuck at 0.808 (the exemption
-                    # improved sample_factor trade count, not signal quality). The prior
-                    # session walled tp_mag raise at 0.50 globally (0.55 catastrophic for bull
-                    # over-harvest). NOW that small positions are grid-exempt, a position-size-
-                    # conditioned DEEPER harvest for small positions only can convert more of
-                    # mixed's oscillating paper PnL to realized at its deep peaks -> smaller
-                    # remaining position -> less giveback on next oscillation -> lower MTM
-                    # oscillation -> higher mixed Sharpe (the binding floor). Large positions
-                    # (bull/rally trend longs, crash shorts) keep 0.45 (the validated Exp5 keep,
-                    # protected by the _ts_supp multi-day shield). General principle: deeper
-                    # harvest for small positions (where the grid-absorption wall previously
-                    # made magnitude inert) vs large positions (where 0.50 is the confirmed
-                    # ceiling). Continuous tanh on |current_pos|/grid step; +0.20 max for
-                    # sub-grid positions, fading to 0 by 2 grid steps. No regime label.
-                    _tp_grid_step = 0.06 * equity * BASE_POSITION_SIZE
-                    _small_pos_tp_mag = max(0.0, min(1.0, 1.0 - abs(current_pos) / max(2.0 * _tp_grid_step, 1e-10)))
-                    _tp_scale = _tp_scale * (1.0 + 0.20 * _small_pos_tp_mag)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
