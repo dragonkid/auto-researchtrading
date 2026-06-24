@@ -2005,6 +2005,36 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp2 (architectural, indep): STALE-LOSS exit pressure (re-test of the
+                # catalogued surgical rally-raw lever ba7cd2fb at the CURRENT baseline).
+                # PRIOR: at de412448 (rally stab 0.80, fragile) this term was surgical
+                # (rally Sharpe +0.04, bull/crash/sideways BYTE-IDENTICAL -- winners never
+                # sit underwater) but blocked by rally stability re-seed (0.80->0.61). At
+                # a5c60e3a (later) a bar6/0.48pct variant was INERT (dominated by existing
+                # exit pressures). The current baseline 99a369a1 has rally stab = 1.0 (the
+                # re-seed wall is GONE -- rally is now firmly above the 0.80 knee via the
+                # kept target-EMA + MTM-chop throttle + multi-day _ts_supp that did NOT
+                # exist at de412448), so the surgical raw gain may now KEEP without the
+                # stability cost. Mechanism: a position held PAST the time-pressure onset
+                # (bars_held > HOLD_DECAY_START) that is STILL underwater (pos_pnl < 0)
+                # is a slow bleeder -- slope-against hasn't fired (slope not yet reversed)
+                # and time-pressure is only ramping, so the loser lingers. Add a smooth
+                # exit pressure that grows with hold-duration past onset AND loss-depth,
+                # added to the MAX fusion (only binds when it exceeds the other soft
+                # sources -- exactly the bleeder zone they miss). bars_held is a noise-
+                # IMMUNE integer counter; pos_pnl is noise-affected but the LOSS is real
+                # (perturbed runs that flip pos_pnl sign are exactly the divergent cases
+                # stability should penalize -- but at stab 1.0 the existing mechanism
+                # already handles that). Adversity band scaled to |stop| (per-bar
+                # normalized, ATR-adaptive via _stop_abs). Surgical by construction:
+                # winners (pos_pnl>0 -> adversity 0) are byte-identical across ALL
+                # regimes (bull/crash/sideways/rally winners never sit underwater -> 100%
+                # WR regimes unaffected). Targets the documented rally losing-long drag
+                # (direction-split: rally LONG -380 40%WR vs SHORT +2381 77%WR).
+                _stale_age = max(0.0, min(1.0, (bars_held - HOLD_DECAY_START - 2.0) / 6.0))  # 0 until bar 8, ~1 at bar 14
+                _stale_adversity = max(0.0, min(1.0, -pos_pnl / (0.6 * abs(STOP_LOSS_PCT))))  # 0 profit, ~1 at -0.6*stop
+                _stale_pressure = 0.50 * _stale_age * _stale_adversity
+                _w_stale = 1.0  # loss-side only by construction (adversity gates it)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2019,6 +2049,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
+                    _w_stale * _stale_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
