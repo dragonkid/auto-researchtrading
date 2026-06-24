@@ -2383,12 +2383,28 @@ class Strategy:
                 # supplement's ct gate, not the trend term). New control flow: opp-gate now has
                 # a primary count path (unchanged) OR a supplement margin-EMA+ct path.
                 _ct_pos_flip = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))  # ~1 multi-day ct
-                _bear_supp = _bear_flip_ready and _bear_margin > 0.30 and _ct_pos_flip > 0.5
-                _bull_supp = _bull_flip_ready and _bull_margin > 0.30 and _ct_pos_flip > 0.5
+                # STRUCTURAL_EXPLORATION step4: VOTER-INDEPENDENT oscillation supplement.
+                # Step3 proved margin/vote-count are the same signal -> a voter-based supplement
+                # is logically redundant (byte-identical). mixed's persistent wrong-side longs
+                # are NEITHER losing enough for SL NOR have bear conviction for opp-gate --
+                # they sit NEAR BREAKEVEN oscillating over long holds (mixed return_vol 5.54pct
+                # over long holds = the documented floor). Fire the grid-bypassing full exit on
+                # a PURELY STRUCTURAL signal INDEPENDENT of voter conviction: a held COUNTER-
+                # TREND (multi-day) position, held LONG (bars_held past the scale-in window),
+                # that is NEAR BREAKEVEN (|pos_pnl| small = the oscillating dead capital that
+                # neither SL nor pp_pressure harvests). This is the ONE untested opp-gate trigger
+                # that reaches mixed's specific failure mode (oscillating near-breakeven ct longs
+                # with no voter reversal signal). Spares trend-aligned (gate 0), spares clear
+                # winners (pp_pressure harvests) and clear losers (SL closes). Gated by trend_avg
+                # on the SAME sign as the count gate (the trend confirmation is correct; only the
+                # voter condition is replaced). bars_held>ENTRY_FULL_BARS avoids firing during
+                # scale-in. |pos_pnl|<0.5*|stop| = near-breakeven band. Continuous tanh gates.
+                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg < 0
+                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg > 0
                 _opp_gate = (current_pos > 0 and (bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min) and trend_avg < 0) or \
-                            (current_pos > 0 and _bear_supp and trend_avg < 0) or \
+                            (current_pos > 0 and _osc_long) or \
                             (current_pos < 0 and (bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min) and trend_avg > 0) or \
-                            (current_pos < 0 and _bull_supp and trend_avg > 0)
+                            (current_pos < 0 and _osc_short)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
