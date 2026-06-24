@@ -2601,28 +2601,6 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
-                    # Exp5 (architectural, indep): CHOP-EXEMPTION of the winner-fade. The
-                    # winner-fade (above) spares CLEAR winners (pos_pnl > +0.5*stop) from
-                    # the throttle to protect crash's winning trend-aligned shorts. But it
-                    # ALSO spares mixed's oscillating LONGS at their deep peaks (mixed peaks
-                    # at +30pct = ~12*stop -> winner_fade ~0 -> throttle OFF exactly at the
-                    # tp-harvest reduction, the moment trimming would lock the oscillating
-                    # peak). SEPARATOR (the wall prior sessions could not reach): crash's
-                    # winning shorts have a SMOOTH pos_pnl path (trend-aligned, _mtm_chop~0)
-                    # so the throttle multiplier is ~1 regardless of _winner_fade (the chop
-                    # factor in _trim_mult is ~0) -> crash byte-identical whether winner_fade
-                    # fires or not. mixed's oscillating longs have a CHOPPY path (_mtm_chop~1)
-                    # so _winner_fade IS the binding term suppressing the throttle at peaks.
-                    # Gate the winner-fade OFF when _mtm_chop is high: choppy winners (mixed's
-                    # oscillating longs being tp-harvested at a deep peak) keep full throttle
-                    # (lock more of the oscillating peak -> lower MTM oscillation -> higher
-                    # mixed Sharpe); smooth winners (crash trend shorts) keep the winner-fade
-                    # protection unchanged (chop~0 -> exemption ~0 -> byte-identical). Smooth
-                    # tanh on _mtm_chop (no decision boundary). New cross-component data dep:
-                    # the winner-fade now depends on the position's own path chop (was pos_pnl
-                    # only). The throttle is the ONE documented lever reaching mixed (Exp1 keep);
-                    # this removes the winner-fade blocker that suppressed it at mixed's peaks.
-                    _winner_fade = _winner_fade * max(0.0, min(1.0, 1.0 - _mtm_chop / 0.30))  # chop>0.3 -> fade 0 (full throttle)
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
