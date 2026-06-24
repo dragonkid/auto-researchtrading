@@ -2234,16 +2234,23 @@ class Strategy:
                     _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
                     _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
                     _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
-                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. bull-2021 is
-                    # HIGH-vol SHARP (pullbacks reverse); rally/mixed are LOW-vol GRINDS
-                    # (pullbacks recover -> ride giveback). Gate by low vol_ratio (same band
-                    # as _grind_gate): full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.3.
-                    _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                    # BRANCH step4: full-gate stack matching _dr_k (trend-align + slope-conf +
-                    # profit + vol + conviction). Halve magnitude 0.08->0.04: rally/mixed
-                    # gains are less sensitive (small positions, small absolute floor effect)
-                    # so preserved at half-magnitude; bull over-hold cost halved.
-                    _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
+                    # BRANCH step7: REVERSE DIRECTION -- RAISE the floor for LOW-conviction
+                    # entries (cut marginal-conviction winners faster), instead of lowering it
+                    # for high-conviction (ride giveback). Steps 1-6 proved the "ride giveback"
+                    # cushion is BULL/RALLY COUPLED: bull and rally share high ER + trend-align
+                    # + slope-conf + directional, so no gate separates them, and any full-
+                    # strength cushion over-holds bull (step6 -1.07) while any dampened cushion
+                    # leaves rally/mixed gains sub-noise (step4 -0.0008). The SYMMETRIC OPPOSITE
+                    # (raise floor for LOW conviction) cuts the OTHER end -- marginal-conviction
+                    # entries (cached margin~0, admitted on weak signal) in modest profit get a
+                    # HIGHER floor (faster de-risk -> lock the marginal gain before it reverts).
+                    # This should NOT couple bull/rally the same way: it cuts WEAK entries
+                    # (which both regimes have) rather than riding STRONG ones (where bull
+                    # over-holds). Targets the noise-amplified marginal entries that give back.
+                    # Gate: full raise at margin~0, fading to 0 at margin>=0.40 (high conviction
+                    # keeps baseline floor). Profit-side only, max +0.06 floor raise.
+                    _low_conv_raise = 1.0 - _entry_conv_floor  # 1 marginal, 0 strong
+                    _de_floor += 0.06 * _low_conv_raise * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
