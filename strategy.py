@@ -932,6 +932,25 @@ class Strategy:
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
                 _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
                 _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
+                # Branch step6 (sizing direction): CONVICTION-GATED ct_vlong OFFSET. The
+                # ct_vlong shrink (0.40x max) caps first-bar size for ALL ct entries on the
+                # rationale "ct = lower quality" (rally pullback shorts = losers). But mixed's
+                # ct longs are 100pct WR WINNERS (bounce entries with strong voter conviction)
+                # -- they are ct at the multi-day scale but high-quality bounces. A high-
+                # conviction ct entry (strong margin > 0.5, voters decisively one-sided) is a
+                # confirmed bounce, not noise -> partially offset the shrink (0.40 -> ~0.20
+                # effective) -> bigger first bar -> more capture per winning trade -> higher
+                # mixed APY/Sh (mixed APY 4.4pct return-limited despite 100pct WR). Conviction
+                # gate (smooth tanh on margin/0.5, onset 0.5) filters to high-quality ct
+                # entries -> spares low-conviction ct entries (rally noise pullback shorts
+                # with weak margin keep full 0.40 shrink). Trend-aligned entries (ct indicator
+                # 0 -> offset term 0 -> BYTE-IDENTICAL for bull/rally trend longs, crash
+                # shorts). New cross-component dep: ct_vlong shrink magnitude depends on entry
+                # conviction margin (was ct-only). Smooth (no decision boundary).
+                _ct_conv_offset = max(0.0, min(1.0, np.tanh((_bull_margin - 0.5) / 0.3))) * max(0.0, np.tanh(-ret_vlong / 0.01))
+                _bull_ct_vlong = 1.0 - (0.40 - 0.20 * _ct_conv_offset) * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))
+                _ct_conv_offset_b = max(0.0, min(1.0, np.tanh((_bear_margin - 0.5) / 0.3))) * max(0.0, np.tanh(ret_vlong / 0.01))
+                _bear_ct_vlong = 1.0 - (0.40 - 0.20 * _ct_conv_offset_b) * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))
                 # Exp3 (architectural): COUNTER-TREND-specific loss-streak size shrink.
                 # Distinct from Exp1's blanket escalation (which hurt bull by shrinking
                 # trend-aligned post-streak entries): this shrinks ONLY counter-trend
