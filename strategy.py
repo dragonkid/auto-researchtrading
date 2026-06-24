@@ -194,6 +194,15 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
+# Exp1 (this session): voter-independent oscillation supplement PARTIAL DE-RISK fraction.
+# When a held position is counter-trend to the multi-day (ret_vlong) trend, held past
+# scale-in, near breakeven (oscillating dead capital), and the 20-bar trend_avg guards
+# the reversal direction, shrink the target toward (1 - OSCILL_SUPP_FRAC)*current_pos.
+# Re-tests the prior-session step4 (3c12a731) voter-independent structural trigger but
+# as a PARTIAL de-risk (vs step4's full exit target->0). Hypothesis: partial de-risk
+# caps giveback without forcing the re-entry churn a full exit triggers.
+OSCILL_SUPP_FRAC = 0.50
+
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
 # emission layer (downstream of all quantization — the ONLY layer that reaches
 # mixed_2025 per prior session's root-cause finding), a same-sign REDUCTION resize
@@ -2342,6 +2351,46 @@ class Strategy:
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
+
+                # Exp1 (architectural, indep): VOTER-INDEPENDENT oscillation supplement
+                # as a PARTIAL DE-RISK (not full exit). Prior session's STRUCTURAL_EXPLORATION
+                # step4 (3c12a731) proved a voter-independent structural trigger at the opp-gate
+                # reaches rally's persistent near-breakeven counter-trend pullback shorts that
+                # voter conviction could NOT close -> rally +0.0105 (0.670->0.681), all stab 1.0,
+                # no regression, +0.0024 composite (below +0.003 keep). step4 fired a FULL exit
+                # (target->0). The branch then tried only widening (band/hold/multi-day-ct) --
+                # all failed to beat step4. UNTESTED VARIANT: fire a PARTIAL de-risk (shrink
+                # target toward OSCILL_SUPP_FRAC of current_pos) instead of full exit. Hypothesis:
+                # a full exit on rally's persistent near-breakeven ct shorts frees capital that
+                # then RE-ENTERS on the next bar (churn -- the documented rally instability source);
+                # a partial de-risk caps the giveback magnitude (smaller position through the
+                # oscillation = smaller realized loss on the adverse leg) WITHOUT forcing a re-
+                # entry, AND keeps a reduced position that benefits if the trend resumes (vs full
+                # exit which forgoes all upside). Same voter-independent structural trigger as the
+                # confirmed step4 mechanism (held counter-trend multi-day + near-breakeven +
+                # trend_avg guard + held past scale-in) -- the trend_avg<0 long guard and
+                # ENTRY_FULL_BARS hold threshold are load-bearing per step5/step9 (protect crash
+                # dead-cat longs). NEW control flow: a partial-resize action on the structural
+                # trigger (vs step4's binary full-exit action). Byte-identical when the trigger
+                # does not fire (all trend-aligned bull/crash/rally-long holds, all non-ct, all
+                # not-near-breakeven). Same-sign shrink (passes through grid/deadband; rally
+                # positions are large enough to clear the grid step, mixed is grid-absorbed which
+                # is fine -- mixed is walled on this axis regardless).
+                if not in_cooldown and target != 0 and (current_pos > 0) == (target > 0) and bars_held > ENTRY_FULL_BARS:
+                    _pos_dir_osc = 1.0 if current_pos > 0 else -1.0
+                    # multi-day counter-trend (fast-saturating /0.01 -> near-constant, noise-free per step4)
+                    _ct_osc = max(0.0, np.tanh(-_pos_dir_osc * ret_vlong / 0.01))
+                    # near-breakeven dead capital (|pos_pnl| < 0.5*|stop|: oscillating, neither SL nor pp harvests)
+                    _nb_osc = 1.0 - min(1.0, abs(pos_pnl) / (0.5 * abs(STOP_LOSS_PCT)))
+                    # trend_avg guard (LOAD-BEARING per step5: protects crash dead-cat longs;
+                    # long-side requires trend_avg<0, short-side trend_avg>0)
+                    _trend_guard_osc = 1.0 if (_pos_dir_osc > 0 and trend_avg < 0.0) or (_pos_dir_osc < 0 and trend_avg > 0.0) else 0.0
+                    _osc_supp = _ct_osc * max(0.0, _nb_osc) * _trend_guard_osc
+                    if _osc_supp > 0.0:
+                        _osc_target = current_pos * (1.0 - OSCILL_SUPP_FRAC * _osc_supp)
+                        # same-sign partial shrink toward zero (never cross); only apply if it shrinks
+                        if (_osc_target > 0) == (current_pos > 0) and abs(_osc_target) < abs(target):
+                            target = _osc_target
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
             # EMITTED position target (the final held-position LEVEL) — a NEW smoothing
