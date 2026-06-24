@@ -300,25 +300,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Exp1 (architectural, indep): sustain the multi-day counter-trend first-bar
-        # size shrink (_ct_vlong) through scale-in (cached at entry, deterministic).
-        # _ct_vlong shrinks counter-trend-at-multi-day entries up to 0.60x at FIRST bar
-        # only; scale-in then ramps the position back to un-shrunk `size` over 2-3 bars,
-        # undoing the shrink after bar 1. Caching the entry-time ct-shrink and applying
-        # it to scale-in full_target keeps the ct position proportionally smaller for
-        # the WHOLE hold. Targets mixed (binding floor 0.411): mixed holds longs in a
-        # multi-day DOWN year (ret_vlong<0, pos_dir=+1 -> ct) so _bull_ct_vlong ~0.60;
-        # sustaining that 0.60 through scale-in keeps the book ~40% smaller across the
-        # long hold -> the MTM oscillation amplitude (+30pct->+24pct->+28pct intrinsic
-        # return_vol 5.54pct vs 4.4pct net drag) scales down in absolute terms ->
-        # return_vol drops proportionally while realized scales with position -> Sharpe
-        # up (the prior session's documented untested upstream lever; exit subsystem is
-        # fully saturated). Trend-aligned regimes: _ct_vlong ~1.0 (ret_vlong*pos_dir>0
-        # -> ct indicator ~0 -> shrink 1.0) -> cache 1.0 -> byte-identical. Near-
-        # constant shrink (fast-saturating /0.01 ret_vlong validated noise-free) ->
-        # no stability cost. Same proven safe sustain-cache family as _conc_shrink_held
-        # (Exp5 keep) / _vol_shrink_held (Exp9 keep). Default 1.0; reset on full exit.
-        self._ct_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1583,26 +1564,10 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    # Branch step4: gate the bull-entry-in-downtrend sustain on trend-QUALITY
-                    # R^2 (the bull-vs-crash separator). bull-2021 pullbacks are V-shaped
-                    # high-R^2 recoveries (sustaining the ct-long shrink helps, +0.062);
-                    # crash dead-cat bounces are low-quality low-R^2 (sustain hurts, -0.053).
-                    # Blend the cached shrink toward 1.0 (no sustain) as R^2 drops, so crash
-                    # (low R^2) reverts to first-bar-only while bull (high R^2) keeps the
-                    # sustained shrink. _tq_r2 is the LINREG_PERIOD OLS R^2 of log(HL2).
-                    # Branch step5: HALVE the sustained magnitude (blend only 50% of the
-                    # way from 1.0 to _bull_ct_vlong) to reduce the crash cost faster than
-                    # the bull gain -> find a net-positive operating point.
-                    # Branch step6: 25% blend -- confirm convergence-to-baseline trajectory.
-                    _ct_r2_gate = max(0.0, min(1.0, np.tanh((_tq_r2 - 0.30) / 0.15)))
-                    self._ct_shrink_held[symbol] = 1.0 + 0.25 * (_bull_ct_vlong - 1.0) * _ct_r2_gate
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    # Branch step3: bear-entry-in-uptrend reverts to first-bar-only
-                    # (cache 1.0) so rally is byte-identical.
-                    self._ct_shrink_held[symbol] = 1.0
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1726,17 +1691,7 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    # Exp1 (architectural, indep): sustain the multi-day counter-trend
-                    # first-bar shrink through scale-in (cached at entry, deterministic).
-                    # _ct_vlong shrinks ct-at-multi-day entries up to 0.60x at bar 1 only;
-                    # without sustain, scale-in ramps back to un-shrunk `size` and undoes
-                    # the ct reduction after bar 1. Caching keeps mixed's choppy ct longs
-                    # proportionally smaller for the whole hold -> the MTM oscillation
-                    # amplitude (intrinsic return_vol drag) scales down in absolute terms
-                    # while realized scales with position -> Sharpe up. Trend-aligned
-                    # regimes cache 1.0 (_ct_vlong~1) -> byte-identical. Default 1.0.
-                    _ct_held = self._ct_shrink_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _ct_held
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -2665,7 +2620,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._ct_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
