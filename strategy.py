@@ -1888,7 +1888,23 @@ class Strategy:
                 # align extension). Direction-agnostic general principle (no regime label).
                 _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
                 _md_slope_conf = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.03))
-                _max_hold *= 1.0 + 0.18 * _md_slope_conf
+                # Branch step2: SHORT-SLOPE-CONFIRMATION gate on the multi-day hold extension.
+                # Step1 (multi-day ret_vlong*pos_dir alone) hit crash +0.015 (target) BUT
+                # sideways -0.216: the extension fired on sideways mean-reverting longs riding
+                # the slow 2023 recovery drift (ret_vlong modestly positive for longs) -- those
+                # are MEAN-REVERTERS that should exit on time, not trend-followers that should
+                # ride. The multi-day signal confirms the SLOW drift but not the CURRENT trend.
+                # Require the SHORT-TERM _exit_slope (mean of 12/16/22-bar OLS, already computed
+                # for the exit subsystem) to ALSO confirm the position direction: only a position
+                # whose near-term slope is STILL trending in its favor extends. sideways mean-
+                # reverters have flat/negative short slope after their mean-reversion leg ->
+                # _st_slope_conf -> 0 -> no extension -> spared. crash shorts in a sustained
+                # downtrend have negative short slope confirming (product>0) -> extension kept.
+                # rally grinding uptrend has positive short slope confirming -> kept. Continuous
+                # tanh on _exit_slope*pos_dir, /0.0004 scale (same as the de-risk cushion slope
+                # gate, comparable magnitude). Smooth, no boundary. New gate on the extension.
+                _st_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_mh / 0.0004))
+                _max_hold *= 1.0 + 0.18 * _md_slope_conf * _st_slope_conf
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
