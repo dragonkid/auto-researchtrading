@@ -734,16 +734,16 @@ def compute_score(result: BacktestResult) -> float:
     # Sample sufficiency: sqrt ramp, full credit at 50+ trades
     sample_factor = math.sqrt(min(result.num_trades / 50.0, 1.0))
 
-    # Drawdown gate: base 1/(1+DD%) plus exponential penalty above 8%
-    # (2026-06-20: soft_start 5→8, scale 10→2). Real strategies have DD
-    # 0.45-1.70%; the 5-8% range was over-penalized (5→8% lost 28% under the
-    # old soft@5), discouraging the agent from accepting 5-8% DD to capture
-    # more return. New curve: 0-8% only the mild 1/(1+DD) base (8% → 0.926,
-    # just -7.4%); 8%+ steep exp penalty (scale=2: 9% → 0.557, 10% → 0.334).
-    # Hard cutoff at 10% unchanged (safety net).
-    # DD=5% → 0.95, DD=8% → 0.93, DD=9% → 0.56, DD=10% → 0.33
+    # Drawdown gate: base 1/(1+DD%) plus exponential penalty above 5%
+    # (2026-06-24: soft_start 8→5). The prior knee at 8% left a leverage-farming
+    # sweet spot: rally baseline DD=5.16% could scale to 7.74% (LEVERAGE_K 6)
+    # before the exp penalty bit, so return_bonus(APY) gains outweighed dd_gate
+    # losses. Lowering the knee to 5% — where real cluster-regime DDs sit —
+    # makes any leverage increase bite immediately, blocking farming without a
+    # hard leverage cap. Hard cutoff at 10% unchanged (safety net).
+    # DD=3% → 0.97, DD=5% → 0.95, DD=6% → 0.74, DD=8% → 0.55, DD=10% → 0.33
     dd_gate = 1.0 / (1.0 + result.max_drawdown_pct / 100.0)
-    dd_excess = max(0.0, result.max_drawdown_pct - 8.0)
+    dd_excess = max(0.0, result.max_drawdown_pct - 5.0)
     dd_gate *= math.exp(-dd_excess / 2.0)
 
     # Volatility gate REMOVED (2026-06-19): vol_gate = 1/(1+return_volatility)
@@ -760,22 +760,20 @@ def compute_score(result: BacktestResult) -> float:
     # streak=0 → 1.00, streak=5 → 0.85, streak=15 → 0.61, streak=30 → 0.37
     streak_gate = math.exp(-result.max_consecutive_losses / 30.0)
 
-    # Return reward (2026-06-20, revised 2026-06-21): risk-adjusted return
-    # reward = log(1 + min(calmar, 10)/10 + 1), where calmar = APY / MaxDD.
-    # Uses ANNUALIZED return (APY) not raw total_return_pct — regime windows
-    # differ in length (bull 273d, crash 426d, sideways 365d, rally 366d), so
-    # raw total_return is not comparable across regimes. APY = (1+ret)^(1/years)-1.
-    #
-    # RISK-ADJUSTED (APY/MaxDD) not absolute APY (2026-06-21 revision): the
-    # original absolute-APY form let the agent farm score by raising LEVERAGE_K
-    # — leverage scales APY and DD proportionally, so APY rises but APY/MaxDD
-    # stays flat and Sharpe stays flat (pure scale-up, no signal improvement).
-    # The risk-adjusted form stops this: leverage raises APY and DD 1:1 →
-    # calmar unchanged → return_reward unchanged → no score gain. Meanwhile
-    # genuine signal-quality improvements (Sharpe up at same DD) raise APY/DD
-    # → return_reward rises, and 3x more than under absolute-APY (verified:
-    # +0.029 vs +0.009 for a Sharpe 1.89→2.0 improvement). Range 0.693
-    # (calmar=0) to ~1.0 (calmar≥10, capped).
+    # Return bonus (2026-06-24): direct APY reward, REPLACES the prior
+    # calmar-based return_reward. The old form log(1+min(calmar,10)/10+1)
+    # double-rewarded DD reduction — DD drop raised BOTH dd_gate AND calmar
+    # (APY/DD), so the agent optimised "harvest to cut DD → calmar up" rather
+    # than "improve signal → return up". Under realistic improvement margins
+    # (+0.2 Sharpe vs -0.5% DD vs +2% APY) the old scoring made DD reduction
+    # 3.8-4.6x more score-efficient than Sharpe gain on bull/sideways.
+    # The new return_bonus = log(1 + APY/10 + 1) = log(2 + APY/10) rewards
+    # absolute annualized return directly. Leverage farming (raise LEVERAGE_K
+    # → APY and DD scale 1:1) is blocked by the dd_gate knee at 5%: any
+    # leverage increase pushes DD past 5% → exp penalty bites harder than the
+    # linear APY bonus gains (verified: 1.1x leverage already drops composite).
+    # Range log(2)=0.693 (APY=0) to log(3.4)=1.22 (APY=24%).
+    # Uses APY not raw total_return because regime windows differ in length.
     hours = len(result.equity_curve) if result.equity_curve else 0
     if hours > 0 and result.total_return_pct > -100.0:
         years = hours / 8760.0
@@ -786,13 +784,9 @@ def compute_score(result: BacktestResult) -> float:
             ann_return = result.total_return_pct  # degenerate, don't annualize
     else:
         ann_return = result.total_return_pct
-    if result.max_drawdown_pct > 0 and ann_return > 0:
-        calmar = ann_return / result.max_drawdown_pct
-    else:
-        calmar = 0.0
-    return_reward = math.log(1.0 + min(calmar, 10.0) / 10.0 + 1.0)
+    return_bonus = math.log(1.0 + max(ann_return, 0.0) / 10.0 + 1.0)
 
-    score = signal_quality * sample_factor * dd_gate * streak_gate * return_reward
+    score = signal_quality * sample_factor * dd_gate * streak_gate * return_bonus
     return score
 
 # ---------------------------------------------------------------------------

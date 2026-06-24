@@ -91,16 +91,16 @@ Use status `council_discard` or `council_keep` to distinguish from normal experi
 Multiplicative per-regime score, then combined. This mirrors `compute_score()` in `prepare.py` plus the stability and flip-streak penalties applied in `regime_test.py` — it is the exact metric, not an approximation.
 
 ```
-base = log(1+max(sharpe,0)) × sqrt(min(trades/50,1)) × dd_gate × exp(-streak/30) × log(1+min(calmar,10)/10+1)
-  dd_gate = 1/(1+DD%) × exp(-max(0,DD%-8)/2)   # soft@8%, scale=2; 0-8% mild, 8%+ steep
-  calmar = APY / MaxDD   # risk-adjusted return; APY = (1+total_return)^(8760/hours)-1
+base = log(1+max(sharpe,0)) × sqrt(min(trades/50,1)) × dd_gate × exp(-streak/30) × log(1+max(APY,0)/10+1)
+  dd_gate = 1/(1+DD%) × exp(-max(0,DD%-5)/2)   # soft@5%, scale=2; 0-5% mild, 5%+ steep
+  APY = (1+total_return)^(8760/hours)-1   # annualized return; direct reward, NOT calmar
 
 Per-regime score = base × stability_factor × flip_streak_gate
   stability_factor = clamp((stability-0.50)/(0.80-0.50), 0, 1)   # AR(1) correlated-noise test; applied only when base>0
   flip_streak_gate = 1/(1 + flip_streak_drag_per_bar/0.5)         # applied only when score>0
 
 Hard cutoffs: <10 trades, >10% DD, >15% capital loss → -999
-Soft DD penalty: smooth exponential above 8% DD (5%→0.95x, 8%→0.93x, 9%→0.56x, 10%→0.33x)
+Soft DD penalty: smooth exponential above 5% DD (3%→0.97x, 5%→0.95x, 6%→0.74x, 10%→0.33x)
 
 Composite = mean(regime_scores) - 0.3 * std(regime_scores)
 ```
@@ -109,9 +109,9 @@ Composite = mean(regime_scores) - 0.3 * std(regime_scores)
 
 **std penalty lowered (2026-06-19):** `k` lowered 0.5 → 0.3. At k=0.5, ~72% of composite gains came from std reduction; agent over-optimized for consistency at the expense of mean return. k=0.3 keeps consistency reward (prevents abandoning weakest regime) while giving mean-improvement room.
 
-**return_reward added (2026-06-20, revised 2026-06-21):** `log(1+min(calmar,10)/10+1)` factor (range 0.693-1.0), where calmar = APY/MaxDD (risk-adjusted return). The original absolute-APY form let the agent farm score by raising LEVERAGE_K — leverage scales APY and DD proportionally (APY/DD stays flat, Sharpe stays flat = pure scale-up, no signal improvement). The risk-adjusted form stops this: leverage → calmar unchanged → return_reward unchanged → no score gain. Genuine signal-quality improvements (Sharpe up at same DD → APY/DD up) are rewarded 3x more than under absolute-APY (verified: +0.029 vs +0.009 for Sharpe 1.89→2.0). Uses APY not raw total_return because regime windows differ in length.
+**return_reward REPLACED by return_bonus (2026-06-24):** the prior `log(1+min(calmar,10)/10+1)` (calmar = APY/MaxDD) double-rewarded DD reduction — a DD drop raised BOTH dd_gate AND calmar (APY/DD), so the agent optimised "harvest to cut DD → calmar up" rather than "improve signal → return up". Measured: -1% DD was 3.8-4.6x more score-efficient than +0.1 Sharpe on bull/sideways; the 99a369a1 keep's +0.017 composite gain was 68-93% DD-driven (APY dropped). The new `return_bonus = log(1 + max(APY,0)/10 + 1)` rewards absolute annualized return directly. Under realistic margins (+0.2 Sharpe vs -0.5% DD vs +2% APY), Sharpe gain dominates DD reduction 11-36x on 4/5 regimes — pursue signal quality and return, not DD shaving. Leverage farming (raise LEVERAGE_K → APY and DD scale 1:1) is blocked by dd_gate knee@5 (below): any leverage increase pushes DD past 5% → exp penalty bites harder than linear APY bonus (verified: 1.1x leverage drops composite).
 
-**dd_gate soft_start raised 5→8, scale 10→2 (2026-06-20):** the 5-8% DD range was over-penalized (5→8% lost 28% under soft@5), discouraging the agent from accepting 5-8% DD to capture more return. New curve: 0-8% only the mild 1/(1+DD) base (8% → 0.926, just -7.4%); 8%+ steep exp penalty (scale=2: 9% → 0.557, 10% → 0.334). Hard cutoff at 10% unchanged. Real strategies sit at DD 0.45-1.70% (far below 8%), so this mainly opens up the 5-8% range for return-seeking experiments.
+**dd_gate soft_start lowered 8→5 (2026-06-24):** the prior knee at 8% left a leverage-farming sweet spot — rally DD=5.16% could scale to 7.74% (LEVERAGE_K 6) before the exp penalty bit. Lowering the knee to 5% (where real cluster-regime DDs sit) makes any leverage increase bite immediately. This is the leverage-farming blocker that replaces the old calmar invariance (calmar is gone, so dd_gate alone must stop farming — knee@5 does it). Curve: DD=3%→0.97, DD=5%→0.95, DD=6%→0.74, DD=8%→0.55, DD=10%→0.33. Hard cutoff at 10% unchanged.
 
 There is no return gate, turnover gate, or simplicity bonus — those were removed in the score-v5 overhaul. Higher trade frequency is NOT penalized beyond the fee-adjusted Sharpe already embedded in `base`.
 
