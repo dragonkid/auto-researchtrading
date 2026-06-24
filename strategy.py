@@ -2703,7 +2703,18 @@ class Strategy:
                     # resizes are predominantly pp/de-risk reductions = the sample_factor
                     # trades). New control flow: emission threshold now depends on pos_pnl.
                     _win_em = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 flat/loss, ~1 clear profit
-                    _emit_thresh = (0.7 - 0.3 * _win_em) * LEVERAGE_K  # 0.7 -> 0.4 as profit rises
+                    # Branch step2: deepen the ramp (floor 0.4->0.3, steeper saturation).
+                    # Step1 floor 0.4 added +1 mixed trade (45->46, +0.0054 mixed). Lowering
+                    # the floor to 0.3*LEVERAGE_K for clear winners lets more ct-at-multi-day
+                    # winning reductions emit -> more mixed trades toward the 50-trade knee.
+                    # Steeper saturation (tanh pos_pnl/(0.5*|stop|)) reaches the floor at
+                    # pos_pnl~+1*|stop| (vs +1.5 before) so modest mixed bounces (smaller
+                    # peaks) also reach the lower bar. Trend-aligned byte-identical (gate 0);
+                    # ct losers (pos_pnl<0 -> _win_em 0 -> 0.7 floor, same as keep). The
+                    # winning gate ensures only profitable ct positions get the lower bar
+                    # (their reductions are locking realized gains, not noise-driven churn).
+                    _win_em = max(0.0, np.tanh(pos_pnl / (0.5 * abs(STOP_LOSS_PCT))))  # saturates ~+1*|stop|
+                    _emit_thresh = (0.7 - 0.4 * _win_em) * LEVERAGE_K  # 0.7 -> 0.3 as profit rises
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
