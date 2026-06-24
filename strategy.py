@@ -2519,7 +2519,34 @@ class Strategy:
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
                 _grid_c = 0.06 * equity * BASE_POSITION_SIZE
-                if _grid_c > 0:
+                # Exp1 (architectural, indep): POSITION-SIZE-CONDITIONED grid exemption
+                # on the calm path. The calm grid quantizes same-sign resizes onto a
+                # 0.06 lattice to cut noise-driven micro-resize churn in stability-
+                # factor-1.0 regimes (the proven crash/sideways raw lever). But for
+                # SMALL positions (|current_pos| near or below one grid step), the grid
+                # ABSORBS genuine signal-driven reductions: a tp_harvest or de-risk trim
+                # that should shrink the position snaps back to the SAME lattice point ->
+                # emitted target unchanged -> the reduction never executes (prior
+                # session root cause: "mixed positions are SMALL relative to the grid
+                # step -- a 16.6pct harvest of a small position is <1 grid step -> snaps
+                # to the same quantized lattice point -> emitted target unchanged").
+                # mixed's positions sit at ~1 grid step (small BASE*combined_mult in a
+                # low-vol down year); crash/sideways/bull sit at 2-4+ grid steps. Exempt
+                # small positions (|current_pos| < 1.5 grid steps) from the grid so
+                # signal-driven reductions execute; large positions keep the grid (their
+                # noise-protection benefit is real, and their reductions are multi-grid
+                # so not absorbed). NEW cross-component data dep: calm-grid application
+                # depends on |current_pos| relative to the grid step. General principle
+                # (grid protects large-position noise; for sub-grid positions the grid
+                # only absorbs genuine signal) -- no regime label. The threshold (1.5
+                # steps) is a continuous multiple of the same _grid_c, so it scales with
+                # equity/BASE (leverage-invariant). Resize-only (entries/exits/flips
+                # exempt by _is_resize). Risk: small-position resizes are no longer
+                # quantized -> a small noisy resize could emit a sub-$1 trade; the
+                # LEVERAGE_K-scaled emission threshold (1.0*LEVERAGE_K below) filters
+                # sub-threshold resizes regardless.
+                _small_pos_exempt = abs(current_pos) < 1.5 * _grid_c
+                if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
                         target = _qt_c
