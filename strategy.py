@@ -2216,23 +2216,24 @@ class Strategy:
                     # NEW entry->exit cross-component data dep: the de-risk floor now depends
                     # on the conviction margin CACHED AT ENTRY (the quality of the original
                     # entry signal), not just on current PnL/trend-align. A high-conviction
-                    # entry (cached margin > 0.40, the same threshold that saturates the
-                    # cold-entry _bull_conv_atten size attenuator) that is now in modest giveback
-                    # is more likely to recover (the original signal was strong) -> ride the
-                    # giveback more gradually (LOWER floor -> wider de-risk ramp -> holds
-                    # through mid-range pressure); a low-conviction entry (margin~0, admitted
-                    # on a marginal signal) keeps the baseline floor (cut faster on giveback).
-                    # PROFIT-side only (the 0.55 branch -- winners in modest giveback; the loss
-                    # branch 0.85 is already near-binary fast-exit and should not be loosened
-                    # by entry quality). One-sided (only positive cached margin lowers the floor;
-                    # negative/uncached -> 0 -> baseline). Smooth tanh on cached_margin/0.40,
-                    # max -0.08 floor reduction (small -- the bull/sideways stability balance is
-                    # delicate; bounds the cushion). Distinct from _ta_de_align (current trend-
-                    # alignment): this is the ENTRY-TIME signal quality, frozen at entry. New
-                    # control flow at the de-risk graduation: floor depends on entry conviction.
+                    # entry (cached margin > 0.40) in modest giveback is more likely to recover
+                    # -> ride the giveback more gradually (LOWER floor). PROFIT-side only,
+                    # one-sided, max -0.08.
+                    # BRANCH step2: GATE the entry-conv floor reduction by SLOPE-CONFIRMATION
+                    # (the same _dr_slope_conf that gates the existing _dr_k convex cushion).
+                    # Step1 (ungated) regressed bull -0.456 + sideways -0.038: clean-trend
+                    # winners over-held through giveback that REVERSES (bull/sideways giveback
+                    # is a real reversal signal, not pullback noise). The cushion should fire
+                    # only when the near-term slope STILL CONFIRMS the position (ongoing trend ->
+                    # giveback is pullback noise -> ride it; slope weakened -> real reversal ->
+                    # cut). This mirrors the Exp2 lesson that made _dr_k safe (slope-conf gates
+                    # the cushion). Pre-compute _dr_slope_conf here so it gates BOTH the floor
+                    # reduction and (reused) the _dr_k cushion below.
+                    _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                     _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
                     _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
-                    _de_floor -= 0.08 * _entry_conv_floor * max(0.0, _pnl_scale)  # profit-side only
+                    _de_floor -= 0.08 * _entry_conv_floor * _dr_slope_conf * max(0.0, _pnl_scale)  # profit + slope-confirmed only
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
