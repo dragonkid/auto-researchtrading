@@ -2109,7 +2109,14 @@ class Strategy:
                 # identical), blending to 1.5 in trends (rsi_trend_str~1 -> mixed/rally trend peaks
                 # -> lower threshold reaches them -> keeps the +0.0068 mixed gain). Continuous tanh
                 # blend on rsi_trend_str (no new decision boundary). rsi_trend_str already computed.
-                _tp_thresh_dyn = 1.6 - 0.10 * max(0.0, min(1.0, rsi_trend_str))
+                # Branch step3: STEEPER trend gate on the threshold. Step2's linear 1.6->1.5
+                # blend still left sideways -0.018 (sideways has moderate rsi_trend_str, not 0, so
+                # it got partial threshold lowering -> some premature harvest). Make the blend
+                # STEEP via a sharper tanh: keep 1.6 (byte-identical protection) until rsi_trend_str
+                # exceeds ~0.4, then drop to 1.5 only for genuinely trending regimes (mixed/rally
+                # trend segments, bull legs). Sideways (moderate rsi_trend_str ~0.2-0.3) stays at
+                # ~1.6 -> recovered; mixed/rally (high rsi_trend_str in trend legs) get 1.5 -> kept.
+                _tp_thresh_dyn = 1.6 - 0.10 * max(0.0, min(1.0, np.tanh((rsi_trend_str - 0.35) / 0.15)))
                 if target != 0 and self.peak_pnl[symbol] > _tp_thresh_dyn * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
