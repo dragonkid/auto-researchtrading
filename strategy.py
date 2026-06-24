@@ -2233,7 +2233,18 @@ class Strategy:
                     _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                     _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
                     _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
-                    _de_floor -= 0.08 * _entry_conv_floor * _dr_slope_conf * max(0.0, _pnl_scale)  # profit + slope-confirmed only
+                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. Step2's slope
+                    # gate recovered bull but it still regresses -0.266: bull's near-term slope
+                    # stays positive into EARLY pullback bars (before the reversal) so the
+                    # cushion rides the first giveback that then reverses (bull-2021 is a HIGH-
+                    # vol SHARP uptrend whose pullbacks are deep and non-recovering). The
+                    # documented bull/rally separator (used in _grind_gate, MTM-chop throttle)
+                    # is VOL REGIME: rally/mixed are LOW-vol GRINDS (pullbacks recover -> ride
+                    # giveback); bull-2021 is HIGH-vol SHARP (pullbacks reverse -> cut). Gate
+                    # the cushion by low vol_ratio: full at vol_ratio<=0.8, fading to 0 at
+                    # vol_ratio>=1.3 (same band as _grind_gate). Continuous, no boundary.
+                    _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
+                    _de_floor -= 0.08 * _entry_conv_floor * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
