@@ -2231,20 +2231,19 @@ class Strategy:
                     # reduction and (reused) the _dr_k cushion below.
                     _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                     _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
+                    _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
                     _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
                     _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
-                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. Step2's slope
-                    # gate recovered bull but it still regresses -0.266: bull's near-term slope
-                    # stays positive into EARLY pullback bars (before the reversal) so the
-                    # cushion rides the first giveback that then reverses (bull-2021 is a HIGH-
-                    # vol SHARP uptrend whose pullbacks are deep and non-recovering). The
-                    # documented bull/rally separator (used in _grind_gate, MTM-chop throttle)
-                    # is VOL REGIME: rally/mixed are LOW-vol GRINDS (pullbacks recover -> ride
-                    # giveback); bull-2021 is HIGH-vol SHARP (pullbacks reverse -> cut). Gate
-                    # the cushion by low vol_ratio: full at vol_ratio<=0.8, fading to 0 at
-                    # vol_ratio>=1.3 (same band as _grind_gate). Continuous, no boundary.
+                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. bull-2021 is
+                    # HIGH-vol SHARP (pullbacks reverse); rally/mixed are LOW-vol GRINDS
+                    # (pullbacks recover -> ride giveback). Gate by low vol_ratio (same band
+                    # as _grind_gate): full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.3.
                     _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                    _de_floor -= 0.08 * _entry_conv_floor * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
+                    # BRANCH step4: full-gate stack matching _dr_k (trend-align + slope-conf +
+                    # profit + vol + conviction). Halve magnitude 0.08->0.04: rally/mixed
+                    # gains are less sensitive (small positions, small absolute floor effect)
+                    # so preserved at half-magnitude; bull over-hold cost halved.
+                    _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
@@ -2297,8 +2296,8 @@ class Strategy:
                         # shorts fast. General principle (no regime label): the cushion is
                         # earned by trading WITH the long-window trend, not by path shape.
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
-                        _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
-                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        # (_dr_pos_dir / _dr_align pre-computed above at the floor for the
+                        # entry-conv cushion; reused here for the _dr_k convex cushion.)
                         # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
                         # convex cushion. The cushion (k>1 -> hold near full size through
                         # moderate giveback, the validated stability lever) was gated only on
