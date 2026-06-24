@@ -1592,7 +1592,15 @@ class Strategy:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._ct_shrink_held[symbol] = _bear_ct_vlong  # Exp1: cache multi-day ct shrink for scale-in sustain
+                    # Branch step2: gate the bear-entry-in-uptrend ct-shrink sustain on
+                    # HIGH entry-time vol_ratio (prior diagnostic: bull vol_ratio
+                    # 0.54/0.72/0.96 HIGH vs rally 0.35/0.46/0.62 LOW -- nearly disjoint).
+                    # Sustain the shrink only when vol_ratio is high (bull ct shorts keep
+                    # the +0.006 gain); low-vol rally reverts to first-bar-only (cache 1.0)
+                    # -> rally byte-identical recovery. Blend toward 1.0 (no sustain) as
+                    # vol_ratio drops below ~0.55. mixed grid-walled regardless.
+                    _ct_sus_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.55) / 0.12)))
+                    self._ct_shrink_held[symbol] = 1.0 + (_bear_ct_vlong - 1.0) * _ct_sus_gate
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
