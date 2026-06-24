@@ -2652,6 +2652,25 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
+                    # Branch step3: CT-SIGN gate on winner_fade. The winner_fade spares
+                    # clear winners from the MTM-chop trim (protects crash profit-take
+                    # shorts from over-trimming). But for COUNTER-TREND-AT-MULTI-DAY
+                    # winners (mixed bounce longs in a downtrend), the fade is COUNTER-
+                    # PRODUCTIVE: it shrinks mixed's winning reductions below the emission
+                    # threshold -> they don't emit -> no sample_factor trades + no realized
+                    # gain lock-in. mixed's winning ct longs SHOULD be trimmed (realize the
+                    # oscillating paper + add trades). Gate winner_fade so ct-at-multi-day
+                    # positions keep FULL trim amplitude even when winning (ct winners don't
+                    # get the fade). Trend-aligned positions (crash shorts: pos_dir=-1,
+                    # ret_vlong<0 -> product>0 -> ct-sign 0; bull/rally longs: product>0 ->
+                    # ct-sign 0) keep the winner_fade unchanged -> BYTE-IDENTICAL. Only ct-
+                    # at-multi-day winners (mixed bounce longs + crash dead-cat longs) get
+                    # full trim. Fast-saturating /0.01 ret_vlong scale (near-constant,
+                    # noise-free). Smooth (no decision boundary). New cross-component dep:
+                    # winner_fade now depends on multi-day ct sign.
+                    _pos_dir_wf = 1.0 if current_pos > 0 else -1.0
+                    _ct_sign_wf = max(0.0, np.tanh(-_pos_dir_wf * ret_vlong / 0.01))
+                    _winner_fade = _winner_fade + (1.0 - _winner_fade) * _ct_sign_wf  # ct winners -> 1.0 (no fade)
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
