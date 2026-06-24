@@ -2545,7 +2545,7 @@ class Strategy:
                 # quantized -> a small noisy resize could emit a sub-$1 trade; the
                 # LEVERAGE_K-scaled emission threshold (1.0*LEVERAGE_K below) filters
                 # sub-threshold resizes regardless.
-                _small_pos_exempt = abs(current_pos) < 1.5 * _grid_c
+                _small_pos_exempt = abs(current_pos) < 1.0 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
