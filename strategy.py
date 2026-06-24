@@ -570,33 +570,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp2 (architectural, indep): 9th voter -- LOWER-FREQUENCY range/close
-            # efficiency-continuation (48-bar, the slow analog of the validated 8th voter).
-            # Prior session sanctioned lower-frequency voter work; Exp1 this session proved a
-            # DIRECTIONAL multi-day voter (ret_vlong) over-admits pullbacks (bull -0.426). The
-            # lesson: the lower-frequency voter must be DIRECTION-AGNOSTIC like the 8th
-            # (trend CLEANLINESS/efficiency, signed by a slow net -- not a trend-direction
-            # bias that duplicates ret_long). The 8th voter (_rc_signal) uses a 12-bar window:
-            # |close-to-close|/|intrabar range| signed by sign(closes[-1]-closes[-12]). This
-            # 9th voter is the SAME mechanism at 48 bars -- 4x slower, so the sign is a 48-bar
-            # net (fewer zero-crossings than 12-bar under AR(1) noise -> fewer admission-
-            # boundary flips, the exact failure mode of the 2nd-derivative 9th-voter attempt).
-            # A 48-bar efficiency signal captures SUSTAINED trend regimes (rally grind, crash
-            # trend, bull-2021 legs) while being ~0 in chop (range ~= closes -> eff~1 ->
-            # signal~0 -> contribution 0.5 -> strong_sum 0 -> sideways byte-identical by
-            # construction). The 8th and 9th voters are CORRELATED (same formula, different
-            # window) but on distinct timescales -- the 9th adds the slow component the 8th's
-            # 12-bar window misses. Weight 0.55 (matches 8th, small fixed, untouched by
-            # _wt_shift). New orthogonal-timescale data-source voter. Targets trend regimes
-            # via a low-flip efficiency signal; sideways (eff~1) byte-identical.
-            _rc9_n = 48
-            _rc9_high = bd.history["high"].values[-_rc9_n:]
-            _rc9_low = bd.history["low"].values[-_rc9_n:]
-            _rc9_intrabar = float(np.mean(_rc9_high - _rc9_low))
-            _rc9_interbar = float(np.mean(np.abs(np.diff(closes[-_rc9_n - 1:]))))
-            _rc9_eff = _rc9_interbar / max(_rc9_intrabar, 1e-10)  # ~1 chop, >1 trending
-            _rc9_dir = 1.0 if closes[-1] >= closes[-_rc9_n] else -1.0
-            _rc9_signal = (_rc9_eff - 1.0) / 0.5 * _rc9_dir  # >0 trend-continuation in dir
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -606,7 +579,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _rc9_signal / 1.0,  # 9th voter: 48-bar (lower-freq) range/close efficiency-continuation
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -633,7 +605,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: 48-bar efficiency (small fixed weights, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -661,7 +633,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
