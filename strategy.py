@@ -2545,16 +2545,31 @@ class Strategy:
                 # quantized -> a small noisy resize could emit a sub-$1 trade; the
                 # LEVERAGE_K-scaled emission threshold (1.0*LEVERAGE_K below) filters
                 # sub-threshold resizes regardless.
-                # Branch step3: gate exemption to REDUCTIONS only. Step1/2 exempted
-                # BOTH increase and reduction resizes for small positions; sideways
-                # (which also has small positions) leaked noise-driven micro-INCREASES
-                # (scale-in wobble) through the exemption -> 48->57 trades, Sh drop.
-                # The signal we want to preserve (mixed's tp_harvest/trim) is a
-                # REDUCTION (|target|<|current_pos|); noise-driven increases should stay
-                # grid-suppressed. General principle: the grid protects bidirectional
-                # noise; exemption is for signal-driven REDUCTIONS only.
-                _is_reduction_resize = abs(target) < abs(current_pos)
-                _small_pos_exempt = _is_reduction_resize and abs(current_pos) < 1.5 * _grid_c
+                # Branch step4: gate the small-pos exemption on MTM-PATH-CHOP. Step1
+                # exempted all small-position resizes (best composite 0.914862) but
+                # sideways (which also has small positions) leaked micro-resizes
+                # -> 48->57 trades, Sh 2.027->2.019. Step3 reductions-only lost rally's
+                # gain without fixing sideways. The clean separator between mixed (where
+                # exemption helps) and sideways (where it hurts) is the held position's
+                # MTM-path efficiency (the proven mixed/sideways separator at the
+                # emission throttle): mixed's small positions are CHOPPY dead capital
+                # (low efficiency, whipsaw ~breakeven longs in a down year); sideways's
+                # small-position reductions are on SMOOTHER winners (high efficiency).
+                # Gate the exemption on chop (1 - MTM-eff over the 12-bar pos_pnl path):
+                # exempt only when the held position is choppy (mixed); smooth winners
+                # (sideways/bull/crash/rally trend longs) keep the grid. General
+                # principle (no regime label): the grid-absorption cost is only worth
+                # lifting for positions whose MTM path is itself noise-dominated (where
+                # the grid absorbs a genuine reduction that the choppy path needs).
+                _ppp_ex = self._pnl_path.get(symbol, [])
+                _chop_ex = 0.0
+                if len(_ppp_ex) >= 4:
+                    _ppa_ex = np.array(_ppp_ex)
+                    _net_ex = abs(_ppa_ex[-1] - _ppa_ex[0])
+                    _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
+                    _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
+                    _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
+                _small_pos_exempt = _chop_ex > 0.40 and abs(current_pos) < 1.5 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
