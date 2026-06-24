@@ -2399,8 +2399,19 @@ class Strategy:
                 # on the SAME sign as the count gate (the trend confirmation is correct; only the
                 # voter condition is replaced). bars_held>ENTRY_FULL_BARS avoids firing during
                 # scale-in. |pos_pnl|<0.5*|stop| = near-breakeven band. Continuous tanh gates.
-                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg < 0
-                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg > 0
+                # Step10: OR a MAE-based dead-capital detector for slightly-LOSING ct shorts that
+                # have NOT been trending against (low |MAE|). A held ct position currently in a
+                # small loss (pos_pnl in [-0.8*stop, -0.3*stop], above SL but losing) whose MAE is
+                # shallow (|MAE|<0.8*stop, never went deep underwater) has been oscillating in a
+                # narrow band rather than trending decisively against = dead capital that won't
+                # recover (rally's reverting ct shorts drifting slightly negative). Catches the
+                # small-loss oscillators the near-breakeven (|pos_pnl|<0.5*stop) condition misses,
+                # without touching trend shorts (crash trend shorts have large |MAE| -> excluded)
+                # or near-SL losers (the SL band handles them). trend_avg guard retained.
+                _mae_osc_long = abs(self._mae.get(symbol, 0.0)) < 0.8 * abs(STOP_LOSS_PCT) and -0.8 * abs(STOP_LOSS_PCT) < pos_pnl < -0.3 * abs(STOP_LOSS_PCT)
+                _mae_osc_short = abs(self._mae.get(symbol, 0.0)) < 0.8 * abs(STOP_LOSS_PCT) and -0.8 * abs(STOP_LOSS_PCT) < pos_pnl < -0.3 * abs(STOP_LOSS_PCT)
+                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and trend_avg < 0 and (abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) or _mae_osc_long)
+                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and trend_avg > 0 and (abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) or _mae_osc_short)
                 _opp_gate = (current_pos > 0 and (bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min) and trend_avg < 0) or \
                             (current_pos > 0 and _osc_long) or \
                             (current_pos < 0 and (bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min) and trend_avg > 0) or \
