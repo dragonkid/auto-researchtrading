@@ -2569,7 +2569,7 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.5 * _grid_c
+                _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
@@ -2658,31 +2658,7 @@ class Strategy:
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
-            # Branch step13: position-size-conditioned emission threshold for small
-            # CHOPPY reductions. The grid exemption (step6) lets small-position
-            # reductions EXECUTE (not grid-absorbed), but the absolute $ emission
-            # threshold (1.0*LEVERAGE_K) may still filter them out (small position ->
-            # small $ delta -> below threshold -> not emitted -> no trade). mixed's
-            # reductions are signal-driven (tp_harvest/trim on choppy dead capital,
-            # 100pct WR) so emitting them as trades adds GOOD sample_factor trades
-            # (the prior-session documented actionable lever). Lower the threshold
-            # ONLY for small choppy reductions (same population the grid exemption
-            # serves): the chop gate (validated step4/5, separates mixed dead capital
-            # from sideways/bull smooth winners) + position-size gate. 0.7*LEVERAGE_K
-            # floor (modest, not free -- still filters sub-$2.8 micro-noise). General
-            # principle: lower emission bar for signal-validated small reductions.
-            _emit_thresh = 1.0 * LEVERAGE_K
-            _grid_em = 0.06 * equity * BASE_POSITION_SIZE
-            if _is_resize and abs(current_pos) < 2.0 * _grid_em:
-                _ppp_em = self._pnl_path.get(symbol, [])
-                if len(_ppp_em) >= 4:
-                    _ppa_em = np.array(_ppp_em)
-                    _net_em = abs(_ppa_em[-1] - _ppa_em[0])
-                    _tot_em = float(np.sum(np.abs(np.diff(_ppa_em))))
-                    _chop_em = max(0.0, min(1.0, 1.0 - _net_em / max(_tot_em, 1e-10)))
-                    if _chop_em > 0.30:
-                        _emit_thresh = 0.7 * LEVERAGE_K
-            if abs(target - current_pos) > _emit_thresh:
+            if abs(target - current_pos) > 1.0 * LEVERAGE_K:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
