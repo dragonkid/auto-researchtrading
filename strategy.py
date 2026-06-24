@@ -2053,7 +2053,16 @@ class Strategy:
                 # boundary); trend-aligned + slope-confirming positions byte-identical (gate 0).
                 _ib_pos_dir = 1.0 if current_pos > 0 else -1.0
                 _ib_slope_conf = max(0.0, np.tanh(_exit_slope * _ib_pos_dir / 0.0004))  # 0 stalling, ~1 strongly confirming
-                _ib_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_ib_score - 0.70) / 0.10))) * (1.0 - _ib_slope_conf)
+                # Branch step3: GENTLER slope gate (step2 was too strict -- (1 - _ib_slope_conf)
+                # zeroed pressure whenever slope confirmed AT ALL, killing rally/mixed gains
+                # whose exhaustion-contractions still have moderate slope confirmation). Spare
+                # only STRONG slope confirmation (bull grind ~1 -> gate 0); keep firing for
+                # MODERATE slope (rally/mixed exhaustion ~0.4-0.6 -> gate ~0.6-1.0). Onset at
+                # slope-conf 0.5 (full fire below), fade to 0 at 0.75 (spare above). Continuous
+                # tanh (no boundary). bull (strong confirm) spared; rally/mixed (moderate)
+                # keep firing.
+                _ib_slope_gate = max(0.0, 1.0 - max(0.0, np.tanh((_ib_slope_conf - 0.50) / 0.10)))
+                _ib_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_ib_score - 0.70) / 0.10))) * _ib_slope_gate
                 _w_ib = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
