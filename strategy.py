@@ -2044,7 +2044,7 @@ class Strategy:
                 # noise filter on the source-agreement dimension); smooth-max changes the
                 # base fusion value, _soft_atten scales it. Direction-agnostic (no regime
                 # label); continuous (no new decision boundary).
-                _SM_S = 10.0  # smooth-max sharpness: high=approach MAX, low=approach mean
+                _SM_S = 50.0  # branch step2: raised 10->50 (step1 s=10 too soft for sideways: near-equal soft terms -> blend bonus -> premature exits -> Sh halved, DD 9.73pct). s=50 keeps smooth-max within ~0.02 of true max when one term leads (spares sideways) while still smoothing the near-tie argmax-flip boundary.
                 _sm_max = max(_soft_terms)
                 _sm_shifted = [np.exp(_SM_S * (_t - _sm_max)) for _t in _soft_terms]
                 _soft_max = _sm_max + np.log(max(sum(_sm_shifted), 1e-10)) / _SM_S
