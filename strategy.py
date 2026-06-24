@@ -1918,8 +1918,17 @@ class Strategy:
                 # Continuous tanh on (pos_pnl/peak - 0.85)/0.10, gated above a small peak
                 # (_pp_min floor) so tiny-noise peaks dont qualify. New control-flow dep.
                 _climb_ratio = pos_pnl / max(self.peak_pnl.get(symbol, pos_pnl), _pp_min)
-                _still_climbing = max(0.0, min(1.0, np.tanh((_climb_ratio - 0.85) / 0.10)))
-                _max_hold *= 1.0 + 0.10 * _md_slope_conf * _st_slope_conf * _still_climbing
+                # Branch step7: STRICTER climb gate + higher magnitude. Step6 (0.85 peak ratio,
+                # 0.10 mag) was the best separator (sideways recovered to 1.013) BUT also blocked
+                # crash extension (crash shorts peak-then-pullback too -> gate blocked them ->
+                # crash -0.004). Two coordinated changes: (1) TIGHTEN the climb gate to 0.92 peak
+                # ratio so only TRULY-still-climbing positions (making fresh highs, not just near
+                # a stale peak) extend -- a crash trend short that is still trending makes new
+                # highs consecutively (pos_pnl == peak_pnl, ratio 1.0); a peaked mean-reverter
+                # dropping below 0.92*peak is excluded; (2) RAISE magnitude 0.10->0.14 so the
+                # qualifying crash positions get a stronger extension to restore the +0.015 gain.
+                _still_climbing = max(0.0, min(1.0, np.tanh((_climb_ratio - 0.92) / 0.06)))
+                _max_hold *= 1.0 + 0.14 * _md_slope_conf * _st_slope_conf * _still_climbing
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
