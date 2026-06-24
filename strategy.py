@@ -2391,28 +2391,6 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                # Exp2 (architectural, indep): PROFIT-BOOSTED counter-trend target-EMA.
-                # The symmetric untested counterpart to the loss-gate (which CUTS smoothing
-                # for losers). The proven stability lever is the ct emitted-target EMA
-                # (alpha 0.99, _ct_te_str gate). Prior session established mixed BENEFITS
-                # from holding through oscillation peaks (winner-fade load-bearing; any
-                # lever that trims/harvests mixed at peaks REGRESSES it). mixed holds ct
-                # longs (ret_vlong<0 -> _ct_te_str>0 -> gets the EMA) whose pos_pnl
-                # OSCILLATES +30%->+24%->+28%; the intrinsic return_vol (5.54pct vs 4.4pct
-                # net) is the low-Sharpe drag. A WINNING ct position whose position-value
-                # is low-passed MORE strongly damps the oscillation PEAK (the held level
-                # rises less on the up-leg) -> less giveback on the re-peak down-leg ->
-                # smaller MTM amplitude -> higher Sharpe, WITHOUT trimming the position
-                # (consistent with 'hold through peaks': the EMA holds the LEVEL, not a
-                # harvest). Boost alpha up to +30% (0.99 -> ~0.997 cap via 1/(1-boost))
-                # for clear winners (pos_pnl > +0.5*|stop|, the same onset as the
-                # load-bearing winner-fade). ct-gated (trend-aligned byte-identical);
-                # loss-gate preserved; profit-continuous tanh (no decision boundary -> not
-                # the walled admission-boundary family). New data dep on pos_pnl sign at
-                # the emitted-target smoother (was loss-modulated only).
-                _te_profit_gate = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))  # 0 below +0.5*stop, ~1 deep winner
-                _te_alpha = _te_alpha * (1.0 + 0.30 * _te_profit_gate)
-                _te_alpha = min(_te_alpha, 0.997)  # cap below 1.0 (must remain a low-pass, not a freeze)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
