@@ -2395,21 +2395,12 @@ class Strategy:
                 # neither SL nor pp_pressure harvests). This is the ONE untested opp-gate trigger
                 # that reaches mixed's specific failure mode (oscillating near-breakeven ct longs
                 # with no voter reversal signal). Spares trend-aligned (gate 0), spares clear
-                # winners (pp_pressure harvests) and clear losers (SL closes). bars_held>
-                # ENTRY_FULL_BARS avoids firing during scale-in. |pos_pnl|<0.5*|stop| =
-                # near-breakeven band. Continuous tanh gates.
-                # Step5: use the MULTI-DAY ct gate (_ct_pos_flip) as the trend confirmation
-                # INSTEAD of trend_avg for the oscillation supplement (the count gate keeps
-                # trend_avg). mixed's 20-bar trend_avg OSCILLATES around 0 so the trend_avg<0
-                # long condition fired only on ~half the bars (step4 reached rally but mixed
-                # was byte-identical). The multi-day ret_vlong stays solidly negative through
-                # mixed's chop (the structural "wrong-side" signal), is near-constant (noise-free
-                # /0.01 saturation per branch-step-9 lesson), and the near-breakeven gate
-                # (|pos_pnl|<0.5*|stop|) SPARES bull's clear-winner trend longs whose ret_vlong
-                # occasionally dips (they have large pos_pnl -> excluded) -- the safety that
-                # Exp3's ret_vlong-OR lacked (Exp3 had no near-breakeven guard -> bull crashed).
-                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT)
-                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT)
+                # winners (pp_pressure harvests) and clear losers (SL closes). Gated by trend_avg
+                # on the SAME sign as the count gate (the trend confirmation is correct; only the
+                # voter condition is replaced). bars_held>ENTRY_FULL_BARS avoids firing during
+                # scale-in. |pos_pnl|<0.5*|stop| = near-breakeven band. Continuous tanh gates.
+                _osc_long = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg < 0
+                _osc_short = _ct_pos_flip > 0.5 and bars_held > ENTRY_FULL_BARS and abs(pos_pnl) < 0.5 * abs(STOP_LOSS_PCT) and trend_avg > 0
                 _opp_gate = (current_pos > 0 and (bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min) and trend_avg < 0) or \
                             (current_pos > 0 and _osc_long) or \
                             (current_pos < 0 and (bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min) and trend_avg > 0) or \
