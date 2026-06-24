@@ -2037,7 +2037,23 @@ class Strategy:
                     _ib_overlap = max(0.0, min(_ib_h[_ib_i], _ib_h[_ib_i - 1]) - max(_ib_l[_ib_i], _ib_l[_ib_i - 1]))
                     _ib_contain.append(_ib_overlap / _ib_cur_rng)  # 1.0 fully inside, 0.0 outside
                 _ib_score = float(np.mean(_ib_contain))  # [0, 1], 3-bar mean containment
-                _ib_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_ib_score - 0.70) / 0.10)))
+                # Branch step2: SLOPE-CONFIRMATION gate on the inside-bar contraction exit.
+                # Exp3 (opening) showed 3 regimes improved (sideways/rally/mixed) BUT bull
+                # CATASTROPHIC -0.416: inside-bar fired on bull's GRINDING consolidation (normal
+                # CONTINUATION, not exhaustion). A grinding bull uptrend has frequent inside-bar
+                # nesting WHILE the slope still strongly confirms the position. Gate the
+                # contraction-exit to fire only when the slope NO LONGER confirms (exhaustion /
+                # stalling) -> bull grind (slope confirming) -> gate 0 -> spared; sideways/rally
+                # /mixed contractions during slope weakening -> gate 1 -> kept. Uses the
+                # multi-window _exit_slope (mean of 12/16/22-bar OLS, already computed at line
+                # ~1751, smoother than single 16-bar) x pos_dir, /0.0004 scale (same as the
+                # validated _dr_slope_conf de-risk cushion gate). _ib_slope_conf = max(0, tanh(
+                # exit_slope*pos_dir/0.0004)) in [0,1]; gate = (1 - _ib_slope_conf) so a strongly-
+                # confirming slope (bull grind) zeroes the pressure. Continuous tanh (no
+                # boundary); trend-aligned + slope-confirming positions byte-identical (gate 0).
+                _ib_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ib_slope_conf = max(0.0, np.tanh(_exit_slope * _ib_pos_dir / 0.0004))  # 0 stalling, ~1 strongly confirming
+                _ib_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_ib_score - 0.70) / 0.10))) * (1.0 - _ib_slope_conf)
                 _w_ib = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
