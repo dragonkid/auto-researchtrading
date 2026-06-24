@@ -2569,7 +2569,7 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                _small_pos_exempt = _chop_ex > 0.50 and abs(current_pos) < 2.0 * _grid_c
+                _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
@@ -2652,31 +2652,9 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
-                    # Branch step9: position-size-conditioned MTM-chop trim amplification
-                    # for small positions. Distinct from the tp_mag deepening (steps 7-8,
-                    # CATASTROPHIC: tp_mag harvests WINNERS at peaks; bull/crash pullback
-                    # positions are small AND choppy -> over-harvested -> missed recovery).
-                    # THIS trims only on REDUCTIONS (|target|<|current_pos|, already de-
-                    # risking) of CHOPPY dead capital, gated by the existing bull-sparing
-                    # stack (_grind_gate low-vol, _strong_trend_fade multi-day, _winner_fade
-                    # clear-winner). Deepening the trim for small positions makes mixed's
-                    # tiny choppy dead-capital reductions trim FURTHER toward current_pos
-                    # -> converts more oscillating paper to realized reduction -> lower MTM
-                    # oscillation -> higher mixed Sharpe (the binding floor stuck at 0.808
-                    # across steps 1-8 despite +1 sample_factor trade). Large positions
-                    # (bull/rally trend longs, crash shorts) keep baseline AMP. Continuous
-                    # tanh on |current_pos|/grid step; +0.30 max extra AMP for sub-grid
-                    # positions, fading to 0 by 1.5 grid steps. The existing _winner_fade
-                    # (full at pos_pnl<=+0.5*stop) protects mixed's ~breakeven dead capital
-                    # (NOT a clear winner -> full throttle); clear winners (crash) spared.
-                    # General principle (no regime label): deeper trim for small noise-
-                    # dominated dead-capital reductions vs large trend-winner reductions.
-                    _trim_grid_step = 0.06 * equity * BASE_POSITION_SIZE
-                    _small_pos_trim = max(0.0, min(1.0, 1.0 - abs(current_pos) / max(1.5 * _trim_grid_step, 1e-10)))
-                    _trim_amp_dyn = MTM_CHOP_TRIM_AMP + 0.30 * _small_pos_trim
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
-                    _trim_mult = 1.0 + _trim_amp_dyn * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
+                    _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
