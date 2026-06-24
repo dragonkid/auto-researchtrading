@@ -2101,7 +2101,7 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                if target != 0 and self.peak_pnl[symbol] > 1.5 * _pp_min and _sl_pressure < 0.5:
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
                     # rare AND likely mean-reverting — disable harvest to let small
@@ -2171,22 +2171,7 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    # Branch step5: CHOP-REDUCED magnitude (decouple threshold from sideways
-                    # protection). Step1 (fixed threshold 1.5) reached mixed (+0.0068) but hurt
-                    # sideways (-0.035) -- sideways's premature harvests at the lower threshold.
-                    # Steps 2-4 tried gating the THRESHOLD on rsi_trend_str but mixed and sideways
-                    # SHARE the low-trend regime (mixed is choppy, so a trend gate that protects
-                    # sideways also blocks mixed -- the same overlap wall as vol_ratio). DECUPLE:
-                    # keep the LOW threshold 1.5 everywhere (reaches mixed's moderate peaks in ALL
-                    # regimes including chop), but SCALE THE MAGNITUDE down in pure chop so sideways's
-                    # premature harvests are SMALLER (less damage) while mixed's deep peaks in trend
-                    # segments get full magnitude. mixed has trend segments (rsi_trend_str spikes in
-                    # rally legs within 2025); sideways is uniformly low-trend. Continuous tanh on
-                    # rsi_trend_str: full 0.45 in trend, fading to ~0.30 in pure chop. New data dep
-                    # on the magnitude (distinct from the threshold gate). Keeps mixed's reach (1.5
-                    # threshold) while limiting sideways's cost.
-                    _tp_mag_dyn = 0.45 * (0.67 + 0.33 * max(0.0, min(1.0, rsi_trend_str)))  # 0.30 chop, 0.45 trend
-                    _tp_scale = _tp_mag_dyn * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.5) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
