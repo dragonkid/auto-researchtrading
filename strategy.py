@@ -2107,42 +2107,7 @@ class Strategy:
                     # rare AND likely mean-reverting — disable harvest to let small
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
-                    # Exp4 (architectural, indep): CT-SIGN MULTI-DAY gate on tp_harvest
-                    # ACTIVATION. The Exp4-keep multi-day fix (line ~2140) set _ts_supp's
-                    # trend-align factor to ret_vlong*pos_dir so mixed's COUNTER-TREND-at-
-                    # multi-day longs (ret_vlong<0, pos_dir=+1, product<0) are correctly
-                    # UNSUPPRESSED -> _ts_supp ~ 0 -> harvest SHOULD fire at full magnitude.
-                    # BUT the ACTIVATION gate here STILL uses 20-bar |ret_long|, which is
-                    # ~0 in mixed's choppy local bounces (mixed is a down year with chop;
-                    # local 20-bar |ret_long| is small even during bounces that form deep
-                    # peaks) -> the harvest AMOUNT on mixed's deep peaks is throttled by a
-                    # near-zero activation gate even though _ts_supp~0 says "harvest me".
-                    # The Exp4 unsuppression only PARTLY reaches mixed. THIS opens the
-                    # activation gate where the position is COUNTER-TREND at the MULTI-DAY
-                    # scale (ret_vlong*pos_dir<0 = mixed longs in a multi-day downtrend),
-                    # using the SAME fast-saturating /0.01 ret_vlong scale as the validated
-                    # ct_vlong entry shrink (rally's solidly-positive ret_vlong sits in the
-                    # flat tail -> near-constant, noise-free). max() is one-sided (only
-                    # OPENS vs baseline |ret_long| gate, never closes it):
-                    #   - mixed (ct at multi-day, |ret_vlong| substantial) -> gate OPENS
-                    #     -> Exp4-unsuppressed deep peaks now ALSO activate -> full harvest
-                    #     -> convert oscillating paper to realized -> lower MTM oscillation
-                    #     -> higher mixed Sharpe (the binding floor, Sh0.808 APY4.4pct).
-                    #   - bull (trend-aligned: ret_vlong*pos_dir>0 -> ct-sign 0) -> gate
-                    #     unchanged = tanh(|ret_long|/0.04) -> BYTE-IDENTICAL (avoids the
-                    #     prior bull -0.124 failure where max(|ret_long|,|ret_vlong|) opened
-                    #     the gate on bull's trend-aligned pullback winners).
-                    #   - crash (trend-aligned shorts: product>0 -> ct-sign 0) -> BYTE-
-                    #     IDENTICAL (and _ts_supp~1 suppresses anyway).
-                    #   - sideways (ret_vlong~0 -> ct-sign ~0) -> BYTE-IDENTICAL.
-                    #   - rally (trend-aligned longs) -> BYTE-IDENTICAL.
-                    # New cross-timescale data dep: tp_harvest activation depends on multi-
-                    # day counter-trend sign (was 20-bar trend magnitude only). Continuous
-                    # (max of two non-negative tanh terms, no zero-crossing -> no new decision
-                    # boundary that flips under AR(1)). pos_dir known (current_pos != 0 here).
-                    _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _tp_ct_sign = max(0.0, np.tanh(-_tp_pos_dir * ret_vlong / 0.01))
-                    _tp_trend_gate = max(max(0.0, np.tanh(abs(ret_long) / 0.04)), _tp_ct_sign)  # in [0, ~1]
+                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
                     # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
