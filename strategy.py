@@ -2060,15 +2060,17 @@ class Strategy:
                 # uses (_chop_atten_w): full bonus in chop, ZERO bonus in trend (= pure MAX,
                 # byte-identical trend behavior). This restricts the new mechanism to the
                 # regime where it adds signal (chop multi-source reversal) and spares trends.
-                _chop_bonus_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 chop, 0 trend
-                if _mx > _SOFTMAX_FLOOR and _chop_bonus_w > 0.0:
+                _sorted_terms_s = sorted(_soft_terms, reverse=True)
+                _ratio_2nd_s = _sorted_terms_s[1] / max(_sorted_terms_s[0], 1e-6) if _sorted_terms_s[0] > 1e-6 else 0.0
+                _strong_agree = max(0.0, min(1.0, np.tanh((_ratio_2nd_s - 0.50) / 0.20)))  # 0 unless 2nd>=50% of max
+                if _mx > _SOFTMAX_FLOOR and _strong_agree > 0.0:
                     _agree_sum = 0.0
                     for _t in _soft_terms:
                         if _t > _SOFTMAX_FLOOR:
                             _agree_sum += np.exp(_SOFTMAX_TAU * (_t - _mx))
-                    _soft_max = _mx + _chop_bonus_w * (1.0 / _SOFTMAX_TAU) * np.log(1.0 + _agree_sum)
+                    _soft_max = _mx + _strong_agree * (1.0 / _SOFTMAX_TAU) * np.log(1.0 + _agree_sum)
                 else:
-                    _soft_max = _mx  # trend or all-near-zero -> pure max (no inflation)
+                    _soft_max = _mx  # single-source or chop-moderate -> pure max (no inflation)
                 # Agreement attenuator retained (chop-only single-source down-weight):
                 # LSE already up-weights agreement; the attenuator down-weights single-
                 # source chop spikes. The two compose (dual-direction agreement handling).
