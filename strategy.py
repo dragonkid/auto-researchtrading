@@ -300,14 +300,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Exp3 (architectural, indep): per-symbol ENTRY-CONVICTION-MARGIN cache. Stores
-        # the conviction margin (_bull_margin/_bear_margin) at the moment of entry, so the
-        # EXIT-side de-risk ramp can modulate its floor by the quality of the ORIGINAL entry
-        # signal (a high-conviction entry in modest giveback is more likely to recover ->
-        # ride the giveback gradually; a low-convision entry should cut faster). New entry->
-        # exit cross-component data dependency (entry decision quality feeds the exit ramp).
-        # Reset on full exit; default 0.0 (marginal -> baseline floor).
-        self._entry_margin_cache = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1572,12 +1564,10 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._entry_margin_cache[symbol] = _bull_margin  # Exp3: cache entry conviction for exit ramp
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._entry_margin_cache[symbol] = _bear_margin  # Exp3: cache entry conviction for exit ramp
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1913,21 +1903,6 @@ class Strategy:
                 # Following the regime-asymmetric insight from 5648b3a8: time pressure
                 # removal helped bull/crash but destroyed sideways/rally.
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
-                # BRANCH step8: entry-conviction-modulated TIME-PRESSURE WEIGHT. Steps 1-7
-                # proved the entry-conv->de-risk-FLOOR mechanism is bull/rally coupled (ride-
-                # giveback) or inert (cut-marginal). TIME PRESSURE is a different fusion term
-                # (_w_time weights _time_pressure in the soft-MAX fusion): a high-conviction
-                # entry (cached margin>0.40) gets a LIGHTER time-pressure weight (the signal
-                # was strong -> structural max_hold time-decay should bite less -> hold longer
-                # through the time window). Distinct from the de-risk floor (which changes
-                # WHEN positions graduate and couples to bull over-hold): this changes the
-                # WEIGHT on time-pressure, a softer lever. Profit-side only (only winners
-                # earn the extension; losers keep full time-pressure to cut fast), gated by
-                # slope-conf (computed below at the de-risk block -- reuse via forward-def).
-                # Cached margin available here (dict lookup, set at entry). Max -0.15 weight.
-                _ec_floor_wt = max(0.0, np.tanh(self._entry_margin_cache.get(symbol, 0.0) / 0.40))
-                _wt_slope_conf = max(0.0, np.tanh(_exit_slope * (1.0 if current_pos > 0 else -1.0) / 0.0004))
-                _w_time *= 1.0 - 0.15 * _ec_floor_wt * _wt_slope_conf * max(0.0, _pnl_scale)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
@@ -2227,36 +2202,6 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
-                    # Exp3 (architectural, indep): ENTRY-CONVICTION-modulated de-risk floor.
-                    # NEW entry->exit cross-component data dep: the de-risk floor now depends
-                    # on the conviction margin CACHED AT ENTRY (the quality of the original
-                    # entry signal), not just on current PnL/trend-align. A high-conviction
-                    # entry (cached margin > 0.40) in modest giveback is more likely to recover
-                    # -> ride the giveback more gradually (LOWER floor). PROFIT-side only,
-                    # one-sided, max -0.08.
-                    # BRANCH step2: GATE the entry-conv floor reduction by SLOPE-CONFIRMATION
-                    # (the same _dr_slope_conf that gates the existing _dr_k convex cushion).
-                    # Step1 (ungated) regressed bull -0.456 + sideways -0.038: clean-trend
-                    # winners over-held through giveback that REVERSES (bull/sideways giveback
-                    # is a real reversal signal, not pullback noise). The cushion should fire
-                    # only when the near-term slope STILL CONFIRMS the position (ongoing trend ->
-                    # giveback is pullback noise -> ride it; slope weakened -> real reversal ->
-                    # cut). This mirrors the Exp2 lesson that made _dr_k safe (slope-conf gates
-                    # the cushion). Pre-compute _dr_slope_conf here so it gates BOTH the floor
-                    # reduction and (reused) the _dr_k cushion below.
-                    _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                    _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
-                    _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
-                    _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
-                    # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. bull-2021 is
-                    # HIGH-vol SHARP (pullbacks reverse); rally/mixed are LOW-vol GRINDS
-                    # (pullbacks recover -> ride giveback). Gate by low vol_ratio (same band
-                    # as _grind_gate): full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.3.
-                    _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                    # BRANCH step4: full-gate stack matching _dr_k (trend-align + slope-conf +
-                    # profit + vol + conviction). Halve magnitude 0.08->0.04.
-                    _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
@@ -2309,8 +2254,8 @@ class Strategy:
                         # shorts fast. General principle (no regime label): the cushion is
                         # earned by trading WITH the long-window trend, not by path shape.
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
-                        # (_dr_pos_dir / _dr_align pre-computed above at the floor for the
-                        # entry-conv cushion; reused here for the _dr_k convex cushion.)
+                        _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
+                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
                         # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
                         # convex cushion. The cushion (k>1 -> hold near full size through
                         # moderate giveback, the validated stability lever) was gated only on
@@ -2749,7 +2694,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._entry_margin_cache):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
