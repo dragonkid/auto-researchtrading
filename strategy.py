@@ -2080,6 +2080,37 @@ class Strategy:
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
+                # Exp1 (architectural, indep): multi-day-COUNTER-TREND LOSER full-exit
+                # threshold reduction. NEW exit-TIMING lever distinct from every prior
+                # exit experiment: all prior exit work targeted the PARTIAL-harvest paths
+                # (tp_harvest scale-down, giveback tolerance) which are GRID-WALLED for
+                # mixed's small positions (the grid 0.06*equity*BASE absorbs sub-grid
+                # partial trims). A FULL exit (target==0) is grid-EXEMPT -- entries/exits/
+                # flips bypass the churn-gated quantization -- so promoting a loser to
+                # full exit reaches the position-value axis the grid wall blocks. The
+                # de-risk ramp already reaches target=0 at _exit_pressure >= _exit_thresh;
+                # here we LOWER that crossing for multi-day counter-trend LOSERS so they
+                # reach the grid-bypassing full-exit terminal at lower exit_pressure ->
+                # smaller realized losses on the ct losers (rally pullback shorts, crash
+                # dead-cat-bounce longs) -> higher Sharpe in the low-score regimes.
+                # GATES (each respects a documented wall):
+                #  (1) LOSS-gated (_pnl_scale<0): mixed's winning oscillators are spared
+                #      (prior session Exp5 proved mixed BENEFITS from holding through peaks
+                #      -- winner-fade load-bearing -- so the lever fires ONLY on losers).
+                #  (2) ct-gated on ret_vlong*pos_dir (the validated multi-day ct signal,
+                #      fast-saturating /0.01 -> near-constant, noise-free per branch-step-9
+                #      lesson): trend-aligned bull/crash/rally longs (product>0 -> gate 0)
+                #      are BYTE-IDENTICAL; low-ret_vlong sideways spared. Fires only on
+                #      positions counter-trend at the multi-day scale.
+                #  (3) Max 0.20 reduction (1.0 -> 0.80), continuous tanh (no decision
+                #      boundary flip -> not the walled admission-boundary family).
+                # Direction-agnostic general principle (no regime label): a losing
+                # position that is also counter-trend to the multi-day trend is a low-
+                # quality trade with high giveback risk -> promote it to full exit faster.
+                # New cross-timescale data dep at the exit-threshold decision (was loss-
+                # gated and scale-in-gated only; now also ct-gated).
+                _ct_loser_w = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT))) * max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _exit_thresh = _exit_thresh * (1.0 - 0.20 * _ct_loser_w)
                 # Architectural: graduated partial-exit instead of binary exit.
                 # When _exit_pressure crosses below _exit_thresh but above a soft floor
                 # (0.65 * _exit_thresh), shrink position size proportionally toward 0
