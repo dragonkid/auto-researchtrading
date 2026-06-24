@@ -115,7 +115,7 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # open/losing position), so it cannot miss a recovery. Continuous tanh on the DD
 # fraction; leverage-coupled scale (same discipline as giveback tightening);
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
-PORT_DD_TP_HARVEST_RELAX = 0.0   # Exp1: DISABLED under v3 scoring. Was 0.60 under calmar (DD-cap doubly rewarded); v3 return_bonus=APY rewards the trend-winner APY this harvest sacrifices. Regimes with DD<5pct (bull/crash/sideways/mixed) sit on dd_gate's flat shoulder (~0.97) so DD-cap benefit is negligible, while rally DD=5.16pct is past the knee but the harvest was measured to NOT fire on rally (keep 91c4496a).
+PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
 
 # Sizing multipliers
