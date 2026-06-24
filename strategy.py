@@ -2151,6 +2151,10 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
+                    # Exp2: multi-day ct-sign for the ramp-onset gate (computed here,
+                    # inside the harvest block, reusing current_pos direction).
+                    _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _tp_ct_sign = max(0.0, np.tanh(-ret_vlong * _tp_pos_dir / 0.01))  # ~1 mixed ct, ~0 sideways/trend-aligned
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
@@ -2171,7 +2175,34 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp2 (architectural, indep): MULTI-DAY CT-SIGN gate on the
+                    # tp_harvest RAMP ONSET (the lever that actually reaches moderate
+                    # peaks, unlike Exp1's activation-threshold gate which was byte-
+                    # identical inert). Prior session's threshold-lowering branch lowered
+                    # the activation gate 1.6->1.5 fixed and reached mixed moderate peaks
+                    # (+0.0068 score) BUT was walled by mixed/sideways low-trend overlap
+                    # (sideways -0.035). The branch concluded "no single-quantity
+                    # separator" but only checked trend-strength/vol axes. The MULTI-DAY
+                    # COUNTER-TREND SIGN (ret_vlong*pos_dir) is a genuinely different
+                    # axis: mixed holds LONGS in a DOWN year (ret_vlong<0, pos_dir=+1 ->
+                    # product<0 = genuinely counter-trend at multi-day) -> ct_sign ~1;
+                    # sideways is FLAT (ret_vlong~0 -> product~0 -> ct_sign ~0); bull/
+                    # crash/rally trend-aligned (product>0 -> ct_sign 0). Lower the RAMP
+                    # ONSET 1.6->1.3 for multi-day ct positions -> reaches mixed's
+                    # moderate oscillating peaks (tp_ratio 1.3-1.6 band, currently below
+                    # the 1.6 onset = unharvested) while sparing sideways small peaks
+                    # (onset stays 1.6 -> tanh negative -> 0 harvest). Fast-saturating
+                    # /0.01 ret_vlong scale (mixed's solidly-negative ret_vlong in the flat
+                    # tail -> ct_sign near-constant ~1, noise-free per the validated Exp5/Exp9
+                    # ct-gate lesson; sideways ret_vlong~0 -> ct_sign ~0). The ramp onset
+                    # (not the activation gate) is the lever: at tp_ratio=1.5 the ramp was
+                    # tanh((1.5-1.6)/0.6)~0 -> 0 harvest; at onset 1.3 it's tanh((1.5-1.3)/
+                    # 0.6)~0.33 -> partial harvest of the moderate peak -> converts mixed's
+                    # oscillating paper PnL to realized -> lower MTM oscillation -> higher
+                    # mixed Sharpe (the binding floor 0.411). Trend-aligned (ct_sign 0 ->
+                    # onset 1.6) byte-identical. Continuous tanh, no decision boundary.
+                    _tp_onset = 1.6 - 0.30 * _tp_ct_sign  # 1.3 for multi-day ct (mixed), 1.6 otherwise
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - _tp_onset) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
