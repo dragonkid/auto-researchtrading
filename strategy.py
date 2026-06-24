@@ -2545,7 +2545,16 @@ class Strategy:
                 # quantized -> a small noisy resize could emit a sub-$1 trade; the
                 # LEVERAGE_K-scaled emission threshold (1.0*LEVERAGE_K below) filters
                 # sub-threshold resizes regardless.
-                _small_pos_exempt = abs(current_pos) < 1.0 * _grid_c
+                # Branch step3: gate exemption to REDUCTIONS only. Step1/2 exempted
+                # BOTH increase and reduction resizes for small positions; sideways
+                # (which also has small positions) leaked noise-driven micro-INCREASES
+                # (scale-in wobble) through the exemption -> 48->57 trades, Sh drop.
+                # The signal we want to preserve (mixed's tp_harvest/trim) is a
+                # REDUCTION (|target|<|current_pos|); noise-driven increases should stay
+                # grid-suppressed. General principle: the grid protects bidirectional
+                # noise; exemption is for signal-driven REDUCTIONS only.
+                _is_reduction_resize = abs(target) < abs(current_pos)
+                _small_pos_exempt = _is_reduction_resize and abs(current_pos) < 1.5 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
