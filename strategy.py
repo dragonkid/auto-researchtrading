@@ -2020,44 +2020,7 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
                 )
-                # STRUCTURAL_EXPLORATION step1: replace element-wise MAX with SMOOTH-MAX
-                # (LogSumExp). Subsystem rewrite of the exit-pressure soft-term FUSION
-                # core function form. The element-wise MAX has a structural ceiling under
-                # v3 Sharpe-focused scoring: its ARGMAX flips DISCRETELY under AR(1) noise
-                # when two weighted terms are near-equal (e.g. slope-against vs time
-                # pressure both ~0.6) -> the dominant term identity switches bar-to-bar ->
-                # exit-TIMING discontinuity -> Sharpe cost (the binding v3 constraint,
-                # since Sharpe now dominates DD reduction 11-36x). Tuning individual term
-                # WEIGHTS (parameter space) cannot fix an argmax-flip discontinuity in the
-                # fusion FUNCTION -- only changing the fusion function form can.
-                # NEW mechanism: smooth-max (LogSumExp) = m + log(sum(exp(s*(x_i-m))))/s
-                # where m = max(x_i). This approaches the true MAX as sharpness s -> inf
-                # (preserves the "only most-pressing binds" intent of the MAX fusion) but
-                # is CONTINUOUS in which term dominates -- when two terms are near-equal,
-                # smooth-max returns a value slightly ABOVE the true max (the blend bonus)
-                # that varies smoothly with the term gap, eliminating the discrete argmax
-                # flip. Moderate s (10) keeps smooth-max within ~0.1 of true max when one
-                # term clearly leads (preserving MAX behavior) while smoothing the
-                # near-tie boundary (the discontinuity source). Stable form (subtract m)
-                # prevents exp overflow. Distinct from the multi-source _soft_atten
-                # (which operates on the RATIO of top-2 terms -- a different, complementary
-                # noise filter on the source-agreement dimension); smooth-max changes the
-                # base fusion value, _soft_atten scales it. Direction-agnostic (no regime
-                # label); continuous (no new decision boundary).
-                _SM_S = 20.0  # branch step4: top-2 targeted smooth-max (lower s for meaningful blend at near-tie)
-                # branch step4: TARGETED top-2 smooth-max. Step3 (uniform s=200 over all 6
-                # terms) was BYTE-IDENTICAL to baseline -- the uniform blend is inert at any
-                # safe s (s high enough to spare sideways small near-equal terms is high
-                # enough to be negligible everywhere). This targets the blend EXACTLY where
-                # the argmax-flip discontinuity lives: the near-tie of the TOP-2 terms.
-                # Compute smooth-max over ONLY the top-2 terms (s=20, meaningful blend at
-                # near-tie). When top-2 near-equal (argmax-flip case), blend adds a bonus
-                # above true max; when one clearly leads, blend ~= true max (inert).
-                _sm_sorted_desc = sorted(_soft_terms, reverse=True)
-                _sm_top1 = _sm_sorted_desc[0]
-                _sm_top2 = _sm_sorted_desc[1] if len(_sm_sorted_desc) > 1 else 0.0
-                _sm_top2_blend = _sm_top1 + np.log(max(1.0 + np.exp(_SM_S * (_sm_top2 - _sm_top1)), 1e-10)) / _SM_S
-                _soft_max = _sm_top2_blend
+                _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
