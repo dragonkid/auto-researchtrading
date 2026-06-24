@@ -2005,36 +2005,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp1 (architectural, indep): OWN-DVP-OPPOSITION exit pressure (7th soft
-                # source in the MAX fusion). The EXIT-side counterpart to the validated
-                # entry-side own-DVP boost (normalized OBV, the volume-DIRECTION balance
-                # session a465684a proved load-bearing on removal). Entry uses DVP as
-                # PARTICIPATION-CONFIRMATION (buy-side volume on a long = continuation ->
-                # boost). The symmetric exit signal is DISTRIBUTION: a HELD WINNING long
-                # whose 12-bar own-DVP has turned NEGATIVE (sell-side volume dominating =
-                # distribution into strength) is exhibiting exhaustion/distribution at a
-                # peak -> harvest before the giveback. Distinct from _vc_pressure (volume
-                # LEVEL spike/climax, not DIRECTION) and _pp_pressure (giveback MAGNITUDE
-                # from peak, not volume). Profit-side only (winners reach the exit decision;
-                # avoids the self-exclusionary wall that killed loss/direction-gated exit
-                # levers). RARE-EVENT gated per the MAX-fusion lesson (session 1119/1130):
-                # deep DVP opposition only fires when sell-side volume strongly dominates
-                # (|_dvp|>0.30 onset) -- rare in trends where DVP confirms the position,
-                # and rare in chop where |DVP| is structurally small -> fires only at
-                # genuine distribution peaks, not on routine pullback noise (the
-                # over-harvest wall). 12-bar window (the validated optimal DVP scale,
-                # session a465684a Exp5: longer windows dilute with lag). Direction-aware
-                # (opposition = -DVP for a long, +DVP for a short). Continuous tanh, no
-                # boundary; 0.40 cap (comparable to _vc). New data dep at exit fusion.
-                _dvp_xn = 12
-                _dvp_xc = closes[-_dvp_xn - 1:]
-                _dvp_xv = bd.history["volume"].values[-_dvp_xn:]
-                _dvp_xrets = np.sign(np.diff(_dvp_xc))
-                _dvp_exit = float(np.sum(_dvp_xv * _dvp_xrets) / max(np.sum(_dvp_xv), 1e-10))
-                # opposition sign: sell-side on a long (DVP<0), buy-side on a short (DVP>0)
-                _dvp_opp = -_dvp_exit if current_pos > 0 else _dvp_exit
-                _do_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_dvp_opp - 0.30) / 0.15)))
-                _w_do = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2049,7 +2019,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
-                    _w_do * _do_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
