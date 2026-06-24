@@ -1901,7 +1901,25 @@ class Strategy:
                 # uptrend keeps extension; sideways weak drift excluded by the /0.02 bar.
                 _md_slope_conf = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.02))
                 _st_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_mh / 0.0004))
-                _max_hold *= 1.0 + 0.10 * _md_slope_conf * _st_slope_conf
+                # Branch step6: STILL-CLIMBING gate on the hold extension. Steps1-5 showed NO
+                # single-quantity separator (short-slope, vol, trend-strength, ret_vlong-depth)
+                # cleanly isolates crash-trend from sideways-mean-reversion, because sideways
+                # 2023 has trending up-legs that look like trends. The separator that DOES
+                # distinguish them: a trend-follower is STILL MAKING NEW HIGHS when time-
+                # pressure fires (pos_pnl near its peak -> still climbing); a sideways mean-
+                # reverter at its reversion peak is about to GIVE BACK (pos_pnl has already
+                # peaked and is falling away from peak -> the time-pressure fires exactly at
+                # the mean-reversion top -> extending rides the giveback). Gate the extension
+                # on pos_pnl being near its current peak (>= 0.85*peak_pnl): only a position
+                # still at its highs extends; one that has peaked and is reverting does not.
+                # crash trend shorts keep climbing (still near peak -> extend); sideways mean-
+                # reverters have peaked (pos_pnl/peak dropping -> no extend). Uses peak_pnl
+                # (already tracked, confirmed high-water mark) and pos_pnl (both available).
+                # Continuous tanh on (pos_pnl/peak - 0.85)/0.10, gated above a small peak
+                # (_pp_min floor) so tiny-noise peaks dont qualify. New control-flow dep.
+                _climb_ratio = pos_pnl / max(self.peak_pnl.get(symbol, pos_pnl), _pp_min)
+                _still_climbing = max(0.0, min(1.0, np.tanh((_climb_ratio - 0.85) / 0.10)))
+                _max_hold *= 1.0 + 0.10 * _md_slope_conf * _st_slope_conf * _still_climbing
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
