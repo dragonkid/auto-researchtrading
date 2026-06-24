@@ -2107,31 +2107,7 @@ class Strategy:
                     # rare AND likely mean-reverting — disable harvest to let small
                     # sideways wins run. In trending regimes (high |ret_long|), peaks
                     # are real and worth locking. Continuous tanh on |ret_long|/0.04.
-                    _tp_trend_gate_base = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
-                    # Exp1 (architectural, indep): DEEP-PEAK-BYPASSED activation. The
-                    # activation gate uses |ret_long| (20-bar) — the SAME scale-mismatch
-                    # Exp4 KEEP fixed in _ts_supp (which switched suppression from 20-bar
-                    # ret_long*pos_dir to 96-bar ret_vlong*pos_dir). The activation gate's
-                    # stated purpose is "disable harvest in chop to let small sideways wins
-                    # run" — but |ret_long| is small in mixed's choppy local bounces too, so
-                    # the gate PARTIALLY blocks mixed's deep peaks that form during modest-
-                    # bounce bars (where ret_long is positive but below the /0.04 saturation).
-                    # mixed is the multi-day counter-trend regime: its longs in a multi-day
-                    # downtrend (ret_vlong<0 -> _ts_supp~0 -> fully UNSUPPRESSED, the path the
-                    # Exp4+Exp5 keeps reached +0.0025 through). The activation gate is the
-                    # remaining scale-mismatched blocker on that same path. Fix symmetrically
-                    # to Exp4: let the peak DEPTH (tp_ratio, already computed) bypass the
-                    # 20-bar trend requirement for GENUINELY deep peaks. Sideways's peaks are
-                    # SMALL (mean-reverting, the documented small-peak signature: tp_ratio
-                    # ~1.6-2.5); mixed's are LARGE (5-16x stop). deep_peak_bypass ramps
-                    # 0->1 over tp_ratio [3.0, 4.0], so only deep peaks (mixed's) bypass;
-                    # sideways's small peaks stay fully trend-gated. Trend-aligned regimes
-                    # (bull/crash/rally) have _ts_supp~1 -> _tp_scale~0 regardless of
-                    # activation, so the bypass is inert there (byte-identical by _ts_supp).
-                    # New control-flow dep: tp_harvest activation now depends on peak-depth x
-                    # trend conjunction (was trend-only). Continuous tanh, no new boundary.
-                    _deep_peak_bypass = max(0.0, min(1.0, np.tanh((_tp_ratio - 3.0) / 1.0)))
-                    _tp_trend_gate = max(_tp_trend_gate_base, _deep_peak_bypass)
+                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
                     # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
