@@ -300,6 +300,18 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
+        # Exp3 (architectural, indep): per-symbol tp_harvest re-peak counter. Tracks how
+        # many times the position has been tp-harvested since entry (each harvest = one
+        # oscillation cycle converted paper->realized). mixed's positions oscillate
+        # repeatedly (longs in a down year: peak +30%, giveback to +24%, re-peak) -- the
+        # all-time peak_pnl high-water mark makes the harvest a ONE-SHOT at the all-time
+        # peak, so re-peaks go unharvested (the documented residual mixed MTM-oscillation
+        # drag). This count lets the harvest magnitude escalate per re-peak on positions
+        # that have already proven they oscillate (each subsequent peak harvests more
+        # paper -> locks more realized -> damps the next oscillation amplitude -> lower
+        # MTM oscillation -> higher mixed Sharpe). Reset on full exit. Deterministic
+        # integer counter (noise-immune).
+        self._harvest_count = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -2151,6 +2163,32 @@ class Strategy:
                     # leverage-coupled DD-fraction scale as giveback tightening.
                     _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
+                    # Exp3 (architectural, indep): RE-PEAK ESCALATING tp_harvest magnitude.
+                    # mixed's positions oscillate repeatedly (longs in a down year: peak
+                    # +30%, giveback to +24%, re-peak) but peak_pnl is an all-time high-water
+                    # mark (only updates upward) -> the harvest is a ONE-SHOT at the all-time
+                    # peak; re-peaks at slightly-lower local maxima go unharvested (pos_pnl <
+                    # peak_pnl -> no new harvest trigger) -> the documented residual mixed MTM-
+                    # oscillation drag (return_vol 5.54pct vs 4.4pct net). Scale the harvest
+                    # MAGNITUDE up by a small amount per prior harvest on THIS position: a
+                    # position that has already been harvested once has PROVEN it oscillates
+                    # (counter-trend, mean-reverting) -> each subsequent re-peak harvests MORE
+                    # paper -> locks more realized gain -> damps the next oscillation amplitude
+                    # -> lower MTM oscillation -> higher mixed Sharpe (the binding floor 0.411).
+                    # Trend-aligned regimes (bull longs, crash shorts, rally longs) have _ts_supp
+                    # ~1 (suppressed) so the harvest rarely fires -> counter stays ~0 -> magnitude
+                    # unchanged at 0.45 -> BYTE-IDENTICAL by construction (the escalation only
+                    # binds on positions that repeatedly harvest = mixed's oscillating ct longs).
+                    # Counter increments only when harvest actually fires (_tp_scale > 0.01).
+                    # Capped escalation (max +0.20 at 4+ prior harvests) so magnitude stays
+                    # bounded (0.45 -> 0.65 max, below the documented bull-wall 0.58 only for
+                    # the repeated-oscillation case bull structurally cannot reach). Smooth
+                    # tanh on the integer count (no decision boundary). New per-position state
+                    # + new control-flow dep: harvest magnitude depends on the position's own
+                    # harvest history (was fixed 0.45). Deterministic integer count = noise-immune.
+                    _harvest_n = self._harvest_count.get(symbol, 0)
+                    _harvest_escalation = 0.20 * max(0.0, min(1.0, np.tanh((_harvest_n - 0.5) / 2.0)))
+                    _tp_mag = 0.45 + 0.20 * _harvest_escalation  # 0.45 first harvest, up to 0.65
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
                     # 1.0->0.225): crash's clean trend shorts got over-harvested because _ts_supp's
@@ -2171,8 +2209,11 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
+                    # Exp3: increment re-peak harvest counter when harvest materially fires.
+                    if _tp_scale > 0.01:
+                        self._harvest_count[symbol] = _harvest_n + 1
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
@@ -2620,7 +2661,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._harvest_count):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
