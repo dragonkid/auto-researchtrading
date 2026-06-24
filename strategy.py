@@ -2389,7 +2389,25 @@ class Strategy:
                     _ct_br = max(0.0, np.tanh(-_pos_dir_br * ret_vlong / 0.008))
                     _hold_br = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / OSC_HOLD_RAMP))
                     _guard_br = 1.0 if (_pos_dir_br > 0 and trend_avg < 0.0) or (_pos_dir_br < 0 and trend_avg > 0.0) else 0.0
-                    if _ct_br > 0.0 and _hold_br > 0.0 and _guard_br > 0.0:
+                    # step4: add a NOISE-ROBUST adverse-recovery dead-capital gate using the
+                    # MAE low-water mark (monotonic, slow, noise-robust). Fire only when MAE
+                    # is meaningful (position has been underwater: mae < -0.3*|stop|) AND
+                    # current pos_pnl has recovered toward breakeven (recovery_frac in
+                    # [0.4, 0.9] = was losing, now oscillating near breakeven = dead capital).
+                    # MAE is a monotonic low-water mark (noise-IMMUNE unlike instantaneous
+                    # pos_pnl band); recovery_frac = (pos_pnl - mae)/(0 - mae) is a ratio of
+                    # two noise-robust quantities (mae slow, pos_pnl current). Targets the
+                    # adverse-recovery dead-capital zone (oscillating near breakeven after a
+                    # dip) -- the same zone _ar_pressure targeted (confirmed dead at modern
+                    # baseline) but here as a full-exit trigger not a soft pressure.
+                    _mae_br = self._mae.get(symbol, 0.0)
+                    _rec_br = 0.0
+                    if _mae_br < -0.3 * abs(STOP_LOSS_PCT):
+                        _rec_br = (pos_pnl - _mae_br) / max(-_mae_br, 1e-10)
+                        _rec_br = max(0.0, min(1.0, _rec_br))
+                        # fire only in the oscillating-near-breakeven recovery band
+                        _rec_br = max(0.0, min(1.0, 1.0 - abs(_rec_br - 0.65) / 0.35))
+                    if _ct_br > 0.0 and _hold_br > 0.0 and _guard_br > 0.0 and _rec_br > 0.0:
                         target = 0.0
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
