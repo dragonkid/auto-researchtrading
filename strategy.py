@@ -2343,6 +2343,37 @@ class Strategy:
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
+                # BRANCH step1 (re-test of prior-session STRUCTURAL_EXPLORATION step4
+                # 3c12a731): VOTER-INDEPENDENT oscillation supplement as a FULL EXIT.
+                # A purely STRUCTURAL trigger independent of voter conviction: a held
+                # COUNTER-TREND (multi-day ret_vlong*pos_dir<0, /0.01 fast-sat ->
+                # near-constant noise-free) position, held past scale-in
+                # (bars_held>ENTRY_FULL_BARS), that is NEAR BREAKEVEN (|pos_pnl|<
+                # 0.5*|stop| = the oscillating dead capital neither SL nor pp_pressure
+                # harvests). Fires the grid-BYPASSING full exit (target->0) on
+                # persistent near-breakeven ct positions WITHOUT requiring voter
+                # reversal. Prior session step4 PROVED this reaches rally's persistent
+                # near-breakeven ct pullback shorts that voter conviction could NOT
+                # close -> rally +0.0105 (0.670->0.681), all stab 1.0, +0.0024 composite
+                # (below +0.003 keep). Exp1 this session confirmed the full-exit ACTION
+                # is necessary (partial de-risk variant was byte-identical on rally --
+                # closing the position is the mechanism, not shrinking it). The trend_avg
+                # guard (long-side trend_avg<0, short-side trend_avg>0) is LOAD-BEARING
+                # per step5/step9 (protects crash dead-cat-bounce longs). This is a
+                # re-test to reproduce the +0.0024 rally signal, then iterate (branch)
+                # to reach mixed (prior branch's 10 steps only widened band/hold/multi-
+                # day-ct; mixed byte-identical throughout -- mixed longs are ct at multi-
+                # day but trend_avg (20-bar) oscillates so the long-side guard only fires
+                # half the bars; step2 will relax the long-side guard to multi-day
+                # ret_vlong<0 while keeping the short-side trend_avg>0 guard).
+                if not in_cooldown and target != 0 and bars_held > ENTRY_FULL_BARS:
+                    _pos_dir_br = 1.0 if current_pos > 0 else -1.0
+                    _ct_br = max(0.0, np.tanh(-_pos_dir_br * ret_vlong / 0.01))
+                    _nb_br = 1.0 - min(1.0, abs(pos_pnl) / (0.5 * abs(STOP_LOSS_PCT)))
+                    _guard_br = 1.0 if (_pos_dir_br > 0 and trend_avg < 0.0) or (_pos_dir_br < 0 and trend_avg > 0.0) else 0.0
+                    if _ct_br > 0.0 and _nb_br > 0.0 and _guard_br > 0.0:
+                        target = 0.0
+
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
             # EMITTED position target (the final held-position LEVEL) — a NEW smoothing
             # POINT distinct from the prior exit-pressure EMA (734 keep) and voter_bias
