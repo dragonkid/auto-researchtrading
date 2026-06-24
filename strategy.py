@@ -2570,6 +2570,27 @@ class Strategy:
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
                 _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
+                # Branch step4: WINNING-CT calm-grid exemption (extends exemption beyond
+                # chop). Step1's profit-ramped emission lowered the emission THRESHOLD for
+                # winning ct reductions, but if a winning ct position has chop<0.30
+                # (moderately smooth, not the dead-capital choppy signature) it still goes
+                # THROUGH the calm grid -> small reductions <1 grid step get absorbed ->
+                # never reach the emission threshold check -> don't emit. Extend the
+                # exemption: a WINNING ct-at-multi-day small position (pos_pnl>0, ct-sign>0)
+                # is ALSO exempt from the calm grid, regardless of chop. Rationale: a
+                # winning ct position's reductions are locking realized gains (real signal,
+                # not noise churn) -> should execute, not be grid-absorbed. The winning gate
+                # (pos_pnl>0) + ct-sign gate ensure this only fires for mixed's winning bounce
+                # longs (and crash winning dead-cat longs); trend-aligned positions (ct-sign
+                # 0 -> not exempt) keep the grid (byte-identical); rally ct losers (pos_pnl<0
+                # -> not winning -> not exempt) keep the grid. Smooth pos_pnl/|stop| tanh on
+                # the winning gate (no boundary). New cross-component dep: calm-grid
+                # exemption depends on pos_pnl x ct-sign (was chop x position-size only).
+                _pos_dir_gx = 1.0 if current_pos > 0 else -1.0
+                _ct_sign_gx = max(0.0, np.tanh(-_pos_dir_gx * ret_vlong / 0.01))
+                _win_gx = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _win_ct_exempt = _ct_sign_gx > 0.50 and _win_gx > 0.30 and abs(current_pos) < 2.0 * _grid_c
+                _small_pos_exempt = _small_pos_exempt or _win_ct_exempt
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
