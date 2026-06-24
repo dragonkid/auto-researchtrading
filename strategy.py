@@ -2046,16 +2046,29 @@ class Strategy:
                 _SOFTMAX_TAU = 10.0
                 _SOFTMAX_FLOOR = 0.05
                 _mx = max(_soft_terms)
-                if _mx > _SOFTMAX_FLOOR:
-                    # agreement bonus = (1/TAU)*log(1 + sum exp(TAU*(t-max))) over terms
-                    # above floor; exp(TAU*(t-max)) <= 1 so each contributes a bounded gap.
+                # Step2 (STRUCTURAL_EXPLORATION): CHOP-GATE the LSE agreement bonus.
+                # Step1 (ungated LSE) was CATASTROPHIC on bull (-999, MaxDD 22.1pct, trades
+                # 51->111, WR 86->63pct): in a strong bull uptrend the slope/time/pp soft
+                # terms ALL sit at MODERATE values during normal pullbacks (slope weakening
+                # + time accumulating + small giveback), so the LSE agreement bonus fired on
+                # every pullback -> over-exit + re-enter churn -> DD blowup. This is exactly
+                # the correlated-noise ADDITION the MAX keep was built to prevent. The
+                # agreement bonus is only a GENUINE reversal signal in CHOP (where 2+ sources
+                # moderately agreeing = real multi-source reversal evidence); in TRENDS
+                # moderate multi-source overlap is normal pullback behavior (NOT reversal).
+                # Gate the agreement bonus by the SAME chop weight the _agree_gate attenuator
+                # uses (_chop_atten_w): full bonus in chop, ZERO bonus in trend (= pure MAX,
+                # byte-identical trend behavior). This restricts the new mechanism to the
+                # regime where it adds signal (chop multi-source reversal) and spares trends.
+                _chop_bonus_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 chop, 0 trend
+                if _mx > _SOFTMAX_FLOOR and _chop_bonus_w > 0.0:
                     _agree_sum = 0.0
                     for _t in _soft_terms:
                         if _t > _SOFTMAX_FLOOR:
                             _agree_sum += np.exp(_SOFTMAX_TAU * (_t - _mx))
-                    _soft_max = _mx + (1.0 / _SOFTMAX_TAU) * np.log(1.0 + _agree_sum)
+                    _soft_max = _mx + _chop_bonus_w * (1.0 / _SOFTMAX_TAU) * np.log(1.0 + _agree_sum)
                 else:
-                    _soft_max = _mx  # all terms near zero -> pure max (no inflation)
+                    _soft_max = _mx  # trend or all-near-zero -> pure max (no inflation)
                 # Agreement attenuator retained (chop-only single-source down-weight):
                 # LSE already up-weights agreement; the attenuator down-weights single-
                 # source chop spikes. The two compose (dual-direction agreement handling).
