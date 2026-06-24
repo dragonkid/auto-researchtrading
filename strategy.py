@@ -2044,10 +2044,20 @@ class Strategy:
                 # noise filter on the source-agreement dimension); smooth-max changes the
                 # base fusion value, _soft_atten scales it. Direction-agnostic (no regime
                 # label); continuous (no new decision boundary).
-                _SM_S = 200.0  # branch step3: raised 50->200 (step2 s=50 still broke sideways: blend bonus on small near-equal terms -> premature exits, Sh halved, DD 9.62pct). s=200 makes blend bonus ~0.005 above true max even for sideways small terms -> sideways restored to byte-identical while preserving argmax-flip continuity at exact near-ties.
-                _sm_max = max(_soft_terms)
-                _sm_shifted = [np.exp(_SM_S * (_t - _sm_max)) for _t in _soft_terms]
-                _soft_max = _sm_max + np.log(max(sum(_sm_shifted), 1e-10)) / _SM_S
+                _SM_S = 20.0  # branch step4: top-2 targeted smooth-max (lower s for meaningful blend at near-tie)
+                # branch step4: TARGETED top-2 smooth-max. Step3 (uniform s=200 over all 6
+                # terms) was BYTE-IDENTICAL to baseline -- the uniform blend is inert at any
+                # safe s (s high enough to spare sideways small near-equal terms is high
+                # enough to be negligible everywhere). This targets the blend EXACTLY where
+                # the argmax-flip discontinuity lives: the near-tie of the TOP-2 terms.
+                # Compute smooth-max over ONLY the top-2 terms (s=20, meaningful blend at
+                # near-tie). When top-2 near-equal (argmax-flip case), blend adds a bonus
+                # above true max; when one clearly leads, blend ~= true max (inert).
+                _sm_sorted_desc = sorted(_soft_terms, reverse=True)
+                _sm_top1 = _sm_sorted_desc[0]
+                _sm_top2 = _sm_sorted_desc[1] if len(_sm_sorted_desc) > 1 else 0.0
+                _sm_top2_blend = _sm_top1 + np.log(max(1.0 + np.exp(_SM_S * (_sm_top2 - _sm_top1)), 1e-10)) / _SM_S
+                _soft_max = _sm_top2_blend
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
