@@ -2005,6 +2005,48 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): MTM-PATH-CHOP exit pressure for counter-
+                # trend-at-multi-day positions (7th soft MAX source). NEW data dependency:
+                # the exit subsystem's 6 soft sources all read PRICE-derived series
+                # (slope/HL2, giveback magnitude, bar count, vol-of-price, volume z).
+                # NONE reads the held position's own MTM TRAJECTORY quality. The 12-bar
+                # pos_pnl path is already maintained (_pnl_path, for the emission-layer
+                # reduction throttle); its efficiency = |net pos_pnl| / sum|bar-delta|
+                # in [0,1] is a pure PATH-SHAPE statistic (high = smooth climber =
+                # bull/crash/sideways/rally trend longs; low = whipsaw dead capital =
+                # mixed's wrong-side long book oscillating ~breakeven in a down year,
+                # the documented mixed drag: oscillating paper PnL re-peaks -> low Sh).
+                # Mechanism: a held position that is BOTH (a) counter-trend-at-multi-day
+                # (ret_vlong*pos_dir<0 = mixed longs in downtrend; the validated mixed/
+                # bull separator at the emission layer) AND (b) choppy (low MTM-eff =
+                # whipsawing dead capital) accumulates exit pressure -> exit the dead
+                # capital FASTER (frees capital, cuts the re-peak ride-again churn that
+                # drives mixed's low Sharpe). Distinct from _ar_pressure (removed, MAE-
+                # based), _ve/_vc (bar-price/bar-volume level), _pp (giveback magnitude):
+                # this is a POSITION-PATH-QUALITY x MULTI-DAY-TREND conjunction exit.
+                # Sparing by construction (same family as the proven ct_vlong / target-ema
+                # / tp-harvest _ts_supp ct gates): trend-aligned positions (ret_vlong*
+                # pos_dir>0 -> ct indicator 0 -> pressure 0 -> BYTE-IDENTICAL for
+                # bull/rally longs + crash shorts); low-ret_vlong sideways (ct indicator
+                # ~0 -> pressure ~0). Fires only for the mixed dead-capital population.
+                # Fast-saturating /0.01 ret_vlong scale (near-constant, noise-free per the
+                # validated branch-step-9 lesson). MTM-eff reuses _pnl_path (no new state).
+                # Profit-AGNOSTIC weight (dead capital is dead whether currently +0.2*stop
+                # or -0.2*stop -> the choppy whipsaw path is the signal, not the pnl sign);
+                # capped magnitude 0.45 (below _pp/_sl so a genuine reversal still wins the
+                # MAX argmax over a merely-choppy position). New control flow: 7th MAX term.
+                _dc_pp = self._pnl_path.get(symbol, [])
+                _dc_pressure = 0.0
+                if len(_dc_pp) >= 4:
+                    _dc_a = np.array(_dc_pp)
+                    _dc_net = abs(_dc_a[-1] - _dc_a[0])
+                    _dc_tot = float(np.sum(np.abs(np.diff(_dc_a))))
+                    _dc_mtm_eff = _dc_net / max(_dc_tot, 1e-10)  # [0,1]
+                    _dc_chop = max(0.0, min(1.0, 1.0 - _dc_mtm_eff))
+                    _dc_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _dc_ct_vlong = max(0.0, np.tanh(-_dc_pos_dir * ret_vlong / 0.01))
+                    _dc_pressure = 0.45 * _dc_ct_vlong * _dc_chop
+                _w_dc = 1.0  # profit-agnostic (dead-capital path quality is the signal)
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2019,6 +2061,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
+                    _w_dc * _dc_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
