@@ -2569,7 +2569,7 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
+                _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.5 * _grid_c
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
