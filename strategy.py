@@ -2380,7 +2380,13 @@ class Strategy:
                 # on bars_held so no integer-step cliff (avoid the int(round) rally wall).
                 if not in_cooldown and target != 0 and bars_held > ENTRY_FULL_BARS:
                     _pos_dir_br = 1.0 if current_pos > 0 else -1.0
-                    _ct_br = max(0.0, np.tanh(-_pos_dir_br * ret_vlong / 0.01))
+                    # step3: require STRONG multi-day counter-trend (ret_vlong strongly
+                    # against position) so the supplement only fires on deeply ct positions
+                    # (rally shorts in a STRONG multi-day uptrend), not mildly-ct ones that
+                    # recover. Fast-sat /0.01 was near-binary (fired on all ct); deepen to
+                    # require the ct signal past a higher saturation (ret_vlong magnitude
+                    # gate, /0.008 -- only fires when ret_vlong is solidly against).
+                    _ct_br = max(0.0, np.tanh(-_pos_dir_br * ret_vlong / 0.008))
                     _hold_br = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / OSC_HOLD_RAMP))
                     _guard_br = 1.0 if (_pos_dir_br > 0 and trend_avg < 0.0) or (_pos_dir_br < 0 and trend_avg > 0.0) else 0.0
                     if _ct_br > 0.0 and _hold_br > 0.0 and _guard_br > 0.0:
