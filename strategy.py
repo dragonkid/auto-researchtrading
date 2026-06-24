@@ -2172,6 +2172,29 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Branch step8: CHOP-GATED position-size tp_mag deepening. Step7
+                    # (ungated position-size deepening) was CATASTROPHIC for bull
+                    # (over-harvested bull's small pullback positions, missing recovery).
+                    # Re-attempt with the SAME chop gate that fixed step4's sideways
+                    # regression: deepen tp_mag ONLY for small positions whose MTM path
+                    # is CHOPPY (mixed's dead-capital longs, the same population the grid
+                    # exemption serves). Bull's small-position reductions during pullbacks
+                    # are on SMOOTH-WINNER positions (high MTM-eff, low chop) -> chop gate
+                    # excludes them -> NOT over-harvested. The chop gate (validated step4/5)
+                    # separates mixed dead capital (chop>0.30) from bull smooth winners.
+                    # +0.20 max for sub-grid choppy positions, fading to 0 at 2 grid steps
+                    # AND for smooth winners (chop gate). General principle: deeper harvest
+                    # only for the noise-dominated small positions the exemption targets.
+                    _tp_grid_step_tp = 0.06 * equity * BASE_POSITION_SIZE
+                    _ppp_tp = self._pnl_path.get(symbol, [])
+                    _chop_tp = 0.0
+                    if len(_ppp_tp) >= 4:
+                        _ppa_tp = np.array(_ppp_tp)
+                        _net_tp = abs(_ppa_tp[-1] - _ppa_tp[0])
+                        _tot_tp = float(np.sum(np.abs(np.diff(_ppa_tp))))
+                        _chop_tp = max(0.0, min(1.0, 1.0 - _net_tp / max(_tot_tp, 1e-10)))
+                    _small_chop_tp_mag = max(0.0, min(1.0, 1.0 - abs(current_pos) / max(2.0 * _tp_grid_step_tp, 1e-10))) * max(0.0, min(1.0, (_chop_tp - 0.30) / 0.30))
+                    _tp_scale = _tp_scale * (1.0 + 0.20 * _small_chop_tp_mag)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
