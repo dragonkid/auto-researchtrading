@@ -1913,6 +1913,21 @@ class Strategy:
                 # Following the regime-asymmetric insight from 5648b3a8: time pressure
                 # removal helped bull/crash but destroyed sideways/rally.
                 _w_time  = 1.0 + 0.20 * max(0.0, _pnl_scale) * (1.0 - _trend_strength_w)
+                # BRANCH step8: entry-conviction-modulated TIME-PRESSURE WEIGHT. Steps 1-7
+                # proved the entry-conv->de-risk-FLOOR mechanism is bull/rally coupled (ride-
+                # giveback) or inert (cut-marginal). TIME PRESSURE is a different fusion term
+                # (_w_time weights _time_pressure in the soft-MAX fusion): a high-conviction
+                # entry (cached margin>0.40) gets a LIGHTER time-pressure weight (the signal
+                # was strong -> structural max_hold time-decay should bite less -> hold longer
+                # through the time window). Distinct from the de-risk floor (which changes
+                # WHEN positions graduate and couples to bull over-hold): this changes the
+                # WEIGHT on time-pressure, a softer lever. Profit-side only (only winners
+                # earn the extension; losers keep full time-pressure to cut fast), gated by
+                # slope-conf (computed below at the de-risk block -- reuse via forward-def).
+                # Cached margin available here (dict lookup, set at entry). Max -0.15 weight.
+                _ec_floor_wt = max(0.0, np.tanh(self._entry_margin_cache.get(symbol, 0.0) / 0.40))
+                _wt_slope_conf = max(0.0, np.tanh(_exit_slope * (1.0 if current_pos > 0 else -1.0) / 0.0004))
+                _w_time *= 1.0 - 0.15 * _ec_floor_wt * _wt_slope_conf * max(0.0, _pnl_scale)
                 # Architectural multi-variable restructure: replaced voter-attn
                 # multiplicative cross-coupling with bilateral additive voter_bias.
                 # Reasoning: _voter_attn applied a 0..0.30 dampening factor to four
@@ -2240,9 +2255,7 @@ class Strategy:
                     # as _grind_gate): full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.3.
                     _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
                     # BRANCH step4: full-gate stack matching _dr_k (trend-align + slope-conf +
-                    # profit + vol + conviction). Halve magnitude 0.08->0.04: rally/mixed
-                    # gains are less sensitive (small positions, small absolute floor effect)
-                    # so preserved at half-magnitude; bull over-hold cost halved.
+                    # profit + vol + conviction). Halve magnitude 0.08->0.04.
                     _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
