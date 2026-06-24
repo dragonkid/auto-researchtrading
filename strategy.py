@@ -232,6 +232,15 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
+# STRUCTURAL_EXPLORATION: flip-readiness EMA accumulator (opp-gate subsystem rewrite).
+# FLIP_ACCUM_RHO sets the memory (0.7 = ~3-bar sustained-conviction requirement, slightly
+# longer memory than entry's 0.5 because a flip is a costlier decision than an entry).
+# FLIP_ACCUM_THRESH is the smoothed-margin crossing level; LOWER than the hard count gate
+# implicitly required (bear_votes>=FLIP_MIN_VOTES is a high bar in chop) so sustained sub-
+# threshold conviction can now trigger the grid-bypassing full exit. 0.0 == the
+# strong_min boundary (margin just positive).
+FLIP_ACCUM_RHO = 0.7
+FLIP_ACCUM_THRESH = 0.0
 
 
 class Strategy:
@@ -279,6 +288,19 @@ class Strategy:
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
         self._entry_accum = {}
+        # STRUCTURAL_EXPLORATION (this session): per-symbol FLIP-readiness EMA accumulator
+        # for the opp-gate subsystem rewrite. Mirrors _entry_accum: the opp-gate currently
+        # fires on a HARD voter-count gate (bear_votes>=FLIP_MIN_VOTES AND _bear_strong>=
+        # _bear_strong_min). This session's Exp3 measured that the voter-count gate is the
+        # BINDING blocker for mixed: bear voters rarely reach FLIP_MIN_VOTES during mixed's
+        # choppy down-year, so the grid-bypassing full-exit (target->0) never fires on mixed's
+        # wrong-side longs -> they persist and oscillate (mixed 0.411 binding floor, return_vol
+        # 5.54pct). The entry path already replaced its hard count gate with an EMA-of-margin
+        # readiness signal (_bull_ready/_bear_ready); this is the symmetric rewrite for the
+        # FLIP path: smooth _bear_margin/_bull_margin so a SUSTAINED but sub-FLIP_MIN_VOTES
+        # opposite-side conviction can cross the flip admission continuously (no hard count
+        # boundary). Per-symbol (bull,bear) EMA of the conviction margin.
+        self._flip_accum = {}
         # Architectural (Exp1 this session): per-symbol counter-trend exit-pressure EMA.
         # Temporally smooths the fused SOFT exit pressure ONLY while a position is
         # counter-trend to the multi-day (96-bar) trend (rally's pullback shorts);
@@ -731,6 +753,20 @@ class Strategy:
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
+            # STRUCTURAL_EXPLORATION: flip-readiness EMA accumulator (opp-gate subsystem
+            # rewrite). The opp-gate's hard voter-count gate (bear_votes>=FLIP_MIN_VOTES)
+            # is mixed's binding blocker (Exp3 measured: bear voters rarely reach the count
+            # in mixed's chop -> grid-bypassing full exit never fires -> wrong-side longs
+            # persist -> mixed 0.411 floor). Smooth the opposite-side conviction margin into
+            # a readiness signal so SUSTAINED sub-count conviction crosses the flip admission
+            # continuously (no hard count boundary; mirrors the entry path's proven EMA
+            # rewrite of its own count gate). Same margin, longer memory (flip is costlier).
+            _facc_b, _facc_s = self._flip_accum.get(symbol, (0.0, 0.0))
+            _facc_b = FLIP_ACCUM_RHO * _facc_b + (1.0 - FLIP_ACCUM_RHO) * _bull_margin
+            _facc_s = FLIP_ACCUM_RHO * _facc_s + (1.0 - FLIP_ACCUM_RHO) * _bear_margin
+            self._flip_accum[symbol] = (_facc_b, _facc_s)
+            _bull_flip_ready = _facc_b >= FLIP_ACCUM_THRESH
+            _bear_flip_ready = _facc_s >= FLIP_ACCUM_THRESH
 
             cooldown_trend_strength = min(abs(ret_long) / COOLDOWN_TREND_DECAY, 1.0)
             trend_avg = (TREND_GATE_MED_WEIGHT_SIDEWAYS - (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ((closes[-1] - closes[-MED2_WINDOW]) / closes[-MED2_WINDOW]) + ((1.0 - TREND_GATE_MED_WEIGHT_SIDEWAYS) + (TREND_GATE_MED_WEIGHT_SIDEWAYS - TREND_GATE_MED_WEIGHT_BASE) * cooldown_trend_strength) * ret_long
@@ -2325,8 +2361,27 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # STRUCTURAL_EXPLORATION (opp-gate subsystem rewrite): replace the HARD
+                # voter-count flip gate (bear_votes>=FLIP_MIN_VOTES AND _bear_strong>=
+                # _bear_strong_min) with the continuous flip-readiness EMA accumulator
+                # (_bear_flip_ready / _bull_flip_ready, computed near the entry accumulator).
+                # The opp-gate is the ONE grid-BYPASSING full-exit path (target->0, grid-
+                # EXEMPT) that closes mixed's wrong-side ct longs. This session's Exp3 measured
+                # the hard count gate is mixed's binding blocker: bear voters rarely reach
+                # FLIP_MIN_VOTES during mixed's choppy down-year -> the full exit never fires
+                # -> wrong-side longs persist -> mixed oscillates at its 0.411 floor
+                # (return_vol 5.54pct). The EMA-of-margin readiness crosses its threshold
+                # after SUSTAINED sub-count conviction (~3 bars at RHO=0.7), admitting the
+                # grid-bypassing full exit on persistent-but-low opposite-side conviction --
+                # exactly mixed's regime (sustained bearish chop that never reaches the hard
+                # count bar). trend_avg (20-bar, original) RETAINED as the trend confirmation
+                # (Exp3's ret_vlong OR was catastrophic for bull -- momentary multi-day dips
+                # fired wrong exits on trend longs; the 20-bar trend_avg is correctly
+                # stricter). Subsystem core-mechanism change: hard voter-count -> continuous
+                # margin-EMA at the flip ADMISSION boundary. The graduated exit-fraction
+                # blend (_grad_gate) below is unchanged.
+                _opp_gate = (current_pos > 0 and _bear_flip_ready and trend_avg < 0) or \
+                            (current_pos < 0 and _bull_flip_ready and trend_avg > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
@@ -2629,6 +2684,7 @@ class Strategy:
                     # high conviction through a hold and enabled immediate post-exit re-entry
                     # — the churn source behind the step1 bull raw regression (-0.222).
                     self._entry_accum[symbol] = (0.0, 0.0)
+                    self._flip_accum[symbol] = (0.0, 0.0)  # STRUCTURAL_EXPLORATION: reset flip-readiness on full exit
                 elif current_pos == 0 or (target > 0 and current_pos < 0) or (target < 0 and current_pos > 0):
                     self.entry_prices[symbol], self.peak_pnl[symbol], self.entry_bar[symbol] = mid, 0.0, self.bar_count
                     self._mae[symbol] = 0.0
