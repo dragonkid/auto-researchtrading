@@ -690,6 +690,32 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Exp1 (architectural, indep): MULTI-DAY-DOWNTREND bull admission relaxation.
+            # NEW admission-axis data dep on the multi-day counter-trend SIGN (ret_vlong),
+            # the ONE documented separator of mixed (holds longs in a multi-day DOWN year ->
+            # ret_vlong<0 for its bull entries) from sideways (flat -> ret_vlong~0). Prior
+            # sessions tested this separator on the tp_harvest threshold (byte-identical:
+            # mixed peaks already deep) and opp-gate (byte-identical: structural) but NEVER
+            # on entry ADMISSION. mixed sits at 43 trades (sample_factor sqrt(43/50)=0.927,
+            # the ONLY regime below the 50-trade knee -- bull/crash/sideways/rally are all
+            # >=50 at sample_factor 1.0), so a +7-trade recovery is worth +0.032 on mixed
+            # directly (0.927->1.0). Relax the bull admission bar (lower strong_min) ONLY
+            # for bull entries during a multi-day downtrend (ret_vlong<0), admitting
+            # marginal-conviction mixed longs that are currently filtered. The fast-
+            # saturating /0.01 ret_vlong scale (the validated noise-free ct indicator used
+            # by _ct_vlong / _streak_ct / _ct_hold_sat -- rally's solidly-positive ret_vlong
+            # sits in the flat POSITIVE tail so the gate is ~0 there, noise-free) ensures:
+            # sideways (ret_vlong~0) -> no relaxation; bull/crash/rally trend-aligned
+            # entries (ret_vlong>0 for winning side) -> no relaxation; ONLY bull entries
+            # against a multi-day downtrend (mixed's signature, plus crash dead-cat-bounce
+            # longs) get the lower bar. Crash dead-cat longs are bull-entry-in-downtrend
+            # too (the documented bull/crash coupling) -- the coupling cuts both ways here:
+            # crash may gain a few marginal longs (100% WR regime, marginal bounces are
+            # often losers so this may cost crash slightly -- measured below). Max 8%
+            # relaxation (delicate: too much admits noise). Continuous tanh, no new
+            # decision boundary (the EMA readiness gate _bull_ready still co-requires).
+            _md_down_relax = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~0 uptrend/flat, ~1 deep downtrend (noise-free)
+            _bull_strong_min *= 1.0 - 0.08 * _md_down_relax
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
