@@ -1901,21 +1901,17 @@ class Strategy:
                 # uptrend keeps extension; sideways weak drift excluded by the /0.02 bar.
                 _md_slope_conf = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.02))
                 _st_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_mh / 0.0004))
-                # Branch step4: VOL-SCALED extension magnitude. Step3 recovered sideways
-                # (gentle 0.10 mag) but lost crash's +0.015 gain (mag too low for crash).
-                # TENSION: crash (high-vol, return-limited, big REAL per-bar moves) wants a
-                # STRONG extension to capture more of the sustained downtrend; sideways (low-vol
-                # mean-reverter) wants a GENTLE extension. Separator: vol_ratio. Scale the
-                # extension magnitude UP with vol_ratio (tanh on (vol_ratio-1)/0.5, same form
-                # as the existing _vol_hold_ext at line ~1866): calm (vol_ratio<1, sideways)
-                # -> mag ~0.06 (gentle); high-vol (vol_ratio~1.3+, crash) -> mag ~0.16 (strong).
-                # crash is the return-limited regime with big real moves per bar -> the longer
-                # hold captures more REAL downtrend move -> higher Sharpe; sideways low-vol ->
-                # small extension -> mean-reverters exit near baseline timing. Continuous tanh,
-                # calm byte-identical-ish (gate floored near 0 below vol_ratio=1). New data dep:
-                # extension magnitude depends on vol regime.
-                _md_hold_vol_w = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))  # 0 calm, ~1 high-vol
-                _md_hold_mag = 0.06 + 0.10 * _md_hold_vol_w  # 0.06 calm, 0.16 high-vol
+                # Branch step5: TREND-STRENGTH-GATED extension magnitude. Step4 (vol-scaled)
+                # failed: crash vol_ratio is moderate (episodic spikes, mean moderate) so crash
+                # did not get a strong extension while sideways low-vol still extended. vol_ratio
+                # is the WRONG separator. The STRUCTURALLY correct separator is _trend_strength_w
+                # (|ret_long|/0.04): sideways is a LOW-trend-strength mean-reverting regime (the
+                # positions that should exit on time); crash is a HIGH-trend-strength trending
+                # regime (positions that should ride). Scale extension magnitude UP with
+                # _trend_strength_w: chop (sideways, ~0) -> mag ~0.04 (gentle, near-baseline);
+                # strong trend (crash/rally, ~1) -> mag ~0.18 (strong, restores crash gain).
+                # This is the same _trend_strength_w the de-risk cushion + win-accelerator use.
+                _md_hold_mag = 0.04 + 0.14 * _trend_strength_w  # 0.04 chop, 0.18 strong trend
                 _max_hold *= 1.0 + _md_hold_mag * _md_slope_conf * _st_slope_conf
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
