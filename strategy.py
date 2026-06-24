@@ -2236,16 +2236,14 @@ class Strategy:
                     _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
                     # BRANCH step3: VOL-REGIME gate on the entry-conv cushion. bull-2021 is
                     # HIGH-vol SHARP (pullbacks reverse); rally/mixed are LOW-vol GRINDS
-                    # (pullbacks recover -> ride giveback).
-                    # BRANCH step5: TIGHTEN the vol gate to vol_ratio<0.9 (full 0.7-0.9, 0 by
-                    # 1.1) so bull-2021 (vol_ratio ~1.0-1.2 under the prior /0.5 band, which
-                    # left it partially active) is fully excluded. Restore magnitude 0.08 (the
-                    # full gates now cleanly exclude bull, so the rally/mixed gain returns at
-                    # full strength without the bull over-hold cost).
-                    _cushion_vol_gate = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.2))
+                    # (pullbacks recover -> ride giveback). Gate by low vol_ratio (same band
+                    # as _grind_gate): full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.3.
+                    _cushion_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
                     # BRANCH step4: full-gate stack matching _dr_k (trend-align + slope-conf +
-                    # profit + vol + conviction).
-                    _de_floor -= 0.08 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
+                    # profit + vol + conviction). Halve magnitude 0.08->0.04: rally/mixed
+                    # gains are less sensitive (small positions, small absolute floor effect)
+                    # so preserved at half-magnitude; bull over-hold cost halved.
+                    _de_floor -= 0.04 * _entry_conv_floor * _dr_align * _dr_slope_conf * _cushion_vol_gate * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
