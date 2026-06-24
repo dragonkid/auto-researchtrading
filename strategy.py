@@ -203,6 +203,10 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
 MTM_CHOP_TRIM_AMP = 0.80
+# Branch step2: oscillation-supplement hold-duration ramp. Replaces the price-derived
+# near-breakeven band (noise wall) with a noise-IMMUNE bars_held ramp. The supplement
+# fires when a ct position has been held OSC_HOLD_RAMP bars past ENTRY_FULL_BARS.
+OSC_HOLD_RAMP = 6.0
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -2347,31 +2351,39 @@ class Strategy:
                 # 3c12a731): VOTER-INDEPENDENT oscillation supplement as a FULL EXIT.
                 # A purely STRUCTURAL trigger independent of voter conviction: a held
                 # COUNTER-TREND (multi-day ret_vlong*pos_dir<0, /0.01 fast-sat ->
-                # near-constant noise-free) position, held past scale-in
-                # (bars_held>ENTRY_FULL_BARS), that is NEAR BREAKEVEN (|pos_pnl|<
-                # 0.5*|stop| = the oscillating dead capital neither SL nor pp_pressure
-                # harvests). Fires the grid-BYPASSING full exit (target->0) on
-                # persistent near-breakeven ct positions WITHOUT requiring voter
-                # reversal. Prior session step4 PROVED this reaches rally's persistent
-                # near-breakeven ct pullback shorts that voter conviction could NOT
-                # close -> rally +0.0105 (0.670->0.681), all stab 1.0, +0.0024 composite
-                # (below +0.003 keep). Exp1 this session confirmed the full-exit ACTION
-                # is necessary (partial de-risk variant was byte-identical on rally --
-                # closing the position is the mechanism, not shrinking it). The trend_avg
-                # guard (long-side trend_avg<0, short-side trend_avg>0) is LOAD-BEARING
-                # per step5/step9 (protects crash dead-cat-bounce longs). This is a
-                # re-test to reproduce the +0.0024 rally signal, then iterate (branch)
-                # to reach mixed (prior branch's 10 steps only widened band/hold/multi-
-                # day-ct; mixed byte-identical throughout -- mixed longs are ct at multi-
-                # day but trend_avg (20-bar) oscillates so the long-side guard only fires
-                # half the bars; step2 will relax the long-side guard to multi-day
-                # ret_vlong<0 while keeping the short-side trend_avg>0 guard).
+                # near-constant noise-free) position, held past scale-in, that is NEAR
+                # BREAKEVEN (the oscillating dead capital neither SL nor pp_pressure
+                # harvests). Fires the grid-BYPASSING full exit (target->0) on persistent
+                # near-breakeven ct positions WITHOUT requiring voter reversal. Prior
+                # session step4 PROVED this reaches rally's persistent near-breakeven ct
+                # pullback shorts voter conviction could NOT close -> rally +0.0105, all
+                # stab 1.0, +0.0024 composite. Exp1 this session confirmed full-exit
+                # ACTION is necessary. The trend_avg guard (long-side trend_avg<0,
+                # short-side trend_avg>0) is LOAD-BEARING per step5/step9 (protects crash
+                # dead-cat-bounce longs).
+                # BRANCH step2: REPLACE the price-derived near-breakeven band (step1
+                # _nb_br = 1-|pos_pnl|/(0.5*|stop|)) with a NOISE-IMMUNE INTEGER hold-
+                # duration threshold. Step1 REGRESSED rally stab 1.0->0.636 + rally raw
+                # DOWN -0.099 because |pos_pnl|<0.5*|stop| is a PRICE-DERIVED boundary
+                # that flips under AR(1) close perturbation (the documented price-
+                # boundary-noise wall, row 528/531) -> the supplement fired on perturbed
+                # bars differently -> tracking-error explosion + over-firing on positions
+                # that would recover. The prior session step4 escaped this only because
+                # its structural-exploration branch had ALREADY rewritten the opp-gate
+                # (step1-3), leaving few cases for the supplement; on the unmodified
+                # baseline the price-band bites. Fix: target the SAME persistent ct dead-
+                # capital positions via an INTEGER bars_held threshold (noise-IMMUNE --
+                # same safety family as len(_eh)/_churn_hist: integer counts do not flip
+                # under AR(1)). A ct position held OSC_HOLD_MIN_BARS has stuck around
+                # without the trend_avg guard closing it = the persistent dead capital.
+                # Drop the price band entirely (the noise source). Continuous tanh ramp
+                # on bars_held so no integer-step cliff (avoid the int(round) rally wall).
                 if not in_cooldown and target != 0 and bars_held > ENTRY_FULL_BARS:
                     _pos_dir_br = 1.0 if current_pos > 0 else -1.0
                     _ct_br = max(0.0, np.tanh(-_pos_dir_br * ret_vlong / 0.01))
-                    _nb_br = 1.0 - min(1.0, abs(pos_pnl) / (0.5 * abs(STOP_LOSS_PCT)))
+                    _hold_br = max(0.0, min(1.0, (bars_held - ENTRY_FULL_BARS) / OSC_HOLD_RAMP))
                     _guard_br = 1.0 if (_pos_dir_br > 0 and trend_avg < 0.0) or (_pos_dir_br < 0 and trend_avg > 0.0) else 0.0
-                    if _ct_br > 0.0 and _nb_br > 0.0 and _guard_br > 0.0:
+                    if _ct_br > 0.0 and _hold_br > 0.0 and _guard_br > 0.0:
                         target = 0.0
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
