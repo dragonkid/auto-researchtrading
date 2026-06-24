@@ -1636,6 +1636,35 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
+                # Exp3 (architectural, indep): MULTI-DAY COUNTER-TREND WINNER scale-in
+                # acceleration path. The existing _win_accel is gated by _trend_strength_w
+                # (|ret_long|/0.04), which is ~0 in mixed (a down year with choppy bounces
+                # -> low 20-bar |ret_long|) -> mixed's winning bounce longs get ~0
+                # acceleration -> slow 3-bar scale-in -> small capture (mixed APY 4.4pct,
+                # Sh0.808 return-limited despite 100pct WR). But mixed's held longs are
+                # COUNTER-TREND-AT-MULTI-DAY (ret_vlong<0, pos_dir=+1 -> product<0) and
+                # WINNING (pos_pnl>0 -- they catch bounces). Add a SEPARATE acceleration
+                # gate that keys on the MULTI-DAY ct signal (ret_vlong, the validated
+                # mixed/bull separator) crossed with pos_pnl, BYPASSING the |ret_long|
+                # trend gate that blocks mixed from the existing accelerator. Mechanism:
+                # a ct-at-multi-day position that is winning is a confirmed bounce (the
+                # strategy correctly identified a counter-trend snap) -> reach full size
+                # faster to capture more of the bounce -> higher APY/Sh in the binding
+                # regime. Fast-saturating /0.01 ret_vlong scale (near-constant, noise-free
+                # per the validated branch-step-9 lesson). Slope-confirmation gate
+                # (_slope_conf, already computed) protects against accelerating into an
+                # imminent reversal (slope must still confirm the position). Trend-aligned
+                # positions (ret_vlong*pos_dir>0 -> ct indicator 0 -> _ct_win_accel 0 ->
+                # BYTE-IDENTICAL, the existing _win_accel handles them). rally ct LOSERS
+                # (pos_pnl<0 -> max(0,pos_pnl-gate) 0 -> no accel) keep baseline+freeze.
+                # low-ret_vlong sideways (ct indicator ~0) byte-identical. New control
+                # flow: an alternate scale-in acceleration path for ct winners. Bounded
+                # magnitude 0.6 (below the existing 1.2 so trend-aligned winners still
+                # scale in fastest); floors at the same _accel_floor.
+                _ct_win_pos = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss/flat, ~1 clear profit
+                _ct_win_md = max(0.0, np.tanh(-_pos_dir_acc * ret_vlong / 0.01))  # ct-at-multi-day
+                _ct_win_accel = 0.6 * _ct_win_pos * _ct_win_md * _slope_conf
+                _win_accel = _win_accel + _ct_win_accel
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
