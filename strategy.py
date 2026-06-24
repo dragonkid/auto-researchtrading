@@ -2601,6 +2601,26 @@ class Strategy:
                     # ~breakeven and rally's modest-PnL trims keep full throttle, only
                     # CLEAR winners (crash profit-take shorts) are spared. Smooth.
                     _winner_fade = max(0.0, min(1.0, 1.0 - (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
+                    # Exp2 (architectural, indep): CHOP-MODULATED winner_fade. The
+                    # winner_fade (onset +0.5*stop, 0 at +1.5*stop) suppresses the throttle
+                    # for clear winners -> spares crash's profit-take shorts (100pctWR, the
+                    # keep-blocking crash drag that motivated step9). BUT it ALSO kills the
+                    # throttle for mixed's MODERATE peaks (pos_pnl 1.5-3x stop) -- exactly
+                    # the peaks the prior session's threshold-lowering reached at mixed
+                    # +0.0068 (its biggest mixed signal, walled only by sideways overlap).
+                    # mixed's moderate peaks sit on CHOPPY oscillating longs (high _mtm_chop,
+                    # the throttle's own core signal); crash's profit-takes sit on SMOOTH
+                    # trend shorts (low chop). New control-flow dep: modulate the winner_fade
+                    # by the position's OWN MTM-chop so SMOOTH winners (crash) keep the full
+                    # fade (spared, crash-protecting) while CHOPPY winners (mixed's moderate
+                    # oscillating peaks) have the fade REDUCED -> throttle stays active ->
+                    # moderate-peak paper converted to realized -> lower MTM oscillation ->
+                    # higher mixed Sharpe. Crash protected by smoothness; mixed reached by
+                    # choppiness. rally's losing ct shorts (pos_pnl<0 -> winner_fade~1, full
+                    # throttle) unaffected; rally's trend longs are smooth (chop~0 -> full
+                    # winner_fade -> spared, byte-identical to baseline since _mtm_chop~0
+                    # also zeros the whole throttle). Continuous (no new boundary).
+                    _winner_fade = _winner_fade * (1.0 - 0.50 * _mtm_chop)
                     # Amplify the reduction distance; clamp so target stays same-sign
                     # and never trims past full close (toward 0, not across it).
                     _trim_mult = 1.0 + MTM_CHOP_TRIM_AMP * _mtm_chop * _grind_gate * _strong_trend_fade * _winner_fade
