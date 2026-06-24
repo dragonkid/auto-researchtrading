@@ -2101,37 +2101,7 @@ class Strategy:
                 # if _sl_pressure dominant (full exit will follow). New control flow:
                 # exit subsystem now has THREE size-decision paths: full exit, de-risk
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
-                # Exp (architectural, indep): MULTI-DAY COUNTER-TREND-SIGN gate on
-                # the tp_harvest activation threshold. Prior session's threshold-lowering
-                # branch (walled, reverted) reached mixed's MODERATE oscillating peaks
-                # (+0.0068 score) BUT was walled by the mixed/sideways LOW-TREND OVERLAP:
-                # both share low rsi_trend_str, so any trend-STRENGTH gate that protects
-                # sideways's small mean-reverting peaks also blocks mixed's moderate ones
-                # (sideways -0.035 at threshold 1.5). The branch concluded "no single-
-                # quantity separator reaches mixed without hitting sideways" -- but only
-                # checked the trend-strength and vol_ratio axes. The MULTI-DAY COUNTER-
-                # TREND SIGN is a genuinely different axis: mixed holds LONGS in a DOWN
-                # year (ret_vlong<0, pos_dir=+1 -> product<0 = genuinely counter-trend at
-                # the multi-day scale); sideways is FLAT (ret_vlong~0 -> product~0 = NOT
-                # ct at multi-day). This is the SAME axis Exp4 (KEEP) used to fix _ts_supp
-                # (which correctly keys mixed's longs as ct-at-multi-day). Lower the
-                # activation threshold (1.6->1.5) ONLY for multi-day counter-trend
-                # positions -> reaches mixed's moderate oscillating peaks while sparing
-                # sideways (product~0 -> threshold unchanged at 1.6 -> small peaks not
-                # harvested). Trend-aligned regimes (bull longs, crash shorts, rally longs
-                # all have ret_vlong*pos_dir>0 -> ct-sign 0 -> threshold 1.6 -> BYTE-
-                # IDENTICAL). Fast-saturating /0.01 ret_vlong scale (mixed's solidly-
-                # negative ret_vlong sits in the flat tail -> near-constant, noise-free per
-                # the validated Exp5/Exp9 ct-gate lesson; sideways ret_vlong~0 -> ~0).
-                # Continuous tanh (no decision boundary that flips under AR(1) noise);
-                # direction-agnostic general principle (a multi-day counter-trend position
-                # has oscillating paper PnL worth harvesting -- no regime label). New
-                # cross-component data dep: tp_harvest activation threshold depends on the
-                # multi-day ct sign (was constant 1.6).
-                _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _tp_ct_sign = max(0.0, np.tanh(-ret_vlong * _tp_pos_dir / 0.01))  # ~1 mixed ct, ~0 sideways/trend-aligned
-                _tp_thresh_act = 1.6 - 0.10 * _tp_ct_sign  # 1.5 for multi-day ct (mixed), 1.6 otherwise
-                if target != 0 and self.peak_pnl[symbol] > _tp_thresh_act * _pp_min and _sl_pressure < 0.5:
+                if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
                     # Trend-gated activation: in chop (low |ret_long|), peaks are
                     # rare AND likely mean-reverting — disable harvest to let small
