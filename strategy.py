@@ -2658,7 +2658,30 @@ class Strategy:
                     _new_target = current_pos + (target - current_pos) * _trim_mult
                     if (_new_target > 0) == (current_pos > 0) and abs(_new_target) < abs(current_pos):
                         target = _new_target
-            if abs(target - current_pos) > 1.0 * LEVERAGE_K:
+            # Branch step13b: emission threshold reduction for small reductions gated
+            # on MULTI-DAY TREND DIRECTION (not chop). Step13 (chop gate) was
+            # CATASTROPHIC for bull: bull's pullback positions are small AND choppy
+            # (sharp pullback = low MTM-eff) so the chop gate fired on them too. The
+            # separator that cleanly distinguishes mixed's held longs (in a multi-day
+            # DOWNTREND, ret_vlong<0) from bull's pullback longs (in a multi-day
+            # UPTREND, ret_vlong>0) is the SIGN of ret_vlong*pos_dir. mixed's wrong-
+            # side longs: ret_vlong<0, pos_dir=+1 -> product<0 (counter-trend at
+            # multi-day). bull's pullback longs: ret_vlong>0, pos_dir=+1 -> product>0
+            # (trend-aligned). Gate the lower emission threshold on COUNTER-TREND-AT-
+            # MULTI-DAY small positions (mixed's dead capital) -> bull's trend-aligned
+            # pullback longs (product>0) keep the baseline threshold -> NOT over-traded.
+            # Fast-saturating /0.01 ret_vlong scale (near-constant, noise-free per the
+            # validated branch-step-9 lesson). Same 0.7*LEVERAGE_K floor. General
+            # principle: lower emission bar for counter-trend-at-multi-day small
+            # reductions (the dead-capital population).
+            _emit_thresh = 1.0 * LEVERAGE_K
+            _grid_em = 0.06 * equity * BASE_POSITION_SIZE
+            if _is_resize and abs(current_pos) < 2.0 * _grid_em:
+                _pos_dir_em = 1.0 if current_pos > 0 else -1.0
+                _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
+                if _ct_vlong_em > 0.50:
+                    _emit_thresh = 0.7 * LEVERAGE_K
+            if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
                     if current_pos != 0:
