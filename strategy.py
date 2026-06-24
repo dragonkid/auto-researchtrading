@@ -2588,7 +2588,29 @@ class Strategy:
                     # in a downtrend (ret_vlong<0) stay fully throttled. Smooth, no
                     # boundary. Documented bull/rally separator (multi-day trend strength).
                     _pos_dir_mtm = 1.0 if current_pos > 0 else -1.0
-                    _strong_trend_fade = max(0.0, 1.0 - np.tanh(max(0.0, ret_vlong * _pos_dir_mtm) / 0.02))
+                    # Exp3 (architectural, indep): COUNTER-TREND-ISOLATING strong_trend_fade.
+                    # The baseline _strong_trend_fade = 1 - tanh(max(0,product)/0.02) gives
+                    # FULL throttle (fade 1.0) for product<=0 -- which includes NEUTRAL
+                    # (product~0 = sideways, ret_vlong~0 flat). Exp2 (chop-modulated winner_fade)
+                    # proved mixed's moderate peaks ARE reachable via the throttle (+0.000356)
+                    # BUT sideways regressed -0.0135: sideways's NEUTRAL moderate peaks also get
+                    # full throttle -> premature trimming. The mixed/sideways overlap wall on
+                    # trend-strength and vol_ratio and chop is documented; the ONE dimension that
+                    # distinguishes them is the MULTI-DAY COUNTER-TREND DIRECTION: mixed's longs
+                    # are in a multi-day DOWNTREND (ret_vlong<0, pos_dir=+1 -> product<0);
+                    # sideways's longs are NEUTRAL (ret_vlong~0 -> product~0, 2023 choppy
+                    # recovery). Make the fade ASYMMETRIC: full throttle ONLY for genuinely
+                    # counter-trend (product<0); fade for neutral (product~0, sideways protected)
+                    # AND aligned (product>0, bull/rally trend longs protected, same as baseline).
+                    # tanh(-product/0.02): 0 at product=0 (sideways -> throttle OFF), saturating
+                    # to 1 for product<<-0.02 (mixed -> full throttle). Smooth (no hard boundary
+                    # at 0; the prior session's regime-detection overfit warning applies to
+                    # discrete regime switches, not a continuous multiplier). New control-flow:
+                    # the throttle now requires counter-trend-at-multi-day, not just non-aligned.
+                    # Risk: mixed's ret_vlong is only weakly negative some bars (product -0.005
+                    # -> tanh(0.25)=0.24 -> partial throttle); the /0.02 scale is fast-saturating
+                    # so bars where mixed's downtrend is clear (product<-0.02) keep full throttle.
+                    _strong_trend_fade = max(0.0, np.tanh(-ret_vlong * _pos_dir_mtm / 0.02))
                     # Branch step9: WINNER fade (recovers crash -0.0056, the keep-blocker).
                     # crash's throttle drag is trimming WINNING shorts being reduced
                     # (crash is 100pctWR, its reductions are profit-takes on winners ->
