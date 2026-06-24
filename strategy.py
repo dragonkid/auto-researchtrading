@@ -1850,24 +1850,7 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                # Exp2 (architectural, indep): PROFIT-GATE the ct-hold shortening. The
-                # _ct_hold_sat shortens max_hold for ALL counter-trend-at-multi-day positions
-                # (2-bar cut) on the rationale "ct losers should exit faster" (rally pullback
-                # shorts = the documented losing ct trades). But mixed's ct longs are 100pct
-                # WINNERS (the strategy catches bounces in a down year) -- they are ct at the
-                # multi-day scale but WINNERS, not losers. Shortening their hold caps the
-                # capture (mixed APY 4.4pct, Sh0.808 -- return-limited despite 100pct WR).
-                # Gate the shortening on pos_pnl SIGN: ct LOSERS (pos_pnl<0) keep the full
-                # 2-bar shortening (rally pullback shorts, the documented losing ct re-entries);
-                # ct WINNERS (pos_pnl>0, mixed bounce longs) revert toward baseline max_hold
-                # (let the winning bounce run longer -> more capture -> higher APY/Sh in the
-                # binding regime). Smooth tanh on pos_pnl/|stop| (no decision boundary): full
-                # shortening in loss, fading to ~0 shortening in clear profit. Trend-aligned
-                # holds (gate 0 -> _ct_hold_sat already 0) BYTE-IDENTICAL; low-ret_vlong
-                # sideways (ct indicator ~0) spared. New cross-component data dep: the
-                # time-pressure shortening now depends on held-position PnL sign (was ct-only).
-                _ct_win_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat * _ct_win_gate
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
