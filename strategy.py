@@ -2005,36 +2005,13 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # STRUCTURAL_EXPLORATION (Exp5): exit-pressure fusion subsystem REWRITE --
-                # element-wise MAX -> TEMPERED LOG-SUM-EXP soft-maximum.
-                # (a) Subsystem rewritten: exit-pressure fusion (the soft-term combination
-                #     that produces _soft_max, the dominant exit-pressure input).
-                # (b) New core mechanism: LSE_soft = max + (1/TAU)*log(1 + sum exp(TAU*(t-max)))
-                #     over terms above a small floor. This is a smooth softmax that EQUALS
-                #     max when one source dominates (preserves the MAX keep's correlated-
-                #     noise-elimination -- a single dominant source gets gap~0) and EXCEEDS
-                #     max when 2+ sources MODERATELY agree (the agreement bonus = the LSE
-                #     gap, ~(1/TAU)*log(n_agree) for n equal sources). MAX discards moderate
-                #     multi-source agreement (takes only the larger term); the _agree_gate
-                #     patch only ATTENUATES single-source spikes, it does not ADD for
-                #     agreement. LSE adds the agreement signal MAX structurally cannot.
-                # (c) Old mechanism at structural ceiling: MAX was chosen (over weighted-
-                #     sum) to stop correlated-noise ADDITION across 6 terms sharing inputs.
-                #     But MAX over-corrects -- it discards the genuine signal that 2 sources
-                #     moderately agreeing (slope weakening AND time accumulating AND giveback
-                #     rising) is a STRONGER exit than either alone. rally's losing longs ride
-                #     pullbacks where slope/time/pp ALL mod signal exit but none saturates ->
-                #     MAX takes the largest moderate value -> late exit -> giveback -> DD.
-                #     LSE raises the combined pressure so the exit fires earlier on MULTI-
-                #     SOURCE agreement while remaining byte-identical when one source
-                #     dominates (the noise case MAX was built for). TAU=10 (gap~0.069 for
-                #     2 equal sources, ~14% agreement boost -- modest, bounded); floor 0.05
-                #     excludes near-zero noise terms from the agreement bonus (a swarm of
-                #     near-zero terms should not inflate pressure -- preserves MAX's noise
-                #     rejection). Smooth (log-sum-exp is C-infinity), no new decision boundary.
-                #     Replaces the _agree_gate attenuator (which only down-weighted single-
-                #     source) with a mechanism that ALSO up-weights agreement -- structurally
-                #     dual-direction. voter_bias + sl max-blend unchanged.
+                # Architectural fusion change: element-wise MAX replaces weighted sum.
+                # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
+                # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
+                # noise in any shared input propagates to all 6, which then SUMS. Take
+                # only the most-pressing term (MAX with weights): eliminates correlated
+                # noise addition. Weights preserved so profit-side terms dominate when
+                # profitable, loss-side when losing. voter_bias + sl max-blend unchanged.
                 _soft_terms = (
                     _w_slope * _sl_slope_pressure,
                     _w_pp * _pp_pressure,
@@ -2043,41 +2020,28 @@ class Strategy:
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
                 )
-                _SOFTMAX_TAU = 10.0
-                _SOFTMAX_FLOOR = 0.05
-                _mx = max(_soft_terms)
-                # Step2 (STRUCTURAL_EXPLORATION): CHOP-GATE the LSE agreement bonus.
-                # Step1 (ungated LSE) was CATASTROPHIC on bull (-999, MaxDD 22.1pct, trades
-                # 51->111, WR 86->63pct): in a strong bull uptrend the slope/time/pp soft
-                # terms ALL sit at MODERATE values during normal pullbacks (slope weakening
-                # + time accumulating + small giveback), so the LSE agreement bonus fired on
-                # every pullback -> over-exit + re-enter churn -> DD blowup. This is exactly
-                # the correlated-noise ADDITION the MAX keep was built to prevent. The
-                # agreement bonus is only a GENUINE reversal signal in CHOP (where 2+ sources
-                # moderately agreeing = real multi-source reversal evidence); in TRENDS
-                # moderate multi-source overlap is normal pullback behavior (NOT reversal).
-                # Gate the agreement bonus by the SAME chop weight the _agree_gate attenuator
-                # uses (_chop_atten_w): full bonus in chop, ZERO bonus in trend (= pure MAX,
-                # byte-identical trend behavior). This restricts the new mechanism to the
-                # regime where it adds signal (chop multi-source reversal) and spares trends.
-                _sorted_terms_s = sorted(_soft_terms, reverse=True)
-                _ratio_2nd_s = _sorted_terms_s[1] / max(_sorted_terms_s[0], 1e-6) if _sorted_terms_s[0] > 1e-6 else 0.0
-                _strong_agree = max(0.0, min(1.0, np.tanh((_ratio_2nd_s - 0.50) / 0.20)))  # 0 unless 2nd>=50% of max
-                if _mx > _SOFTMAX_FLOOR and _strong_agree > 0.0:
-                    _agree_sum = 0.0
-                    for _t in _soft_terms:
-                        if _t > _SOFTMAX_FLOOR:
-                            _agree_sum += np.exp(_SOFTMAX_TAU * (_t - _mx))
-                    _soft_max = _mx + _strong_agree * (1.0 / _SOFTMAX_TAU) * np.log(1.0 + _agree_sum)
-                else:
-                    _soft_max = _mx  # single-source or chop-moderate -> pure max (no inflation)
-                # Agreement attenuator retained (chop-only single-source down-weight):
-                # LSE already up-weights agreement; the attenuator down-weights single-
-                # source chop spikes. The two compose (dual-direction agreement handling).
+                _soft_max = max(_soft_terms)
+                # Architectural: multi-source agreement attenuator on soft_max.
+                # When only ONE source contributes meaningfully (top-2 ratio low,
+                # i.e. dominant single source), attenuate up to 25% — single-source
+                # spikes are more often noise than real reversal. When TWO+ sources
+                # agree (top-2 ratio high), no attenuation. Continuous via tanh on
+                # second-highest/highest ratio. Multi-source CONFIRMATION as a
+                # noise filter is structurally different from EMA smoothing (time-
+                # axis) and threshold raising (boundary-axis) — operates on the
+                # pressure-source dimension. Top exit decision: 2nd-highest term
+                # ratio gates the strength of the MAX. New cross-source data dep.
                 _sorted_terms = sorted(_soft_terms, reverse=True)
                 _ratio_2nd = _sorted_terms[1] / max(_sorted_terms[0], 1e-6) if _sorted_terms[0] > 1e-6 else 0.0
+                # Confirmation strength: 0 at single-source, 1 at full agreement
                 _agree_gate = max(0.0, min(1.0, np.tanh(_ratio_2nd / 0.30)))
+                # Branch step 2: chop-only gating. In trends (high abs(ret_long)),
+                # single-source pressure signals are real (slope reversal alone =
+                # genuine trend break). Mute the attenuator's effect by trend strength
+                # so it operates only in chop where single-source spikes ARE noise.
                 _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
+                # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
+                # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
