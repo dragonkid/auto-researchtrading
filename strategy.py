@@ -2681,6 +2681,29 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
+                    # Exp5 (architectural, indep): PROFIT-RAMPED emission threshold for
+                    # ct-at-multi-day small-position reductions. The prior keep (step13b)
+                    # lowered the emission threshold to 0.7*LEVERAGE_K for small ct-at-
+                    # multi-day reductions (binary). mixed is STILL at 45 trades (< 50-
+                    # trade sample_factor knee, +5 needed). The binary threshold is a fixed
+                    # floor; this makes the threshold ramp DOWN CONTINUOUSLY as the held
+                    # position's profit rises: a ct-at-multi-day position that is WINNING
+                    # (pos_pnl>0, mixed bounce longs) gets a LOWER emission bar -> its
+                    # pp-giveback / slope / de-risk reductions emit more freely -> more
+                    # sample_factor trades AND more realized capture per bounce -> higher
+                    # mixed APY/Sh. The ramp is keyed on pos_pnl (NEW data dependency at
+                    # the emission layer, was ct-only): 0.7*LEVERAGE_K at pos_pnl<=0
+                    # (losers/flat keep the keep-validated floor), ramping to ~0.4*LEVERAGE_K
+                    # at pos_pnl>=+1.5*|stop| (clear winners). Trend-aligned positions
+                    # (_ct_vlong_em~0 -> outer if false) byte-identical; rally ct losers
+                    # (pos_pnl<0 -> ramp 0 -> 0.7 floor, same as keep) byte-identical. Only
+                    # ct-at-multi-day WINNING small positions (mixed bounces) get the lower
+                    # bar. Continuous tanh (no new decision boundary that flips under AR(1)).
+                    # Reduction/growth agnostic (applies to any same-sign resize, but winners'
+                    # resizes are predominantly pp/de-risk reductions = the sample_factor
+                    # trades). New control flow: emission threshold now depends on pos_pnl.
+                    _win_em = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 flat/loss, ~1 clear profit
+                    _emit_thresh = (0.7 - 0.3 * _win_em) * LEVERAGE_K  # 0.7 -> 0.4 as profit rises
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
