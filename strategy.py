@@ -1583,11 +1583,15 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    # Branch step3: sustain the BULL-entry-in-downtrend ct shrink only
-                    # (gave bull +0.060 in Exp1 -- bull ct longs during 2021 pullbacks
-                    # shrunk through hold). Bear-entry-in-uptrend (rally/bull ct shorts)
-                    # reverts to first-bar-only (cache 1.0) -> rally byte-identical.
-                    self._ct_shrink_held[symbol] = _bull_ct_vlong
+                    # Branch step4: gate the bull-entry-in-downtrend sustain on trend-QUALITY
+                    # R^2 (the bull-vs-crash separator). bull-2021 pullbacks are V-shaped
+                    # high-R^2 recoveries (sustaining the ct-long shrink helps, +0.062);
+                    # crash dead-cat bounces are low-quality low-R^2 (sustain hurts, -0.053).
+                    # Blend the cached shrink toward 1.0 (no sustain) as R^2 drops, so crash
+                    # (low R^2) reverts to first-bar-only while bull (high R^2) keeps the
+                    # sustained shrink. _tq_r2 is the LINREG_PERIOD OLS R^2 of log(HL2).
+                    _ct_r2_gate = max(0.0, min(1.0, np.tanh((_tq_r2 - 0.30) / 0.15)))
+                    self._ct_shrink_held[symbol] = 1.0 + (_bull_ct_vlong - 1.0) * _ct_r2_gate
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
