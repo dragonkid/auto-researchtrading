@@ -2325,8 +2325,34 @@ class Strategy:
                 # in crash where bull-side voter spikes are common during dead-cat
                 # bounces but trend genuinely down. New decision-boundary mechanism:
                 # opp-side reversal triggers partial position scaling, not binary.
-                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and trend_avg < 0) or \
-                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bull_strong_min and trend_avg > 0)
+                # Exp3 (architectural, indep): MULTI-DAY ret_vlong OR-in on the opp-gate
+                # flip condition. The opp-gate is the ONE grid-BYPASSING full-exit path that
+                # actually closes mixed's wrong-side ct longs to target=0 (entries/exits/
+                # flips are grid-EXEMPT; partial harvest tp_harvest/giveback are grid-WALLED
+                # for mixed's small positions). It currently requires trend_avg<0 (20-bar) to
+                # flip a long. mixed is a multi-day DOWNTREND (ret_vlong<0 for held longs) but
+                # its 20-bar trend_avg OSCILLATES around 0 during the choppy down-year, so the
+                # opp-gate fires only on the bars where the 20-bar window happens to be net
+                # negative -- missing the reversal signal on bars where a local bounce has
+                # pushed trend_avg>=0 while the multi-day trend stays solidly down. OR-in a
+                # multi-day confirmation: a long whose 96-bar ret_vlong is solidly negative
+                # (fast-saturating /0.01 -> near-constant, noise-free per branch-step-9
+                # lesson) qualifies for the opp-gate flip EVEN when the 20-bar trend_avg is
+                # momentarily >=0. This fires the grid-bypassing full exit on MORE bars for
+                # mixed's ct longs -> less oscillation persistence -> lower MTM amplitude ->
+                # higher mixed Sharpe. Symmetric on the short side (ret_vlong>0 ORs in for a
+                # short->exit when trend_avg<=0). Continuous tanh blend (not a hard OR) so no
+                # new decision-boundary flip: the multi-day term smoothly supplements the 20-
+                # bar term. New cross-timescale data dep at the opp-gate flip boundary.
+                _og_vlong_long = max(0.0, np.tanh(-ret_vlong / 0.01))    # ~1 multi-day downtrend
+                _og_vlong_short = max(0.0, np.tanh(ret_vlong / 0.01))    # ~1 multi-day uptrend
+                _og_trend_long = max(0.0, -trend_avg)    # 20-bar down
+                _og_trend_short = max(0.0, trend_avg)    # 20-bar up
+                # Blend: 20-bar term (original) + multi-day supplement; saturate at 1.0.
+                _og_flip_long = min(1.0, _og_trend_long + _og_vlong_long)
+                _og_flip_short = min(1.0, _og_trend_short + _og_vlong_short)
+                _opp_gate = (current_pos > 0 and bear_votes >= FLIP_MIN_VOTES and _bear_strong >= _bear_strong_min and _og_flip_long > 0) or \
+                            (current_pos < 0 and bull_votes >= FLIP_MIN_VOTES and _bull_strong >= _bear_strong_min and _og_flip_short > 0)
                 if not in_cooldown and _opp_gate:
                     # Graduated opp-gate gated on TREND-ALIGNED + IN-PROFIT.
                     # Counter-trend (rally bear) OR losing positions: binary full
