@@ -570,6 +570,30 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
+            # Exp1 (architectural, indep): 9th voter -- MULTI-DAY TREND DIRECTION (ret_vlong).
+            # Prior session CROSS-EXPERIMENT CONCLUSION sanctioned this exact direction: the
+            # 8th range/close voter (1st-derivative-efficiency) was the validated sweet spot;
+            # the 9th-voter attempt on 2nd-DERIVATIVE (acceleration) regressed because it
+            # "flips sign more often than the 1st under AR(1) noise -> admission-boundary
+            # flips -> lower-quality trade selection." The directive: "future voter work
+            # should target LOWER-frequency signals." ret_vlong is the 96-bar OLS log-HL2
+            # slope*n (already computed for sizing/exit) -- the LOWEST-frequency, most noise-
+            # robust directional signal in the codebase: 96-point OLS averages AR(1) noise at
+            # ~1/sqrt(96) attenuation, so its sign is ~noise-immune (the property that made
+            # ret_vlong the validated mixed/bull separator and the ct-shrink gate). Every
+            # existing voter uses <=22-bar windows; none reads the multi-day timescale as a
+            # DIRECTIONAL conviction signal (ret_vlong feeds sizing/exit gates, never the
+            # voter aggregation). A multi-day uptrend (ret_vlong>0) is a structural bull bias;
+            # a multi-day downtrend is a structural bear bias -- adding this as a voter lets
+            # the admission gate lean into the slowest, cleanest trend signal. Sharpness
+            # /0.02 (ret_vlong ~0.02-0.04 in trend regimes, ~0 in chop -> contribution 0.5
+            # in chop -> strong_sum 0 -> byte-identical in sideways by construction). Weight
+            # 0.55 (matches the 8th voter; small fixed weight untouched by _wt_shift so the
+            # trend-strength redistribution does not bleed into it). New orthogonal-data-
+            # source voter on a distinct (slower) timescale, added WITHOUT modifying any of
+            # the 8 existing _base_weights. Targets the trend regimes (bull/crash/rally raw)
+            # via a lower-flip-rate signal; sideways (ret_vlong~0) byte-identical.
+            _vlong_signal = ret_vlong / 0.02
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -579,6 +603,7 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
+                _vlong_signal,  # 9th voter: multi-day (96-bar) trend direction (sharpness /0.02)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -605,7 +630,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency; 9th: multi-day trend dir (small fixed weights, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -633,7 +658,7 @@ class Strategy:
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(8)
+                _persistence_mult = np.ones(9)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
