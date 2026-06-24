@@ -1590,8 +1590,11 @@ class Strategy:
                     # Blend the cached shrink toward 1.0 (no sustain) as R^2 drops, so crash
                     # (low R^2) reverts to first-bar-only while bull (high R^2) keeps the
                     # sustained shrink. _tq_r2 is the LINREG_PERIOD OLS R^2 of log(HL2).
+                    # Branch step5: HALVE the sustained magnitude (blend only 50% of the
+                    # way from 1.0 to _bull_ct_vlong) to reduce the crash cost faster than
+                    # the bull gain -> find a net-positive operating point.
                     _ct_r2_gate = max(0.0, min(1.0, np.tanh((_tq_r2 - 0.30) / 0.15)))
-                    self._ct_shrink_held[symbol] = 1.0 + (_bull_ct_vlong - 1.0) * _ct_r2_gate
+                    self._ct_shrink_held[symbol] = 1.0 + 0.5 * (_bull_ct_vlong - 1.0) * _ct_r2_gate
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
