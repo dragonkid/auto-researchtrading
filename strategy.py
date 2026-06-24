@@ -1865,6 +1865,30 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp2 (architectural, indep): MULTI-DAY SLOPE-CONFIRMED hold extension.
+                # NEW control flow in the time-pressure subsystem: _max_hold (exit TIMING in
+                # bar units) is grid-EXEMPT (a full exit at target==0 is grid-exempt; changing
+                # WHICH bar a winner exits changes the trade SET not just size -> binds where
+                # grid-quantized proportional sizing shrinks are absorbed). The existing _hold_adj
+                # extends by the 16-bar slope (_exit_slope via _slope_agrees) and the ct_hold_sat
+                # SHORTENS counter-trend holds; NEITHER reads the 96-bar MULTI-DAY trend direction
+                # as a hold-EXTENSION for trend-aligned winners. ret_vlong (96-bar OLS log-HL2
+                # slope*n, the validated multi-day trend, already computed) strongly agreeing with
+                # the position direction = the multi-day trend is INTACT -> a winning trend-aligned
+                # position (bull long in uptrend, crash short in downtrend, rally long in uptrend)
+                # should ride LONGER before time-pressure fires -> capture more of the sustained
+                # multi-day move -> higher Sharpe in the return-limited trend regimes (crash Sh1.254
+                # 100pct WR, rally Sh1.553). Byte-identical for chop (ret_vlong~0 -> gate 0) and
+                # counter-trend (product<0 -> max(0,..)=0 -> gate 0; ct already shortened by
+                # _ct_hold_sat). Continuous tanh on ret_vlong*pos_dir, fast-saturating /0.03 (the
+                # validated scale: rally/crash solidly-trending ret_vlong sits in the flat tail ->
+                # near-constant extension, noise-free, same discipline as ct_hold_sat). Max +18pct
+                # hold window at deep trend confirmation. New cross-timescale data dep at the
+                # time-pressure activation (was vol + 16-bar slope + ct; now adds 96-bar trend-
+                # align extension). Direction-agnostic general principle (no regime label).
+                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
+                _md_slope_conf = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.03))
+                _max_hold *= 1.0 + 0.18 * _md_slope_conf
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
