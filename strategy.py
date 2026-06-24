@@ -1791,45 +1791,6 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp4 (architectural, indep): MTM-CHOP giveback tightening (a SECOND
-                # giveback lever distinct from the portfolio-DD lever above). mixed's
-                # positions oscillate repeatedly (longs in a down year: peak +30%, give
-                # back to +24%, re-peak) -- the 0.22 giveback tolerance lets them ride
-                # +30%->+24% before pp_pressure harvests, leaving +6% of paper giveback
-                # per oscillation cycle (the intrinsic MTM-oscillation drag, return_vol
-                # 5.54pct vs 4.4pct net). Tighten the giveback for positions whose pos_pnl
-                # PATH is CHOPPY (low MTM-path-efficiency = whipsaws with little net
-                # progress, mixed's wrong-side oscillating longs) so pp_pressure harvests
-                # the peak FASTER (locks +30% before it gives back to +24%) -> less per-
-                # cycle giveback -> lower MTM oscillation -> higher mixed Sharpe. SEPARATOR
-                # (the wall the prior MTM-chop emission throttle hit): the 12-bar pos_pnl
-                # path requires a LONG-HELD position to accumulate chop -- sideways's trades
-                # are SHORT-held (exit via slope/time/opp-gate before 12 bars, reconfirmed
-                # this session: sideways positions rarely reach the 4-bar _pnl_path minimum
-                # for the throttle). mixed's positions are LONG-lived oscillators (3 long-
-                # held positions, 54 modifies = the 12-bar path saturates with oscillation).
-                # So the gate spares sideways by HOLD-DURATION construction (path too short
-                # to register) while binding on mixed -- the hold-duration separator the prior
-                # session's trend-strength/vol/chop axes all missed. Trend winners (bull/
-                # crash/rally longs) have HIGH path-efficiency (smooth climbers, chop~0) ->
-                # byte-identical. Profit-only (pos_pnl>0 required so losers unaffected).
-                # Smooth tanh on the path length x chop product (no decision boundary).
-                # New cross-component data dep: giveback tolerance depends on the position's
-                # own pos_pnl path shape (was portfolio-DD only).
-                _pp_chop_tighten = 1.0
-                if pos_pnl > 0:
-                    _ppp = self._pnl_path.get(symbol, [])
-                    if len(_ppp) >= 4:
-                        _ppa = np.array(_ppp)
-                        _pp_net = abs(_ppa[-1] - _ppa[0])
-                        _pp_tot = float(np.sum(np.abs(np.diff(_ppa))))
-                        _pp_mtm_eff = _pp_net / max(_pp_tot, 1e-10)
-                        _pp_mtm_chop = max(0.0, min(1.0, 1.0 - _pp_mtm_eff))
-                        # Path-length weight: chop only meaningful with enough path to
-                        # observe oscillation. ramps in over [4, 12] bars held.
-                        _pp_path_w = max(0.0, min(1.0, (len(_ppp) - 4) / 8.0))
-                        _pp_chop_tighten = 1.0 - 0.30 * _pp_mtm_chop * _pp_path_w
-                _pp_tighten = _pp_tighten * _pp_chop_tighten
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
