@@ -2735,7 +2735,12 @@ class Strategy:
                     # winning gate ensures only profitable ct positions get the lower bar
                     # (their reductions are locking realized gains, not noise-driven churn).
                     _win_em = max(0.0, np.tanh(pos_pnl / (0.5 * abs(STOP_LOSS_PCT))))  # saturates ~+1*|stop|
-                    _emit_thresh = (0.7 - 0.4 * _win_em) * LEVERAGE_K  # 0.7 -> 0.3 as profit rises
+                    # Branch step5: two-stage ramp -- floor 0.3 for winners, dropping to 0.2
+                    # for DEEP winners (pos_pnl > +1.5*|stop|). Step2 (floor 0.3) added 0
+                    # trades vs step1 (floor 0.4) -> reductions <0.3*LEVERAGE_K may exist for
+                    # deep winners. Steeper second stage to catch them. Noise risk monitored.
+                    _win_deep = max(0.0, np.tanh((pos_pnl / abs(STOP_LOSS_PCT) - 1.5) / 0.5))  # 0 until +1.5*stop, ~1 at +2*stop
+                    _emit_thresh = (0.7 - 0.4 * _win_em - 0.1 * _win_deep) * LEVERAGE_K  # 0.7 -> 0.3 -> 0.2
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
