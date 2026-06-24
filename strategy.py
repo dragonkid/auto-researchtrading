@@ -2005,6 +2005,40 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp3 (architectural, indep): INSIDE-BAR CONTRACTION exit pressure (7th soft
+                # source). NEW orthogonal candle-structure data dep: NO existing exit source
+                # reads INTRABAR RANGE CONTAINMENT (inside-bar nesting). slope reads direction,
+                # pp reads giveback magnitude, time reads bars-held, ve reads vol-of-price
+                # expansion, vc reads volume spike. This reads whether the current bar's range
+                # is CONTAINED within the prior bar's range (inside bar = momentum contraction
+                # / consolidation before reversal). Mechanism: a winning trend position whose
+                # recent bars show successive range contraction (inside-bar nesting) is losing
+                # momentum -> exhaustion -> harvest before the reversal. Distinct from
+                # volume-climax (volume spike = blowoff) and slope-against (slope reversal):
+                # inside-bar is a STRUCTURAL contraction (range shrinking) that can precede a
+                # slope reversal (leading signal). Computed as a 3-bar contraction score:
+                # each of last 3 bars, fraction of the bar's range that is INSIDE the prior
+                # bar's range (1.0 = fully inside, 0.0 = outside/breakout). Mean over 3 bars;
+                # activate above 0.7 (deep nesting), saturate at 0.9. Profit-side only (lock
+                # gains at contraction; don't punish losers - slope-against handles them).
+                # Continuous tanh, no boundary. New exit-pressure source + new data dep on
+                # cross-bar high/low containment. 3-bar mean for noise-robustness (single-bar
+                # inside-bar flips under AR(1)); the containment FRACTION is itself smooth
+                # (a ratio of ranges, continuous in high/low). NOTE: adding a 7th term to the
+                # MAX fusion shifts the _agree_gate 2nd-highest ratio computation (the documented
+                # 3ac778e coupling) -- kept magnitude modest (0.40 cap) and profit-gated so it
+                # is near-0 for most bars (only fires on deep contraction of winners), limiting
+                # the agreement-attenuator perturbation to the rare bars it activates.
+                _ib_h = bd.history["high"].values[-4:]
+                _ib_l = bd.history["low"].values[-4:]
+                _ib_contain = []
+                for _ib_i in range(1, 4):  # bars -3,-2,-1 each vs prior
+                    _ib_cur_rng = max(_ib_h[_ib_i] - _ib_l[_ib_i], 1e-10)
+                    _ib_overlap = max(0.0, min(_ib_h[_ib_i], _ib_h[_ib_i - 1]) - max(_ib_l[_ib_i], _ib_l[_ib_i - 1]))
+                    _ib_contain.append(_ib_overlap / _ib_cur_rng)  # 1.0 fully inside, 0.0 outside
+                _ib_score = float(np.mean(_ib_contain))  # [0, 1], 3-bar mean containment
+                _ib_pressure = 0.40 * max(0.0, min(1.0, np.tanh((_ib_score - 0.70) / 0.10)))
+                _w_ib = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2019,6 +2053,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
+                    _w_ib * _ib_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
