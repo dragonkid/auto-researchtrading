@@ -570,26 +570,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp4 (architectural, indep): 9th voter -- DIRECTIONAL VOLUME PRESSURE (normalized OBV).
-            # The prior-session CROSS-EXPERIMENT CONCLUSION (row 549) states the ONLY un-disproven
-            # axis for moving a regime raw is "a fundamentally new orthogonal DATA-SOURCE voter
-            # added WITHOUT touching existing voter weights." DVP (sum(vol*sign(close[i]-close[i-1]))/
-            # sum(vol) over 12 bars, range [-1,+1]) is used ONLY as entry-size boosts (Exp1-9 of a
-            # prior session) -- NEVER as a VOTER. All 8 existing voters use PRICE-derived series
-            # (ret_short, EMA, RSI, MACD, slope, EMA_slope, VWAP-dev, range/close-eff). DVP measures
-            # the DIRECTIONAL BALANCE of volume (buy-side vs sell-side pressure) -- genuinely
-            # orthogonal to every price-derived voter (a grinding rally uptrend has DVP>0 even when
-            # TOTAL volume is flat, the case the VWAP/vol_rise voters miss). Added to the voter list
-            # with a SMALL fixed weight (0.55, below the 0.7 base floor) appended WITHOUT modifying
-            # any of the 8 existing _base_weights. close-to-close sign uses only close (noise-
-            # perturbed -> legitimately noise-sensitive like the other voters, NOT the open-price
-            # artifact). Sharpness /0.15 (deep-saturated where it fires -> near-constant, noise-
-            # free per the validated safe-family lesson -- mirrors the entry-boost DVP calibration).
-            _vdvp_n = 12
-            _vdvp_c = closes[-_vdvp_n - 1:]
-            _vdvp_v = bd.history["volume"].values[-_vdvp_n:]
-            _vdvp_rets = np.sign(np.diff(_vdvp_c))
-            _vdvp_sig = float(np.sum(_vdvp_v * _vdvp_rets) / max(np.sum(_vdvp_v), 1e-10))  # [-1,+1]
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -599,7 +579,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _vdvp_sig / 0.15,  # 9th voter: directional volume pressure (deep-saturated sharpness)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -626,7 +605,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close eff; 9th: DVP voter (both small fixed, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -648,13 +627,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9) -- 9 voters
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
