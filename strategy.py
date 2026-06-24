@@ -240,7 +240,7 @@ ENTRY_ACCUM_THRESH = 0.0
 # threshold conviction can now trigger the grid-bypassing full exit. 0.0 == the
 # strong_min boundary (margin just positive).
 FLIP_ACCUM_RHO = 0.7
-FLIP_ACCUM_THRESH = 0.0
+FLIP_ACCUM_THRESH = 0.40  # step2: raised from 0.0 (step1 over-fired at 0.0 -> rally/crash stability crashed). 0.40 requires the smoothed opposite-side margin to be 40% above the strong_min boundary (matching the implicit strictness of the hard count gate that required bear_votes>=FLIP_MIN_VOTES AND _bear_strong>=_bear_strong_min) so the flip fires only on genuinely sustained STRONG opposite-side conviction, recovering trend regimes while keeping mixed access.
 
 
 class Strategy:
