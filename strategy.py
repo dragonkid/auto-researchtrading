@@ -300,6 +300,14 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
+        # Exp3 (architectural, indep): per-symbol ENTRY-CONVICTION-MARGIN cache. Stores
+        # the conviction margin (_bull_margin/_bear_margin) at the moment of entry, so the
+        # EXIT-side de-risk ramp can modulate its floor by the quality of the ORIGINAL entry
+        # signal (a high-conviction entry in modest giveback is more likely to recover ->
+        # ride the giveback gradually; a low-convision entry should cut faster). New entry->
+        # exit cross-component data dependency (entry decision quality feeds the exit ramp).
+        # Reset on full exit; default 0.0 (marginal -> baseline floor).
+        self._entry_margin_cache = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1564,10 +1572,12 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._entry_margin_cache[symbol] = _bull_margin  # Exp3: cache entry conviction for exit ramp
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    self._entry_margin_cache[symbol] = _bear_margin  # Exp3: cache entry conviction for exit ramp
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2202,6 +2212,27 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # Exp3 (architectural, indep): ENTRY-CONVICTION-modulated de-risk floor.
+                    # NEW entry->exit cross-component data dep: the de-risk floor now depends
+                    # on the conviction margin CACHED AT ENTRY (the quality of the original
+                    # entry signal), not just on current PnL/trend-align. A high-conviction
+                    # entry (cached margin > 0.40, the same threshold that saturates the
+                    # cold-entry _bull_conv_atten size attenuator) that is now in modest giveback
+                    # is more likely to recover (the original signal was strong) -> ride the
+                    # giveback more gradually (LOWER floor -> wider de-risk ramp -> holds
+                    # through mid-range pressure); a low-conviction entry (margin~0, admitted
+                    # on a marginal signal) keeps the baseline floor (cut faster on giveback).
+                    # PROFIT-side only (the 0.55 branch -- winners in modest giveback; the loss
+                    # branch 0.85 is already near-binary fast-exit and should not be loosened
+                    # by entry quality). One-sided (only positive cached margin lowers the floor;
+                    # negative/uncached -> 0 -> baseline). Smooth tanh on cached_margin/0.40,
+                    # max -0.08 floor reduction (small -- the bull/sideways stability balance is
+                    # delicate; bounds the cushion). Distinct from _ta_de_align (current trend-
+                    # alignment): this is the ENTRY-TIME signal quality, frozen at entry. New
+                    # control flow at the de-risk graduation: floor depends on entry conviction.
+                    _cached_margin = self._entry_margin_cache.get(symbol, 0.0)
+                    _entry_conv_floor = max(0.0, np.tanh(_cached_margin / 0.40))  # 0 marginal, ~1 strong
+                    _de_floor -= 0.08 * _entry_conv_floor * max(0.0, _pnl_scale)  # profit-side only
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
@@ -2694,7 +2725,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._entry_margin_cache):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
