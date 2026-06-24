@@ -290,11 +290,6 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
-        # Exp2 (this session): per-symbol prior-bar opp_margin (opposite-side
-        # conviction margin). Used to detect a RISING opp conviction (reversal
-        # momentum building against the held position) vs a FADING one, modulating
-        # the opp-gate exit fraction. Deterministic 1-bar lag state; reset on exit.
-        self._prev_opp_margin = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2344,25 +2339,6 @@ class Strategy:
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Exp2 (architectural, indep): RISING-opp-conviction modulation of
-                    # the opp-gate exit fraction. The graduated opp-gate currently keys
-                    # only on the opp_margin LEVEL (how far opp conviction exceeds its
-                    # admission floor). The DERIVATIVE -- whether opp conviction is RISING
-                    # (reversal momentum building against the held position) or FADING --
-                    # is a distinct signal: a rising opp_margin is a strengthening
-                    # reversal (push toward FULL exit, frac->1.0); a fading one is a
-                    # weakening reversal (keep the partial/graduated behavior). New per-
-                    # symbol state (_prev_opp_margin, 1-bar lag) + new control-flow dep at
-                    # the opp-gate graduation. Continuous tanh on the margin delta (no
-                    # boundary); one-sided (only RISING pushes toward full exit, fading
-                    # leaves the graduated frac unchanged = byte-identical for non-rising).
-                    # Direction-agnostic general principle (no regime label).
-                    _prev_om = self._prev_opp_margin.get(symbol, _opp_margin)
-                    _om_rise = max(0.0, np.tanh((_opp_margin - _prev_om) / 0.15))  # 0 fading/flat, ~1 rising fast
-                    self._prev_opp_margin[symbol] = _opp_margin
-                    # Rising opp conviction pushes the graduated fraction toward 1.0
-                    # (full exit) within the graduated band [0.4, 1.0].
-                    _opp_exit_frac_grad = _opp_exit_frac_grad + (1.0 - _opp_exit_frac_grad) * _om_rise
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
@@ -2644,7 +2620,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._prev_opp_margin):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
