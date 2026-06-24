@@ -1560,12 +1560,48 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp1 (architectural, indep): RETURN-DISTRIBUTION SKEWNESS entry shrink.
+                # NEW data axis genuinely orthogonal to every existing entry primitive: the
+                # 8 voters + all sizing attenuators read MEAN (ret_long/ret_short), TREND
+                # (slopes, EMA), VOLATILITY (vol_ratio, calm_boost), DIRECTION (DVP, close_loc),
+                # or PATH-SHAPE (ER, R^2). NONE reads the ASYMMETRY of the return distribution
+                # (3rd moment). Skewness = E[((r - mean)/std)^3]: negative skew = left tail
+                # (occasional sharp down-moves among small up-drift bars -> pullback/crash risk
+                # looming ahead of a long entry); positive skew = right tail (occasional sharp
+                # up-moves among small down-drift bars -> bounce/squeeze risk ahead of a short
+                # entry). Mechanism: a long entry taken when recent returns are NEGATIVELY
+                # skewed is entering into a regime whose tail risk points AGAINST it (the next
+                # sharp move is more likely down -> pullback stops the long out); symmetric for
+                # a short entry under POSITIVE skew. Shrink the first-bar commitment so the
+                # adverse-tail entry's tracking error and Sharpe drag are down-weighted; clean
+                # symmetric-distribution entries (skew~0) keep full size. Direction-AWARE (the
+                # SAME skew value shrinks the side it harms and spares the side it favors).
+                # Trend-strength-gated (|ret_long|/0.04 so it fires only in trending moves where
+                # tail-risk-asymmetry matters; sideways chop is mean-reverting by structure ->
+                # skew is noisy there -> spared by the gate, protects sideways). Shrink-only
+                # (caps at 1.0, safe family), max 0.15. Continuous tanh on skew (no zero-crossing
+                # -> not a direction-boundary; the shrink AMOUNT is smooth in skew magnitude).
+                # 96-bar window (multi-day, averages ~96 AR(1) noise samples -> ~1/sqrt(96)
+                # attenuation, smooth). New cross-data-type dep at entry sizing. BTC + alts
+                # both reach (own-symbol returns). Direction-agnostic general principle (no
+                # regime label); regime effects fall out of each regime's return asymmetry.
+                _sk_n = 96
+                if len(closes) > _sk_n + 1:
+                    _sk_rets = np.diff(np.log(closes[-_sk_n - 1:]))
+                    _sk_mean = float(np.mean(_sk_rets))
+                    _sk_std = max(float(np.std(_sk_rets)), 1e-10)
+                    _skew = float(np.mean(((_sk_rets - _sk_mean) / _sk_std) ** 3))  # 3rd moment, ~[-1,1]
+                else:
+                    _skew = 0.0
+                _sk_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
+                _skew_shrink_bull = 1.0 - 0.15 * _sk_trend_w * max(0.0, min(1.0, np.tanh(-_skew / 0.60)))  # neg skew shrinks long
+                _skew_shrink_bear = 1.0 - 0.15 * _sk_trend_w * max(0.0, min(1.0, np.tanh(_skew / 0.60)))   # pos skew shrinks short
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _skew_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _skew_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
