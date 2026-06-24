@@ -203,10 +203,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
 MTM_CHOP_TRIM_AMP = 0.80
-# Exp2 (this session): win-streak-gated exit-threshold relaxation fraction. Raise the
-# de-risk graduation threshold by up to this fraction (10%) for trend-aligned winners
-# during a portfolio win-streak>=2. Targets crash (100pct WR, return-limited).
-EXIT_THRESH_WINSTREAK_RELAX = 0.10
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -316,16 +312,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp2 (architectural, indep): portfolio consecutive-WIN streak counter
-        # (symmetric counterpart to _loss_streak). Increment on any closed winning
-        # trade, reset on a loss. Used to gate the exit-threshold graduation
-        # (let winners ride more giveback before de-risking when the strategy is
-        # "hot" = aligned favorable regime). Noise-IMMUNE integer counter (same
-        # safety property as _loss_streak / len(_eh) / _churn_hist: integer counts
-        # do not flip under AR(1) price perturbation). Prior session tested a
-        # _win_streak on the ADMISSION side (row 985, byte-identical inert --
-        # admission saturated); the EXIT-side graduation-threshold use is untested.
-        self._win_streak = 0
         # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
         # trajectory since entry). Used to compute MTM-path-efficiency =
         # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
@@ -2091,31 +2077,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # Exp2 (architectural, indep): WIN-STREAK-gated exit-threshold relaxation
-                # for TREND-ALIGNED winners. Raise the de-risk graduation threshold by up
-                # to EXIT_THRESH_WINSTREAK_RELAX (10%) when on a portfolio win-streak>=2
-                # AND the held position is trend-aligned (pos_dir matches 20-bar ret_long
-                # sign, /0.04 fast-saturating -> near-constant noise-free gate). Mechanism:
-                # a win-streak indicates a favorable aligned regime -> let trend-aligned
-                # winners ride MORE giveback before the de-risk ramp begins -> more trend
-                # capture. Targets crash (100pct WR = permanently on a win-streak,
-                # return-limited Sh1.274 -- letting crash shorts run slightly longer
-                # captures more of the bounce-reversion move) + bull trend longs. Trend-
-                # alignment gate SPARES rally counter-trend pullback shorts (the losing
-                # rally trades -- avoid over-holding them) and crash dead-cat-bounce ct
-                # longs (pos_dir opposes ret_long -> gate ~0 -> no relaxation). Stop-loss
-                # path is exempt (full saturation forces standard threshold regardless).
-                # Byte-identical when streak<2 (the relaxation factor is 0 at streak<=1)
-                # or when position is counter-trend (gate 0). Noise-IMMUNE: integer streak
-                # counter + fast-saturating /0.04 ret_long gate (near-constant in trends).
-                # New control flow: exit graduation threshold now depends on portfolio
-                # win-streak x position trend-alignment (a new cross-component data dep
-                # at the exit decision boundary -- exit timing reads portfolio outcome
-                # state, distinct from the _loss_streak ct SIZE shrink which is entry-side).
-                if _sl_pressure < 0.95:
-                    _wstreak_gate = max(0.0, np.tanh((self._win_streak - 1) / 2.0))  # 0 streak<=1, ~1 streak>=3
-                    _wstreak_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
-                    _exit_thresh *= 1.0 + EXIT_THRESH_WINSTREAK_RELAX * _wstreak_gate * _wstreak_align
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -2657,10 +2618,8 @@ class Strategy:
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
                             self._loss_streak += 1
-                            self._win_streak = 0  # Exp2: reset win streak on loss
                         else:
                             self._loss_streak = 0
-                            self._win_streak += 1  # Exp2: increment win streak on win
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
