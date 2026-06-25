@@ -1744,7 +1744,25 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
+                    # Exp2 (architectural, indep): SUSTAIN the _persist_boost (the last
+                    # keep's validated duration-count weak-trend separator, fe6acd4d)
+                    # through scale-in to the FULL target. The boost currently applies
+                    # only to first-bar entry size (line ~1621); the scale-in full_target
+                    # ramps back to un-boosted `size` over 2-3 bars, so mixed's persistently-
+                    # weak-trend bounce entries (weak_persist~1) reach only first_bar*1.12
+                    # then decay to `size` -- the return_bonus gain from the boost is
+                    # partially surrendered during scale-in. Sustaining the boost keeps
+                    # mixed's full position at size*1.12 through the hold -> more APY at
+                    # preserved Sharpe (mixed is 100pct WR, APY-limited not risk-limited;
+                    # bigger size on a 100pct-WR book scales return roughly 1:1 while DD
+                    # stays well under the 5pct knee, mixed DD 2.77pct). The _weak_persist
+                    # DURATION-count gate structurally avoids the rally leak that blocked 8
+                    # prior MAGNITUDE-gate attempts (rally pullbacks are TRANSIENT weak-
+                    # trend episodes -> 48-bar fraction stays low -> boost~0 -> rally
+                    # byte-identical). Trend regimes (bull/crash/sideways/rally, weak_persist
+                    # ~0) -> boost 1.0 -> byte-identical. New control flow: scale-in
+                    # full_target now depends on _weak_persist (was first-bar-only).
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_boost
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
