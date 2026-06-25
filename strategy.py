@@ -1930,6 +1930,34 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp6 (architectural, indep): DIRECTIONAL-DOWNTREND trend-aligned WINNER
+                # max_hold extension. Crash (return-limited Sh1.26, now 1.264 after Exp5
+                # keep) is the second-lowest regime; its shorts are trend-aligned winning
+                # positions in a persistent multi-day downtrend (ret_vlong<0, pos_dir=-1,
+                # product>0). The Exp5 keep sustained crash short SIZE through scale-in ->
+                # APY gain. This extends the SAME directional-downtrend gate to the HOLD
+                # DURATION: trend-aligned winning shorts in a downtrend get a LONGER
+                # max_hold so they ride the downtrend further -> more APY before time
+                # pressure forces exit. Distinct from the saturated max_hold-extension
+                # attempts (de0b68d3 weak-trend+winning DISPROVEN for mixed; e0f2f905
+                # PnL-conditioned ct_hold_sat): those gated on WEAK-trend (fired for rally
+                # pullbacks too) or ct (counter-trend). This gates on DIRECTIONAL downtrend
+                # (ret_vlong<0) AND trend-aligned (product>0) -> rally longs (ret_vlong>0)
+                # excluded -> rally byte-identical; mixed's oscillating longs (rv bimodal,
+                # product sign-flips) get near-zero average gate -> mixed byte-identical;
+                # bull longs (ret_vlong>0) excluded -> bull byte-identical. Only crash
+                # shorts (ret_vlong<0, pos_dir=-1, trend-aligned) qualify. Winning-gated
+                # (pos_pnl>0): losers keep baseline max_hold (cut fast). Fast-saturating
+                # /0.02 ret_vlong (near-constant, noise-free per the validated ct-gate
+                # lesson). Max +25pct extension. New cross-component data dep: max_hold
+                # depends on (ret_vlong, pos_dir, pos_pnl) -- the directional-downtrend
+                # trend-aligned-winner partition.
+                _ta_win_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _down_trend = max(0.0, np.tanh(-ret_vlong / 0.02))  # ~0 uptrend/flat, ~1 downtrend
+                _ta_align_mh = max(0.0, np.tanh(_ta_win_pos_dir * ret_vlong / 0.02))  # trend-aligned (product>0)
+                _ta_win_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~0 loss, ~1 deep winner
+                _max_hold_ext_down = 0.25 * _down_trend * _ta_align_mh * _ta_win_gate
+                _max_hold = _max_hold * (1.0 + _max_hold_ext_down)
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
