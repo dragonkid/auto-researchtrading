@@ -1769,7 +1769,24 @@ class Strategy:
                     # weak gate ~0 -> byte-identical. New cross-component data dep: scale-in
                     # full_target sustained boost depends on (weak_persist, ret_vlong sign).
                     _persist_down_gate = max(0.0, np.tanh(-ret_vlong / 0.02))  # ~0 uptrend, ~1 downtrend
-                    _persist_sustain = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_down_gate
+                    # Exp7 (architectural, indep): DIRECTIONAL-DOWNTREND AMPLIFIED sustained
+                    # boost magnitude. The Exp5 keep used PERSIST_BOOST_MAG (0.12) uniformly
+                    # for the sustained boost. Crash (the regime that benefited, +0.0148)
+                    # has DD 2.51pct -- huge headroom below the 5pct dd_gate knee -- and is
+                    # return-limited (Sharpe 1.264). A LARGER sustained boost magnitude for
+                    # the directional-downtrend (crash) partition captures more downtrend
+                    # return at still-safe DD. Distinct from raising the UNIFORM magnitude
+                    # (which would also raise the first-bar boost for mixed/rally that the
+                    # fe6acd4d keep calibrated): this amplifies ONLY the scale-in sustained
+                    # path AND ONLY for the directional-downtrend gate (ret_vlong<0) that
+                    # the Exp5 keep proved isolates crash from rally. rally (ret_vlong>0 ->
+                    # _persist_down_gate 0) byte-identical; mixed (rv bimodal -> gate ~0
+                    # mean) byte-identical; bull (ret_vlong>0) byte-identical; sideways
+                    # (ret_vlong~0) byte-identical. Only crash shorts (ret_vlong<0, weak_persist
+                    # ~1 in persistent downtrend) get the amplified sustained size. New data
+                    # dep: sustained boost magnitude depends on ret_vlong sign (was uniform).
+                    _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_down_gate  # 0.12 base, 0.22 in downtrend
+                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
