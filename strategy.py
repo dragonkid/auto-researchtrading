@@ -2467,7 +2467,25 @@ class Strategy:
                         # fast-saturate discipline as the ct-shrink/time-pressure keeps (near-
                         # constant gate where it fires -> no noise-driven cushion wobble).
                         _dr_vlong_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.01))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vlong_align  # 1.0 loss/ct/slope-weak/multi-day-ct, up to ~1.6 trend-aligned+profit+slope+vlong
+                        # BRANCH step5: LONGS-IN-PERSISTENT-DOWNTREND cushion disengagement. The
+                        # vlong_align gate (step2) catches rally pullback SHORTS (product strongly
+                        # negative -> gate 0) but NOT mixed's bounce LONGS: those have ret_vlong
+                        # slightly POSITIVE during local bounces (product small positive -> gate~1.0
+                        # -> cushion stays -> mixed byte-identical, the +0.0026 step1 gain lost).
+                        # mixed's bounce longs happen DURING the persistent multi-day downtrend
+                        # (_down_persist high) -- a LONG whose own 96-bar trend briefly turned up
+                        # inside a PERSISTENT bear is a dead-cat-bounce long that should NOT ride
+                        # giveback (it is fighting the persistent trend). Disengage the cushion for
+                        # LONGS specifically when the persistent-downtrend duration signal is high.
+                        # SHORTS keep the vlong_align gate unchanged (a short in a persistent downtrend
+                        # IS trend-aligned -> cushion stays -> crash protected). General principle:
+                        # the giveback cushion is earned by trading WITH the PERSISTENT multi-day
+                        # direction; a transient bounce long against persistent bear does not earn it.
+                        # _down_persist is the already-computed 48-bar fraction of ret_vlong<0 bars
+                        # (noise-robust duration aggregate, line 588). Smooth, no new boundary.
+                        if _dr_pos_dir > 0.0:  # longs only
+                            _dr_vlong_align = _dr_vlong_align * (1.0 - 0.70 * _down_persist)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vlong_align  # 1.0 loss/ct/slope-weak/multi-day-ct/persistent-bear-long, up to ~1.6 trend-aligned+profit+slope+vlong
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
