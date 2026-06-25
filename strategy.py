@@ -1783,7 +1783,6 @@ class Strategy:
                 # Direction-agnostic general principle (no regime label): cautious scale-in
                 # for counter-trend entries in a vol-flux regime. New cross-timescale x
                 # cross-trend data dep at scale-in pace.
-                _vov_gate = 0.0  # default; recomputed below if history sufficient (also consumed by adverse-freeze)
                 _vov_n = 6
                 if len(closes) >= 24:
                     _vov_samples = np.array([
@@ -1828,24 +1827,7 @@ class Strategy:
                     # 20-bar-trend-aligned positions unaffected. Fast-saturating /0.01
                     # (same as other ret_vlong ct gates -> near-constant, noise-free).
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
-                    # Exp6 (architectural, indep): VOL-OF-VOL boost on the adverse-freeze
-                    # magnitude (extends the Exp4 keep's vol-flux x ct insight from scale-in
-                    # PACE to the adverse-freeze PATH). During vol-flux (high vol-of-vol), an
-                    # adverse move on a counter-trend position is more likely a REAL reversal
-                    # (the vol regime is shifting against the position) -> strengthen the
-                    # freeze (cap the position smaller through scale-in -> smaller realized
-                    # loss on the ct loser). Distinct from the pace effect (Exp4 slows the
-                    # pace; this freezes more of the adverse-delta). Gated on the SAME _ct_si_gate
-                    # (trend-aligned positions unaffected -> byte-identical for rally trend
-                    # longs / crash trend shorts / bull longs) so it cannot repeat Exp2's
-                    # catastrophe (which slowed trend-aligned). Uses the SAME _vov_gate computed
-                    # for the pace path (no new price-derived reads). Max freeze magnitude
-                    # 0.75 -> 0.90 at deep vol-flux on ct positions (capped <1 to keep partial
-                    # scale-in, never a full freeze). Smooth tanh, ct-gated, vol-flux-modulated.
-                    # New cross-component data dep: adverse-freeze magnitude depends on
-                    # vol-of-vol x counter-trend-at-multi-day interaction.
-                    _adv_freeze_mag = 0.75 + 0.15 * _vov_gate
-                    _adv_freeze = _adv_freeze_mag * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
+                    _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
