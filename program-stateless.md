@@ -23,13 +23,7 @@ Your job: **improve the current strategy in `strategy.py`** through iterative ex
 ### Phase priority rule
 Focus on maximizing composite_score (= mean regime scores - 0.3*std). Stability test is ENABLED — applies to regimes with positive score.
 
-**Prioritise return/Sharpe uplift over DD shaving (2026-06-25).** The scoring v3 formula `signal_quality × ... × return_bonus(APY)` is designed so that **Sharpe gain dominates DD reduction 11-36x** on 4/5 regimes under realistic margins (+0.2 Sharpe vs −0.5% DD vs +2% APY). The dd_gate knee at 5% is a leverage-farming blocker, NOT a target to shave rally DD from 5.12% to 4.9%. If your last 3+ experiments all target "lower rally DD" or "break mixed's grid wall via exit/emission tweaks", you are in a DD-shaving rut — switch to a direction that raises APY or Sharpe directly:
-- **New voter / signal axis** that admits more (or higher-quality) entries on a regime with low trade count (mixed 43 trades, crash 52) — more genuine entries = more return.
-- **Hold-extension / profit-capture tuning** that rides winners longer for more PnL (not harvest-timing changes that only reduce giveback = DD).
-- **Scale-in / conviction-sizing** that commits more size on high-conviction bars (signal-selective, NOT uniform leverage — uniform leverage is blocked by dd_gate knee@5).
-- **Entry-admission relaxation** that admits marginal trades if they have positive expected return (verify WR/PF doesn't regress).
-
-Do NOT continue probing the same "mixed grid-absorption wall" or "rally entry over-commitment" directions if the last 10+ experiments on them were byte-identical or sub-noise discards — those walls are documented total (grid re-quantizes upstream size logic; exit-side changes don't engage mixed's TIME-pressure binding exit). Pursuing a walled direction wastes your experiment budget. A mixed gain that requires breaking the grid wall is unreachable from the entry/exit side — move on to a regime or axis where headroom exists.
+**Scoring v3 incentive balance (2026-06-25).** Under the current formula `signal_quality × ... × return_bonus(APY)`, Sharpe gain dominates DD reduction **11-36x** on 4/5 regimes under realistic improvement margins (+0.2 Sharpe vs −0.5% DD vs +2% APY). The dd_gate knee at 5% is a **leverage-farming blocker**, not a target — it exists so that uniform leverage scaling (raise LEVERAGE_K → APY and DD scale 1:1) drops composite, NOT so that shaving rally DD from 5.1% to 4.9% is a worthwhile experiment. When choosing your next direction, weight the marginal score gains: a change that raises Sharpe or APY is an order of magnitude more score-efficient than an equivalent-effort change that only lowers DD. Apply the existing saturation rule (Phase 1 step 2) honestly — if a direction has 10+ prior discards, switch to a structurally different axis rather than retrying the same wall with a new gate variant.
 
 ## Session protocol
 
