@@ -2250,33 +2250,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Exp7 (architectural, indep): HURST-PERSISTENCE exit-pressure attenuation
-                # for trend-aligned WINNERS (extends the Hurst signal from Exp1 entry-boost
-                # which was grid-blocked, to the EXIT path which is NOT grid-blocked). NEW
-                # orthogonal data axis on the exit fusion: _fast_r2 measures LINEAR fit
-                # goodness, slope measures DRIFT direction, ER measures PATH efficiency --
-                # NONE measures LONG-MEMORY PERSISTENCE (Hurst H: >0.5 persistent, <0.5
-                # mean-reverting). A persistent regime (high H) trend-aligned WINNER is in a
-                # regime where the trend CONTINUES -> hold it longer (attenuate soft exit
-                # pressure so the winner rides the persistent trend -> more return captured
-                # -> higher Sharpe/APY, the scoring v3 incentive). Gated on trend-ALIGNMENT
-                # (pos_dir matches ret_vlong sign) AND in-profit (pos_pnl>0) so it only
-                # attenuates for genuine trend-aligned winners; counter-trend / losing
-                # positions byte-identical (gate 0). Byte-identical when H<=0.55 (chop/mean-
-                # reverting -> no attenuation -> harvest fast as baseline). Computed on the
-                # 96-bar log-HL2 (smooth windowed, no zero-crossing -> noise-robust under
-                # AR(1); same series as ret_vlong). Max 20% attenuation at deep persistence.
-                # Distinct from the trend-strength hold bonus (ret_long magnitude) and the
-                # convex de-risk cushion (giveback shape): this keys on REGIME persistence,
-                # not trend magnitude or giveback. New cross-timescale data dep: exit
-                # pressure depends on long-memory persistence x trend-alignment x profit.
-                _hurst_exit = _hurst_rs(np.log(_hl2[-96:])) if len(_hl2) >= 96 else 0.5
-                _pos_dir_he = 1.0 if current_pos > 0 else -1.0
-                _hurst_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_he / 0.04))  # ~1 trend-aligned
-                _hurst_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~1 winner
-                _hurst_persist_gate = max(0.0, np.tanh((_hurst_exit - 0.55) / 0.15))  # ~0 chop, ~1 persistent
-                _hurst_exit_atten = 1.0 - 0.20 * _hurst_trend_align * _hurst_profit * _hurst_persist_gate
-                _soft_max = _soft_max * _hurst_exit_atten
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
