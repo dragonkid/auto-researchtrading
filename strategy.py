@@ -1625,8 +1625,27 @@ class Strategy:
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
                 _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
-                _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
-                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp3 (architectural simplification): REMOVE the _dvp_boost term
+                # (directional-volume-pressure entry conviction boost). Hypothesis: it is
+                # REDUNDANT with _close_conv_boost, which shares the IDENTICAL gate envelope
+                # (_trend_w * _er_w * _bull_vlong * _conv, same +0.05 magnitude, same
+                # multi-day-uptrend bull gate / ungated bear). Both fire on exactly the same
+                # trend-aligned, ER-confirmed, multi-day-confirmed, conviction-saturated
+                # entries; the only difference is the conviction signal itself (DVP
+                # volume-direction vs close-loc bar-shape). Two near-identical gates firing
+                # on the same entries double-count the same trend-continuation conviction
+                # (their +0.05 boosts MULTIPLY on the same entries -> up to +0.10 on the
+                # most-saturated trend entries -> grid-lattice-cell risk on rally, and
+                # correlated-noise amplification since both key off the same trend/ER/vlong
+                # gates). Disabling _dvp_boost (set to 1.0) tests redundancy: if close_conv
+                # alone carries the signal, score holds or improves (simpler, less
+                # over-commitment, better OOS); if _dvp_boost is load-bearing, the
+                # removal regresses and confirms DVP is non-redundant. Either outcome is an
+                # honest trial. The variable is kept (=1.0) so the target expression is
+                # unchanged structurally. Code-structure simplification: disables 2 lines
+                # of signal computation + the volume-direction dependency.
+                _dvp_boost_bull = 1.0
+                _dvp_boost_bear = 1.0
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
