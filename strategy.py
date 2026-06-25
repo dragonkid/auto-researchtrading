@@ -1552,49 +1552,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp1 (architectural, indep): PRICE-EXTENSION attenuator on the entry-boost
-                # product. NEW data dependency + new control point: how far the current close
-                # sits from the slow EMA (EMA_SLOW=21), normalized by a slow realized vol into a
-                # z-score-like extension magnitude. The ~10 entry-boost terms (vol-rise, BTC-vol,
-                # partner-vol, close-conv, DVP, BTC-DVP, partner-DVP, mixed-cell) all ADD first-bar
-                # size when their conjunction confirms a trend entry, but NONE conditions on how
-                # EXTENDED the price already is along that trend. A trend entry LATE in an extended
-                # leg (close far above the slow EMA in an uptrend) is a CHASING entry -> the boosts
-                # over-commit first-bar size exactly when the next move is statistically more likely
-                # to be a pullback (mean-reversion of the extension) -> bigger position into the
-                # pullback -> bigger DD (rally's binding DD 5.12pct sits just above the dd_gate
-                # knee@5; the feda0ffa keep proved rally DD-reduction via entry over-commitment
-                # removal is the viable lever). Attenuate the boost PRODUCT (not individual terms)
-                # toward 1.0 (no boost) as extension deepens: near-EMA entries keep full boost
-                # (byte-identical when extension~0), deeply-extended entries get boosts cut.
-                # Distinct from ret_long/ret_vlong (WINDOW returns, not instantaneous distance
-                # from a smoothed level), vwap_dev (vs volume-weighted typical price, a level
-                # deviation not slow-MA distance), and _close_conv (intrabar close POSITION, not
-                # multi-bar extension). Signed extension by side: long entries attenuate on
-                # UPWARD extension (close above EMA), short entries on DOWNWARD extension (close
-                # below EMA) -- symmetric, direction-agnostic. Normalized by 36-bar realized vol
-                # (annualization-agnostic ratio: extension/vol scales 1:1 under leverage, so the
-                # attenuator is leverage-invariant like the dd_gate). Trend-gated by
-                # _trend_strength_w (extension in chop is mean-reversion noise where boosts
-                # barely fire anyway; gating confines the attenuator to genuine trend-chasing).
-                # Continuous tanh (no decision boundary); one-sided (only attenuates, never boosts);
-                # max 0.20 cut at deep extension. Multiplies into the boost product alongside the
-                # existing shrink-side attenuators (capped at 1.0 net per side).
-                _ext_ema = ema(closes[-(EMA_SLOW + 5):], EMA_SLOW)[-1]
-                _ext_dev = (mid - _ext_ema) / max(_ext_ema, 1e-10)  # signed, + = above slow EMA
-                _ext_vol = max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6)
-                _ext_z = _ext_dev / max(_ext_vol, 1e-6)  # extension in vol-units (scale-invariant)
-                _ext_gate = _trend_strength_w  # 0 chop (off -- chop extension is MR noise), ~1 trend
-                _ext_bull = max(0.0, _ext_z)   # long entries care about upward extension
-                _ext_bear = max(0.0, -_ext_z)  # short entries care about downward extension
-                _ext_atten_bull = 1.0 - 0.20 * _ext_gate * max(0.0, min(1.0, np.tanh((_ext_bull - 1.5) / 1.0)))
-                _ext_atten_bear = 1.0 - 0.20 * _ext_gate * max(0.0, min(1.0, np.tanh((_ext_bear - 1.5) / 1.0)))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _ext_atten_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _ext_atten_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
