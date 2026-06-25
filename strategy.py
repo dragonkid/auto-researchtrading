@@ -118,6 +118,46 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
 
+# Exp (architectural, indep): DD-HEADROOM-CONDITIONED RETURN-SEEKING first-bar size
+# boost. DISTINCT from the prior portfolio-DD-headroom boost branch (cabfb6f1 era,
+# reverted): that ran when rally MaxDD was 1.57pct (5-15x below the then-8pct knee) so a
+# uniform boost over-sized rally's high-churn entries -> stability 1.0->0.853 collapsed.
+# At the current feda0ffa baseline rally MaxDD is 5.12pct -- RIGHT AT the 5pct dd_gate
+# knee -- so rally has NO headroom: a headroom-gated boost is ~0 for rally by
+# construction (self-limiting), while crash (DD 2.46pct), sideways (1.88pct), bull
+# (2.49pct) retain ~50pct headroom each. The mechanism is therefore NATURALLY
+# rally-sparing at this operating point without a hard regime gate.
+#
+# Mechanism: _port_dd_headroom = remaining DD fraction below the 5pct dd_gate knee
+# (1.0 at portfolio peak equity, 0.0 at 5pct portfolio DD). Boost = 1 + MAG * headroom,
+# first-bar-only, multiplied into BOTH long and short entry targets. The boost FADES
+# as the portfolio draws down -> self-disarms during DD episodes (exactly when the
+# existing _port_dd_atten SHRINK takes over) -> the two form a complementary pair:
+# headroom->boost at peak (return-seeking, return_bonus lever), DD->shrink in drawdown
+# (risk control, dd_gate lever). General principle (DD-headroom -> return-seeking in
+# the size dimension), symmetric (both directions), no regime label.
+#
+# Churn-gate (the lesson from the reverted branch's step2 diagnosis): rally's
+# high-churn BURST entries are the noise-driving population -- even at the knee, a
+# boost during a rally burst over-sizes the re-entries that drive equity-curve
+# tracking error. Gate the boost on the noise-immune integer churn partition
+# len(_eh) (the validated safe family): full boost when len(_eh)<=1 (sparse entries:
+# crash/sideways/bull + rally quiet stretches), fading to 0 at len(_eh)>=3 (rally
+# bursts). This is the SAME churn gate used by _churn_size_atten / _calm_ct / the
+# grid, so it composes with the existing rally-sparing stack.
+#
+# Conservative MAG 0.12 (vs the reverted branch's 0.8): crash APY 11.8 -> ~12.3pct,
+# sideways 14.3 -> ~14.9, bull 20.4 -> ~21.2 at peak equity, with DD scaling ~1:1
+# (crash 2.46 -> ~2.7, sideways 1.88 -> ~2.1, bull 2.49 -> ~2.7 -- all stay well below
+# the 5pct knee where dd_gate's exp penalty bites). return_bonus = log(2+APY/10):
+# crash gain ~+1.7pct on the bonus factor. Sharpe is scale-invariant so unaffected
+# (the lever is pure return_bonus, the factor the scoring redesign incentivizes).
+# Byte-identical for any position opened during a DD episode (headroom=0 -> boost 1.0)
+# and for burst entries (churn gate 0 -> boost 1.0). Leverage-coupled knee (0.05 is in
+# DD-fraction space, already leverage-normalized via _port_dd_atten's scale discipline).
+PORT_DD_HEADROOM_KNEE = 0.05      # dd_gate knee (5pct portfolio DD fraction); boost saturates to 0 here
+PORT_DD_HEADROOM_MAG = 0.12       # max first-bar size boost at full headroom (peak equity, sparse entry)
+
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
 # Exp1 (naive 2x BASE_POSITION_SIZE, discarded fcae6004) proved the strategy is
@@ -337,6 +377,16 @@ class Strategy:
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
+        # Exp (architectural, indep): DD-HEADROOM-CONDITIONED return-seeking first-bar
+        # size boost. See PORT_DD_HEADROOM_* comments for full mechanism. Computed here
+        # from the SAME instantaneous equity/peak used by _port_dd_atten (so the two
+        # share the exact same DD-fraction signal and form a complementary boost/shrink
+        # pair). headroom = unused fraction of the 5pct dd_gate knee (1 at peak equity,
+        # 0 at 5pct portfolio DD). The actual first-bar application (churn-gated) is at
+        # the entry-target assembly below; this is just the raw headroom scalar. Smooth
+        # tanh saturation (no boundary); 0 during any DD episode at/ past the knee.
+        _port_dd_frac_inst = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
+        _port_dd_headroom = max(0.0, 1.0 - np.tanh(_port_dd_frac_inst / PORT_DD_HEADROOM_KNEE))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -1037,6 +1087,18 @@ class Strategy:
                 # is noisy near boundary). New data dep: first-bar entry size depends on
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
+                # Exp (architectural, indep): DD-HEADROOM-CONDITIONED return-seeking
+                # first-bar size boost (see PORT_DD_HEADROOM_* comments). Churn-gated
+                # on the SAME noise-immune integer partition as _calm_ct / _churn_size_atten:
+                # full boost at len(_eh)<=1 (sparse entries: crash/sideways/bull + rally
+                # quiet stretches), fading to 0 at len(_eh)>=3 (rally bursts = the
+                # noise-driving population the reverted cabfb6f1-era branch over-sized).
+                # Byte-identical for burst entries (gate 0 -> boost 1.0) and during DD
+                # episodes (headroom 0 -> boost 1.0). Symmetric (applied to both
+                # directions at the entry-target assembly). New cross-component data
+                # dep: first-bar size depends on portfolio-DD-headroom x churn partition.
+                _headroom_churn_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 sparse, ~0 bursting
+                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_churn_gate
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
@@ -1553,11 +1615,11 @@ class Strategy:
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _headroom_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _headroom_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
