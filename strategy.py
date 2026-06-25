@@ -247,7 +247,7 @@ ENTRY_ACCUM_THRESH = 0.0
 # first-bar size boost (mirrors the prior branch's +0.05 headroom-boost scale).
 PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
-PERSIST_BOOST_MAG = 0.12
+PERSIST_BOOST_MAG = 0.14
 
 
 class Strategy:
