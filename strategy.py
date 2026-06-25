@@ -2509,6 +2509,26 @@ class Strategy:
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural, indep): VOL-EXPANSION gate on the de-risk
+                        # convex cushion. The cushion (k>1 -> ride giveback) is earned by
+                        # trend-alignment + profit + slope-confirmation. But it is BLIND to
+                        # vol-regime transitions: a trend-aligned winner that starts giving
+                        # back WHILE realized vol is EXPANDING (vol_6 >> vol_18, the
+                        # _ve_pressure signal already computed at line ~2164) is more likely
+                        # facing a genuine regime-shift reversal than a noise pullback --
+                        # vol expansion precedes trend breaks. Tighten the cushion (drive k
+                        # toward 1.0 = linear fast cut) when vol_expansion is elevated, so a
+                        # giving-back winner during a vol transition de-risks faster instead
+                        # of riding the transition deeper. New cross-subsystem data dep: the
+                        # de-risk cushion SHAPE (not just activation) depends on the 2nd-order
+                        # vol-expansion signal (a different exit-path quantity from slope/pp/
+                        # time). Continuous tanh, max ~60% cushion erosion at deep expansion;
+                        # at vol_expansion<=1.3 (calm) the gate is ~0 -> byte-identical. No
+                        # regime label -- general principle: a winner losing vol-stability
+                        # earns less giveback-riding cushion. Targets rally Sharpe (the 15%
+                        # losing trades are trend longs that reverse on vol transitions).
+                        _dr_volexp_gate = max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))  # ~0 calm, ~1 deep expansion (mirrors _ve_pressure activation)
+                        _dr_k = 1.0 + (_dr_k - 1.0) * (1.0 - 0.60 * _dr_volexp_gate)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
