@@ -826,6 +826,33 @@ class Strategy:
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
+            # Exp1 (architectural, indep): WEAK-PERSIST-GATED strength_scale DISPERSION
+            # COMPRESSION (per-trade size normalization for mixed's PnL-variance drag).
+            # Prior-session CROSS-EXPERIMENT CONCLUSION (verifiable): mixed's binding floor
+            # (Sh0.825, 100pct WR, 45 trades) is NOT addressable via exit-side smoothing,
+            # loss-streak, tp_harvest, or max_hold -- all confirmed inert (4x byte-identical
+            # on _target_ema). The UNTESTED axis is per-trade SIZE NORMALIZATION: mixed's
+            # Sharpe drag is TRADE-TO-TRADE PnL MAGNITUDE VARIANCE (45 winning trades of
+            # varying sizes), the one axis never targeted. strength_scale multiplies first-
+            # bar size by (abs(ret_short)/thresh)^0.85 in [0.6, 2.0] -> each entry's size
+            # scales with its instantaneous signal strength at entry -> trades of different
+            # sizes -> PnL magnitude variance (the mixed drag). In a PERSISTENTLY WEAK
+            # multi-day trend (mixed: |ret_vlong|<0.02 for weeks -> _weak_persist~1), the
+            # signal-strength dispersion is noise rather than information (a weak-trend
+            # regime's per-bar strength variation does not predict per-trade PnL) ->
+            # COMPRESS the dispersion toward 1.0 so all mixed entries are ~uniform size ->
+            # each winning trade captures a similar move -> lower PnL variance -> higher
+            # Sharpe (the lever the prior session identified as the only untested mixed axis).
+            # NEW cross-component data dep: strength_scale dispersion depends on the multi-
+            # day weak-trend duration fraction (_weak_persist). Byte-identical for trend
+            # regimes (_weak_persist~0 -> strength_scale unchanged): bull/crash/rally keep
+            # their signal-strength sizing (their dispersion IS information -- trend entries
+            # with stronger conviction ARE bigger winners). Smooth tanh (no boundary, no
+            # decision flip). General principle (no regime label): in a persistently-weak
+            # multi-day trend, signal-strength dispersion is noise -> normalize it. Targets
+            # mixed (binding floor); trend-aligned regimes byte-identical by construction.
+            _ss_compress = max(0.0, np.tanh(_weak_persist / 0.50))  # 0 trend, ~1 persistent-weak
+            strength_scale = 1.0 + (strength_scale - 1.0) * (1.0 - 0.50 * _ss_compress)
             # Architectural simplification: removed HIGH_VOTE_BOOST_MULT (constant 1.20).
             # Always-on positive size bias is redundant: strong-sum entry gate already
             # filters by voter conviction, and the conviction-margin first-bar adjuster
