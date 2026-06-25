@@ -1824,7 +1824,29 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
-                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
+                    # Exp5 (architectural, indep, BRANCH-OPEN CANDIDATE): PROFIT-GATE on
+                    # the sustained boost. The boost currently fires for ALL positions in
+                    # a persistent downtrend (ret_vlong<0 over >50pct of 48 bars), including
+                    # LOSING bull-correction longs held underwater during a pullback (the
+                    # -0.0034 bull leak in baseline 52a3e671). Exp4 v2 (duration-based trend-
+                    # alignment gate) recovered the bull leak fully (+0.0034) BUT lost crash
+                    # -0.041: it removed the boost from crash RELIEF-RALLY LONGS (counter-
+                    # trend longs held during crash bounces Feb/Mar/Aug 2022) that are
+                    # PROFITABLE (they caught the bounce, pos_pnl>0). The separator Exp4 v2
+                    # lacked: crash relief-rally longs are WINNERS (pos_pnl>0), bull
+                    # correction longs are LOSERS (pos_pnl<0). Gate the boost on POSITION
+                    # PROFITABILITY: full boost for winners (pos_pnl>=0 = crash shorts,
+                    # crash relief-rally longs), fading to 0 for losers (pos_pnl<0 = bull
+                    # correction longs underwater). Return-seeking principle: sustain
+                    # WINNERS bigger (capture more of the winning move -> higher APY),
+                    # not LOSERS (amplifies the loss -> lower Sharpe). Smooth tanh on
+                    # pos_pnl/|stop| (no boundary; pos_pnl is already used elsewhere as
+                    # _pnl_scale). NEW cross-component data dep: sustained boost depends on
+                    # realized pos_pnl sign (was trend-direction only). Crash gain preserved
+                    # (crash shorts + crash relief-rally longs both pos_pnl>0 -> boost kept);
+                    # bull leak recovered (bull correction longs pos_pnl<0 -> boost removed).
+                    _persist_profit_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 losers, ~1 winners
+                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur * _persist_profit_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
