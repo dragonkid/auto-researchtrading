@@ -2194,6 +2194,37 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # Exp3 (architectural, indep): MULTI-DAY COUNTER-TREND small-winner
+                    # de-risk floor RAISE. mixed_2025 (binding low score 0.488, Sh 0.81):
+                    # its typical bounce-long wins are TINY (~0.1pct/trade, peak well below
+                    # the tp_harvest 1.6*_pp_min activation ~3.4pct), so they are harvested
+                    # by TIME/slope at the de-risk floor 0.55 -- a GRADUAL ramp that lets the
+                    # small paper profit give back through mid-range exit-pressure noise
+                    # before the binary exit fires. Exp1 (longer holds) regressed mixed
+                    # (more giveback); Exp2 (more admissions) admitted losers. The remaining
+                    # lever: harvest the small ct bounce wins FASTER (near-binary) so less
+                    # of the tiny peak is given back. Gate on the multi-day COUNTER-TREND
+                    # signature (ret_vlong*pos_dir<0 = mixed's bounce-longs in a down year;
+                    # the validated mixed/sideways separator used in _ts_supp) AND small-peak
+                    # (peak<1.6*_pp_min = tp_harvest-inactive zone, where mixed's typical
+                    # trades live). Fast-saturating /0.04 ret_vlong ct factor (near-constant,
+                    # noise-free). Raise floor 0.55 -> up to 0.80 (near-binary fast harvest)
+                    # only for this signature. sideways: ret_vlong~0 -> ct factor ~0 ->
+                    # byte-identical (sideways small wins are trend-neutral, keep gradual
+                    # ramp). rally/bull/crash trend-aligned: product>0 -> ct factor 0 ->
+                    # byte-identical. crash shorts (ret_vlong<0, pos_dir=-1 -> product>0) ->
+                    # trend-aligned -> byte-identical. NEW cross-component data dep at the
+                    # de-risk graduation: floor depends on (ret_vlong, pos_dir, peak_pnl).
+                    # General principle (no regime label): a small-peak winner that is
+                    # counter-trend at the multi-day scale is a mean-reverting bounce whose
+                    # tiny edge erodes fast -- harvest it before giveback.
+                    _ctmd_dr = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
+                    # smooth small-peak gate: 1 well below 1.6*_pp_min (tp_harvest-inactive),
+                    # 0 above it (large peaks keep the gradual ramp + tp_harvest). Continuous
+                    # tanh on the (1.6*_pp_min - peak) gap so AR(1) noise on peak_pnl does
+                    # not flip a binary boundary.
+                    _small_peak_dr = max(0.0, np.tanh((1.6 * _pp_min - self.peak_pnl.get(symbol, 0.0)) / (0.3 * _pp_min)))
+                    _de_floor += 0.25 * _ctmd_dr * _small_peak_dr * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
