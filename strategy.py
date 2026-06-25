@@ -1999,29 +1999,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp1 (architectural, indep): LOSS-STREAK-gated counter-trend time-pressure
-                # shortening. NEW cross-subsystem data dep: the time-pressure subsystem
-                # (max_hold) currently reads NO portfolio feedback -- it is purely per-symbol
-                # price/vol/trend. The portfolio loss-streak signal (_loss_streak, already
-                # computed and driving entry-size _streak_ct_shrink + admission _streak_ct_admit)
-                # has NEVER been routed into the EXIT/TIME-PRESSURE subsystem. mixed is the
-                # binding floor (Sh0.825, APY4.5, 98.6pct time-pressure exits) and a multi-day
-                # DOWN year -> its wrong-side longs accumulate realized losses -> streaks build
-                # -> shortening max_hold further for counter-trend-at-multi-day positions after
-                # a streak cuts those specific losing holds faster -> smaller realized losses ->
-                # higher mixed Sharpe (the raw lever; mixed stab 1.0 so raw IS the score).
-                # Sparing by construction: (a) the gate keys on the SAME validated counter-
-                # trend-at-multi-day indicator as _ct_hold_sat (-pos_dir*ret_vlong/0.01, fast-
-                # saturating -> near-constant, noise-free) so trend-aligned holds (bull longs,
-                # crash shorts -> _ct_hold_sat 0) keep max_hold byte-identical; (b) bull has
-                # high Sharpe -> few consecutive losses -> _loss_streak stays low -> the streak
-                # ramp ~0 -> bull byte-identical; (c) crash (trend-aligned shorts -> ct 0)
-                # byte-identical. Shrink-only on the hold window (shortens, never extends ->
-                # cuts losers faster, never blocks a winner). Max 1.5 bars further shortening
-                # at streak>=3 + full ct. Continuous tanh on both terms (no decision boundary).
-                # New control flow: a portfolio-feedback term in the time-pressure activation.
-                _streak_ct_hold = max(0.0, np.tanh((self._loss_streak - 1) / 2.0)) * _ct_hold_sat
-                _max_hold -= 1.5 * _streak_ct_hold
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
