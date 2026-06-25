@@ -117,32 +117,6 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
-# Exp2 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY WINNER giveback widening.
-# mixed_2025 is the binding floor (0.488, Sh 0.808, 45 trades, 100pct WR, APY 4.4pct):
-# every mixed trade WINS but the average profit is ~0.1pct -- winners are harvested too
-# small. The emission-reduction keep (594c9175) added +2 trades by splitting REDUCTIONS
-# (trimming winners), which made per-trade profit EVEN SMALLER (Sh 0.808->0.810) -- the
-# wrong direction for APY. The real mixed lever is letting its winners run LONGER (fewer/
-# bigger wins). Prior session proved hold-extension (max_hold/tp_harvest) is DISCONNECTED
-# for mixed (exits at small peaks < 1.6*_pp_min before those bind); giveback/slope exits
-# fire first. The entry-conviction cushion (let winners ride giveback) was REVERTED
-# (bull/rally coupled, 8-step branch). THIS experiment gates the giveback WIDENING on
-# MULTI-DAY TREND DIRECTION (ret_vlong*pos_dir<0 = counter-trend-at-multi-day, the VALIDATED
-# mixed/bull separator from the 594c9175 keep) AND on being IN PROFIT (pos_pnl>0) -- so
-# mixed's bounce-long winners ride small giveback pullbacks (bigger wins -> higher APY)
-# while LOSERS (pos_pnl<0) keep the fast cut (gate off -> byte-identical) and bull/rally
-# trend-aligned longs (product>0 -> gate 0 -> byte-identical) are SPARED. The separator
-# that the entry-conviction branch could NOT find (entry margin is shared by bull/rally
-# high-conviction longs) IS ret_vlong-direction (mixed longs are in a multi-day DOWNTREND;
-# bull/rally longs are in a multi-day UPTREND -- the gate is 0 for the latter by construction).
-# Continuous tanh, fast-saturating /0.01 ret_vlong (near-constant, noise-free per the
-# validated branch-step-9 lesson), widening on the giveback TOLERANCE (not a gate ->
-# no admission-boundary flip), symmetric (both long/short ct winners). Distinct from the
-# portfolio-DD giveback TIGHTENING (which fires on DD fraction, not trend direction, and
-# only TIGHTENS <=1.0; this WIDENS >=1.0 and only for ct-at-multi-day winners). Byte-
-# identical at portfolio peak AND for trend-aligned regimes (gate 0).
-CT_WINNER_GIVEBACK_WIDEN = 0.45   # max fractional WIDENING of giveback tolerance for ct-at-multi-day winners (let mixed bounce-longs ride ~45pct more giveback before pp harvest)
-CT_WINNER_GIVEBACK_SCALE = 0.01   # ret_vlong ct-indicator scale (fast-saturating: rally/bull solid trends sit in flat tail -> near-constant widening where it fires, noise-free)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1817,15 +1791,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp2: ct-at-multi-day WINNER giveback widening (let mixed bounce-longs ride
-                # giveback -> bigger wins). Gate on ret_vlong*pos_dir<0 (counter-trend-at-multi-
-                # day, the validated mixed/bull separator) AND pos_pnl>0 (winners only; losers
-                # keep the fast cut). Fast-saturating /0.01 (near-constant where it fires,
-                # noise-free). Byte-identical for trend-aligned regimes (gate 0) and losers.
-                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
-                _ct_winner_gate = max(0.0, np.tanh(-_pos_dir_pp * ret_vlong / CT_WINNER_GIVEBACK_SCALE)) * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
-                _pp_widen = 1.0 + CT_WINNER_GIVEBACK_WIDEN * _ct_winner_gate
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_widen
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
