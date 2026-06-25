@@ -901,14 +901,23 @@ class Strategy:
             # Sideways (weak-trend too) may fire but sideways has small positions (under cap).
             # General principle (no regime label): variance-cap the weak-trend entries (where
             # large size is variance-rich dead capital, not signal-correct trend capture).
+            # BRANCH step4: REMOVE the regime gate (step2 ct and step3 weak_persist both left
+            # mixed byte-identical -- mixeds ret_vlong is bimodal, neither gate fires at mixeds
+            # large-trade bars). Revert to step1s regime-blind cap BUT LOOSEN the cap from 1.6x
+            # to 2.5x budget so ONLY the most extreme outlier trades get trimmed. Step1 at 1.6x
+            # trimmed too many trend-aligned winners (sideways -0.370, rally -0.158); a looser
+            # cap trims only the tail of the size distribution, preserving most trend winners
+            # while still capping mixeds variance-inflating outliers (if they exceed 2.5x budget).
+            # The mixed gain in step1 was small (+0.0086); a looser cap may preserve it while
+            # cutting the trend-regime cost. No gate = no separator needed; magnitude alone
+            # isolates the extreme tail. General principle: cap only extreme outlier trades.
             _mag_budget = equity * BASE_POSITION_SIZE * TARGET_VOL
             _mag = size * realized_vol
-            _mag_cap = 1.6 * _mag_budget
-            if _mag > _mag_cap and _mag_budget > 0 and _weak_persist > 0.50:
-                # Soft-squash the size so its vol-adjusted magnitude approaches _mag_cap.
+            _mag_cap = 2.5 * _mag_budget
+            if _mag > _mag_cap and _mag_budget > 0:
                 _size_capped = _mag_cap / realized_vol
                 _over_frac = (_mag - _mag_cap) / max(_mag_cap, 1e-10)
-                _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))  # 0 at cap, ~1 at 2x
+                _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))
                 size = size * (1.0 - _squash_w) + _size_capped * _squash_w
 
             current_pos = portfolio.positions.get(symbol, 0.0)
