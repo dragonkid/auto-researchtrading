@@ -1744,7 +1744,33 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held
+                    # Exp5 (architectural, indep, BRANCH CANDIDATE): DIRECTIONAL
+                    # multi-day-downtrend-gated sustained persist_boost. Exp2 (this
+                    # session, discarded) showed sustaining _persist_boost through scale-in
+                    # raised mixed Sharpe 0.825->0.878 BUT collapsed rally (DD 5.12->30.59pct)
+                    # because _weak_persist (the magnitude gate |ret_vlong|<0.02) ALSO saturates
+                    # for rally's multi-bar weak-trend stretches. The DIRECTIONAL separator
+                    # isolates the two: mixed is a multi-day DOWN year (ret_vlong persistently
+                    # NEGATIVE for the held longs), while rally is a multi-day UP trend
+                    # (ret_vlong persistently POSITIVE). Gate the sustained boost on a
+                    # DIRECTIONAL multi-day downtrend: fire only when ret_vlong<0 (mixed),
+                    # NOT when ret_vlong>0 (rally/bull uptrend -> byte-identical). This is
+                    # the same validated ret_vlong signal used by the multi-day ct gates
+                    # (ct_vlong, ct_hold_sat) but applied to SCALE-IN size sustenance, a new
+                    # code path. Combined with _weak_persist (duration count, the keep's
+                    # separator) the conjunction requires BOTH persistent weak trend AND
+                    # negative multi-day direction -> isolates mixed's down-year oscillating
+                    # longs from rally's uptrend pullbacks (which have ret_vlong>0). crash
+                    # shorts (ret_vlong<0, pos_dir=-1): the boost applies to the position
+                    # magnitude (sustains crash short size) -- but crash shorts are trend-
+                    # aligned winning positions; a bigger sustained crash short captures
+                    # more of the downtrend -> higher crash APY (crash is return-limited
+                    # Sh1.25, DD 2.46pct has huge headroom). Sideways (ret_vlong~0) ->
+                    # weak gate ~0 -> byte-identical. New cross-component data dep: scale-in
+                    # full_target sustained boost depends on (weak_persist, ret_vlong sign).
+                    _persist_down_gate = max(0.0, np.tanh(-ret_vlong / 0.02))  # ~0 uptrend, ~1 downtrend
+                    _persist_sustain = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_down_gate
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
