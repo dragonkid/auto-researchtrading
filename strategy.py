@@ -1713,25 +1713,6 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
-                # BRANCH step7: MULTI-DAY trend-confirmation gate on the win-accelerator (same
-                # validated vlong signal as the de-risk cushion step2, applied to a DIFFERENT
-                # subsystem -- scale-in pace, not de-risk). The accelerator grows winning
-                # positions faster (lower _entry_full_bars_dyn), gated by 16-bar _slope_conf.
-                # But a COUNTER-TREND-AT-MULTI-DAY winner (rally pullback SHORT that briefly
-                # profits during an uptrend pullback: ret_vlong>0, pos_dir=-1 -> product<0)
-                # has _slope_conf>0 (near-term slope confirms the short during the pullback)
-                # -> accelerator fires -> over-builds the losing pullback short -> bigger
-                # realized loss when the uptrend resumes -> lower rally Sharpe. Gate the
-                # accelerator with the multi-day vlong alignment (fast-saturating /0.01, same
-                # as step2 cushion): ct-at-multi-day winners (gate 0) do NOT accelerate; trend-
-                # aligned (gate ~1) keep full acceleration. crash trend shorts (ret_vlong<0,
-                # pos_dir=-1 -> product>0 -> gate~1) byte-identical; rally/bull trend longs
-                # (product>0) byte-identical; mixed (product~0 -> gate~1) byte-identical. New
-                # cross-timescale data dep at the scale-in decision. Targets the SAME rally
-                # pullback-shorts carrier as step2 via a complementary path (build smaller +
-                # de-risk faster = double benefit on the losing short).
-                _win_vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_acc / 0.01))
-                _win_accel = _win_accel * _win_vlong_align
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
@@ -2230,16 +2211,6 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
-                # BRANCH step8: vlong-align gate on the scale-in-winning exit threshold (third
-                # application of the step2 multi-day signal, complementary path). The 0.20
-                # threshold bonus protects winning scale-in positions from noise-driven early
-                # exits. For COUNTER-TREND-AT-MULTI-DAY scale-in winners (rally pullback SHORTS
-                # briefly profitable in scale-in: ret_vlong>0, pos_dir=-1 -> gate 0), DO NOT grant
-                # the bonus -> exit easier -> cut the losing short before it fully builds. Trend-
-                # aligned scale-in winners (gate~1) keep the 1.20 protection byte-identical.
-                # crash trend shorts (gate~1) byte-identical; mixed (gate~1) byte-identical.
-                if _scale_in_winning:
-                    _exit_thresh = 1.0 + 0.20 * _win_vlong_align * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
@@ -2465,38 +2436,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp1 (architectural, indep): MULTI-DAY trend-confirmation gate on the
-                        # de-risk cushion. The cushion (k>1 -> hold near full size through moderate
-                        # giveback, the validated stability lever) currently keys on 20-bar
-                        # ret_long*pos_dir (_dr_align) and a 12/16/22-bar slope mean (_dr_slope_conf)
-                        # -- both SHORTER than the multi-day (96-bar) scale. A position can be
-                        # trend-aligned at 20 bars but COUNTER-TREND at the multi-day scale: that is
-                        # exactly mixed's held longs (local 20-bar bounce uptrend during a multi-day
-                        # DOWNTREND). The multi-day ret_vlong is THE validated separator (the keep
-                        # that moved _ts_supp from ret_long->ret_vlong fixed mixed by harvesting
-                        # mixed's wrong-side longs). Here it gates the CUSHION (a DIFFERENT exit
-                        # path from tp_harvest): when the position is counter-trend-at-multi-day
-                        # (ret_vlong*pos_dir<0), DISENGAGE the cushion (k->1, linear fast cut) so
-                        # mixed's wrong-side longs de-risk FASTER on giveback instead of riding the
-                        # cushion through chop -> smaller MTM oscillation -> higher mixed Sharpe.
-                        # Trend-aligned-at-multi-day regimes (bull longs ret_vlong>0, crash shorts
-                        # ret_vlong<0 pos_dir=-1 -> product>0, rally longs) keep the cushion
-                        # byte-identical (gate 1.0). Smooth tanh (no new decision boundary); reuses
-                        # the already-computed 96-bar ret_vlong. New cross-timescale data dep at the
-                        # de-risk decision.
-                        # BRANCH step2: FAST-SATURATING /0.01 scale (step1 /0.04 regressed crash
-                        # -0.0076: crash's trend-aligned shorts (ret_vlong~-0.03, pos_dir=-1 ->
-                        # product~+0.03) sat at tanh(0.75)=0.63 at /0.04 -> cushion partially
-                        # disengaged during crash recovery bounces -> 52->50 trades, Sh1.28->1.27).
-                        # /0.01 puts crash's solidly-positive product (0.03) in the FLAT saturated
-                        # tail -> tanh(3.0)=0.995 -> gate ~1.0 -> crash byte-identical (restored),
-                        # while mixed's bimodal ret_vlong (product~-0.005 at the bounce bars ->
-                        # tanh(-0.5)<0 -> gate 0) and rally's pullback shorts (product~-0.02 ->
-                        # tanh(-2.0)<0 -> gate 0) still disengage the cushion. Same validated
-                        # fast-saturate discipline as the ct-shrink/time-pressure keeps (near-
-                        # constant gate where it fires -> no noise-driven cushion wobble).
-                        _dr_vlong_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.01))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vlong_align  # 1.0 loss/ct/slope-weak/multi-day-ct, up to ~1.6 trend-aligned+profit+slope+vlong
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
