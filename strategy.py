@@ -1118,7 +1118,13 @@ class Strategy:
                 # rally (strong multi-day uptrend) while preserving mixed's bounce boost.
                 # ret_vlong is the 96-bar OLS slope (already computed, noise-robust). Deep-
                 # saturated /0.03 (near-constant, noise-free per the validated safe family).
-                _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day, ~0 strong
+                # BRANCH STEP4: sharpen /0.03 -> /0.015 so only VERY weak multi-day trends
+                # (mixed's flat down-year, |ret_vlong|~0) fire; crash dead-cat-bounce
+                # moments and rally deeper-pullback moments (moderate |ret_vlong| dip but
+                # not flat) are suppressed. step3 leaked at /0.03: rally -0.0072, crash -0.0043
+                # from momentary |ret_vlong| dips in trend regimes. mixed's |ret_vlong| sits
+                # near 0 throughout (weak-trend down year) so it stays fully firing at /0.015.
+                _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.015))  # ~1 very-weak, ~0 moderate+
                 _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
