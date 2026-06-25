@@ -2531,7 +2531,19 @@ class Strategy:
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                    _grad_gate = _trend_align_og * _profit_gate_og  # both required
+                    # BRANCH step9: MULTI-DAY vlong factor in the opp-gate graduated-exit blend
+                    # (fourth application of the step2 signal, complementary path). The graduated
+                    # opp-exit preserves winning trend-aligned positions through reversal voter
+                    # spikes. For COUNTER-TREND-AT-MULTI-DAY positions (rally pullback SHORTS
+                    # facing bull-voter reversal: ret_vlong>0, pos_dir=-1 -> product<0), the
+                    # 20-bar _trend_align_og is >0 (ret_long*pos_dir>0 during the pullback) so
+                    # graduated engages -> only PARTIAL exit on reversal -> the losing short
+                    # lingers. Disable graduated for ct-at-multi-day (full exit) so the losing
+                    # pullback short is fully cut on reversal. crash trend shorts (product>0 ->
+                    # gate 1) keep graduated byte-identical; mixed (product~0 -> gate~1) byte-
+                    # identical. Fast-saturating /0.01 (same as step2). Smooth tanh.
+                    _vlong_align_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.01))
+                    _grad_gate = _trend_align_og * _profit_gate_og * _vlong_align_og  # all required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
