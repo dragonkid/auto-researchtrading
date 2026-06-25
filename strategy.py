@@ -2815,41 +2815,6 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
-            # Exp1 (architectural): CONTINUOUS position-size-proportional emission
-            # threshold for counter-trend-at-multi-day small reductions. The existing
-            # emission gate is a BINARY dollar floor ($4 default, $2.8 if small AND ct):
-            # a same-sign reduction either exceeds the floor (emitted) or is absorbed
-            # (snaps to grid / never emitted). Mixed's binding-floor drag is partly
-            # structural: its small positions (~1 grid step = 0.06*equity*BASE) generate
-            # genuine signal-driven reductions whose magnitude is BELOW the $2.8 floor
-            # (5+ prior sessions confirmed "mixed positions are SMALL relative to the
-            # grid step -> snaps to the same quantized lattice point -> emitted target
-            # unchanged"). The binary step gate leaves these permanently absorbed -> the
-            # 45-trade sample_factor drag (sqrt(45/50)=0.9487 = -5.4pct of mixed score).
-            # Architectural change: replace the binary small-ct step gate with a
-            # CONTINUOUS ramp that scales the emission threshold DOWN proportionally
-            # as the position gets smaller AND the counter-trend-at-multi-day signal
-            # strengthens. Smaller ct positions (mixed's dead capital) get a
-            # proportionally lower floor (down to ~0.35*LEVERAGE_K = $1.4); large
-            # positions and trend-aligned reductions keep the full floor. Continuous
-            # tanh on BOTH the position-size axis (|current_pos|/_grid_em) and the ct
-            # signal (ret_vlong*pos_dir) -> no new decision boundary that flips under
-            # AR(1) noise (the gate ramps smoothly through the mixed operating range).
-            # Distinct from the prior binary gate (a step at |pos|<2*grid AND ct>0.50):
-            # this is a new control-flow FORM (continuous multiplicative ramp on TWO
-            # axes) that lowers the bar proportionally for the dead-capital population
-            # WITHOUT a hard threshold cross. Risk: lower bar could admit noise micro-
-            # resizes for other small-ct regimes (crash dead-cat longs, bull pullback
-            # shorts) -> mitigated by requiring BOTH small position AND strong ct
-            # (fast-saturating /0.005 so only DEEP ct qualifies, near-constant). The
-            # ramp only LOWERS the floor (never below 0.35*LEVERAGE_K); trend-aligned
-            # (ct signal 0) -> byte-identical to baseline.
-            if _is_resize:
-                _pos_dir_e1 = 1.0 if current_pos > 0 else -1.0
-                _ct_e1 = max(0.0, np.tanh(-_pos_dir_e1 * ret_vlong / 0.005))
-                _size_frac_e1 = max(0.0, 1.0 - abs(current_pos) / max(2.0 * _grid_em, 1e-10))  # 0 at |pos|=2*grid, 1 at pos=0
-                _emit_ramp = _ct_e1 * _size_frac_e1  # both required (small AND deep-ct)
-                _emit_thresh = _emit_thresh * (1.0 - 0.65 * _emit_ramp)  # floor ~0.35*LEVERAGE_K at full ramp
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
