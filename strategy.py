@@ -117,6 +117,31 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Exp3 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY WINNER slope-against attenuation.
+# mixed_2025 is the binding floor (0.488, Sh 0.808, 45 trades, 100pct WR, APY 4.4pct): every
+# mixed trade WINS but the average profit is ~0.1pct -- winners are harvested too small.
+# Exp2 proved the giveback-widening lever is DISCONNECTED for mixed (mixed exits at small
+# peaks BEFORE pp_pressure binds -- peak never reaches _pp_min activation threshold). So
+# mixed's binding exit must be slope-against / opp-gate / stop. This weakens the SLOPE-against
+# pressure for ct-at-multi-day WINNING positions (ret_vlong*pos_dir<0 AND pos_pnl>0) so
+# mixed's bounce-longs ride small slope-against noise (which is bounce-pullback noise in
+# a downtrend, not a real reversal) -> bigger wins -> higher mixed APY/Sharpe. Gate on
+# ret_vlong-direction (the VALIDATED mixed/bull separator from 594c9175 keep: mixed longs
+# in downtrend = ct; bull/rally longs in uptrend = trend-aligned = gate 0 = byte-identical)
+# AND pos_pnl>0 (losers keep the full fast slope-against cut -- slope IS the primary loser-
+# cutter, never weaken it for losers). Smaller magnitude (0.30) than the giveback widen since
+# slope-against is the dominant exit term and over-attenuation lets winners ride into real
+# reversals. RISK: rally's ct SHORTS (pos_dir=-1, ret_vlong>0 -> product<0 = ct-at-multi-day)
+# are ALSO ct; winning rally ct shorts would ride slope-against longer -> potential rally DD
+# cost (the documented bull/rally coupling for hold mechanisms). But bull (trend-aligned
+# longs) is SPARED by the ret_vlong-direction gate (unlike the entry-conviction cushion which
+# coupled bull too) -- tests whether ret_vlong-direction separates mixed from rally the way
+# it separated mixed from bull. If rally regresses but mixed improves -> open exploration
+# branch to gate rally out. Continuous tanh, fast-saturating /0.01 (near-constant, noise-free
+# per branch-step-9 lesson). Symmetric (both ct long/short winners). Byte-identical for
+# trend-aligned regimes + all losers.
+CT_WINNER_SLOPE_ATTEN = 0.30   # max fractional attenuation of slope-against pressure for ct-at-multi-day winners (ride small slope noise)
+CT_WINNER_SLOPE_SCALE = 0.01   # ret_vlong ct-indicator scale (fast-saturating, noise-free)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1753,6 +1778,14 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp3: ct-at-multi-day WINNER slope-against attenuation (let mixed bounce-longs
+                # ride small slope noise -> bigger wins). Gate on ret_vlong*pos_dir<0 (ct-at-multi-
+                # day, the validated mixed/bull separator) AND pos_pnl>0 (winners only; losers keep
+                # full fast slope-against cut). Fast-saturating /0.01 (near-constant, noise-free).
+                # Byte-identical for trend-aligned regimes (gate 0) and all losers.
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _ct_winner_sl = max(0.0, np.tanh(-_pos_dir_sl * ret_vlong / CT_WINNER_SLOPE_SCALE)) * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
+                _sl_slope_pressure = _sl_slope_pressure * (1.0 - CT_WINNER_SLOPE_ATTEN * _ct_winner_sl)
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
