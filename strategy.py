@@ -2508,23 +2508,6 @@ class Strategy:
             if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
                 _pos_dir_te = 1.0 if current_pos > 0 else -1.0
                 _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
-                # branch step3: WEAK-TREND ct smoothing amplifier. Step1 (trend-strength
-                # loss-gate) helped bull +0.0018 by keeping smoothing on bull's weak-trend ct
-                # pullback longs. Step2 (weak-trend FLOOR on _ct_te_str) catastrophically
-                # failed: the floor lifted smoothing for trend-ALIGNED weak-trend positions
-                # (rally longs, sideways mean-reverters) -> DD blowup + stability collapse.
-                # The fix: amplify smoothing ONLY for ct positions (where _ct_te_str>0),
-                # NOT trend-aligned (where _ct_te_str=0 -> amplifying 0 stays 0). Multiply
-                # _ct_te_str by (1 + weak_trend_boost) so weak-trend ct positions get STRONGER
-                # smoothing (capped at 1.0 via the min), while strong-trend ct positions (rally
-                # shorts, ret_vlong solidly off 0) keep the original gate (boost fades to 0).
-                # mixed ct longs (weak trend, _ct_te_str>0 on down-legs) get amplified
-                # smoothing on the down-legs; recovery legs (_ct_te_str->0) stay unsmoothed
-                # (ct-aligned momentarily) -- does NOT over-smooth trend-aligned positions
-                # (the step2 failure). Byte-identical for trend-aligned (alpha 0); strong-
-                # trend ct (rally) boost~0 -> keeps the loss-gate's rally raw benefit.
-                _weak_trend_boost = 0.30 * (1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02))))
-                _ct_te_str = min(1.0, _ct_te_str * (1.0 + _weak_trend_boost))
                 _te_alpha = 0.99 * _ct_te_str  # branch step5: alpha cap 0.97->0.99 (confirm peak)
                 # Profit-graduated smoothing (architectural, new data dep on pos_pnl
                 # sign). The _target_ema was added when stability was the binding wall
