@@ -2377,6 +2377,16 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
+                    # BRANCH step10: ct-at-multi-day floor RAISE (fifth application of the step2
+                    # signal, complementary: de-risk START timing, not RATE). The cushion gate
+                    # (step2) makes ct-at-multi-day winners de-risk at linear RATE (k=1); the
+                    # floor determines WHEN de-risk STARTS. For ct-at-multi-day winners, RAISE the
+                    # floor slightly (start de-risk earlier) so rally's pullback shorts (ct-at-
+                    # multi-day) begin de-risking at lower exit pressure -> cut earlier in the
+                    # giveback -> smaller realized loss. Trend-aligned (gate 1) byte-identical.
+                    # crash (gate~1) byte-identical. Bounded 0.08 max raise, profit-gated.
+                    _ta_de_vlong = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.01))
+                    _de_floor += 0.08 * (1.0 - _ta_de_vlong) * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
