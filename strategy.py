@@ -1119,7 +1119,21 @@ class Strategy:
                 # ret_vlong is the 96-bar OLS slope (already computed, noise-robust). Deep-
                 # saturated /0.03 (near-constant, noise-free per the validated safe family).
                 _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day, ~0 strong
-                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong
+                # BRANCH STEP7: AND the weak-vlong gate with a LOW-LOSS-STREAK gate. The
+                # weak-vlong gate alone (step3) leaked to rally -0.0072 / crash -0.0043
+                # during momentary |ret_vlong| dips. The distinguishing feature: the leak
+                # entries are LOSING re-entries during trend pullbacks/bounces (rally
+                # pullback shorts = 66pct WR clustered losers; crash bounce longs). These
+                # fire during portfolio LOSS STREAKS (the _streak_ct_admit relaxation that
+                # admits counter-trend bounces AFTER losses is exactly what opens them).
+                # mixed's bounce longs are 100pct WR -> low loss streak. Gate the boost
+                # ALSO on low portfolio loss streak: full boost at streak<=1, fading to 0
+                # at streak>=3. This suppresses the boost for the losing re-entry bursts
+                # (high streak) while keeping it for mixed's profitable bounces (low
+                # streak). _loss_streak is the portfolio consecutive-loss counter (already
+                # maintained, used by _streak_ct_admit). Continuous tanh, no boundary.
+                _headroom_low_streak = 1.0 - max(0.0, np.tanh(max(0.0, self._loss_streak - 1) / 1.5))  # ~1 low streak, ~0 streak>=3
+                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong * _headroom_low_streak
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
