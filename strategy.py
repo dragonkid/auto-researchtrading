@@ -2673,19 +2673,6 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
-                # Exp3 (architectural, indep): WIDEN the emission threshold reduction to ALSO
-                # fire on the DIRECTION-AGNOSTIC weak-multi-day-trend gate (1-tanh(|ret_vlong|/0.03)),
-                # the feda0ffa-validated BROADER mixed separator. The existing direction-keyed
-                # ct gate (_ct_vlong_em>0.50 = ret_vlong*pos_dir<0) reaches mixed's COUNTER-
-                # trend-at-multi-day longs but MISSES mixed's non-ct weak-trend reductions (mixed
-                # = decline+rally+chop+crash, ret_vlong not reliably negative per prior-session
-                # finding). The direction-agnostic gate fires whenever |ret_vlong| is weak
-                # regardless of sign -> reaches the weak-trend subset the ct gate misses. Same
-                # 0.7*LEVERAGE_K floor, same small-position guard (abs(current_pos)<2.0*grid).
-                # Risk: may also fire on rally/crash momentary |ret_vlong| dips -> leak; test
-                # isolates whether the broader gate unlocks additional mixed trades or leaks.
-                elif (1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))) > 0.50:
-                    _emit_thresh = 0.7 * LEVERAGE_K
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
