@@ -1999,39 +1999,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp1 (architectural, indep): REALIZED-DRIFT max_hold modulation. The
-                # 5-exp prior session confirmed mixed's binding exit is time-pressure (98.6%
-                # of exits) AND that every market-regime separator on max_hold is walled:
-                # MTM-chop (path SHAPE) is confounded for bull (bull pullback longs whipsaw
-                # too), ct-at-multi-day (ret_vlong sign) is INERT for mixed (mixed's recovery-
-                # leg longs have ret_vlong>0 = trend-aligned), and windowed down_persist is
-                # saturated (bull has multi-week downtrend stretches). This uses a
-                # fundamentally different separator: the position's OWN realized cumulative
-                # drift = pos_pnl / max(bars_held,1). bull pullback longs RECOVER over their
-                # hold -> cumulative pos_pnl goes positive (positive realized drift) -> trend
-                # winner -> KEEP full max_hold (byte-identical). mixed's dead-capital longs
-                # oscillate ~breakeven/negative over long holds -> cumulative pos_pnl near zero
-                # or negative (zero/negative realized drift) -> dead capital -> SHORTEN
-                # max_hold -> exit mixed's time-pressure-dominated dead capital FASTER ->
-                # less per-cycle giveback -> higher mixed Sharpe (the binding floor).
-                # Distinct from MTM-chop (path shape |net|/sum|delta|): this is the SLOPE
-                # (net drift per bar) — a smooth climber and a smooth DECLINER both have low
-                # chop, but opposite drift; MTM-chop cannot tell them apart, drift can.
-                # Distinct from ct-at-multi-day (market regime): this is the position's OWN
-                # realized PnL (market-regime-agnostic by construction -> cannot be confounded
-                # with bull the way ret_vlong is). Reduction-only (shortens max_hold, never
-                # extends — winners keep full hold). Smooth tanh on the drift normalized by
-                # |stop| (so the gate scales with each symbol's stop band). Requires
-                # bars_held>=4 (enough hold to estimate drift; fresh entries byte-identical).
-                # New control flow: a realized-PnL-drift term in the time-pressure activation.
-                _drift_shorten = 0.0
-                if bars_held >= 4:
-                    _pos_drift = pos_pnl / max(bars_held, 1)  # realized cumulative drift per bar
-                    # Drift gate: ~1 at zero/negative drift (dead capital), ~0 at positive drift (winner).
-                    # tanh(-drift/scale) => 1 when drift<=0, fading to 0 as drift grows positive.
-                    _drift_gate = max(0.0, min(1.0, np.tanh(-_pos_drift / (0.15 * abs(STOP_LOSS_PCT)))))
-                    _drift_shorten = 1.5 * _drift_gate  # max ~1.5 bars shorter for dead capital
-                _max_hold -= _drift_shorten
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
