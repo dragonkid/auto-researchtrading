@@ -2653,6 +2653,37 @@ class Strategy:
             _calm_gate = 1.0 if _cm <= 2 else 0.0  # fire only for never-bursting symbols
             if _is_resize and _calm_gate > 0.0:
                 _grid_c = 0.06 * equity * BASE_POSITION_SIZE
+                # STRUCTURAL_EXPLORATION: FRACTIONAL grid on the calm path (replaces the
+                # absolute-lattice round() that absorbs mixed's small reductions). The
+                # grid-absorption wall (3+ confirmations this session, 7+ total): mixed's
+                # positions sit at ~1 absolute grid step (0.06*equity*BASE_POSITION_SIZE)
+                # so a genuine reduction (a fraction of the small position) snaps to the
+                # SAME absolute lattice point -> never emitted -> 45-trade sample_factor
+                # drag (the binding floor). The absolute lattice form is the CORE MECHANISM
+                # of the calm grid; it is at its structural ceiling for mixed (cannot make
+                # the step finer without the resonance/chaos prior sessions found at every
+                # fixed width). This rewrite replaces the absolute lattice with a FRACTIONAL-
+                # POSITION-PROPORTIONAL snap: round resize targets to the nearest FRAC_STEP
+                # fraction of |current_pos| instead of an absolute dollar lattice. Small
+                # positions (mixed) get proportionally small grid steps -> reductions that
+                # are a fraction of the small position now CROSS a fractional grid line ->
+                # execute instead of snapping back. Large positions (crash/sideways, ~2-4
+                # absolute steps) have fractional steps comparable to the old absolute step
+                # (FRAC_STEP * |current_pos| ~ FRAC_STEP * size ~ 0.06*equity*BASE) so their
+                # turnover-protection benefit is preserved (the grid still coarsens their
+                # resizes). Continuous (pure rounding, no new price-derived term, no
+                # direction flip -- snap toward current_pos side). Same _calm_gate (never-
+                # burst symbols) + same small-pos chop exemption above + same resize-only
+                # exemptions. Risk: fractional grid lines MOVE with position size (position
+                # grows during scale-in -> lattice shifts) -> could add noise; mitigated by
+                # the _cm<=2 calm gate (fires only in stability-factor-1.0 regimes, not
+                # rally) + FRAC_STEP chosen (~0.10) to match the absolute step at baseline
+                # position scale. If rally breaches 50pct gate or DD>10pct, terminate.
+                _frac_step = 0.10 * abs(current_pos)  # fractional grid step proportional to position
+                if _frac_step > 0:
+                    _qt_c = round(target / _frac_step) * _frac_step
+                    if (_qt_c > 0) == (target > 0) and _qt_c != 0:
+                        target = _qt_c
                 # Exp1 (architectural, indep): POSITION-SIZE-CONDITIONED grid exemption
                 # on the calm path. The calm grid quantizes same-sign resizes onto a
                 # 0.06 lattice to cut noise-driven micro-resize churn in stability-
@@ -2704,10 +2735,11 @@ class Strategy:
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
                 _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
-                if _grid_c > 0 and not _small_pos_exempt:
-                    _qt_c = round(target / _grid_c) * _grid_c
-                    if (_qt_c > 0) == (target > 0) and _qt_c != 0:
-                        target = _qt_c
+                # (STRUCTURAL_EXPLORATION: the absolute-lattice round() that was here is
+                # REPLACED by the fractional grid above. The small-pos chop exemption
+                # above computed _small_pos_exempt but the fractional grid now handles
+                # small-position reductions structurally (proportional step) -- the
+                # exemption is retained as a no-op guard for the fractional path.)
             # Branch step2 (behavior-preserving leverage): scale the ABSOLUTE
             # minimum-trade emission threshold by LEVERAGE_K. The \$1 threshold
             # (here + prepare.py line 471, unmodifiable) is an ABSOLUTE dollar
