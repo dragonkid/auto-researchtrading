@@ -2225,6 +2225,37 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp3 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY tp_harvest
+                    # magnitude boost. The uniform tp_harvest magnitude is walled at 0.45
+                    # (raise to 0.50 historically collapsed crash stability: crash's clean
+                    # trend shorts got over-harvested). The multi-day _ts_supp fix (Exp4
+                    # keep) shields crash SHORTS (ret_vlong<0, pos_dir=-1 -> product>0 ->
+                    # _ts_supp HIGH -> suppressed -> byte-identical at any magnitude). But
+                    # the magnitude itself is still uniform, so raising it deepens harvest
+                    # for ct longs (mixed) AND trend-aligned longs (bull/rally) alike --
+                    # the latter is the crash-wall risk. NEW data dep: a SEPARATE magnitude
+                    # multiplier active ONLY for positions counter-trend-at-multi-day
+                    # (ret_vlong*pos_dir<0). mixed's held longs in a multi-day downtrend
+                    # (ret_vlong<0, pos_dir=+1 -> product<0) are the textbook oscillating
+                    # dead-capital positions whose deep peaks need DEEPER harvest to convert
+                    # paper to realized faster -> cut the re-peak "ride again" churn ->
+                    # lower MTM oscillation -> higher mixed Sharpe. crash shorts (product>0,
+                    # trend-aligned) -> gate 0 -> NO extra harvest -> crash byte-identical
+                    # (the crash-wall protection moves from _ts_supp into an explicit gate,
+                    # unblocking a mixed-only magnitude lever). bull/rally longs (product>0)
+                    # -> gate 0 -> byte-identical. Fast-saturating /0.02 ret_vlong scale
+                    # (mixed's solidly-negative ret_vlong sits in the flat tail -> near-
+                    # constant, noise-free per the validated branch-step-9 ct-gate lesson).
+                    # Profit-gated (pos_pnl>0): only harvest WINNING ct positions (mixed's
+                    # oscillating winners); losing ct positions keep baseline harvest.
+                    # Smooth tanh on pos_pnl/|stop| (no decision boundary). New cross-
+                    # component data dep: tp_harvest magnitude depends on (ret_vlong,
+                    # pos_dir, pos_pnl) -- the ct-multi-day-winning partition.
+                    _tp_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _tp_ct_gate = max(0.0, np.tanh(-_tp_pos_dir * ret_vlong / 0.02))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                    _tp_win_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~0 loss, ~1 deep winner
+                    _tp_ct_mag = 1.0 + 0.35 * _tp_ct_gate * _tp_win_gate  # up to 1.35x deeper harvest for ct winners
+                    _tp_scale = _tp_scale * _tp_ct_mag
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
