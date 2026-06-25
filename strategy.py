@@ -1925,7 +1925,28 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
+                # Exp3 (architectural): AGE x PROFIT giveback tightening. NEW data dep
+                # at the giveback gate: the giveback tolerance is currently portfolio-DD-
+                # gated (fires for rally pullbacks) but mixed's own DD (2.80pct) never
+                # triggers it -> mixed's long-held near-breakeven longs (prior session:
+                # "mixed holds ~3 long-lived positions with constant partial-realize churn
+                # -- the low Sharpe is intrinsic MTM oscillation over long holds") ride
+                # the oscillation without early harvest. A position held LONG with SMALL
+                # profit relative to its peak is dead capital giving back -> tighten its
+                # giveback tolerance so pp_pressure harvests sooner (locks the small
+                # realized gain before it re-oscillates). Continuous tanh on the PRODUCT
+                # of (a) bars_held ramp (onset 6, sat ~14 -- the HOLD_DECAY_START scale)
+                # and (b) the giveback-ratio itself (peak_pnl - pos_pnl)/peak_pnl (fires
+                # only when GIVING BACK, not on fresh winners -- spares bull/crash trend
+                # longs whose pos_pnl tracks peak). Max tighten 0.30 (mirrors the
+                # validated PORT_DD_GIVEBACK_TIGHTEN magnitude). Byte-identical for fresh
+                # winners (bars_held<6 OR giveback_ratio~0 -> factor 1.0). New control-
+                # flow: a SECOND giveback-tightening path on a per-position age x giveback
+                # signal, distinct from the portfolio-DD path. Targets mixed (long holds
+                # + oscillating giveback); spares trend regimes (short giveback windows OR
+                # pos_pnl tracks peak -> giveback_ratio~0).
+                _age_profit_tighten = 1.0 - 0.30 * max(0.0, np.tanh((bars_held - 6.0) / 8.0)) * max(0.0, np.tanh(_giveback_ratio / 0.40))
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _age_profit_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
