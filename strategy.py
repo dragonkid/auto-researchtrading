@@ -28,65 +28,6 @@ def _fast_r2(y):
     vy = (yd * yd).sum()
     return (cov * cov) / max(vx * vy, 1e-20)
 
-
-def _hurst_rs(y):
-    """Hurst exponent via aggregated rescaled-range (R/S) statistic.
-
-    Measures LONG-MEMORY PERSISTENCE of a series: H~0.5 = random walk
-    (no memory), H>0.5 = persistent (trend continues), H<0.5 = mean-
-    reverting (anti-persistent). Distinct from _fast_r2 (LINEAR fit
-    goodness, always>=0, direction-agnostic) and _fast_slope (per-bar
-    drift DIRECTION): two series with identical slope and R^2 can have
-    different Hurst (one a clean straight line H~1, the other a jagged
-    path that net-drifts H~0.5). A persistent regime (high H) is a
-    higher-quality trend regime — trend entries in a persistent market
-    have more follow-through -> larger first-bar commitment captures more
-    return -> higher Sharpe/APY at preserved stability (H is a smooth
-    windowed statistic, no zero-crossing -> not a boundary family).
-
-    Aggregated R/S over power-of-two sub-windows for noise robustness:
-    split the series into chunks of size k, compute mean rescaled range,
-    regress log(mean_R/S) on log(k). Returns the slope = H, clamped to
-    [0, 1]. Uses only numpy/stdlib.
-    """
-    n = len(y)
-    if n < 16:
-        return 0.5
-    # Use cumulative-deviation-from-mean form: R/S on (y - mean(y))
-    ym = y - y.mean()
-    # Aggregated R/S over multiple window sizes (power-of-two)
-    _ks = []
-    _rs = []
-    k = 8
-    while k * 2 <= n:
-        n_chunks = n // k
-        if n_chunks < 2:
-            break
-        rs_list = []
-        for _c in range(n_chunks):
-            seg = ym[_c * k: (_c + 1) * k]
-            cumdev = np.cumsum(seg - seg.mean())
-            R = float(cumdev.max() - cumdev.min())
-            S = float(np.std(seg))
-            if S > 1e-12:
-                rs_list.append(R / S)
-        if rs_list:
-            _ks.append(np.log(k))
-            _rs.append(np.log(np.mean(rs_list)))
-        k *= 2
-    if len(_ks) < 2:
-        return 0.5
-    _ks = np.array(_ks)
-    _rs = np.array(_rs)
-    x_mean = _ks.mean()
-    y_mean = _rs.mean()
-    denom = float(((_ks - x_mean) ** 2).sum())
-    if denom < 1e-12:
-        return 0.5
-    H = float(((_ks - x_mean) * (_rs - y_mean)).sum() / denom)
-    return max(0.0, min(1.0, H))
-
-
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -1735,43 +1676,12 @@ class Strategy:
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
-                # Exp1 (architectural, indep): HURST-EXPONENT trend-PERSISTENCE entry
-                # conviction boost. NEW orthogonal data axis genuinely absent from the
-                # strategy: _fast_r2 measures LINEAR-fit goodness (always>=0), _fast_slope
-                # measures per-bar DRIFT direction, ER measures PATH efficiency (|net|/path),
-                # ret_vlong measures multi-day NET return. NONE measures LONG-MEMORY
-                # PERSISTENCE -- whether the series tends to CONTINUE in its current
-                # direction (H>0.5 persistent) vs revert (H<0.5). Two series with identical
-                # slope/R^2/ER can have different Hurst (clean straight line H~1 vs jagged
-                # net-drift H~0.5). A PERSISTENT regime (high H) is a higher-quality trend
-                # regime: trend-aligned entries in a persistent market have more follow-
-                # through -> larger first-bar commitment captures more of the trend move
-                # -> higher Sharpe/APY (the scoring v3 incentive: Sharpe gain dominates
-                # 11-36x). Computed on the same 96-bar log-HL2 series as ret_vlong (smooth
-                # windowed statistic, no zero-crossing -> not a boundary family -> noise-
-                # robust under AR(1); a perturbation of one close barely shifts the
-                # aggregated R/S slope). Trend-ALIGNMENT gated (entry dir matches ret_vlong
-                # sign) so it only boosts genuine persistent-trend entries; counter-trend
-                # entries (mixed bounce longs in a downtrend, rally pullback shorts in an
-                # uptrend) have ret_vlong*entry_dir<0 -> gate 0 -> byte-identical. Sparing:
-                # sideways (ret_vlong~0 -> alignment gate ~0) and chop (low H -> boost
-                # near 1.0) are spared. Small +0.05 max (bounds the size change; size is
-                # delicate near the grid wall), deep-saturated H gate (/0.15 above 0.55 ->
-                # near-constant where it fires, noise-free per the validated safe-family
-                # lesson), first-bar-only. Direction-agnostic general principle (no regime
-                # label). New cross-data-type dep: entry size depends on long-memory
-                # persistence x trend-alignment conjunction.
-                _hurst = _hurst_rs(np.log(_hl2_vl))
-                _hurst_align_bull = max(0.0, np.tanh(ret_vlong / 0.03)) * max(0.0, np.tanh((_hurst - 0.55) / 0.15))
-                _hurst_align_bear = max(0.0, np.tanh(-ret_vlong / 0.03)) * max(0.0, np.tanh((_hurst - 0.55) / 0.15))
-                _hurst_boost_bull = 1.0 + 0.05 * _hurst_align_bull
-                _hurst_boost_bear = 1.0 + 0.05 * _hurst_align_bear
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _hurst_boost_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _hurst_boost_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
