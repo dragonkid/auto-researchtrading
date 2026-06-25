@@ -888,23 +888,28 @@ class Strategy:
             # the validated branch-step-9 lesson; mixed's solidly-negative ret_vlong sits in the
             # flat saturated tail). General principle (no regime label): variance-cap only the
             # counter-trend-at-multi-day entries (the variance-rich population).
+            # BRANCH step3: REPLACE the ct-at-multi-day gate with a WEAK MULTI-DAY TREND gate
+            # (_weak_persist, the fe6acd4d keep signal). Step2 ct-gate KILLED the mixed benefit
+            # (mixed byte-identical): mixed's ret_vlong OSCILLATES around 0 (down-then-up year)
+            # so the /0.01 ct gate rarely fires at mixed entry bars -- the entry-bar ret_vlong
+            # is not persistently negative like crash. The DURATION-COUNT weak-trend separator
+            # (48-bar fraction of |ret_vlong|<0.02 bars) is the validated mixed separator: mixed
+            # is PERSISTENTLY weak-trend over weeks (fraction~1) while trend regimes (bull/crash/
+            # rally) have strong |ret_vlong| (fraction~0). Gate the cap on _weak_persist so it
+            # fires for mixed's actual large trades (weak-trend regime) regardless of entry
+            # direction; trend regimes (strong |ret_vlong|) keep full size -> byte-identical.
+            # Sideways (weak-trend too) may fire but sideways has small positions (under cap).
+            # General principle (no regime label): variance-cap the weak-trend entries (where
+            # large size is variance-rich dead capital, not signal-correct trend capture).
             _mag_budget = equity * BASE_POSITION_SIZE * TARGET_VOL
             _mag = size * realized_vol
             _mag_cap = 1.6 * _mag_budget
-            if _mag > _mag_cap and _mag_budget > 0:
-                # ct-at-multi-day gate: which ready side, and is it counter-trend?
-                _entry_pos_dir = 0
-                if _bull_ready:
-                    _entry_pos_dir = 1
-                elif _bear_ready:
-                    _entry_pos_dir = -1
-                _ct_md = max(0.0, np.tanh(-_entry_pos_dir * ret_vlong / 0.01)) if _entry_pos_dir != 0 else 0.0
-                if _ct_md > 0.50:
-                    # Soft-squash the size so its vol-adjusted magnitude approaches _mag_cap.
-                    _size_capped = _mag_cap / realized_vol
-                    _over_frac = (_mag - _mag_cap) / max(_mag_cap, 1e-10)
-                    _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))  # 0 at cap, ~1 at 2x
-                    size = size * (1.0 - _squash_w) + _size_capped * _squash_w
+            if _mag > _mag_cap and _mag_budget > 0 and _weak_persist > 0.50:
+                # Soft-squash the size so its vol-adjusted magnitude approaches _mag_cap.
+                _size_capped = _mag_cap / realized_vol
+                _over_frac = (_mag - _mag_cap) / max(_mag_cap, 1e-10)
+                _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))  # 0 at cap, ~1 at 2x
+                size = size * (1.0 - _squash_w) + _size_capped * _squash_w
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
