@@ -1796,7 +1796,7 @@ class Strategy:
                     # indicator here (scale-in pace block runs before _adv_freeze's gate).
                     _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
                     _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                    _entry_full_bars_dyn = _entry_full_bars_dyn + 0.9 * _vov_gate * _ct_vov_gate
+                    _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
