@@ -117,6 +117,31 @@ PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in th
 # symmetric (both long/short); Sharpe-affecting (alters harvest timing of WINNERS).
 PORT_DD_TP_HARVEST_RELAX = 0.60   # max fractional weakening of _ts_supp at deep DD (harvest even clean trend winners to cap DD)
 PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturates (scaled by LEVERAGE_K at use, same discipline as PORT_DD_GIVEBACK_SCALE)
+# Exp4 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY WINNER max_hold EXTENSION.
+# DIAGNOSTIC (this session, instrumented strategy on mixed_2025): TIME pressure is the
+# binding exit term for 98.6pct of mixed winner bars (slope 0.2pct, pp 1.1pct, time 98.6pct
+# of the soft-term argmax). This OVERTURNS the prior-session claim "mixed exits at small
+# peaks < 1.6*_pp_min before tp_harvest/max_hold bind": peak/_pp_min ratio is ~17 (median
+# 18.9), pp_activation 0.997 -- peaks ARE far above _pp_min; pp just never WINS the MAX
+# because time_pressure dominates. pos_pnl median 0.142 (14pct) -- winners are NOT tiny
+# per-trade (APY 4.4pct is low because position SIZE is small in mixed's low-vol down year,
+# not because wins are tiny). So mixed's winners are cut by TIME pressure, and the _ct_hold_sat
+# mechanism (line 1852) SHORTENS ct positions by up to 2 bars -- this cuts mixed's ct-at-
+# multi-day WINNERS early = smaller wins = lower APY. This experiment ADDS a max_hold
+# EXTENSION for ct-at-multi-day WINNERS (ret_vlong*pos_dir<0 AND pos_pnl>0) so time pressure
+# fires later -> winners ride longer -> bigger wins -> higher mixed APY/Sharpe (binding floor
+# 0.488). Gate on ret_vlong-direction (the VALIDATED mixed/bull separator: mixed longs in
+# downtrend = ct; bull/rally longs in uptrend = trend-aligned = gate 0 = byte-identical) AND
+# pos_pnl>0 (losers keep the _ct_hold_sat shortening -- losers should still cut fast). RISK:
+# rally ct SHORTS (pos_dir=-1, ret_vlong>0 -> product<0 = ct) are also ct; winning rally ct
+# shorts would also be extended -> potential rally DD cost. But rally ct shorts are mostly
+# LOSERS (prior notes: 6/12 rally opens shorts, WR 66pct), and the _ct_hold_sat already
+# shortens ct losers (the extension is pos_pnl>0-gated so losers unaffected). If rally
+# regresses but mixed improves -> open exploration branch. Continuous tanh on pos_pnl/|stop|
+# (winners gate, no boundary), fast-saturating /0.01 ret_vlong (near-constant, noise-free).
+# Symmetric (both ct long/short winners). Byte-identical for trend-aligned regimes + losers.
+CT_WINNER_HOLD_EXT = 1.5    # max bars to EXTEND max_hold for ct-at-multi-day winners (let mixed bounce-longs ride ~1.5 bars longer before time-pressure fires)
+CT_WINNER_HOLD_SCALE = 0.01 # ret_vlong ct-indicator scale (fast-saturating, noise-free)
 
 # Sizing multipliers
 # Architectural (this session): BEHAVIOR-PRESERVING RETURN-SEEKING LEVERAGE.
@@ -1865,6 +1890,16 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp4: ct-at-multi-day WINNER max_hold extension. TIME pressure is mixed's
+                # binding exit (diagnostic: 98.6pct of winner argmax); _ct_hold_sat shortens
+                # ct positions (incl. winners) by up to 2 bars -> mixed's ct winners cut early.
+                # EXTEND max_hold for ct-at-multi-day WINNERS (ret_vlong*pos_dir<0 AND pos_pnl>0)
+                # so time pressure fires later -> bigger wins -> higher mixed APY/Sharpe.
+                # Gate ret_vlong-direction (spares bull/rally trend-aligned byte-identical) +
+                # pos_pnl>0 (losers keep _ct_hold_sat shortening). Fast-saturating /0.01 noise-free.
+                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
+                _ct_winner_mh = max(0.0, np.tanh(-_pos_dir_mh * ret_vlong / CT_WINNER_HOLD_SCALE)) * max(0.0, min(1.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT))))
+                _max_hold += CT_WINNER_HOLD_EXT * _ct_winner_mh
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
