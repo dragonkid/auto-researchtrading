@@ -2448,7 +2448,28 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                if _te_alpha > 0.0:
+                # Exp1 (architectural, this session): REDUCTION-EXEMPT smoothing split.
+                # The _target_ema low-passes EVERY same-sign resize -- both growth
+                # (scale-in wobble = the stability benefit: noise-driven first-bar/accum-
+                # step magnitude jitter is damped) AND reduction (tp_harvest + de-risk
+                # trims). Lagging a REDUCTION holds the position bigger longer than the
+                # raw target -> more giveback before the trim executes -> lower Sharpe
+                # (the documented raw cost of this EMA, previously attributed only to
+                # losing-ct holds). Under v3 (k=0.3, Sharpe-dominant) the lag on
+                # reductions is pure raw drag with no offsetting stability benefit:
+                # a reduction TRIMS a position (moves it toward 0), so the post-reduction
+                # held value is SMALLER -> its bar-to-bar wobble under AR(1) noise is
+                # ALSO smaller (wobble ~ |position|) -> smoothing it adds negligible
+                # stability vs the giveback it costs. NEW data dep + new control flow:
+                # split the resize path by sign of (target - current_pos). GROWTH
+                # resizes keep full smoothing (scale-in wobble damped -> stability).
+                # REDUCTION resizes bypass the EMA (harvest/de-risk execute immediately
+                # at the raw target -> less giveback -> higher Sharpe). The EMA STATE
+                # still updates with the (now-unsmoothed) reduction target so the next
+                # growth resize smooths against the correct post-reduction level.
+                # Byte-identical for trend-aligned (gate 0 -> alpha 0 -> no EMA path).
+                _is_growth_te = abs(target) > abs(current_pos)
+                if _is_growth_te and _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
