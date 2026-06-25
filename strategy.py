@@ -1745,30 +1745,6 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Exp5 (architectural, indep): DEEP-PROFIT-GATED slope-pressure attenuator. NEW
-                # data dep: the slope-against exit pressure now scales with the position's PROFIT
-                # BUFFER (pos_pnl relative to stop). Crash is return-limited (Sh1.254, APY11.8pct,
-                # 100pct WR, DD2.46pct with headroom below the dd_gate knee@5) and exits are slope/
-                # sl/time-dominated (Exp2 proved pp is argmax-inert for crash). A crash short that
-                # has accumulated a DEEP profit buffer (pos_pnl >> |stop|) can absorb a counter-
-                # trend bounce (the bounce is noise relative to the accumulated gain); exiting on
-                # slope-against there realizes at a local bounce trough, missing the bear-move
-                # continuation -> caps crash APY (the return_bonus lever; crash has DD headroom).
-                # A fresh/small-winner position has NO buffer -> slope-against is a real reversal
-                # signal -> keep full pressure (byte-identical when pos_pnl small). DISTINCT from
-                # the removed trend-aligned slope attenuation (line 1748 removal keep): that
-                # delayed exit on the FIRST slope-against for trend-aligned holds (no profit
-                # condition -> delayed exits on fresh entries = bad); THIS gates on profit
-                # MAGNITUDE (only spares positions with a large realized-paper buffer that can
-                # absorb a bounce), so fresh entries and small winners keep full slope sensitivity.
-                # General principle (no regime label): a winner with a deep profit buffer can ride
-                # slope-against noise; a thin winner cannot. Continuous tanh on pos_pnl/|stop|;
-                # onset at +1.5*|stop| (deep profit), saturating ~+3*|stop|; max 0.30 attenuation.
-                # One-sided (only attenuates, never amplifies); symmetric (both long/short);
-                # byte-identical when pos_pnl < +1.5*|stop|. Profit-side only by construction
-                # (max(0,...) on positive pos_pnl).
-                _deep_profit_slope_atten = 1.0 - 0.30 * max(0.0, min(1.0, np.tanh((pos_pnl / abs(STOP_LOSS_PCT) - 1.5) / 1.0)))
-                _sl_slope_pressure = _sl_slope_pressure * _deep_profit_slope_atten
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
