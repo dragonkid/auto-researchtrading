@@ -233,6 +233,22 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
 
+# Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
+# prior-session headroom-boost branch (7 failed attempts) gated a mixed entry-
+# size boost on the MAGNITUDE gate 1-tanh(|ret_vlong|/0.03) and its temporal EMA
+# (span 10); both leaked into rally because rally pullbacks are multi-day local
+# weak-trend episodes (|ret_vlong| dips below 0.03 for several consecutive bars).
+# A DURATION count over a LONGER window separates mixed (PERSISTENTLY weak over
+# weeks -> count~1) from rally pullbacks (TRANSIENT dips -> count stays low since
+# rally re-strengthens between pullbacks). PERSIST_WEAK_THRESH=0.03 matches the
+# validated feda0ffa weak-vlong scale; PERSIST_WINDOW=48 (~2 days) is long enough
+# that a multi-bar rally pullback (typically <20 bars) does NOT saturate the
+# count while mixed's sustained weakness does. PERSIST_BOOST_MAG is the max
+# first-bar size boost (mirrors the prior branch's +0.05 headroom-boost scale).
+PERSIST_WEAK_THRESH = 0.03
+PERSIST_WINDOW = 48
+PERSIST_BOOST_MAG = 0.05
+
 
 class Strategy:
     def __init__(self):
@@ -320,6 +336,21 @@ class Strategy:
         # (mixed_2025's 100pct-long-in-a-down-year book, eq-autocorr -0.427).
         # Drives the emission-layer reduction throttle. Reset on full exit.
         self._pnl_path = {}
+        # Exp1 (architectural): per-symbol rolling history of the multi-day weak-
+        # trend BOOLEAN (|ret_vlong| < PERSIST_WEAK_THRESH). Used to compute a
+        # PERSISTENCE-COUNT weak-trend separator: the fraction of the last
+        # PERSIST_WINDOW bars where |ret_vlong| was weak. Distinct from the
+        # magnitude-axis weak-trend gate (1-tanh(|ret_vlong|/0.03)) used by the
+        # prior-session headroom-boost branch (7 failed attempts: rally pullbacks
+        # are multi-day local weak-trend episodes where |ret_vlong| dips for
+        # SEVERAL consecutive bars -> the magnitude gate AND its temporal EMA
+        # both fire for rally pullbacks -> identical rally leak). A DURATION COUNT
+        # over a LONGER window distinguishes mixed (PERSISTENTLY weak-trend over
+        # weeks, count~1) from rally pullbacks (TRANSIENT dips, the count stays
+        # low because rally re-strengthens between pullbacks). New state + new
+        # control-flow: entry-size boost gated on persistence-fraction, the
+        # sanctioned-but-untested separator (results.tsv line 1476).
+        self._weak_vlong_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -511,6 +542,26 @@ class Strategy:
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
+
+            # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator. Track a
+            # rolling boolean (|ret_vlong| < PERSIST_WEAK_THRESH) over PERSIST_WINDOW
+            # bars; the FRACTION of weak bars is a DURATION measure of how long the
+            # multi-day trend has been weak. Distinct from the magnitude gate
+            # 1-tanh(|ret_vlong|/0.03) (and its temporal EMA): a multi-bar rally
+            # pullback dips |ret_vlong| below 0.03 for a few bars but rally re-
+            # strengthens between pullbacks so the 48-bar FRACTION stays low; mixed's
+            # multi-day downtrend keeps |ret_vlong| persistently small -> fraction ~1.
+            # The boolean uses the SAME ret_vlong so it is a duration aggregation of
+            # an already-96-bar-averaged quantity (each input bar carries ~1/96 of a
+            # bar's AR(1) noise -> the boolean is noise-robust; flipping it requires a
+            # perturbation large enough to move ret_vlong across 0.03, which is deep
+            # in the flat tail of the 96-bar slope distribution). New per-symbol state.
+            _wvh = self._weak_vlong_hist.get(symbol, [])
+            _wvh.append(1 if abs(ret_vlong) < PERSIST_WEAK_THRESH else 0)
+            if len(_wvh) > PERSIST_WINDOW:
+                _wvh = _wvh[-PERSIST_WINDOW:]
+            self._weak_vlong_hist[symbol] = _wvh
+            _weak_persist = (float(sum(_wvh)) / len(_wvh)) if _wvh else 0.0  # [0,1]
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
@@ -1552,12 +1603,22 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
+                # bar size boost. The DURATION-fraction _weak_persist (sanctioned
+                # untested separator, results.tsv line 1476) gates a small first-bar
+                # size boost. Byte-identical when _weak_persist=0 (trend regimes
+                # where the count stays low); fires for mixed (persistently weak
+                # multi-day trend -> count~1). Mirrors the prior headroom-boost
+                # branch's +0.05 magnitude (its mixed +0.0112 was real; the +0.003
+                # keep was blocked ONLY by the rally magnitude-gate leak, which this
+                # duration-count separator is designed to avoid).
+                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
