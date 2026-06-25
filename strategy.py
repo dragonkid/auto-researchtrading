@@ -2305,30 +2305,7 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    # Exp2 (architectural, indep): DEEP-PEAK-AMPLIFIED tp_harvest magnitude.
-                    # NEW data dep: _tp_scale magnitude now depends on a DEEP-PEAK tier. mixed's
-                    # binding floor (Sh0.825, 100pct WR) is MTM VOLATILITY during holds -- every
-                    # closed trade is a winner, but held positions give back deep paper gains
-                    # before the exit fires (the peak-to-exit gap is the Sharpe drag). mixed's
-                    # reachable tp_harvest events have VERY deep tp_ratio (16.47 per the Exp4
-                    # diagnostic) with clean MAE and _ts_supp~0 (ct-at-multi-day -> already fully
-                    # unsuppressed). The base magnitude 0.45 caps how much paper converts per
-                    # fire; a deeper peak = MORE accumulated paper to convert = more oscillation
-                    # to damp. Amplify the harvest magnitude at tp_ratio>3.5 (a tier ABOVE the
-                    # _ts_supp deep-peak threshold 2.8): a smooth tanh ramp 0.45 -> 0.65 over
-                    # [3.5, 6.0]. Sparing by construction: (a) trend-aligned regimes (bull longs,
-                    # crash shorts, rally longs) keep _ts_supp HIGH (ret_vlong*pos_dir>0 ->
-                    # _ts_supp~1 -> the max(0, 1-1.5*_ts_supp) factor ZEROES _tp_scale regardless
-                    # of magnitude -> byte-identical); (b) rally ct SHORTS (the Exp3 over-harvest
-                    # failure mode) are cut fast by _ct_hold_sat time-pressure -> their tp_ratio
-                    # stays small (rarely crosses 3.5) -> no amplified harvest; (c) crash recovery
-                    # bounce longs (Exp5 walled at 0.50) shielded by multi-day _ts_supp (product>0
-                    # -> suppressed). General principle (no regime label): a deeper paper peak on
-                    # a counter-trend-at-multi-day position (already unsuppressed) is more
-                    # oscillation to convert to realized -> harvest proportionally harder. New
-                    # cross-component data dep: tp_harvest magnitude depends on deep-peak tier.
-                    _deep_peak_amp = 1.0 + 0.44 * max(0.0, min(1.0, np.tanh((_tp_ratio - 3.5) / 2.5)))  # 1.0 below 3.5, up to 1.44 at tp_ratio>=6
-                    _tp_scale = 0.45 * _deep_peak_amp * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
