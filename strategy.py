@@ -1674,7 +1674,12 @@ class Strategy:
                 # 0.5->0.65 region keeps full amplification, fading to 0 by ~0.85 = crash).
                 # Amplify-only (floor 1.0 baseline MAG).
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
-                _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
+                # Branch step4: raise the conviction-scale ceiling 1.5x->1.7x (amplify cap
+                # 0.50->0.70) now that crash is gated out by _persist_down_gate (step3).
+                # Decisive mixed bounce entries (margin>0.40, down_persist<0.65) get a bigger
+                # weak-trend size boost -> deeper mixed return_bonus gain. crash (gate 0)
+                # stays at baseline MAG; rally (weak_persist~0) byte-identical.
+                _persist_conv_scale = 1.0 + 0.70 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
