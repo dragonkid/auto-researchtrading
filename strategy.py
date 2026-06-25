@@ -1105,23 +1105,21 @@ class Strategy:
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 # Exp (architectural, indep): DD-HEADROOM-CONDITIONED return-seeking
                 # first-bar size boost (see PORT_DD_HEADROOM_* comments).
-                # BRANCH STEP2 FIX: replace the churn gate (which leaked to rally quiet
-                # stretches, len(_eh)<=1 there) with a MEAN-REVERSION gate on
-                # rsi_trend_str. Exp1 showed the headroom boost helps mean-reversion
-                # regimes (mixed +0.0117, sideways +0.0056) but HURTS trend regimes
-                # (rally -0.072 via DD-over-knee, crash -0.080 via small-winner over-size).
-                # rsi_trend_str (long-window trend strength, 0 chop ~1 trend) is the
-                # validated mean-reversion/trend separator already used by sideways_boost.
-                # Gate the boost on LOW trend strength (mean-reversion = mixed/sideways
-                # chop): full boost at rsi_trend_str~0, fading to 0 by rsi_trend_str~0.5
-                # (trend entries). Sparing rally/crash/bull trend entries (where boosting
-                # raises DD / Sharpe-vol without return benefit) by construction. This is
-                # the clean separator the churn gate lacked (rally quiet stretches are
-                # still TREND entries, rsi_trend_str high). Continuous tanh, no boundary.
-                # New cross-component data dep: first-bar size depends on portfolio-DD-
-                # headroom x trend-strength (mean-reversion) partition.
-                _headroom_mr_gate = 1.0 - max(0.0, np.tanh(rsi_trend_str / 0.25))  # ~1 chop, ~0 trend
-                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_mr_gate
+                # BRANCH STEP3 FIX: replace the rsi_trend_str mean-reversion gate (step2)
+                # with the feda0ffa-validated WEAK MULTI-DAY TREND separator (1 - tanh(
+                # |ret_vlong|/0.03)). Step2 (rsi_trend_str /0.25) still let rally pullbacks
+                # through (moderate rsi_trend_str during pullbacks -> partial boost -> rally
+                # DD 5.15 slightly over knee -> -0.0157). The weak-vlong separator is the
+                # CLEAN mixed separator proven in the feda0ffa keep: fires for mixed's
+                # weak-trend bounces (~1 when |ret_vlong|~0), suppresses for rally's
+                # strong uptrend AND crash's strong downtrend AND bull's strong uptrend
+                # (|ret_vlong| high -> ~0) by construction on the MULTI-DAY trend-MAGNITUDE
+                # axis (distinct from rsi_trend_str's 20-bar trend). This should fully spare
+                # rally (strong multi-day uptrend) while preserving mixed's bounce boost.
+                # ret_vlong is the 96-bar OLS slope (already computed, noise-robust). Deep-
+                # saturated /0.03 (near-constant, noise-free per the validated safe family).
+                _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day, ~0 strong
+                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
