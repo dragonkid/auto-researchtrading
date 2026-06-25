@@ -2524,7 +2524,33 @@ class Strategy:
                 # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                # Exp3 (architectural, indep): TREND-STRENGTH gate on the target-ema loss-gate.
+                # NEW cross-component data dep: the loss-gate (which weakens smoothing on LOSING
+                # ct positions to cut rally's pullback-short losers faster) now depends on the
+                # MAGNITUDE of the multi-day trend. The loss-gate was added when stability was
+                # the binding wall (k=0.5) to recover rally raw -- rally's ct shorts are LOSERS
+                # in a STRONG multi-day uptrend (ret_vlong solidly positive, |ret_vlong|~0.02+),
+                # so holding them bigger-longer via full alpha costs realized losses. BUT mixed's
+                # ct LONGS are in a WEAK/bimodal multi-day trend (mixed is a down-then-up year,
+                # ret_vlong oscillates around 0, |ret_vlong|~0) -- mixed has 100pct WR (every
+                # exit a winner) yet Sh0.825 (binding floor) because held positions OSCILLATE
+                # (mid-hold losses that RECOVER as bounces play out). Applying the loss-gate to
+                # mixed's recovering ct longs cuts their smoothing -> the recovering-but-
+                # currently-losing position tracks the raw shrinking target faster -> MORE MTM
+                # oscillation -> lower mixed Sharpe (the opposite of rally's benefit). Gate the
+                # loss-gate on |ret_vlong| strength: full loss-gate in STRONG trend (rally ct
+                # shorts -> cut losers fast, the validated benefit); loss-gate FADES toward 0 in
+                # WEAK trend (mixed ct longs -> keep full alpha -> smooth the oscillation ->
+                # higher mixed Sharpe). General principle (no regime label): the tradeoff between
+                # smoothing (good for oscillating-but-recovering positions) and fast-cut (good
+                # for genuine losers) resolves on trend strength -- a ct position in a strong
+                # trend is a genuine loser (cut it); a ct position in a weak trend is an
+                # oscillating hold (smooth it). Continuous tanh on |ret_vlong|/0.02 (fast-
+                # saturating -> near-constant, noise-free per the validated ct-gate lesson);
+                # rally (0.02+) -> gate ~1 -> loss-gate full; mixed (~0) -> gate ~0 -> loss-gate
+                # off -> full smoothing. Trend-aligned (alpha 0 -> byte-identical regardless).
+                _te_loss_gate_w = max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate * _te_loss_gate_w)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
