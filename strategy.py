@@ -1660,7 +1660,21 @@ class Strategy:
                 # Smooth tanh on margin/0.40 (same scale as _bull_conv_atten; no new
                 # boundary). Direction-agnostic (uses own-side margin).
                 _persist_margin_side = _bull_margin if (_bull_ready and _bull_admit) else _bear_margin
-                _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40))
+                # Branch step3: gate the conviction-scale on _down_persist<0.75 to EXCLUDE
+                # crash (persistent downtrend _down_persist~0.9 per diagnostics) from the
+                # amplified boost. crash's trend-aligned SHORTS (100pct WR winners) get
+                # weak_persist>0 during multi-week downtrend consolidation stretches AND
+                # have high conviction margin -> step1 over-boosted them (crash -0.0013).
+                # The separator: crash is a PERSISTENT downtrend (_down_persist~0.9), mixed
+                # OSCILLATES (_down_persist~0.5). Gate the conviction amplification on
+                # _down_persist<0.75 so crash (0.9) -> scale 1.0 (baseline MAG, byte-identical
+                # to fe6acd4d for crash) while mixed (0.5) -> full conviction amplification.
+                # _down_persist is the VALIDATED direction-agnostic duration-count signal
+                # (the 52a3e671 keep mechanism). Smooth tanh fade on the 0.65 knee (so the
+                # 0.5->0.65 region keeps full amplification, fading to 0 by ~0.85 = crash).
+                # Amplify-only (floor 1.0 baseline MAG).
+                _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
+                _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
