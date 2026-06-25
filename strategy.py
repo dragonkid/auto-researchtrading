@@ -1410,10 +1410,10 @@ class Strategy:
                     # commitment. Fast-saturating /0.03 (near-constant, noise-free). Same +0.05
                     # max, deep-saturated vol gates. BTC self-referential -> not reached (alt branch).
                     _weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak trend, ~0 strong trend
-                    _btcvol_partner_boost_bull = 1.0 + 0.05 * _weak_vlong * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
-                    _btcvol_partner_boost_bear = 1.0 + 0.05 * _weak_vlong * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
-                    _partnervol_btc_boost_bull = 1.0 + 0.05 * _weak_vlong * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
-                    _partnervol_btc_boost_bear = 1.0 + 0.05 * _weak_vlong * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
+                    _btcvol_partner_boost_bull = 1.0 + 0.07 * _weak_vlong * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
+                    _btcvol_partner_boost_bear = 1.0 + 0.07 * _weak_vlong * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
+                    _partnervol_btc_boost_bull = 1.0 + 0.07 * _weak_vlong * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _partnervol_btc_boost_bear = 1.0 + 0.07 * _weak_vlong * _partner_vol_rise * max(0.0, np.tanh(-_btc_trend / 0.03))
                     # Exp2 (architectural, indep): BTC leader DVP x BTC-price-trend-agreement
                     # conjunction boost on ALT entries (the directional-volume column of the
                     # {own,BTC,partner}x{vol,price} grid). _btc_dvp (leader volume-DIRECTION
