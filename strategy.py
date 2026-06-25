@@ -1764,39 +1764,6 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
-                # Exp2 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation.
-                # NEW higher-order data axis genuinely absent from the strategy: _ve_pressure
-                # is vol-of-PRICE expansion (6/18-bar realized vol RATIO) used as EXIT
-                # pressure; vol_ratio is a realized-vol LEVEL. NEITHER measures the
-                # STABILITY of the volatility regime itself -- whether vol is itself
-                # changing rapidly (high vol-of-vol = regime transition/uncertain) vs stable
-                # (low vol-of-vol = established regime). Compute vol-of-vol as the std of
-                # rolling 6-bar realized vol samples over the last 18 bars (a 2nd-order
-                # statistic: volatility OF volatility). High VoV = the vol regime is in flux
-                # = entry quality is more uncertain (the realized-vol estimate the sizing
-                # depends on is itself unstable) -> SLOW scale-in (more bars to full size,
-                # let the regime clarify before committing fully). Low VoV = stable vol
-                # regime = fast scale-in (commit to capture the move). Distinct from
-                # _win_accel (realized-PnL acceleration) and _trend_strength_w (trend
-                # magnitude). Continuous tanh on VoV/median_vol (normalized, no boundary ->
-                # not a boundary family -> noise-robust); max +0.6 bars slower at deep VoV,
-                # floored at _accel_floor (never faster than baseline). Scale-in pace (not
-                # entry SIZE) -> NOT grid-blocked (the grid quantizes resize TARGETS, not
-                # pace); the prior-session root cause was that pace is the one lever able to
-                # move stability/raw without hitting the grid wall. Direction-agnostic
-                # general principle (no regime label). New cross-timescale data dep: scale-
-                # in pace depends on the 2nd-order vol regime.
-                _vov_n = 6
-                if len(closes) >= 24:
-                    # 18 overlapping 6-bar realized-vol samples
-                    _vov_samples = np.array([
-                        float(np.std(np.diff(np.log(closes[-(i + _vov_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_n - 1:]))))
-                        for i in range(18)
-                    ])
-                    _vov_med = max(float(np.median(_vov_samples)), 1e-8)
-                    _vov = float(np.std(_vov_samples)) / _vov_med  # normalized vol-of-vol
-                    _vov_gate = max(0.0, min(1.0, np.tanh((_vov - 0.30) / 0.25)))  # ~0 stable, ~1 flux
-                    _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
