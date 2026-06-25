@@ -1842,7 +1842,21 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp5 (architectural, indep): PNL-CONDITIONED ct_hold_sat magnitude. The
+                # ct max_hold shortening (2.0*_ct_hold_sat) cuts counter-trend positions
+                # shorter -- it fires on BOTH mixed's ct WINNING longs (which need the full
+                # hold to capture the bounce) AND rally's ct LOSING pullback shorts (the
+                # rally Sharpe drag, where a faster exit caps the loss). Make the shortening
+                # ASYMMETRIC on pos_pnl sign: ct LOSERS (pos_pnl<0) get STRONGER shortening
+                # (cut losers faster -> smaller realized losses -> rally Sharpe up); ct
+                # WINNERS (pos_pnl>0) get WEAKER shortening (let mixed's winning ct longs
+                # ride -> mixed capture up). Smooth tanh on pos_pnl/|stop| (no boundary);
+                # loss-side scales the 2.0 coefficient up to 3.0, profit-side scales it down
+                # to 1.0. Trend-aligned (ct_hold_sat=0) byte-identical. New cross-component
+                # data dep: ct hold-shortening magnitude depends on pos_pnl sign.
+                _ct_hold_pnl = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
+                _ct_hold_coef = 2.0 + 1.0 * _ct_hold_pnl - 1.0 * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - _ct_hold_coef * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
