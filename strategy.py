@@ -245,7 +245,7 @@ ENTRY_ACCUM_THRESH = 0.0
 # that a multi-bar rally pullback (typically <20 bars) does NOT saturate the
 # count while mixed's sustained weakness does. PERSIST_BOOST_MAG is the max
 # first-bar size boost (mirrors the prior branch's +0.05 headroom-boost scale).
-PERSIST_WEAK_THRESH = 0.03
+PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
 PERSIST_BOOST_MAG = 0.12
 
