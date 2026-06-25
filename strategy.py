@@ -315,6 +315,17 @@ class Strategy:
         # makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation
         # while preserving the pullback-depth signal that drives the rally DD relief.
         self._equity_ema = 0.0
+        # Exp1 branch: SLOW EMA of equity for the DD-headroom signal (span 48 = 2 days).
+        # The headroom boost must reflect a regime's STRUCTURAL drawdown depth, not the
+        # instantaneous equity -- rally's quiet stretches between DD episodes recover to
+        # near-peak equity, so an instantaneous headroom would fire the boost there even
+        # though rally is structurally AT the 5pct knee. A slow EMA lags those recoveries
+        # -> rally's sustained 5.12pct DD keeps smoothed headroom low -> boost stays ~0
+        # for rally while crash/sideways/bull (shallower, less-sustained DD -> equity
+        # nearer peak on the slow timescale) retain headroom. Distinct from the span-3
+        # giveback EMA (which tracks pullback DEPTH fast for pp-tightening); this is a
+        # SLOW regime-level headroom estimate.
+        self._equity_ema_slow = 0.0
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
@@ -378,15 +389,20 @@ class Strategy:
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
         # Exp (architectural, indep): DD-HEADROOM-CONDITIONED return-seeking first-bar
-        # size boost. See PORT_DD_HEADROOM_* comments for full mechanism. Computed here
-        # from the SAME instantaneous equity/peak used by _port_dd_atten (so the two
-        # share the exact same DD-fraction signal and form a complementary boost/shrink
-        # pair). headroom = unused fraction of the 5pct dd_gate knee (1 at peak equity,
-        # 0 at 5pct portfolio DD). The actual first-bar application (churn-gated) is at
-        # the entry-target assembly below; this is just the raw headroom scalar. Smooth
-        # tanh saturation (no boundary); 0 during any DD episode at/ past the knee.
-        _port_dd_frac_inst = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-        _port_dd_headroom = max(0.0, 1.0 - np.tanh(_port_dd_frac_inst / PORT_DD_HEADROOM_KNEE))
+        # size boost. See PORT_DD_HEADROOM_* comments for full mechanism.
+        # BRANCH STEP1 FIX: use a SLOW EMA (span 48 = 2 days) of equity vs peak for the
+        # headroom, NOT instantaneous equity. Exp1 (instantaneous) leaked to rally:
+        # rally's quiet stretches between DD episodes recover to near-peak equity ->
+        # headroom~1 -> boost fired -> rally DD 5.12->5.29 over the knee -> -0.072. The
+        # slow EMA lags those transient recoveries: rally's SUSTAINED 5.12pct DD keeps
+        # smoothed equity below peak -> smoothed headroom stays low -> boost ~0 for
+        # rally (structurally at the knee). crash/sideways/bull (shallower DD, equity
+        # nearer peak on the slow timescale) retain headroom. This is a REGIME-LEVEL
+        # headroom, not a per-bar one. Smooth tanh saturation (no boundary).
+        _eq_alpha_slow = 2.0 / (48 + 1)
+        self._equity_ema_slow = _eq_alpha_slow * equity + (1.0 - _eq_alpha_slow) * (self._equity_ema_slow if self._equity_ema_slow > 0 else equity)
+        _port_dd_frac_slow = max(0.0, 1.0 - self._equity_ema_slow / max(self._peak_equity, 1e-10))
+        _port_dd_headroom = max(0.0, 1.0 - np.tanh(_port_dd_frac_slow / PORT_DD_HEADROOM_KNEE))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
