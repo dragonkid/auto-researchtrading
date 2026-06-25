@@ -855,6 +855,39 @@ class Strategy:
             _cap_base = _cap_base * (1.0 - _cap_high_smooth) + MAX_COMBINED_MULT_HIGH_VOL * _cap_high_smooth
             combined_mult = min(combined_mult, _cap_base + MAX_COMBINED_TREND_BOOST * (1.0 - rsi_trend_str ** 0.85))
             size = equity * BASE_POSITION_SIZE * combined_mult
+            # Exp4 (architectural, indep): VOL-NORMALIZED PER-TRADE SIZE CAP. NEW data dep:
+            # cap the EXPECTED per-trade PnL MAGNITUDE (size * realized_vol) at a multiple of
+            # the baseline magnitude budget, so OUTLIER-large trades (high combined_mult from
+            # calm_boost + sideways_boost + strength_scale stacking in low-vol chop) get trimmed
+            # while normal trades are untouched. Targets mixed's binding Sharpe drag: per prior-
+            # session root cause (session-summary row 1515), mixed's Sh0.825 drag is TRADE-TO-
+            # TRADE PnL MAGNITUDE VARIANCE (45 winning trades of widely varying sizes, the LARGEST
+            # winners inflate the variance). The one UNTESTED axis is per-trade SIZE NORMALIZATION
+            # -- specifically a return-NEUTRAL transform that trims the LARGEST winners (uniform
+            # strength_scale compression was return-Lossy, Exp on row 1500). This cap is return-
+            # neutral by construction: it trims ONLY trades whose vol-adjusted size exceeds the
+            # budget (the outliers), leaving the majority of trades (within budget) at full size.
+            # size already includes (TARGET_VOL/realized_vol)^0.85 so size*realized_vol is already
+            # partially vol-normalized; the cap closes the loophole where combined_mult's chop
+            # boosts break that normalization. Budget = equity * BASE_POSITION_SIZE * TARGET_VOL
+            # (the vol_ratio=1 baseline magnitude); cap at 1.6x budget. Soft tanh squash toward
+            # the cap (no hard boundary; trades near the cap are not bimodal). General principle
+            # (no regime label): per-trade expected PnL magnitude is bounded. Falls out per
+            # regime: low-vol high-boost regimes (mixed chop, sideways) get the largest trades
+            # capped; high-vol small-size regimes (crash) are well under the cap -> byte-identical.
+            # Sharpe-affecting (alters the SIZE of the largest entries, the variance lever; all
+            # stability factors 1.0 so raw IS score).
+            _mag_budget = equity * BASE_POSITION_SIZE * TARGET_VOL
+            _mag = size * realized_vol
+            _mag_cap = 1.6 * _mag_budget
+            if _mag > _mag_cap and _mag_budget > 0:
+                # Soft-squash the size so its vol-adjusted magnitude approaches _mag_cap.
+                # _size_capped is the size that would give magnitude _mag_cap.
+                _size_capped = _mag_cap / realized_vol
+                # Smooth blend toward _size_capped: full size at the cap, squashed above it.
+                _over_frac = (_mag - _mag_cap) / max(_mag_cap, 1e-10)  # 0 at cap, grows above
+                _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))  # 0 at cap, ~1 at 2x cap
+                size = size * (1.0 - _squash_w) + _size_capped * _squash_w
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
