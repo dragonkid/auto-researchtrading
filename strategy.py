@@ -1808,8 +1808,23 @@ class Strategy:
                     # persist~0.3) -> 0.12 base -> byte-identical vs Exp5 keep. New data
                     # dep: amplified magnitude depends on directional-negativity duration.
                     _persist_deep_gate = max(0.0, np.tanh((_down_persist - 0.75) / 0.12))  # step3: 0.6->0.75 exclude bull extended pullbacks
+                    # BRANCH step4: replace the BASE _persist_down_gate (instantaneous rv
+                    # sign, the bull-leak source per step3 analysis) with the DURATION-based
+                    # _down_persist gate for the WHOLE sustained boost (base + amplified).
+                    # Step3 proved the bull residual leak (-0.0008) is from the Exp5 keep's
+                    # base gate _persist_down_gate=tanh(-ret_vlong/0.02) firing on bull's
+                    # transient pullback rv dips (rv briefly <0 during corrections). Route
+                    # the ENTIRE sustained boost through the duration gate: fire only when
+                    # _down_persist is high (persistent downtrend = crash ~0.9; bull's
+                    # transient dips ~0.3 -> gate ~0 -> byte-identical vs Exp5 keep for bull).
+                    # This recovers the bull leak AND keeps crash's gain (crash persistent
+                    # downtrend -> full gate). Unifies base + amplified on the duration gate
+                    # (the amplified increment 0.10 still requires the deeper 0.75 threshold,
+                    # the base 0.12 requires the shallower 0.5 threshold so crash's full
+                    # sustained gain from Exp5 is preserved).
+                    _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
-                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate
+                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
