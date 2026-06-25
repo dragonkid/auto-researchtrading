@@ -2230,6 +2230,16 @@ class Strategy:
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
                 _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # BRANCH step8: vlong-align gate on the scale-in-winning exit threshold (third
+                # application of the step2 multi-day signal, complementary path). The 0.20
+                # threshold bonus protects winning scale-in positions from noise-driven early
+                # exits. For COUNTER-TREND-AT-MULTI-DAY scale-in winners (rally pullback SHORTS
+                # briefly profitable in scale-in: ret_vlong>0, pos_dir=-1 -> gate 0), DO NOT grant
+                # the bonus -> exit easier -> cut the losing short before it fully builds. Trend-
+                # aligned scale-in winners (gate~1) keep the 1.20 protection byte-identical.
+                # crash trend shorts (gate~1) byte-identical; mixed (gate~1) byte-identical.
+                if _scale_in_winning:
+                    _exit_thresh = 1.0 + 0.20 * _win_vlong_align * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS)
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
