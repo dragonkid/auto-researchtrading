@@ -1764,6 +1764,39 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
+                # Exp4 (architectural, indep): VOL-OF-VOL regime scale-in pace modulation,
+                # COUNTER-TREND-AT-MULTI-DAY GATED (refinement of Exp2 which applied to all
+                # positions and catastrophically regressed rally -0.369 by slowing rally's
+                # trend-aligned longs). Exp2's ONE bright spot was crash +0.026. The fix:
+                # apply the cautious scale-in ONLY to counter-trend-at-multi-day positions
+                # (the validated _ct_si_gate separator, already computed for _adv_freeze).
+                # CT positions during vol-regime transitions are the most uncertain: they
+                # fight BOTH the multi-day trend AND a shifting vol regime -> cautious scale-
+                # in (let the regime clarify before committing fully). Trend-aligned positions
+                # (rally longs, crash trend shorts, bull longs) keep FAST scale-in -> byte-
+                # identical to baseline for the trend regimes that Exp2 catastrophically
+                # regressed. NEW higher-order data axis (vol-of-vol, 2nd-order vol statistic,
+                # absent from strategy) x ct-gate on the scale-in PACE path (not grid-blocked).
+                # Continuous tanh on VoV/median_vol; max +0.6 bars slower at deep VoV for ct
+                # positions only; floored at _accel_floor. min_stab preserved (ct-gate is
+                # noise-immune integer/ret_vlong-derived; VoV is a smooth windowed stat).
+                # Direction-agnostic general principle (no regime label): cautious scale-in
+                # for counter-trend entries in a vol-flux regime. New cross-timescale x
+                # cross-trend data dep at scale-in pace.
+                _vov_n = 6
+                if len(closes) >= 24:
+                    _vov_samples = np.array([
+                        float(np.std(np.diff(np.log(closes[-(i + _vov_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_n - 1:]))))
+                        for i in range(18)
+                    ])
+                    _vov_med = max(float(np.median(_vov_samples)), 1e-8)
+                    _vov = float(np.std(_vov_samples)) / _vov_med
+                    _vov_gate = max(0.0, min(1.0, np.tanh((_vov - 0.30) / 0.25)))
+                    # _ct_si_gate computed BELOW for _adv_freeze; replicate the multi-day ct
+                    # indicator here (scale-in pace block runs before _adv_freeze's gate).
+                    _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
+                    _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                    _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
