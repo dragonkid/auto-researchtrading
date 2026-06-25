@@ -233,31 +233,6 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
 
-# Exp1 (architectural, indep): SUSTAINED-WEAK-MULTI-DAY-TREND return-seeking first-bar
-# size boost. The prior session's DD-headroom-conditioned first-bar boost, gated on
-# the feda0ffa single-bar weak-trend gate (1-tanh(|ret_vlong|/0.03)), reached mixed
-# +0.0112 (Sh 0.808->0.818) BUT plateaued at +0.0015 composite because the gate
-# LEAKED: it fired during momentary |ret_vlong| dips in rally (-0.0072) and crash
-# (-0.0043) trend regimes. 5 branch steps tried secondary gates (churn, mean-reversion,
-# low-vol, loss-streak, gate-scale) -- all either byte-identical or regressed (sharper
-# gates killed mixed more than the leak). STRUCTURAL FIX: replace the single-bar
-# weak-trend reading with a TEMPORAL EMA of |ret_vlong| over a rolling window. mixed's
-# weak multi-day trend is SUSTAINED (ret_vlong lingers near 0 for many bars -> EMA
-# stays near 0 -> sustained-weak ~1, boost fires); rally/crash momentary dips recover
-# within a few bars while prior bars carried large |ret_vlong| (-> EMA stays elevated
-# -> sustained-weak ~0, boost suppressed). Same /0.03 scale as the validated feda0ffa
-# gate (so the activation threshold matches), but reads the SMOOTHED magnitude. This
-# is a NEW data dependency (temporal persistence of ret_vlong) addressing the exact
-# leak mechanism the prior branch could not gate out. Conservative MAG 0.10 (vs the
-# reverted branch's 0.12 headroom boost): first-bar-only, bilateral (both directions),
-# multiplied into the entry target like the existing validated boosts. Symmetric,
-# Sharpe-affecting only via entry SIZE (return_bonus lever, the scoring redesign's
-# incentivized axis). Continuous tanh (no decision boundary). Does NOT touch the
-# existing feda0ffa _weak_vlong gate on the mixed-cell volume boosts (load-bearing for
-# mixed) -- this is a SEPARATE boost on a SEPARATE (temporally-confirmed) signal.
-WEAK_VLONG_EMA_SPAN = 10  # bars of |ret_vlong| history to average (~10h of dwell)
-WEAK_VLONG_SUSTAINED_MAG = 0.10  # max first-bar size boost at sustained weak multi-day trend
-
 
 class Strategy:
     def __init__(self):
@@ -345,23 +320,6 @@ class Strategy:
         # (mixed_2025's 100pct-long-in-a-down-year book, eq-autocorr -0.427).
         # Drives the emission-layer reduction throttle. Reset on full exit.
         self._pnl_path = {}
-        # Exp1 (architectural, indep): per-symbol TEMPORAL EMA of |ret_vlong| (the
-        # 96-bar multi-day trend MAGNITUDE). ret_vlong is already a 96-bar OLS slope
-        # (very smooth per-bar), but the feda0ffa-validated weak-trend gate
-        # 1-tanh(|ret_vlong|/0.03) reads its INSTANTANEOUS value, so a MOMENTARY
-        # |ret_vlong| dip during a strong trend (rally pullback / crash bounce)
-        # briefly satisfies the gate -> the documented leak that capped the prior
-        # session's headroom-boost branch at +0.0015 composite (mixed +0.0112 but
-        # rally -0.0072 / crash -0.0043 leak). A temporal EMA of |ret_vlong| over a
-        # rolling window distinguishes SUSTAINED weak multi-day trend (mixed_2025:
-        # ret_vlong lingers near 0 across many bars -> EMA stays near 0 -> sustained-
-        # weak ~1) from MOMENTARY dips in strong trends (rally/crash: prior bars had
-        # large |ret_vlong| -> EMA stays elevated -> sustained-weak ~0). This is a
-        # NEW data dependency (temporal dwell/persistence of ret_vlong, not its single-
-        # bar value) and a new control point (sustained-weak gate on a return-seeking
-        # first-bar boost). Reset/default 0.0; updated each bar after ret_vlong is
-        # computed. Span chosen so the EMA averages ~10 bars of |ret_vlong| history.
-        self._vlong_abs_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -552,12 +510,6 @@ class Strategy:
             _vlong_n = min(VLONG_WINDOW, len(closes) - 1)
             _hl2_vl = (bd.history["high"].values[-_vlong_n:] + bd.history["low"].values[-_vlong_n:]) / 2.0
             ret_vlong = _fast_slope(np.log(_hl2_vl)) * _vlong_n
-            # Exp1 (architectural, indep): temporal EMA of |ret_vlong| (sustained-weak-
-            # multi-day-trend signal). Updated each bar from the freshly-computed ret_vlong.
-            # See WEAK_VLONG_SUSTAINED_MAG comments for the leak mechanism this addresses.
-            _vlong_abs_alpha = 2.0 / (WEAK_VLONG_EMA_SPAN + 1)
-            _prev_vl_abs = self._vlong_abs_ema.get(symbol, abs(ret_vlong))
-            self._vlong_abs_ema[symbol] = _vlong_abs_alpha * abs(ret_vlong) + (1.0 - _vlong_abs_alpha) * _prev_vl_abs
             dyn_threshold *= 1.0 - TREND_THRESHOLD_SCALE * (1.0 - min(abs(ret_long) / TREND_THRESHOLD_DECAY, 1.0) ** 0.85)
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
@@ -1600,24 +1552,12 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
-                # Exp1 (architectural, indep): SUSTAINED-WEAK-MULTI-DAY-TREND return-seeking
-                # first-bar size boost. See WEAK_VLONG_SUSTAINED_MAG comments for full
-                # mechanism. _weak_vlong_sustained reads the TEMPORAL EMA of |ret_vlong|
-                # (self._vlong_abs_ema, updated each bar after ret_vlong is computed) instead
-                # of ret_vlong's single-bar value. Sustained weak trend (mixed: ret_vlong
-                # lingers near 0) -> EMA near 0 -> gate ~1 -> boost fires; momentary dips in
-                # strong trends (rally/crash leak) -> EMA stays elevated -> gate ~0 -> boost
-                # suppressed. Same /0.03 activation scale as the validated feda0ffa _weak_vlong
-                # gate so the firing threshold matches, but the smoothed input closes the leak.
-                # First-bar-only (sustained boosts over-commit), bilateral, MAG 0.10.
-                _weak_vlong_sustained = 1.0 - max(0.0, np.tanh(self._vlong_abs_ema.get(symbol, 0.0) / 0.03))
-                _weak_vlong_sustained_boost = 1.0 + WEAK_VLONG_SUSTAINED_MAG * _weak_vlong_sustained
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _weak_vlong_sustained_boost
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _weak_vlong_sustained_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
