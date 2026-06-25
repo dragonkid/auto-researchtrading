@@ -2139,6 +2139,35 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): CROSS-SYMBOL BTC-TREND DIVERGENCE exit
+                # pressure (7th soft source). NEW data dep: the exit subsystem reads ZERO
+                # cross-symbol data today -- all 6 soft sources (slope/pp/time/ve/ep/vc) use
+                # own-symbol price/volume only, while the ENTRY side carries ~10 cross-symbol
+                # deps (BTC trend, partner lead, BTC/partner vol & DVP). A held ALT position
+                # whose direction OPPOSES BTC's multi-day (96-bar) trend faces a broad-market
+                # reversal the own-symbol 16/22-bar slope has not yet reflected (BTC leads):
+                # a rally pullback SHORT while BTC's 96-bar uptrend is solidly positive, or a
+                # mixed bounce LONG while BTC's 96-bar trend is negative. _btc_trend (already
+                # computed at top of on_bar, 96-bar OLS log-HL2 slope*n) is the validated multi-
+                # day leader signal; signed against position direction it is a broad-market-
+                # reversal exit signal ORTHOGONAL to every own-symbol exit source. Distinct from
+                # _ct_hold_sat (uses OWN ret_vlong; this uses BTC ret_vlong -- different symbol,
+                # different timescale role: BTC is the leader whose turns precede alts). Profit-
+                # side only (lock gains when the broad market leader diverges from a winner;
+                # losers already handled by slope-against). Deep-saturated /0.03 gate (only DEEP
+                # BTC trend fires -> near-constant where it activates, noise-free per the
+                # validated safe-family lesson; BTC 96-bar slope averages ~96 bars of AR(1)
+                # noise -> ~1/sqrt(96) attenuation, negligible added noise). Shrink-side caps at
+                # 0. BTC self-referential -> _btc_trend==own ret_vlong -> redundant with own
+                # slope-against for BTC -> 1.0 (byte-identical) for BTC. New exit-pressure source
+                # + new control flow in the MAX fusion (7th term). Targets the two binding
+                # regimes: rally (pullback shorts opposing BTC uptrend) + mixed (bounce longs
+                # opposing BTC downtrend). Direction-agnostic general principle (no regime label).
+                _btc_div = 0.0
+                if symbol != "BTC":
+                    _pos_dir_bt = 1.0 if current_pos > 0 else -1.0
+                    _btc_div = 0.40 * max(0.0, np.tanh(-_btc_trend * _pos_dir_bt / 0.03))
+                _w_bt = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2153,6 +2182,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
+                    _w_bt * _btc_div,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
