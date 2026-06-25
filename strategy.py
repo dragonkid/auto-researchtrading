@@ -1104,17 +1104,24 @@ class Strategy:
                 # integer churn count.
                 _churn_size_atten = 1.0 - 0.25 * max(0.0, np.tanh((len(_eh) - 1.5) / 1.5))
                 # Exp (architectural, indep): DD-HEADROOM-CONDITIONED return-seeking
-                # first-bar size boost (see PORT_DD_HEADROOM_* comments). Churn-gated
-                # on the SAME noise-immune integer partition as _calm_ct / _churn_size_atten:
-                # full boost at len(_eh)<=1 (sparse entries: crash/sideways/bull + rally
-                # quiet stretches), fading to 0 at len(_eh)>=3 (rally bursts = the
-                # noise-driving population the reverted cabfb6f1-era branch over-sized).
-                # Byte-identical for burst entries (gate 0 -> boost 1.0) and during DD
-                # episodes (headroom 0 -> boost 1.0). Symmetric (applied to both
-                # directions at the entry-target assembly). New cross-component data
-                # dep: first-bar size depends on portfolio-DD-headroom x churn partition.
-                _headroom_churn_gate = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 sparse, ~0 bursting
-                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_churn_gate
+                # first-bar size boost (see PORT_DD_HEADROOM_* comments).
+                # BRANCH STEP2 FIX: replace the churn gate (which leaked to rally quiet
+                # stretches, len(_eh)<=1 there) with a MEAN-REVERSION gate on
+                # rsi_trend_str. Exp1 showed the headroom boost helps mean-reversion
+                # regimes (mixed +0.0117, sideways +0.0056) but HURTS trend regimes
+                # (rally -0.072 via DD-over-knee, crash -0.080 via small-winner over-size).
+                # rsi_trend_str (long-window trend strength, 0 chop ~1 trend) is the
+                # validated mean-reversion/trend separator already used by sideways_boost.
+                # Gate the boost on LOW trend strength (mean-reversion = mixed/sideways
+                # chop): full boost at rsi_trend_str~0, fading to 0 by rsi_trend_str~0.5
+                # (trend entries). Sparing rally/crash/bull trend entries (where boosting
+                # raises DD / Sharpe-vol without return benefit) by construction. This is
+                # the clean separator the churn gate lacked (rally quiet stretches are
+                # still TREND entries, rsi_trend_str high). Continuous tanh, no boundary.
+                # New cross-component data dep: first-bar size depends on portfolio-DD-
+                # headroom x trend-strength (mean-reversion) partition.
+                _headroom_mr_gate = 1.0 - max(0.0, np.tanh(rsi_trend_str / 0.25))  # ~1 chop, ~0 trend
+                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_mr_gate
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
