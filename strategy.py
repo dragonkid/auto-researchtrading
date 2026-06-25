@@ -1713,6 +1713,25 @@ class Strategy:
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
                 _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
+                # BRANCH step7: MULTI-DAY trend-confirmation gate on the win-accelerator (same
+                # validated vlong signal as the de-risk cushion step2, applied to a DIFFERENT
+                # subsystem -- scale-in pace, not de-risk). The accelerator grows winning
+                # positions faster (lower _entry_full_bars_dyn), gated by 16-bar _slope_conf.
+                # But a COUNTER-TREND-AT-MULTI-DAY winner (rally pullback SHORT that briefly
+                # profits during an uptrend pullback: ret_vlong>0, pos_dir=-1 -> product<0)
+                # has _slope_conf>0 (near-term slope confirms the short during the pullback)
+                # -> accelerator fires -> over-builds the losing pullback short -> bigger
+                # realized loss when the uptrend resumes -> lower rally Sharpe. Gate the
+                # accelerator with the multi-day vlong alignment (fast-saturating /0.01, same
+                # as step2 cushion): ct-at-multi-day winners (gate 0) do NOT accelerate; trend-
+                # aligned (gate ~1) keep full acceleration. crash trend shorts (ret_vlong<0,
+                # pos_dir=-1 -> product>0 -> gate~1) byte-identical; rally/bull trend longs
+                # (product>0) byte-identical; mixed (product~0 -> gate~1) byte-identical. New
+                # cross-timescale data dep at the scale-in decision. Targets the SAME rally
+                # pullback-shorts carrier as step2 via a complementary path (build smaller +
+                # de-risk faster = double benefit on the losing short).
+                _win_vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_acc / 0.01))
+                _win_accel = _win_accel * _win_vlong_align
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
                 # recovered via slope gate). The fixed 0.8 magnitude rarely saturates the
