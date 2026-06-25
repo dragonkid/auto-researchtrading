@@ -2703,31 +2703,11 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                # Exp2 (architectural): CONTINUOUS chop-proportional grid-exemption ramp
-                # (replaces binary chop>0.30 step). Prior session found the grid-absorption
-                # wall blocks mixed's small reductions (45 trades, sample_factor drag):
-                # reductions snap to the same lattice point -> never emitted. The binary
-                # chop>0.30 gate exempted high-chop small positions but left mixed at 45
-                # trades because (a) the threshold is a step that excludes moderate-chop
-                # mixed bars and (b) exempting from the grid alone re-exposes to the $2.8
-                # emission floor (Exp1 confirmed: emission-floor-lowering cannot un-block
-                # because the grid runs first). Architectural change: replace the binary
-                # step with a CONTINUOUS ramp on the chop signal so the exemption strength
-                # scales proportionally -- mixed's high-chop dead capital gets near-full
-                # exemption, sideways's moderate-chop winners get partial (preserving
-                # sideways's grid protection), and low-chop trend winners get none. The
-                # ramp is multiplicative on the grid-quantization skip (blend between
-                # quantized and raw target by chop). Continuous tanh on _chop_ex (no new
-                # decision boundary that flips under AR(1) -- chop is a 12-bar path stat,
-                # already noise-smoothed). New control-flow FORM (continuous blend vs
-                # binary skip). Position-size gate retained (small only) so large-position
-                # regimes keep full grid protection.
-                _small_pos_gate_ex = max(0.0, min(1.0, np.tanh((_chop_ex - 0.20) / 0.15)))  # 0 chop<=0.20, ramps to 1 at chop>=0.50
-                _exempt_frac = _small_pos_gate_ex * max(0.0, min(1.0, (2.0 * _grid_c - abs(current_pos)) / max(2.0 * _grid_c, 1e-10)))  # small-pos blend
-                if _grid_c > 0:
+                _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
+                if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
-                        target = _qt_c * (1.0 - _exempt_frac) + target * _exempt_frac  # blend quantized <-> raw by chop
+                        target = _qt_c
             # Branch step2 (behavior-preserving leverage): scale the ABSOLUTE
             # minimum-trade emission threshold by LEVERAGE_K. The \$1 threshold
             # (here + prepare.py line 471, unmodifiable) is an ABSOLUTE dollar
