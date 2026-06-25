@@ -1984,33 +1984,6 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                # Exp2 (architectural, indep): CROSS-SYMBOL BTC-TREND modulator on the
-                # counter-trend max_hold shortening. _ct_hold_sat (above) uses OWN ret_vlong
-                # only -- it reads ZERO cross-symbol data (the entire exit subsystem is own-
-                # symbol-only, while entry carries ~10 cross-symbol deps). For an ALT position
-                # that is counter-trend to its OWN 96-bar trend, BTC's 96-bar trend is ADDITIONAL
-                # information: an alt short held while BTC's solidly-positive multi-day uptrend
-                # is still intact (rally pullback short: BTC leads, own ret_vlong may dip but BTC
-                # ret_vlong stays strongly positive) is counter-trend to the BROAD MARKET LEADER
-                # -- a deeper, higher-quality "cut faster" signal than own ret_vlong alone. Add
-                # the BTC-divergence term (signed against position direction, deep-saturated /0.03
-                # so it is near-constant where it fires = noise-free per the validated safe-family
-                # lesson; _btc_trend is the 96-bar OLS slope*n already computed at top of on_bar,
-                # averaging ~96 bars of AR(1) noise -> ~1/sqrt(96) attenuation). Take the MAX with
-                # the own-ret_vlong term so EITHER counter-trend signal shortens the hold (the
-                # binding rally pullback shorts have BTC-solidly-positive -> max picks the BTC
-                # term; trend-aligned own ret_vlong -> own term 0). Delivery via _max_hold ->
-                # _time_pressure (the documented binding exit for mixed, 98.6pct of exits), NOT the
-                # exit MAX fusion (Exp1 proved that path saturated -- new MAX sources rarely bind).
-                # BTC self-referential -> _btc_trend == own ret_vlong -> redundant with the own
-                # term -> MAX is byte-identical for BTC. New cross-symbol data dep on the exit
-                # time-pressure activation (alt-only). Cuts ct LOSERS faster = the rally raw lever
-                # (all stability factors 1.0 so raw IS the score). Direction-agnostic general
-                # principle (no regime label). Targets rally (pullback shorts) + mixed (bounce
-                # longs opposing BTC downtrend).
-                if symbol != "BTC":
-                    _pos_dir_ctb = 1.0 if current_pos > 0 else -1.0
-                    _ct_hold_sat = max(_ct_hold_sat, max(0.0, np.tanh(-_btc_trend * _pos_dir_ctb / 0.03)))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
