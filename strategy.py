@@ -1824,7 +1824,28 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
-                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
+                    # Exp4 (architectural): TREND-ALIGNMENT gate on the sustained
+                    # boost. The boost fires when ret_vlong<0 (downtrend), but it
+                    # currently applies to BOTH trend-aligned shorts (crash, pos_dir=-1,
+                    # ret_vlong<0 -> product>0 -> winning trend followers) AND counter-
+                    # trend longs (bull corrections, pos_dir=+1, ret_vlong<0 -> product<0
+                    # -> losing dead capital). Sustaining the latter bigger amplifies
+                    # bull's correction losses (the -0.0034 bull leak in baseline
+                    # 52a3e671, per the keep row: "bull has brief ret_vlong<0 stretches
+                    # during 2021 pullback corrections where the gate fires"). Gate the
+                    # boost on trend-ALIGNMENT: fire only when pos_dir matches ret_vlong
+                    # sign (product>0 = trend-aligned). Crash shorts (product>0) keep
+                    # the full boost (gain preserved); bull correction longs (product<0)
+                    # -> align gate 0 -> no boost -> byte-identical to pre-boost for bull.
+                    # NEW cross-component data dep: sustained boost depends on position
+                    # direction x multi-day trend direction (was ret_vlong sign only).
+                    # Continuous tanh on the signed product (no boundary). Trend-aligned
+                    # is rewarded monotonically; counter-trend fades to 0. Crash gain
+                    # preserved (crash shorts deeply trend-aligned in a multi-month
+                    # downtrend -> product strongly positive -> gate ~1).
+                    _persist_pos_dir = 1.0 if current_pos > 0 else -1.0
+                    _persist_align = max(0.0, np.tanh(_persist_pos_dir * ret_vlong / 0.02))  # 0 counter-trend, ~1 trend-aligned (downtrend+short product>0 OR uptrend+long product>0); /0.02 scale mirrors _persist_down_gate
+                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur * _persist_align
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
