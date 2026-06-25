@@ -1552,12 +1552,32 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp2 (architectural, indep): BTC-LEADER-WEAK-TREND return-seeking first-bar
+                # size boost. CROSS-SYMBOL separator (distinct from the 6 failed within-symbol
+                # trend-axis gates including Exp1's temporal EMA). The documented rally leak
+                # is structural on the symbol's OWN ret_vlong: a rally PULLBACK is a local
+                # weak-trend episode for the alt, indistinguishable from mixed's genuine weak
+                # trend on that axis. BUT rally pullbacks happen in a STRONG broader-market
+                # uptrend (BTC leader trending up) while mixed's bounces happen in a weak/choppy
+                # broader market (BTC leader also weak). Gate the boost on the BTC LEADER's
+                # multi-day trend being WEAK (|_btc_trend| near 0): suppresses the boost for
+                # rally alt-pullback entries (BTC strongly up -> gate ~0 -> no boost -> no leak)
+                # while firing for mixed entries (BTC weak -> gate ~1 -> boost). _btc_trend is
+                # the 96-bar OLS slope*n on BTC log-HL2 (already computed at bar top, noise-
+                # robust ~1/sqrt(96) attenuation). Same /0.03 activation scale as the validated
+                # feda0ffa mixed-cell boost agreement gates. For BTC itself, _btc_trend IS its
+                # own trend (correct: mixed-BTC entries have weak own-trend -> boost fires).
+                # First-bar-only (sustained boosts over-commit), bilateral, MAG 0.10, continuous
+                # tanh (no boundary). Symmetric, return_bonus lever (entry SIZE). Does NOT touch
+                # the feda0ffa _weak_vlong gate (load-bearing for mixed via the mixed-cell boosts).
+                _btc_leader_weak = 1.0 - max(0.0, np.tanh(abs(_btc_trend) / 0.03))
+                _btc_leader_weak_boost = 1.0 + 0.10 * _btc_leader_weak
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _btc_leader_weak_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _btc_leader_weak_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
