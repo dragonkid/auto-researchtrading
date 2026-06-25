@@ -1824,34 +1824,7 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
-                    # Exp4 (architectural): TREND-ALIGNMENT gate on the sustained
-                    # boost (DURATION-based, not instantaneous). The boost fires when
-                    # _down_persist>0.5 (persistent downtrend), but it currently applies
-                    # to BOTH trend-aligned shorts (crash, pos_dir=-1, winning trend
-                    # followers) AND counter-trend longs (bull corrections, pos_dir=+1,
-                    # losing dead capital). Sustaining the latter bigger amplifies bull's
-                    # correction losses (the -0.0034 bull leak in baseline 52a3e671, per
-                    # the keep row: "bull has brief ret_vlong<0 stretches during 2021
-                    # pullback corrections where the gate fires"). Gate the boost on
-                    # multi-day trend-ALIGNMENT using the SAME duration signal _down_persist:
-                    # for shorts (pos_dir=-1) alignment = _down_persist (fraction of bars
-                    # ret_vlong<0 = the downtrend fraction); for longs (pos_dir=+1)
-                    # alignment = 1 - _down_persist (fraction of bars ret_vlong>0 = the
-                    # uptrend fraction). Crash shorts (_down_persist~0.9) -> align ~0.9
-                    # -> full boost preserved (gain kept); bull correction longs (multi-
-                    # week correction, _down_persist high) -> align = 1-_down_persist low
-                    # -> no boost -> leak recovered. DURATION-based (not instantaneous
-                    # ret_vlong, which the first Exp4 attempt used and which killed the
-                    # crash gain by zeroing the boost at bounce bars where instantaneous
-                    # ret_vlong>0 even in a persistent downtrend). NEW cross-component
-                    # data dep: sustained boost depends on position direction x the
-                    # multi-day downtrend-duration fraction (was duration-only). Smooth
-                    # (fraction in [0,1], no boundary). Crash gain preserved; bull leak
-                    # recovered; rally/sideways/mixed byte-identical (_persist_down_gate_dur
-                    # already 0 in uptrends/sideways).
-                    _persist_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _persist_align = _down_persist if _persist_pos_dir < 0 else (1.0 - _down_persist)  # duration-based multi-day trend-alignment
-                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur * _persist_align
+                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
