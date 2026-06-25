@@ -1875,14 +1875,21 @@ class Strategy:
                 # and _w_pp; both revert to single-factor weights.
                 _scale_in_w = 1.0
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
-                # Architectural: vol-conditioned profit-side _w_pp.
-                # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
-                #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
-                # High vol (crash): restore profit-side amplification — crash recovery profits
-                #   are short-lived and need fast giveback locking.
-                # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
-                _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
-                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
+                # Architectural simplification (Exp2): REMOVED the vol-conditioned profit-side
+                # _w_pp amplification. The former _vol_w_pp_gate = tanh((vol_ratio-1)/0.4) raised
+                # the pp_pressure weight by up to +20pct in high-vol regimes (crash), harvesting
+                # winning crash shorts faster. MECHANISM CONTRADICTION with the 99a369a1 keep:
+                # that keep PROVED crash winners need PROTECTION from over-harvest (multi-day
+                # ret_vlong _ts_supp shields crash recovery shorts from tp_harvest). A vol-
+                # AMPLIFIED pp weight does the opposite -- it over-harvests crash's 100pct-WR
+                # shorts, contributing to crash being return-limited (Sh1.254, APY11.8pct,
+                # DD2.46pct with headroom below the dd_gate knee@5). Crash has DD headroom to
+                # spare, so letting winners ride longer (removing the pp amplification) trades a
+                # small DD increase for potentially higher APY/Sharpe (the return_bonus lever).
+                # Low-vol regimes (sideways/rally, _vol_w_pp_gate~0) are byte-identical.
+                # Code-structure removal: -1 cross-subsystem data dep (pp weight no longer
+                # depends on vol_ratio), -1 intermediate var. _w_pp reverts to _scale_in_w.
+                _w_pp    = _scale_in_w
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
                 # positions should hold longer — time pressure is noise in trend
