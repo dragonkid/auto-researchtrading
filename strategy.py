@@ -824,6 +824,29 @@ class Strategy:
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
+            # Exp2 (architectural, indep): VOL-CONDITIONED sideways_boost. The mean-
+            # reversion position-size boost fires for low-trend regimes (mixed + sideways
+            # both have low rsi_trend_str). It is currently vol-blind: SIDEWAYS_BOOST_MAX
+            # *(1-rsi_trend_str^1.45), magnitude only. NEW cross-component data dep:
+            # gate the boost magnitude on vol_ratio so mean-reversion sizing is LARGER in
+            # calm (low vol, where mean-reversion entries are reliable -- price oscillates
+            # around a stable level -> bigger mean-reversion position captures more of the
+            # oscillation -> higher Sharpe) and SMALLER in choppy (high vol, where mean-
+            # reversion entries over-commit to noise -- bigger position -> bigger adverse
+            # excursion -> lower Sharpe). mixed (low-trend, low-vol down-legs/recovery) ->
+            # low vol_ratio -> larger boost -> bigger mean-reversion longs capture more of
+            # the oscillation -> higher mixed APY at preserved Sharpe (mixed is the binding
+            # floor Sh0.825, return-limited). sideways (low-trend but structurally higher
+            # vol_ratio ~1.0) -> moderate gate -> sideways_boost partially tapered (sideways
+            # DD 1.86pct has headroom; the vol-blind boost was ~off for sideways anyway since
+            # SIDEWAYS_BOOST_MAX=0.65). Continuous tanh on (vol_ratio-1)/0.4 (no boundary);
+            # calm (vol_ratio<1) amplified up to +30pct, choppy (vol_ratio>1.4) attenuated
+            # up to -30pct, ~no effect at vol_ratio~1. General vol-regime principle (no
+            # regime label): mean-reversion sizing scales with mean-reversion reliability
+            # (calm) vs noise (choppy). New data dep: sideways_boost magnitude depends on
+            # vol_ratio. Byte-identical at vol_ratio~1 (gate factor ~1.0).
+            _sb_vol_gate = 1.0 + 0.30 * max(0.0, np.tanh((1.0 - vol_ratio) / 0.4)) - 0.30 * max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))
+            sideways_boost = 1.0 + (sideways_boost - 1.0) * _sb_vol_gate
 
             strength_scale = max(0.6 + (STRENGTH_FLOOR_SIDEWAYS - 0.6) * (1.0 - min(abs(ret_long) / STRENGTH_FLOOR_DECAY, 1.0)), min(2.0, (abs(ret_short) / dyn_threshold) ** 0.85))
             # Architectural simplification: removed HIGH_VOTE_BOOST_MULT (constant 1.20).
