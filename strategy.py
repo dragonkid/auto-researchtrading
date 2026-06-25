@@ -1119,7 +1119,19 @@ class Strategy:
                 # ret_vlong is the 96-bar OLS slope (already computed, noise-robust). Deep-
                 # saturated /0.03 (near-constant, noise-free per the validated safe family).
                 _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day, ~0 strong
-                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong
+                # BRANCH STEP6: AND the weak-vlong gate with a LOW-VOLATILITY gate. The
+                # weak-vlong gate alone (step3) leaked to rally -0.0072 / crash -0.0043
+                # during momentary |ret_vlong| dips in trend regimes. The distinguishing
+                # feature: mixed/sideways are LOW-vol mean-reversion (calm chop), while
+                # rally pullbacks and crash bounces occur during HIGHER-vol stretches
+                # (pullback/bounce = vol spike). Gate the boost ALSO on low vol_ratio
+                # (fire when calm vol_ratio<0.8, suppress when vol_ratio>1.1): the boost
+                # fires only when BOTH weak-trend AND low-vol (mixed/sideways calm chop).
+                # Rally pullback dips (med-vol) and crash bounce dips (high-vol) are
+                # suppressed by the vol gate even when weak-vlong momentarily fires.
+                # Continuous tanh, no boundary. vol_ratio already computed.
+                _headroom_low_vol = max(0.0, 1.0 - np.tanh(max(0.0, (vol_ratio - 0.8)) / 0.3))  # ~1 calm, ~0 high-vol
+                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong * _headroom_low_vol
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
