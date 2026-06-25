@@ -871,23 +871,40 @@ class Strategy:
             # partially vol-normalized; the cap closes the loophole where combined_mult's chop
             # boosts break that normalization. Budget = equity * BASE_POSITION_SIZE * TARGET_VOL
             # (the vol_ratio=1 baseline magnitude); cap at 1.6x budget. Soft tanh squash toward
-            # the cap (no hard boundary; trades near the cap are not bimodal). General principle
-            # (no regime label): per-trade expected PnL magnitude is bounded. Falls out per
-            # regime: low-vol high-boost regimes (mixed chop, sideways) get the largest trades
-            # capped; high-vol small-size regimes (crash) are well under the cap -> byte-identical.
-            # Sharpe-affecting (alters the SIZE of the largest entries, the variance lever; all
-            # stability factors 1.0 so raw IS score).
+            # the cap (no hard boundary; trades near the cap are not bimodal).
+            # BRANCH step2: GATE the cap on COUNTER-TREND-AT-MULTI-DAY (ret_vlong*pos_dir<0).
+            # Step1 (regime-blind cap) moved mixed +0.0086 BUT collapsed trend regimes (bull/
+            # crash/rally/sideways -0.16 to -0.37) -- the cap trimmed LEGITIMATE large trend-
+            # aligned winners, not just mixed's variance-rich outliers. The validated separator
+            # (594c9175/fe6acd4d keeps): mixed's held longs are COUNTER-TREND-AT-MULTI-DAY
+            # (ret_vlong<0, pos_dir=+1 -> product<0 = the dead-capital oscillating book in a
+            # down year); trend-aligned winners (bull/crash/rally longs, crash shorts) have
+            # ret_vlong*pos_dir>0 -> NOT variance-rich (they ride a confirmed trend, their large
+            # size is signal-correct). Gate the cap on the ct-at-multi-day indicator so it fires
+            # ONLY for mixed's population; trend-aligned winners keep full size -> byte-identical
+            # for the trend regimes. The entry direction is known from _bull_ready/_bear_ready
+            # (computed above); use whichever side is ready to determine pos_dir for the gate.
+            # Fast-saturating /0.01 ret_vlong scale (near-constant where it fires, noise-free per
+            # the validated branch-step-9 lesson; mixed's solidly-negative ret_vlong sits in the
+            # flat saturated tail). General principle (no regime label): variance-cap only the
+            # counter-trend-at-multi-day entries (the variance-rich population).
             _mag_budget = equity * BASE_POSITION_SIZE * TARGET_VOL
             _mag = size * realized_vol
             _mag_cap = 1.6 * _mag_budget
             if _mag > _mag_cap and _mag_budget > 0:
-                # Soft-squash the size so its vol-adjusted magnitude approaches _mag_cap.
-                # _size_capped is the size that would give magnitude _mag_cap.
-                _size_capped = _mag_cap / realized_vol
-                # Smooth blend toward _size_capped: full size at the cap, squashed above it.
-                _over_frac = (_mag - _mag_cap) / max(_mag_cap, 1e-10)  # 0 at cap, grows above
-                _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))  # 0 at cap, ~1 at 2x cap
-                size = size * (1.0 - _squash_w) + _size_capped * _squash_w
+                # ct-at-multi-day gate: which ready side, and is it counter-trend?
+                _entry_pos_dir = 0
+                if _bull_ready:
+                    _entry_pos_dir = 1
+                elif _bear_ready:
+                    _entry_pos_dir = -1
+                _ct_md = max(0.0, np.tanh(-_entry_pos_dir * ret_vlong / 0.01)) if _entry_pos_dir != 0 else 0.0
+                if _ct_md > 0.50:
+                    # Soft-squash the size so its vol-adjusted magnitude approaches _mag_cap.
+                    _size_capped = _mag_cap / realized_vol
+                    _over_frac = (_mag - _mag_cap) / max(_mag_cap, 1e-10)
+                    _squash_w = max(0.0, min(1.0, np.tanh(_over_frac / 0.5)))  # 0 at cap, ~1 at 2x
+                    size = size * (1.0 - _squash_w) + _size_capped * _squash_w
 
             current_pos = portfolio.positions.get(symbol, 0.0)
             target = current_pos
