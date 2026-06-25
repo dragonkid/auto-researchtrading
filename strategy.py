@@ -2508,30 +2508,6 @@ class Strategy:
             if current_pos != 0 and target != 0 and (current_pos > 0) == (target > 0):
                 _pos_dir_te = 1.0 if current_pos > 0 else -1.0
                 _ct_te_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))
-                # branch step2: WEAK-TREND smoothing floor. The ct gate _ct_te_str switches
-                # smoothing ON only when ret_vlong sign opposes the position (ct-at-multi-day),
-                # and OFF when ret_vlong aligns (trend-aligned). For a STRONG-trend ct position
-                # (rally pullback short, ret_vlong solidly positive) this is correct: the gate
-                # is a near-constant ~1 (deep in the saturated tail) -> steady smoothing. But
-                # for a WEAK-trend position (mixed's oscillating longs, ret_vlong bimodal around
-                # 0) the gate FLICKERS: ret_vlong sign flips between slightly-negative (recovery
-                # legs -> smoothing ON) and slightly-positive (down-legs -> smoothing OFF) on a
-                # near-zero base -> the smoothing turns OFF during the down-legs exactly when
-                # the position oscillates most -> MTM variance passes through unsmoothed. mixed
-                # is 100pct WR / low Sharpe = intrinsic hold MTM oscillation; the loss-gate is
-                # already ~0 for mixed (step1 finding) so the lever is the BASE alpha continuity.
-                # Add a WEAK-TREND floor to _ct_te_str: when |ret_vlong| is small (weak trend),
-                # hold the smoothing ON continuously (the position is oscillating regardless of
-                # sign); the floor fades to 0 in strong trend (rally's strong ret_vlong keeps the
-                # original ct-only gate, no change). General principle: weak-trend positions need
-                # continuous position-value smoothing; strong-trend positions get the validated
-                # ct-only smoothing (and the loss-gate cuts their losers fast). The floor uses
-                # (1 - tanh(|ret_vlong|/0.02)) (weak-trend indicator, fast-saturating, noise-free
-                # per the validated ct-gate lesson); max'd with _ct_te_str so it only LIFTS
-                # smoothing (never reduces it). Byte-identical for strong-trend trend-aligned holds
-                # (alpha already 0 there; floor also 0 in strong trend). targets mixed's flicker.
-                _weak_trend_floor = 1.0 - max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.02)))
-                _ct_te_str = max(_ct_te_str, 0.55 * _weak_trend_floor)
                 _te_alpha = 0.99 * _ct_te_str  # branch step5: alpha cap 0.97->0.99 (confirm peak)
                 # Profit-graduated smoothing (architectural, new data dep on pos_pnl
                 # sign). The _target_ema was added when stability was the binding wall
