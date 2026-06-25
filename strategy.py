@@ -240,11 +240,15 @@ ENTRY_ACCUM_THRESH = 0.0
 # weak-trend episodes (|ret_vlong| dips below 0.03 for several consecutive bars).
 # A DURATION count over a LONGER window separates mixed (PERSISTENTLY weak over
 # weeks -> count~1) from rally pullbacks (TRANSIENT dips -> count stays low since
-# rally re-strengthens between pullbacks). PERSIST_WEAK_THRESH=0.03 matches the
-# validated feda0ffa weak-vlong scale; PERSIST_WINDOW=48 (~2 days) is long enough
-# that a multi-bar rally pullback (typically <20 bars) does NOT saturate the
-# count while mixed's sustained weakness does. PERSIST_BOOST_MAG is the max
-# first-bar size boost (mirrors the prior branch's +0.05 headroom-boost scale).
+# rally re-strengthens between pullbacks). PERSIST_WEAK_THRESH=0.02 (tightened
+# from 0.03 in branch step3: 0.03 admitted crash dead-cat-bounce weakenings where
+# |ret_vlong| dips toward 0 during counter-trend bounces; 0.02 excludes those
+# since crash bounces rarely push |ret_vlong| truly to ~0 while mixed's genuine
+# near-zero trend fires). PERSIST_WINDOW=48 (~2 days) is long enough that a
+# multi-bar rally pullback (typically <20 bars) does NOT saturate the count
+# while mixed's sustained weakness does. PERSIST_BOOST_MAG=0.12 (raised from
+# 0.05 in branch step2: the duration-count gate holds rally byte-identical so
+# the magnitude can be pushed -- 0.05 gave mixed +0.0002, 0.12 gave +0.0103).
 PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
 PERSIST_BOOST_MAG = 0.12
