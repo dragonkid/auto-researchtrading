@@ -2194,6 +2194,30 @@ class Strategy:
                     # graduation makes most sense. Tightening loser graduation
                     # routes more loser exits through the _exit_thresh binary path.
                     _de_floor = 0.55 + 0.30 * max(0.0, -_pnl_scale)
+                    # Exp5 (architectural, indep): WEAK-TREND x LOW-ER small-winner de-risk
+                    # floor RAISE. CROSS-EXPERIMENT LEARNING (this session, Exp1-4): direction-
+                    # keyed ret_vlong*pos_dir gates MISS mixed (mixed_2025 contains rally+chop
+                    # phases, ret_vlong not reliably negative). The feda0ffa keep's DIRECTION-
+                    # AGNOSTIC weak-trend gate (1-tanh(|ret_vlong|/0.03)) is the correct mixed
+                    # separator. Use THAT gate here. mixed's weak-trend bounce wins are tiny and
+                    # reversion-prone; the gradual 0.55 de-risk floor lets them give back before
+                    # binary exit. Raise floor (faster near-binary harvest) for weak-trend x LOW-ER
+                    # (choppy path) small-peak winners. The ER separator distinguishes mixed's
+                    # choppy bounces (low ER) from sideways' cleaner ranges (higher ER): sideways
+                    # is weak-trend too but its wins are cleaner ranging moves that benefit from
+                    # the gradual ramp, so the low-ER gate keeps sideways byte-identical. Gate =
+                    # (1-tanh(|ret_vlong|/0.03)) [weak multi-day trend, feda0ffa gate] x
+                    # max(0,tanh((0.25-_er)/0.15)) [low ER = choppy, fires ER<0.25; sideways ER
+                    # higher -> ~0] x small-peak (peak<1.6*_pp_min) x winning (pos_pnl>0). Max
+                    # floor raise 0.55 -> 0.78. NEW cross-component data dep at de-risk: floor
+                    # depends on (ret_vlong, _er, peak_pnl, pos_pnl). trend regimes (strong
+                    # ret_vlong -> weak gate 0) byte-identical; sideways (low ER gate ~0)
+                    # byte-identical. General principle: a weak-trend choppy-path small-peak winner
+                    # is a reversion-prone bounce -- harvest it before giveback.
+                    _weak_vlong_dr = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))
+                    _chop_dr = max(0.0, np.tanh((0.25 - _er) / 0.15))
+                    _small_peak_dr = max(0.0, np.tanh((1.6 * _pp_min - self.peak_pnl.get(symbol, 0.0)) / (0.3 * _pp_min)))
+                    _de_floor += 0.23 * _weak_vlong_dr * _chop_dr * _small_peak_dr * max(0.0, _pnl_scale)
                     # Architectural: one-sided trend-aligned de-risk floor relaxation.
                     # When position is trend-aligned (pos_dir matches ret_long sign) AND
                     # profitable, lower the de-risk floor to widen the graduated-exit
