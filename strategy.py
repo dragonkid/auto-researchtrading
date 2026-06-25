@@ -1409,7 +1409,7 @@ class Strategy:
                     # (rally). Keeps mixed's bounce-long confirmation while removing rally's over-
                     # commitment. Fast-saturating /0.03 (near-constant, noise-free). Same +0.05
                     # max, deep-saturated vol gates. BTC self-referential -> not reached (alt branch).
-                    _weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.04))  # ~1 weak trend, ~0 strong trend (step2: 0.03->0.04 widen so more mixed bounces fire)
+                    _weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak trend, ~0 strong trend
                     _btcvol_partner_boost_bull = 1.0 + 0.05 * _weak_vlong * _btc_vol_rise * max(0.0, np.tanh(_partner_lead / 0.02))
                     _btcvol_partner_boost_bear = 1.0 + 0.05 * _weak_vlong * _btc_vol_rise * max(0.0, np.tanh(-_partner_lead / 0.02))
                     _partnervol_btc_boost_bull = 1.0 + 0.05 * _weak_vlong * _partner_vol_rise * max(0.0, np.tanh(_btc_trend / 0.03))
