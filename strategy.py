@@ -203,30 +203,6 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
 MTM_CHOP_TRIM_AMP = 0.80
-# Exp1 (architectural, indep): MTM-PATH-CHOP modulation of the time-pressure
-# ACTIVATION center (_max_hold). NEW data dep in the time-pressure subsystem:
-# _max_hold (bar units) is currently PATH-SHAPE-blind -- 6 bars of a choppy
-# dead-capital position (mixed's wrong-side longs whipsawing ~breakeven in a
-# down-then-up year) == 6 bars of a smooth trend climber, but the choppy
-# position is dead capital whose giveback drag scales with hold time.
-# Shortening the hold window for LOW MTM-path-efficiency positions cuts
-# mixed's dead-capital giveback -> higher mixed Sharpe. mixed's binding exit
-# is TIME pressure (98.6pct per prior diagnostic) and mixed's ret_vlong is
-# bimodal (oscillates ~0) so DIRECTIONAL multi-day gates do not fire for
-# mixed -- the path-shape axis (non-directional, holds for mixed's bimodal
-# ret_vlong) is the untried separator at the time-pressure activation.
-# 12-bar pos_pnl path-efficiency (|net|/sum|delta|, reuses _pnl_path tracked
-# since entry) is the validated mixed/trend separator (emission-layer trim
-# keep 594c9175). Smooth climbers (high eff, bull/crash/sideways/rally trend
-# longs) -> chop~0 -> byte-identical. The /0.35 activation knee + /0.20 ramp
-# keep trend positions inert (eff>0.65 -> chop<0.35 -> gate ~0). Continuous
-# tanh (no boundary). Targets mixed (binding floor 0.498); spares all
-# trend-aligned regimes. Distinct from 060a45cb discard (added a 7th MAX
-# pressure SOURCE that never bound for mixed -- existing pressures always
-# dominated the argmax): this modulates the EXISTING dominant pressure's
-# activation center, so it necessarily affects the pressure that IS mixed's
-# binding exit. Max shortening -25pct (0.75x max_hold) at deep chop.
-MTM_CHOP_HOLD_AMP = 0.25
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -2023,29 +1999,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp1 (architectural, indep): MTM-PATH-CHOP modulation of the
-                # time-pressure ACTIVATION center. Shorten _max_hold for LOW MTM-
-                # path-efficiency held positions (mixed's dead-capital longs whose
-                # giveback drag scales with hold time). 12-bar pos_pnl |net|/sum|delta|
-                # reuses _pnl_path; chop=1-eff. Activation knee eff~0.65 (chop 0.35) +
-                # ramp /0.20 -> trend climbers (eff>0.65) byte-identical; deep chop
-                # (eff~0) shortens max_hold up to -25pct -> time-pressure fires sooner on
-                # the dead-capital position -> cut giveback -> higher mixed Sharpe.
-                # Non-directional (path-shape, not sign) -> fires for mixed's bimodal-
-                # ret_vlong wrong-side longs that directional ct gates miss. Distinct
-                # from 060a45cb (7th MAX source that never bound for mixed): modulates
-                # the EXISTING dominant pressure's center, the path that IS mixed's
-                # binding exit (time pressure 98.6pct). Continuous tanh, no boundary.
-                _pph = self._pnl_path.get(symbol, [])
-                if len(_pph) >= 4:
-                    _ppa_h = np.array(_pph)
-                    _net_h = abs(_ppa_h[-1] - _ppa_h[0])
-                    _tot_h = float(np.sum(np.abs(np.diff(_ppa_h))))
-                    _mtm_eff_h = _net_h / max(_tot_h, 1e-10)
-                    _chop_h = max(0.0, min(1.0, 1.0 - _mtm_eff_h))
-                    # Activation knee at chop 0.35 (eff 0.65) + ramp /0.20.
-                    _chop_hold_gate = max(0.0, min(1.0, np.tanh((_chop_h - 0.35) / 0.20)))
-                    _max_hold *= 1.0 - MTM_CHOP_HOLD_AMP * _chop_hold_gate
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
