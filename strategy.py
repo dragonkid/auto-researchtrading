@@ -570,66 +570,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp1 (architectural, indep): 9th voter -- REALIZED-VOL-RANK calm-trend
-            # continuation. Prior sessions proved the productive voter family is a NEW
-            # orthogonal DATA-SOURCE signal added WITHOUT touching existing voter weights;
-            # the 8th range/close efficiency (12-bar) succeeded, 9th lag-1 autocorr was
-            # INERT (redundant with co-firing trend voters), ret_vlong direction
-            # over-admitted (duplicates admission bias), 2nd-derivative too noisy, longer
-            # windows (48-bar) LAG catastrophic at turns. The viable low-frequency direction
-            # must avoid lag -- a RANK, not a moving average. This voter reads where the
-            # current 24-bar realized vol sits in its OWN 200-bar rolling distribution
-            # (vol_percentile in [0,1]). NO existing primitive reads vol-relative-to-own-
-            # history: vol_ratio is current-vs-TARGET_VOL (a level, same every regime at
-            # equal vol), calm_boost/sideways_boost use short/long vol RATIOS (magnitudes,
-            # not distributional position), _target_vol_dyn blends a 200-bar baseline vol
-            # into the THRESHOLD (not a voter signal). A distributional RANK is a genuinely
-            # new data dependency: it classifies the CURRENT vol regime as calm vs elevated
-            # RELATIVE to this symbol's own recent experience (BTC at its 20th percentile is
-            # structurally calm for BTC; SOL at its 20th percentile is calm for SOL -- the
-            # rank normalizes across symbols, unlike vol_ratio). Mechanism: a calm-regime
-            # trend (low vol percentile) is a GRINDING persistent trend -- marginal ret_short
-            # /slope signals in a calm regime are higher-quality continuation (less noise to
-            # fight) -> the voter shifts trade SELECTION toward calm-trend entries (the axis
-            # the 8th efficiency voter used to stabilize bull). High vol percentile (elevated
-            # relative vol) -> near-zero contribution (no signal -- elevated relative vol is
-            # chop/exhaustion-prone, not directional). Directionless calm-strength SIGNED by
-            # the 12-bar close direction (sign of closes[-1]-closes[-12], the SAME smooth
-            # direction the 8th voter uses -> bull in uptrend, bear in downtrend, no 1-bar
-            # zero-crossing). The rank is low-frequency (200-bar distribution) but does NOT
-            # lag at turns: a rank falls immediately when vol spikes (no overshoot like a
-            # moving average) and rises immediately when vol drops. Appended with a SMALL
-            # fixed weight (0.55, below the 0.7 base floor, matching the 8th voter) WITHOUT
-            # modifying any of the 8 existing _base_weights (trend-strength _wt_shift only
-            # shifts indices 1-3, leaving this 9th weight untouched). New orthogonal data-
-            # source voter.
-            _vr_hist_n = min(200, len(closes) - VOL_LOOKBACK - 1)
-            if _vr_hist_n >= 50:
-                _vr_log = np.diff(np.log(closes[-_vr_hist_n - 1:]))
-                # Rolling 24-bar realized vol over the 200-bar window: one value per bar end.
-                # Vectorized: std of each trailing 24-bar log-return window. Use a simple
-                # approach -- compute per-bar vol as the rolling std of last VOL_LOOKBACK
-                # log-returns, then rank the CURRENT one against the trailing distribution.
-                _vr_ret = np.diff(np.log(closes[-(_vr_hist_n + VOL_LOOKBACK):]))
-                # Trailing VOL_LOOKBACK-bar realized vol per endpoint (length _vr_hist_n):
-                # vol[i] = std(_vr_ret[i:i+VOL_LOOKBACK]). Use a cumulative-sum trick for speed.
-                _vr_sq = _vr_ret ** 2
-                _vr_c2 = np.concatenate(([0.0], np.cumsum(_vr_sq)))
-                _vr_c1 = np.concatenate(([0.0], np.cumsum(_vr_ret)))
-                _vr_mean = (_vr_c1[VOL_LOOKBACK:] - _vr_c1[:-VOL_LOOKBACK]) / VOL_LOOKBACK
-                _vr_var = (_vr_c2[VOL_LOOKBACK:] - _vr_c2[:-VOL_LOOKBACK]) / VOL_LOOKBACK - _vr_mean ** 2
-                _vr_vol = np.sqrt(np.maximum(_vr_var, 0.0))
-                _vr_cur = _vr_vol[-1]
-                # Percentile rank of current vol in the trailing distribution (0=calmest).
-                _vr_pct = float(np.mean(_vr_vol < _vr_cur))  # in [0,1]
-                # Calm-strength: 1 at vol percentile 0 (calmest), 0 at percentile 1 (most elevated).
-                # Deep-saturate the calm side so only GENUINELY calm bars (percentile < ~0.4)
-                # contribute; elevated-vol bars contribute ~0. /0.30 scale (validated safe-
-                # family deep-saturation: near-constant where it fires, noise-free).
-                _vr_calm = max(0.0, min(1.0, np.tanh((0.50 - _vr_pct) / 0.30)))
-                _vr_signal = _vr_calm * _rc_dir  # >0 calm uptrend, <0 calm downtrend, ~0 elevated vol
-            else:
-                _vr_signal = 0.0
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -639,7 +579,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _vr_signal / 1.0,  # 9th voter: realized-vol-rank calm-trend continuation (sharpness 1.0)
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -666,7 +605,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close eff voter; 9th: vol-rank calm-trend (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -688,13 +627,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
