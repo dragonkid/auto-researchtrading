@@ -1640,26 +1640,6 @@ class Strategy:
                 # flow: acceleration floor depends on trend strength.
                 _accel_floor = 1.5 - 0.2 * _trend_strength_w  # 1.5 chop, 1.3 strong trend
                 _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 1.2 * _win_accel)
-                # Exp4 (architectural, indep): MULTI-DAY COUNTER-TREND early-winner scale-in
-                # ACCELERATOR. mixed_2025 (binding low score 0.488, Sh 0.81): its bounce-longs
-                # are COUNTER-TREND at the multi-day scale (ret_vlong<0, pos_dir=+1) in a weak
-                # 20-bar trend (_trend_strength_w~0), so the existing _win_accel (gated by
-                # _trend_strength_w) is ~0 -> mixed's bounces reach full size at the SLOW 3-bar
-                # pace, just as the small bounce peaks and reverses -> captures little of the
-                # move. A confirmed early-winning ct bounce-long (pos_pnl>0) should reach full
-                # size FASTER to capture more of the tiny move before it mean-reverts. Gate on
-                # the multi-day ct signature max(0,tanh(-pos_dir*ret_vlong/0.04)) [the validated
-                # mixed/sideways separator: ~1 for mixed bounce-longs, ~0 for sideways (ret_vlong
-                # ~0) and trend-aligned regimes (product>0)] x early-winner (pos_pnl>0 via
-                # tanh/|stop|). Max 0.8 bars faster (mirrors _win_accel magnitude), floored at
-                # _accel_floor. NEW cross-component data dep: scale-in pace depends on (ret_vlong,
-                # pos_dir, pos_pnl) -- a SECOND acceleration path distinct from the trend-aligned
-                # _win_accel. Byte-identical for trend-aligned (ct factor 0) and sideways. Crash
-                # shorts (ret_vlong<0, pos_dir=-1 -> product>0 -> ct factor 0) byte-identical.
-                # General principle (no regime label): a counter-trend-at-multi-day early winner
-                # is a confirmed mean-reversion bounce -- commit faster before it reverts.
-                _ct_bounce_accel = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04)) * max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))
-                _entry_full_bars_dyn = max(_accel_floor, _entry_full_bars_dyn - 0.8 * _ct_bounce_accel)
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
