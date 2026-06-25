@@ -1843,6 +1843,10 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # _pnl_scale is used by the time-pressure win-gate (Exp1) below AND by the
+                # exit-pressure weighting further down; compute once here (depends only on
+                # pos_pnl + STOP_LOSS_PCT, both available in this held-position branch).
+                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -1857,6 +1861,32 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp1 (architectural, indep): WEAK-MULTI-DAY-TREND x WINNING gated
+                # max_hold EXTENSION in the time-pressure subsystem. Prior-session
+                # diagnostic (instrumented strategy on mixed_2025): TIME pressure is the
+                # BINDING exit for mixed -- its small bounce-long winners (100pct WR,
+                # ~0.1pct/trade) get cut at ~6-10 bars before the local bounce fully plays
+                # out, capping APY at 4.4pct (the binding low score 0.488). Exit-side
+                # harvest (giveback/slope/max_hold ct-loser) all proved byte-identical or
+                # inert for mixed; the recent feda0ffa keep proved ENTRY-side weak-trend
+                # boosts help mixed. This is the complementary EXIT-side move: let weak-
+                # trend WINNING holds run a few bars longer before TIME pressure binds.
+                # Gate = (1 - tanh(|ret_vlong|/0.03)) -- EXACTLY the feda0ffa entry-boost
+                # weak-trend gate: ~1 in mixed (weak multi-day trend, local bounces), ~0
+                # in rally/bull/crash (strong grinding trends) -> byte-identical by
+                # construction for the trend regimes. Winning-only (pos_pnl>0 via _pnl_scale):
+                # losers keep the faster cut (the _ct_hold_sat shortening + base ramp) so
+                # counter-trend losers are NOT held longer. Max +30pct of max_hold (~2 bars)
+                # only at deep weak-trend + deep profit. NEW cross-component data dep at
+                # time-pressure activation: max_hold now depends on (ret_vlong, pos_pnl).
+                # Continuous (smooth tanh product, no new decision boundary that can flip
+                # under AR(1) noise); direction-agnostic general principle (no regime label):
+                # in a weak-trend regime a winning hold's TIME-exit is premature -- the
+                # absence of a strong trend means the exit is driven by elapsed bars not by
+                # trend-exhaustion, so a small winning cushion earns a longer hold window.
+                _weak_vlong_hold = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))
+                _win_hold = max(0.0, _pnl_scale)
+                _max_hold *= 1.0 + 0.30 * _weak_vlong_hold * _win_hold
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
@@ -1864,7 +1894,7 @@ class Strategy:
                 # In loss (pos_pnl < 0), slope-against dominates — cut losers via momentum reversal.
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
-                _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
+                # (_pnl_scale computed above alongside _max_hold for the Exp1 win-gate.)
                 # Architectural simplification: removed _scale_in_w slope-pressure
                 # attenuator. The 0.5..1.0 ramp dampened slope-against pressure during
                 # scale-in to "let positions reach full size." But early scale-in slope
