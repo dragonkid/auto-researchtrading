@@ -248,6 +248,25 @@ ENTRY_ACCUM_THRESH = 0.0
 PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
 PERSIST_BOOST_MAG = 0.12
+# Exp3 (architectural): LONGER-window directional-negativity duration count for
+# the sustained-boost gate. The 48-bar _down_persist (branch step4 keep) cannot
+# cleanly separate crash's multi-MONTH bear from bull's extended multi-DAY-to-
+# ~2-week pullback stretches -- both saturate the 48-bar fraction >0.75, so the
+# base sustained boost fires for bull pullbacks (the -0.0034 bull leak in the
+# current baseline 52a3e671). A LONGER window (~200 bars ~8 days) averages over
+# bull's pullback recovery (the re-strengthening between pullbacks pulls the
+# 200-bar fraction back down) while crash's multi-month bear saturates at any
+# window -> crash gain preserved, bull leak recovered. This is the duration-
+# count principle (the fe6acd4d / 52a3e671 keep mechanism) at a LONGER timescale
+# -- the structural reason bull pullbacks differ from crash's persistent bear
+# is their DURATION relative to a longer averaging window. NEW cross-timescale
+# data dep: the sustained-boost directional gate reads a 200-bar fraction (was
+# 48-bar). The _weak_persist magnitude gate KEEPS the 48-bar window (its
+# validated calibration, fe6acd4d keep -- do NOT change the shared signal).
+# Noise-robust: the longer window aggregates MORE 96-bar-averaged booleans
+# (each already ~1/96 noise) -> even more noise-attenuated than the 48-bar.
+# New per-symbol state (_down_vlong_hist_long). Continuous (fraction in [0,1]).
+PERSIST_DOWN_WINDOW_LONG = 200
 
 
 class Strategy:
@@ -357,6 +376,16 @@ class Strategy:
         # Mirrors the fe6acd4d keep's |ret_vlong| duration-count principle applied to the
         # SIGN (separates crash's persistent bear from bull's transient pullback dips).
         self._down_vlong_hist = {}
+        # Exp3 (architectural): LONGER-window (200-bar) directional-negativity
+        # boolean history parallel to _down_vlong_hist. Used by the sustained-boost
+        # directional gate (_persist_down_gate_dur / _persist_deep_gate) to separate
+        # crash's multi-month bear (saturates at any window) from bull's multi-day-
+        # to-2-week pullback stretches (the 200-bar fraction averages over the
+        # recovery between pullbacks -> stays lower than the 48-bar fraction).
+        # Recovers the -0.0034 bull leak in baseline 52a3e671 while keeping the
+        # crash gain. The 48-bar _down_vlong_hist is RETAINED for the magnitude
+        # gate's _weak_persist (its validated calibration, fe6acd4d keep).
+        self._down_vlong_hist_long = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -586,6 +615,19 @@ class Strategy:
                 _dvh = _dvh[-PERSIST_WINDOW:]
             self._down_vlong_hist[symbol] = _dvh
             _down_persist = (float(sum(_dvh)) / len(_dvh)) if _dvh else 0.0  # [0,1]
+            # Exp3 (architectural): LONGER-window directional-negativity fraction
+            # for the sustained-boost gate. Same boolean (ret_vlong<0) over a
+            # 200-bar window. Crash (multi-month bear) saturates at any window;
+            # bull's multi-day-to-2-week pullback stretches average their recovery
+            # into the 200-bar fraction -> stays lower than the 48-bar _down_persist
+            # -> recovers the bull leak while keeping the crash gain. Noise-robust
+            # (longer window aggregates more 96-bar-averaged booleans).
+            _dvh_l = self._down_vlong_hist_long.get(symbol, [])
+            _dvh_l.append(1 if ret_vlong < 0.0 else 0)
+            if len(_dvh_l) > PERSIST_DOWN_WINDOW_LONG:
+                _dvh_l = _dvh_l[-PERSIST_DOWN_WINDOW_LONG:]
+            self._down_vlong_hist_long[symbol] = _dvh_l
+            _down_persist_long = (float(sum(_dvh_l)) / len(_dvh_l)) if _dvh_l else 0.0  # [0,1]
 
             _lr_slope = _fast_slope(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
 
@@ -1807,7 +1849,7 @@ class Strategy:
                     # base level). Crash (down_persist~0.9) -> 0.22 amplified; bull (down_
                     # persist~0.3) -> 0.12 base -> byte-identical vs Exp5 keep. New data
                     # dep: amplified magnitude depends on directional-negativity duration.
-                    _persist_deep_gate = max(0.0, np.tanh((_down_persist - 0.75) / 0.12))  # step3: 0.6->0.75 exclude bull extended pullbacks
+                    _persist_deep_gate = max(0.0, np.tanh((_down_persist_long - 0.75) / 0.12))  # Exp3: 200-bar window; step3: 0.6->0.75 exclude bull extended pullbacks
                     # BRANCH step4: replace the BASE _persist_down_gate (instantaneous rv
                     # sign, the bull-leak source per step3 analysis) with the DURATION-based
                     # _down_persist gate for the WHOLE sustained boost (base + amplified).
@@ -1822,7 +1864,17 @@ class Strategy:
                     # (the amplified increment 0.10 still requires the deeper 0.75 threshold,
                     # the base 0.12 requires the shallower 0.5 threshold so crash's full
                     # sustained gain from Exp5 is preserved).
-                    _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
+                    # Exp3 (architectural): use the LONGER-window (200-bar)
+                    # _down_persist_long for BOTH sustained-boost directional gates.
+                    # The 48-bar _down_persist saturates >0.75 for bull's extended
+                    # multi-day-to-2-week pullback stretches (the -0.0034 bull leak
+                    # in baseline 52a3e671); the 200-bar fraction averages bull's
+                    # pullback recovery into the window -> stays below 0.5/0.75 ->
+                    # bull pullback longs byte-identical vs pre-boost. Crash's multi-
+                    # month bear saturates at any window -> crash gain preserved.
+                    # _weak_persist (magnitude gate) KEEPS the 48-bar window (its
+                    # validated calibration, fe6acd4d keep -- unchanged here).
+                    _persist_down_gate_dur = max(0.0, np.tanh((_down_persist_long - 0.5) / 0.15))  # base gate: 200-bar persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
