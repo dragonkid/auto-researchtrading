@@ -2467,21 +2467,7 @@ class Strategy:
                         # fast-saturate discipline as the ct-shrink/time-pressure keeps (near-
                         # constant gate where it fires -> no noise-driven cushion wobble).
                         _dr_vlong_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.01))
-                        # BRANCH step6: small CONCAVE penalty for counter-trend-at-multi-day
-                        # WINNERS. step2 disengages the cushion (k->1 linear) for ct-at-multi-day;
-                        # step3/4/5 showed mixed can't be caught without catching bull pullbacks
-                        # (same wall). Amplify the rally gain (the step2 +0.0114 carrier) by
-                        # pushing ct-at-multi-day winners SLIGHTLY concave (k<1 -> faster de-risk)
-                        # so rally's pullback shorts (ct-at-multi-day, trend-aligned-at-20-bar
-                        # during the pullback, profitable) de-risk faster than linear. crash is
-                        # byte-identical (gate ~1.0 -> (1-gate)=0 -> no penalty). Bounded penalty
-                        # 0.15 so k floors at ~0.85 (mild concave, not a cliff). Profit+align+slope
-                        # gated so it only fires on genuine trend-aligned-at-20-bar winners (not
-                        # losers, which already fast-cut via the loss floor). Smooth.
-                        _dr_profit = max(0.0, _pnl_scale)
-                        _dr_ct_pen = 0.15 * _dr_profit * _dr_align * _dr_slope_conf * (1.0 - _dr_vlong_align)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_profit * _dr_align * _dr_slope_conf * _dr_vlong_align - _dr_ct_pen
-                        _dr_k = max(0.7, _dr_k)  # floor: never more concave than k=0.7
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vlong_align  # 1.0 loss/ct/slope-weak/multi-day-ct, up to ~1.6 trend-aligned+profit+slope+vlong
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
