@@ -2436,7 +2436,28 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp1 (architectural, indep): MULTI-DAY trend-confirmation gate on the
+                        # de-risk cushion. The cushion (k>1 -> hold near full size through moderate
+                        # giveback, the validated stability lever) currently keys on 20-bar
+                        # ret_long*pos_dir (_dr_align) and a 12/16/22-bar slope mean (_dr_slope_conf)
+                        # -- both SHORTER than the multi-day (96-bar) scale. A position can be
+                        # trend-aligned at 20 bars but COUNTER-TREND at the multi-day scale: that is
+                        # exactly mixed's held longs (local 20-bar bounce uptrend during a multi-day
+                        # DOWNTREND). The multi-day ret_vlong is THE validated separator (the keep
+                        # that moved _ts_supp from ret_long->ret_vlong fixed mixed by harvesting
+                        # mixed's wrong-side longs). Here it gates the CUSHION (a DIFFERENT exit
+                        # path from tp_harvest): when the position is counter-trend-at-multi-day
+                        # (ret_vlong*pos_dir<0), DISENGAGE the cushion (k->1, linear fast cut) so
+                        # mixed's wrong-side longs de-risk FASTER on giveback instead of riding the
+                        # cushion through chop -> smaller MTM oscillation -> higher mixed Sharpe.
+                        # Trend-aligned-at-multi-day regimes (bull longs ret_vlong>0, crash shorts
+                        # ret_vlong<0 pos_dir=-1 -> product>0, rally longs) keep the cushion
+                        # byte-identical (gate 1.0). Fast-saturating /0.04 scale (near-constant,
+                        # noise-free per the validated branch-step-9 lesson). Smooth tanh (no new
+                        # decision boundary); reuses the already-computed 96-bar ret_vlong. New
+                        # cross-timescale data dep at the de-risk decision.
+                        _dr_vlong_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.04))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vlong_align  # 1.0 loss/ct/slope-weak/multi-day-ct, up to ~1.6 trend-aligned+profit+slope+vlong
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
