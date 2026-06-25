@@ -1636,7 +1636,32 @@ class Strategy:
                 # branch's +0.05 magnitude (its mixed +0.0112 was real; the +0.003
                 # keep was blocked ONLY by the rally magnitude-gate leak, which this
                 # duration-count separator is designed to avoid).
-                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist
+                # Exp2 (architectural, indep): CONVICTION-MARGIN-SCALED persist_boost
+                # magnitude. NEW cross-component data dep: the fe6acd4d keep note
+                # explicitly states 'MAG could go higher (leak solved)' but a UNIFORM
+                # raise risks crash dead-cat-bounce weakenings (the THRESH 0.02 gate
+                # excluded MOST but crash -0.0028 was the residual cost at MAG 0.12).
+                # Instead of a uniform MAG raise, make the magnitude ADAPTIVE to entry
+                # conviction quality: scale the boost up to 1.5x baseline MAG when the
+                # entry conviction margin (how far strong-sum sits ABOVE its admission
+                # floor) is high -- decisive entries get a bigger weak-trend size boost
+                # (they are the high-quality mixed bounce-long winners; mixed is 100pct
+                # WR so bigger winners = higher APY = return_bonus at preserved Sharpe).
+                # Marginal entries (margin near 0) keep baseline MAG (no extra size on
+                # coin-flip-quality entries that a uniform raise would over-commit).
+                # This TARGETS the over-commitment risk of a uniform MAG raise: crash
+                # dead-cat-bounce entries are MARGINAL-conviction (they barely pass the
+                # gate during a counter-trend bounce) -> conviction scale ~0 -> boost
+                # stays at baseline -> crash spared; mixed's DECISIVE bounce entries
+                # (high conviction, the winners) -> conviction scale ~1 -> boost up to
+                # 1.5x. New control flow: persist_boost magnitude depends on conviction
+                # margin x weak_persist interaction (was weak_persist only). Amplify-
+                # only (floor at baseline MAG; never shrinks below the fe6acd4d keep).
+                # Smooth tanh on margin/0.40 (same scale as _bull_conv_atten; no new
+                # boundary). Direction-agnostic (uses own-side margin).
+                _persist_margin_side = _bull_margin if (_bull_ready and _bull_admit) else _bear_margin
+                _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40))
+                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
