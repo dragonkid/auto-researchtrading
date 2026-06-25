@@ -2130,6 +2130,34 @@ class Strategy:
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # Exp3 (architectural, indep): BTC-LEADER-CONFIRMATION factor on tp-extension
+                    # harvest suppression. NEW cross-symbol data dep on the EXIT harvest path: the
+                    # existing _ts_supp keys trend-extension suppression on the OWN symbol's multi-
+                    # day trend (ret_vlong*pos_dir). BTC is the market leader and LEADS alts on
+                    # regime turns; when BTC's multi-day trend has turned AGAINST a winning alt
+                    # position (leader reversal) while the alt's own ret_vlong has not yet turned,
+                    # the leader is signaling an impending regime shift that the alt's 96-bar slope
+                    # lags. Currently _ts_supp stays HIGH (suppresses harvest) for the alt's clean
+                    # trend-aligned deep-peak winner because the alt's own ret_vlong still confirms
+                    # -- so the position rides into the leader-led reversal, gives back the peak,
+                    # and the DD materializes (the giveback-path DD source Exp1 confirmed entry-size
+                    # cannot reach). Add a 4th multiplicative factor to _ts_supp: BTC-leader-confirm
+                    # = tanh(_btc_trend * pos_dir / 0.03) -> HIGH (keep suppression, let run) when
+                    # BTC confirms the position, -> ~0 (drop suppression, HARVEST the winner) when
+                    # BTC has turned against it. Routed through the EXISTING _tp_scale harvest path
+                    # (NOT a new MAX-fusion source -- prior sessions proved new soft MAX sources are
+                    # argmax-inert). Byte-identical when BTC confirms: bull longs (BTC uptrend x
+                    # +1 >0), crash shorts (BTC downtrend x -1 >0), rally longs (BTC uptrend x +1
+                    # >0) -- all trend-aligned regimes where the leader supports the position keep
+                    # full suppression. Fires only on leader reversal against a deep-peak winner.
+                    # Distinct from entry-side _btc_trend uses (alt sizing/shrink): this is the EXIT
+                    # harvest suppression path, a new cross-symbol x cross-subsystem data dep.
+                    # Continuous tanh (no decision boundary); fast-saturating /0.03 (near-constant
+                    # where it fires, noise-free per the validated safe-family lesson); one-sided
+                    # (only drops suppression, never raises it above the own-trend factor); deep-
+                    # peak-gated by the existing _tp_ratio factor (only fires at peak>=2.8*_pp_min).
+                    _btc_leader_confirm = max(0.0, np.tanh(_btc_trend * (1.0 if current_pos > 0 else -1.0) / 0.03))
+                    _ts_supp = _ts_supp * _btc_leader_confirm
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
