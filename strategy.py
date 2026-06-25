@@ -1119,7 +1119,21 @@ class Strategy:
                 # ret_vlong is the 96-bar OLS slope (already computed, noise-robust). Deep-
                 # saturated /0.03 (near-constant, noise-free per the validated safe family).
                 _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day, ~0 strong
-                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong
+                # BRANCH STEP4: AND the weak-vlong gate with the low-churn partition. Step3
+                # (weak-vlong alone, /0.03) gave the branch best (mixed +0.0112) but leaked
+                # to rally -0.0072 / crash -0.0043 during momentary |ret_vlong| dips (rally
+                # pullback / crash bounce stretches where the multi-day trend briefly
+                # lessens). Those leaks are exactly the HIGH-CHURN re-entry bursts in rally
+                # (and crash's bounce re-entries): the boosted pullback/bounce entries are
+                # the noise-driving population. AND-ing the weak-vlong gate with the SAME
+                # noise-immune low-churn partition (len(_eh)<=1) used by _churn_size_atten /
+                # _calm_ct suppresses the burst entries specifically. mixed is sparse (45
+                # trades/365d, 1 per 8d -> len(_eh)<=1 the whole regime) so the churn gate
+                # is ~1 for mixed -> mixed keeps the full boost; rally bursts (high churn)
+                # get the boost suppressed by the churn gate even when |ret_vlong| dips.
+                # Byte-identical for high-churn entries (gate 0 -> boost 1.0).
+                _headroom_low_churn = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~1 sparse, ~0 bursting
+                _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong * _headroom_low_churn
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
                 # OFF during entry bursts (its _calm_ct gate = 1-churn_dz) because prior
