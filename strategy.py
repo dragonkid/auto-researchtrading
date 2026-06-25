@@ -1599,25 +1599,10 @@ class Strategy:
                 _dvp_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _dvp_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
-                _dvp_bear_vlong = max(0.0, np.tanh(-ret_vlong / 0.03))  # Exp4: multi-day downtrend (excludes rally pullback bear shorts)
                 _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
-                # Exp4 (architectural, indep): SYMMETRIC multi-day gate on the bear-side
-                # DVP boost. The bull-side _dvp_boost_bull is gated by _dvp_bull_vlong
-                # (multi-day uptrend) which EXCLUDES crash dead-cat-bounce longs (ret_vlong
-                # <0 during a crash bounce -> bull entry against a down multi-day trend ->
-                # gate 0 -> no boost on the losing bounce). The bear side had NO such gate:
-                # a bear entry during a multi-day UPTREND (rally pullback shorts: ret_vlong
-                # >0, bear entry -> -ret_vlong<0 -> gate 0) currently gets the FULL boost,
-                # over-committing rally's losing counter-trend bear re-entries. Mirror the
-                # bull gate: require multi-day DOWNTREND (ret_vlong<0) for the bear boost
-                # -> rally pullback shorts (ret_vlong>0) excluded -> rally gain; crash shorts
-                # (ret_vlong<0, bear entry, trend-aligned -> -ret_vlong>0 -> gate ~1) keep
-                # full boost -> crash byte-identical. Fast-saturating /0.03 (near-constant,
-                # noise-free, validated safe-family scale). New cross-timescale data dep:
-                # bear-side DVP boost now keys on multi-day trend direction (was 20-bar only).
-                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_vlong * _dvp_bear_conv
+                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
