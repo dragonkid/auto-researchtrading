@@ -1769,7 +1769,27 @@ class Strategy:
                     # weak gate ~0 -> byte-identical. New cross-component data dep: scale-in
                     # full_target sustained boost depends on (weak_persist, ret_vlong sign).
                     _persist_down_gate = max(0.0, np.tanh(-ret_vlong / 0.02))  # ~0 uptrend, ~1 downtrend
-                    _persist_sustain = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_down_gate
+                    # BRANCH step1 (crash sustained-boost refinement): DEEP-DOWNTREND-GATED
+                    # amplified sustained magnitude. Exp7 (discarded, sub-noise +0.000861)
+                    # showed amplifying the sustained magnitude to 0.22 for the directional-
+                    # downtrend partition gave crash +0.005 REAL gain BUT leaked into bull
+                    # (-0.002): bull's 2021 pullback stretches have brief ret_vlong<0
+                    # episodes (rv dips to ~-0.005..-0.015 during sharp corrections) that
+                    # fire the /0.02 _persist_down_gate slightly -> amplified magnitude
+                    # leaks into bull. TIGHTEN with a DEEP-DOWNTREND activation offset for
+                    # the AMPLIFIED INCREMENT only: require ret_vlong < -0.015 (crash's
+                    # persistent deep bear rv ~-0.03..-0.06 -> full fire) before the +0.10
+                    # amplified increment engages, so bull's shallow pullback dips (rv
+                    # ~-0.005..-0.015) fall in the deep-gate's flat near-zero region ->
+                    # bull gets only the BASE 0.12 magnitude (Exp5 keep level) -> byte-
+                    # identical. The BASE magnitude (0.12) still uses the original /0.02
+                    # gate (preserves the Exp5 crash gain at the kept level). Crash (deep
+                    # rv) gets 0.22 amplified; bull (shallow dip) gets 0.12 base. New
+                    # data dep: amplified sustained magnitude depends on deep-downtrend
+                    # activation (ret_vlong<-0.015), distinct from the base directional gate.
+                    _persist_deep_gate = max(0.0, np.tanh((-ret_vlong - 0.015) / 0.02))
+                    _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
+                    _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
