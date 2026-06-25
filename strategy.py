@@ -203,6 +203,31 @@ FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # (high efficiency = bull/crash/sideways/rally trend longs) have chop~0 -> byte-
 # identical by construction. Reduction-only (risk-reducing, safe family).
 MTM_CHOP_TRIM_AMP = 0.80
+# Exp2 (architectural, indep): MTM-PATH-CHOP modulation of the time-pressure
+# ACTIVATION center (_max_hold), GATED on ct-at-multi-day. Exp1 (ungated chop)
+# crashed bull -0.525: the MTM-path-efficiency separator is CONFOUNDED for bull
+# -- bull-2021 pullback longs are ALSO choppy (sharp pullback whipsaws = low
+# MTM-eff) so the chop knee fired on them, cutting winners short. The clean
+# separator between mixed's dead capital and bull's pullback longs is the MULTI-
+# DAY trend direction (validated mixed/bull separator, 594c9175 keep): mixed's
+# wrong-side longs are COUNTER-TREND at multi-day (ret_vlong*pos_dir<0), bull's
+# pullback longs are TREND-ALIGNED (ret_vlong*pos_dir>0). Gate the chop
+# shortening on the ct-at-multi-day indicator (fast-saturating /0.01, near-
+# constant noise-free per branch-step-9 lesson): fire only when the held
+# position is BOTH choppy (low MTM-eff) AND counter-trend at multi-day = mixed's
+# dead-capital wrong-side longs. Bull trend-aligned pullback longs (product>0
+# -> ct indicator 0) byte-identical. Crash shorts (ret_vlong<0, pos_dir=-1 ->
+# product>0 -> trend-aligned) byte-identical. Sideways (ret_vlong~0) byte-
+# identical. mixed's bimodal ret_vlong means ct-at-multi-day bars (down-leg of
+# the year) fire; the gate does not require persistent negativity so it is NOT
+# the directional duration gate that missed mixed (mixed down_persist ~0.5
+# mean). NEW data dep: time-pressure activation center depends on (MTM-path-chop,
+# multi-day-trend-direction) at the held position. Distinct from 060a45cb (7th
+# MAX source that never bound for mixed -- existing pressures always dominated
+# the argmax): this modulates the EXISTING dominant pressure's center, the path
+# that IS mixed's binding exit (time pressure 98.6pct). Continuous tanh, no
+# boundary. Max shortening -25pct (0.75x max_hold) at deep chop on ct positions.
+MTM_CHOP_HOLD_AMP = 0.25
 COOLDOWN_BARS = 1
 COOLDOWN_TREND_DECAY = 0.06
 
@@ -1999,6 +2024,27 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp2 (architectural, indep): MTM-PATH-CHOP x ct-at-multi-day
+                # modulation of the time-pressure ACTIVATION center. Shorten
+                # _max_hold for held positions that are BOTH choppy (low MTM-path-
+                # efficiency, mixed's dead-capital longs) AND counter-trend at the
+                # multi-day scale (ret_vlong*pos_dir<0, the validated mixed/bull
+                # separator). Bull trend-aligned pullback longs (product>0) and
+                # crash trend-aligned shorts (product>0) -> ct indicator 0 -> byte-
+                # identical. mixed's down-leg bars (ret_vlong<0 for held longs) fire.
+                # 12-bar pos_pnl |net|/sum|delta| reuses _pnl_path; chop=1-eff.
+                # Activation knee at chop 0.35 (eff 0.65) + ramp /0.20; ct indicator
+                # fast-saturating /0.01 (near-constant, noise-free). Continuous tanh.
+                _pph = self._pnl_path.get(symbol, [])
+                if len(_pph) >= 4:
+                    _ppa_h = np.array(_pph)
+                    _net_h = abs(_ppa_h[-1] - _ppa_h[0])
+                    _tot_h = float(np.sum(np.abs(np.diff(_ppa_h))))
+                    _mtm_eff_h = _net_h / max(_tot_h, 1e-10)
+                    _chop_h = max(0.0, min(1.0, 1.0 - _mtm_eff_h))
+                    _chop_hold_gate = max(0.0, min(1.0, np.tanh((_chop_h - 0.35) / 0.20)))
+                    _ct_hold_md = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                    _max_hold *= 1.0 - MTM_CHOP_HOLD_AMP * _chop_hold_gate * _ct_hold_md
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
