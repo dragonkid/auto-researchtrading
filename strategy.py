@@ -1423,22 +1423,8 @@ class Strategy:
                     # directional -> larger first-bar commitment. Deep-saturated both gates
                     # (near-constant, noise-free, validated safe family). First-bar-only,
                     # +0.05 max. BTC self-referential -> not reached (alt branch).
-                    # Exp4 (architectural simplification, indep): REMOVED _btcdvp_boost (BTC
-                    # leader DVP x BTC-price-trend-agreement conjunction boost, Exp2 keep). TEST:
-                    # is it still load-bearing at feda0ffa baseline, or redundant with the other
-                    # BTC-trend-agreement boosts (_vol_btc_boost own-vol x BTC-price, the BTC-
-                    # vol x partner-price mixed-cell term)? The feda0ffa keep PROVED that rally
-                    # over-committing terms (the mixed-cell boosts) could be removed/gated to gain
-                    # rally DD relief. _btcdvp_boost fires +0.05 for rally trend entries (BTC
-                    # uptrend + BTC buy-side volume = both saturate in rally) -- a candidate rally
-                    # over-committer. It ALSO fires for crash shorts (BTC downtrend + sell-volume)
-                    # = the trend-aligned crash confirmation, so removal may cost crash. Measuring
-                    # which effect dominates (rally DD-relief vs crash confirmation loss). If
-                    # rally DD drops at preserved Sharpe (feda0ffa pattern) it's a keep; if crash
-                    # regresses it's load-bearing for crash (re-test, not assume -- baselines
-                    # shift). Code-structure removal: -2 multipliers.
-                    _btcdvp_boost_bull = 1.0
-                    _btcdvp_boost_bear = 1.0
+                    _btcdvp_boost_bull = 1.0 + 0.05 * max(0.0, np.tanh(_btc_dvp / 0.15)) * max(0.0, np.tanh(_btc_trend / 0.03))
+                    _btcdvp_boost_bear = 1.0 + 0.05 * max(0.0, np.tanh(-_btc_dvp / 0.15)) * max(0.0, np.tanh(-_btc_trend / 0.03))
                     # Exp3 (architectural, indep): partner-alt DVP x partner-alt-price-momentum-
                     # agreement conjunction boost (partner cell of the DVP column). _partner_dvp
                     # (partner volume-DIRECTION balance) x /0.02 partner-price-agreement gate
