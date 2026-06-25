@@ -2166,38 +2166,6 @@ class Strategy:
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
-                # Exp4 (architectural, indep): GRID-EXEMPT FULL-EXIT for small counter-
-                # trend-at-multi-day WINNING positions at peak giveback. The documented
-                # mixed grid-absorption wall: mixed's small peak-giveback reductions are
-                # grid-absorbed (snap to same lattice point) OR filtered by the emission
-                # threshold -> never emit as trades -> mixed capped at 45 trades (sample_factor
-                # 0.949, 5 short of the 50 knee). The 594c9175 keep broke this PARTIALLY for
-                # partial reductions (grid exemption + 0.7*LEVERAGE_K threshold, +2 trades).
-                # This breaks it via a DIFFERENT path: route the peak-giveback reduction
-                # through a FULL EXIT (target=0), which is grid-EXEMPT by construction
-                # (entries/exits/flips always pass the deadband+grid). A full exit locks the
-                # realized win AND creates a re-entry opportunity (next bar, via normal
-                # admission) -> exit+reentry = 2 trades per peak cycle vs 1 grid-absorbed
-                # reduction -> raises mixed trade count toward the 50 knee.
-                # Gate (the validated mixed/bull separator, spares bull/rally trend-aligned):
-                # (a) COUNTER-TREND-AT-MULTI-DAY: ret_vlong*pos_dir<0 (mixed longs in a multi-
-                #     day downtrend; bull/rally trend-aligned longs have product>0 -> SPARED);
-                # (b) SMALL position: abs(current_pos) < 2.0*grid_em (mixed's tiny positions;
-                #     large trend-regime positions SPARED);
-                # (c) WINNING: pos_pnl > 0 (locks gains, never cuts a loser);
-                # (d) PEAK GIVEBACK active: _pp_pressure > 0.30 (peak forming + giveback
-                #     rising -- the condition that would otherwise grid-absorb a partial trim);
-                # (e) bars_held >= 2 (not during scale-in).
-                # Risk: full exit may miss further upside if re-entry does not fire (mixed
-                # weak conviction). Test isolates whether the trade-count gain (+sample_factor)
-                # outweighs any missed-upside cost. 50% regime gate + 10% DD cutoff retained.
-                if (target != 0 and bars_held >= 2 and pos_pnl > 0
-                        and abs(current_pos) < 2.0 * (0.06 * equity * BASE_POSITION_SIZE)
-                        and _pp_pressure > 0.30):
-                    _pos_dir_fe = 1.0 if current_pos > 0 else -1.0
-                    _ct_vlong_fe = max(0.0, np.tanh(-_pos_dir_fe * ret_vlong / 0.01))
-                    if _ct_vlong_fe > 0.50:
-                        target = 0.0
                 # Architectural: removed binary soft-exit clause (-3 LOC).
                 # Old: 2 control-flow branches both fired at pressure=thresh — binary
                 # full-exit path AND de-risk ramp (which produces target=0 at boundary).
