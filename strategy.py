@@ -2306,6 +2306,36 @@ class Strategy:
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
                     _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp3 (architectural, indep): CONVEX OUTLIER-TARGETED tp_harvest.
+                    # NEW data dep: tp_harvest magnitude is currently LINEAR in _tp_ratio
+                    # (the 0.45 scalar applies uniformly regardless of how extreme the peak is).
+                    # Prior-session root cause: mixed's binding Sharpe drag (Sh0.825) is TRADE-
+                    # TO-TRADE PnL MAGNITUDE VARIANCE -- 45 winning trades of widely varying
+                    # sizes, where the FEW LARGEST winners inflate the variance (the documented
+                    # "re-peak churn": mixed rides to +30%, gives back to +24%, re-peaks). The
+                    # one UNTESTED axis (per session-summary row 1515) is per-trade SIZE
+                    # NORMALIZATION, specifically a return-NEUTRAL transform that trims the
+                    # LARGEST winners (uniform strength_scale compression was return-Lossy).
+                    # Make the harvest magnitude CONVEX in _tp_ratio: a ramp that is ~1 for
+                    # modest peaks (tp_ratio ~2-3, the majority of mixed's winners and ALL of
+                    # crash/bull/rally trend longs whose _ts_supp suppresses harvest anyway)
+                    # and rises for OUTLIER peaks (tp_ratio > 4, the variance-inflating
+                    # outliers). Convexity = the harvest trims outliers PROGRESSIVELY harder
+                    # while leaving modest winners at baseline -> variance down at near-constant
+                    # mean return (the outlier excess would have been given back to the re-peak
+                    # churn anyway, so converting it to realized at the peak is return-neutral).
+                    # Continuous tanh on (_tp_ratio - 3.5)/1.5 -- near 0 below tp_ratio 3.5
+                    # (baseline harvest unchanged for the many modest winners), rising to ~1 at
+                    # tp_ratio 5+ (outliers get up to 2x harvest). Byte-identical when _ts_supp
+                    # already suppresses harvest to 0 (trend-aligned deep-peak winners: bull/
+                    # crash/rally longs -- _tp_scale 0 * anything = 0); only fires on the
+                    # UNSUPPRESSED deep peaks (mixed's counter-trend-at-multi-day longs whose
+                    # _ts_supp is ~0). General principle (no regime label): outlier paper gains
+                    # are variance-rich, convert them at the peak. New control flow at the
+                    # tp-harvest magnitude (convex in peak depth).
+                    _outlier_amp = 1.0 + 1.0 * max(0.0, np.tanh((_tp_ratio - 3.5) / 1.5))
+                    _tp_scale = _tp_scale * _outlier_amp
+                    _tp_scale = min(_tp_scale, 0.85)  # cap: never harvest more than 85% at a peak
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
