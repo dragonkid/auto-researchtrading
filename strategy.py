@@ -706,28 +706,6 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
-            # Exp2 (architectural, indep): LOW-VOL counter-trend BOUNCE-LONG admission
-            # relaxation. mixed_2025 is the binding low regime (score 0.488, Sh 0.81, APY
-            # 4.4pct, 45 trades < 50 -> sample_factor 0.949). It is a multi-day DOWN year
-            # (ret_vlong<0) where the strategy's trend-following voters catch small
-            # COUNTER-TREND bounce-longs (local 20-bar ret_long>0 bounces against the 96-bar
-            # downtrend). The recent feda0ffa keep proved entry-side weak-trend boosts help;
-            # this is the admission-axis counterpart: lower the bull admission bar for ct
-            # bounce-longs SPECIFICALLY in calm (low-vol) regimes -- mixed's bounces form in
-            # calm chop (vol_ratio<1), so the calm gate separates mixed from crash/rally
-            # (high-vol) ct entries whose tightening (Exp5 above) protects against dead-cat
-            # bounce / rally-pullback noise. Gate = max(0,tanh(-ret_vlong/0.01)) [ct-at-multi-
-            # day for a long, fast-saturating /0.01 = near-constant, noise-free] x
-            # max(0,tanh((1.0-vol_ratio)/0.4)) [calm only, fires vol_ratio<1; crash/rally
-            # vol_ratio>1 -> 0 -> byte-identical]. Max 8pct relaxation on bull strong_min.
-            # NEW cross-component data dep at admission: threshold depends on (ret_vlong,
-            # vol_ratio). sideways: ret_vlong~0 -> ct indicator ~0 -> byte-identical (sideways
-            # bounces are trend-neutral, not ct). crash/rally: high vol -> calm gate 0. Only
-            # mixed's calm down-year ct bounce-longs relax. Direction-agnostic general
-            # principle (no regime label): a calm-market counter-trend bounce long is a
-            # mean-reversion entry, not a dead-cat-bounce (which needs capitulation vol).
-            _calm_ct_bounce = max(0.0, np.tanh(-ret_vlong / 0.01)) * max(0.0, np.tanh((1.0 - vol_ratio) / 0.4))
-            _bull_strong_min *= 1.0 - 0.08 * _calm_ct_bounce
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
