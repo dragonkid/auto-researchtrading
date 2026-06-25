@@ -1118,7 +1118,11 @@ class Strategy:
                 # rally (strong multi-day uptrend) while preserving mixed's bounce boost.
                 # ret_vlong is the 96-bar OLS slope (already computed, noise-robust). Deep-
                 # saturated /0.03 (near-constant, noise-free per the validated safe family).
-                _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day, ~0 strong
+                # BRANCH STEP5: tune gate scale /0.03 -> /0.025 (between step3 /0.03 and
+                # step4-old /0.015). /0.015 over-suppressed mixed (-0.0143); /0.03 leaked
+                # rally/crash (-0.0072/-0.0043). /0.025 is the intermediate: slightly less
+                # mixed firing but less trend-dip leak. Isolating the gate-scale tradeoff.
+                _headroom_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.025))  # ~1 weak multi-day, ~0 strong
                 _headroom_boost = 1.0 + PORT_DD_HEADROOM_MAG * _port_dd_headroom * _headroom_weak_vlong
                 # Exp1 (architectural, indep): churn x multi-day-counter-trend first-bar
                 # SIZE shrink. The existing _ct_vlong shrink (line ~667) deliberately turns
