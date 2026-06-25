@@ -240,15 +240,11 @@ ENTRY_ACCUM_THRESH = 0.0
 # weak-trend episodes (|ret_vlong| dips below 0.03 for several consecutive bars).
 # A DURATION count over a LONGER window separates mixed (PERSISTENTLY weak over
 # weeks -> count~1) from rally pullbacks (TRANSIENT dips -> count stays low since
-# rally re-strengthens between pullbacks). PERSIST_WEAK_THRESH=0.02 (tightened
-# from 0.03 in branch step3: 0.03 admitted crash dead-cat-bounce weakenings where
-# |ret_vlong| dips toward 0 during counter-trend bounces; 0.02 excludes those
-# since crash bounces rarely push |ret_vlong| truly to ~0 while mixed's genuine
-# near-zero trend fires). PERSIST_WINDOW=48 (~2 days) is long enough that a
-# multi-bar rally pullback (typically <20 bars) does NOT saturate the count
-# while mixed's sustained weakness does. PERSIST_BOOST_MAG=0.12 (raised from
-# 0.05 in branch step2: the duration-count gate holds rally byte-identical so
-# the magnitude can be pushed -- 0.05 gave mixed +0.0002, 0.12 gave +0.0103).
+# rally re-strengthens between pullbacks). PERSIST_WEAK_THRESH=0.03 matches the
+# validated feda0ffa weak-vlong scale; PERSIST_WINDOW=48 (~2 days) is long enough
+# that a multi-bar rally pullback (typically <20 bars) does NOT saturate the
+# count while mixed's sustained weakness does. PERSIST_BOOST_MAG is the max
+# first-bar size boost (mirrors the prior branch's +0.05 headroom-boost scale).
 PERSIST_WEAK_THRESH = 0.02
 PERSIST_WINDOW = 48
 PERSIST_BOOST_MAG = 0.12
@@ -2448,28 +2444,7 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                # Exp1 (architectural, this session): REDUCTION-EXEMPT smoothing split.
-                # The _target_ema low-passes EVERY same-sign resize -- both growth
-                # (scale-in wobble = the stability benefit: noise-driven first-bar/accum-
-                # step magnitude jitter is damped) AND reduction (tp_harvest + de-risk
-                # trims). Lagging a REDUCTION holds the position bigger longer than the
-                # raw target -> more giveback before the trim executes -> lower Sharpe
-                # (the documented raw cost of this EMA, previously attributed only to
-                # losing-ct holds). Under v3 (k=0.3, Sharpe-dominant) the lag on
-                # reductions is pure raw drag with no offsetting stability benefit:
-                # a reduction TRIMS a position (moves it toward 0), so the post-reduction
-                # held value is SMALLER -> its bar-to-bar wobble under AR(1) noise is
-                # ALSO smaller (wobble ~ |position|) -> smoothing it adds negligible
-                # stability vs the giveback it costs. NEW data dep + new control flow:
-                # split the resize path by sign of (target - current_pos). GROWTH
-                # resizes keep full smoothing (scale-in wobble damped -> stability).
-                # REDUCTION resizes bypass the EMA (harvest/de-risk execute immediately
-                # at the raw target -> less giveback -> higher Sharpe). The EMA STATE
-                # still updates with the (now-unsmoothed) reduction target so the next
-                # growth resize smooths against the correct post-reduction level.
-                # Byte-identical for trend-aligned (gate 0 -> alpha 0 -> no EMA path).
-                _is_growth_te = abs(target) > abs(current_pos)
-                if _is_growth_te and _te_alpha > 0.0:
+                if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
