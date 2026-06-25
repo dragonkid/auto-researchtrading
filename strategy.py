@@ -1660,7 +1660,14 @@ class Strategy:
                 # Smooth tanh on margin/0.40 (same scale as _bull_conv_atten; no new
                 # boundary). Direction-agnostic (uses own-side margin).
                 _persist_margin_side = _bull_margin if (_bull_ready and _bull_admit) else _bear_margin
-                _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40))
+                # Branch step2: onset floor at margin=0.15 so MARGINAL entries (crash
+                # dead-cat-bounces that pass the gate with small-but-positive margin) stay
+                # at EXACTLY baseline MAG (scale 1.0), while only DECISIVE entries (margin
+                # above 0.15) get the amplified boost. Recovers the crash -0.0013 regression
+                # from step1 (crash dc-bounces have margin~0.05-0.10 -> below 0.15 floor ->
+                # baseline MAG -> byte-identical to fe6acd4d for crash) while keeping the
+                # mixed/sideways gains (their decisive bounce entries have margin>0.15).
+                _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, (_persist_margin_side - 0.15) / 0.40))
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
