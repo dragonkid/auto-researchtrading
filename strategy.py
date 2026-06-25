@@ -2452,11 +2452,21 @@ class Strategy:
                         # cushion through chop -> smaller MTM oscillation -> higher mixed Sharpe.
                         # Trend-aligned-at-multi-day regimes (bull longs ret_vlong>0, crash shorts
                         # ret_vlong<0 pos_dir=-1 -> product>0, rally longs) keep the cushion
-                        # byte-identical (gate 1.0). Fast-saturating /0.04 scale (near-constant,
-                        # noise-free per the validated branch-step-9 lesson). Smooth tanh (no new
-                        # decision boundary); reuses the already-computed 96-bar ret_vlong. New
-                        # cross-timescale data dep at the de-risk decision.
-                        _dr_vlong_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.04))
+                        # byte-identical (gate 1.0). Smooth tanh (no new decision boundary); reuses
+                        # the already-computed 96-bar ret_vlong. New cross-timescale data dep at the
+                        # de-risk decision.
+                        # BRANCH step2: FAST-SATURATING /0.01 scale (step1 /0.04 regressed crash
+                        # -0.0076: crash's trend-aligned shorts (ret_vlong~-0.03, pos_dir=-1 ->
+                        # product~+0.03) sat at tanh(0.75)=0.63 at /0.04 -> cushion partially
+                        # disengaged during crash recovery bounces -> 52->50 trades, Sh1.28->1.27).
+                        # /0.01 puts crash's solidly-positive product (0.03) in the FLAT saturated
+                        # tail -> tanh(3.0)=0.995 -> gate ~1.0 -> crash byte-identical (restored),
+                        # while mixed's bimodal ret_vlong (product~-0.005 at the bounce bars ->
+                        # tanh(-0.5)<0 -> gate 0) and rally's pullback shorts (product~-0.02 ->
+                        # tanh(-2.0)<0 -> gate 0) still disengage the cushion. Same validated
+                        # fast-saturate discipline as the ct-shrink/time-pressure keeps (near-
+                        # constant gate where it fires -> no noise-driven cushion wobble).
+                        _dr_vlong_align = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.01))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vlong_align  # 1.0 loss/ct/slope-weak/multi-day-ct, up to ~1.6 trend-aligned+profit+slope+vlong
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
