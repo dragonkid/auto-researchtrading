@@ -1807,7 +1807,7 @@ class Strategy:
                     # base level). Crash (down_persist~0.9) -> 0.22 amplified; bull (down_
                     # persist~0.3) -> 0.12 base -> byte-identical vs Exp5 keep. New data
                     # dep: amplified magnitude depends on directional-negativity duration.
-                    _persist_deep_gate = max(0.0, np.tanh((_down_persist - 0.6) / 0.15))  # ~0 unless down_persist>0.6
+                    _persist_deep_gate = max(0.0, np.tanh((_down_persist - 0.75) / 0.12))  # step3: 0.6->0.75 exclude bull extended pullbacks
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
