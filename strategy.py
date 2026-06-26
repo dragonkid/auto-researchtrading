@@ -2628,21 +2628,6 @@ class Strategy:
                     _vov_te = float(np.std(_vov_samples_te)) / _vov_med_te
                     _vov_gate_te = max(0.0, min(1.0, np.tanh((_vov_te - 0.30) / 0.25)))
                     _te_alpha = min(0.999, _te_alpha + 0.20 * _vov_gate_te * _ct_te_str)
-                # branch step3: DIRECTIONAL smoothing -- only smooth when the raw target
-                # is GROWING toward full size (|target|>=|current_pos|), NOT when shrinking
-                # (de-risk / exit). Step1/step2 over-smoothed shrinking ct loser targets
-                # (rally pullback shorts being de-risked) -> held them longer -> larger
-                # realized losses -> rally raw 0.992->0.876. The stability benefit comes
-                # from smoothing the GROWING ct position (scale-in / winning ramp), where
-                # the position-value wobble across the AR(1) ensemble is the tracking-error
-                # source; shrinking targets are exits and must track the raw (shrinking)
-                # target cleanly so losers exit at the right bar. Gate alpha on
-                # |target_raw|>=|current_pos| (growing). New control flow: smoothing
-                # depends on resize DIRECTION (was unconditional on same-sign resize).
-                # Smooth tanh ramp on the growth margin so the fade-out near flat is
-                # continuous (no decision boundary at |target|==|current_pos|).
-                _te_grow_gate = max(0.0, min(1.0, np.tanh(((abs(target) - abs(current_pos)) / max(abs(current_pos), 1e-6)) / 0.05)))
-                _te_alpha = _te_alpha * _te_grow_gate
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
