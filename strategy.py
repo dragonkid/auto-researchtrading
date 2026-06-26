@@ -2632,7 +2632,24 @@ class Strategy:
                 # principle (no regime label): scale-in smoothing helps calm-grind
                 # trends, hurts sharp-vol trends.
                 _te_vol_gate = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.25))  # step3: tighten to deep-calm (full at vol_ratio<=0.75, off at >=1.0)
-                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate
+                # Branch step4: LOW-EXIT-PRESSURE gate on the trend-aligned scale-in
+                # smoothing. Step3 proved vol-gating cannot isolate bull from rally
+                # (both have calm bars). The real separator: rally calm scale-in has
+                # NO active de-risk (exit_pressure low, position grows smoothly) ->
+                # smoothing helps (consistent build). bull calm-PULLBACK bars have
+                # RISING exit_pressure (de-risk should shrink the position) -> smoothing
+                # holds the target up -> delays de-risk -> bigger DD -> stability crash.
+                # Gate the smoothing OFF as exit_pressure rises toward the exit
+                # threshold: full when _exit_pressure is well below _exit_thresh (no
+                # exit pending), fading to 0 as it approaches (de-risk/exit engaging).
+                # Continuous tanh ramp /0.30. So the position can shrink freely during
+                # corrections (no smoothing lag) while still smoothing the consistent-
+                # build phase (rally grind). _exit_pressure and _exit_thresh are computed
+                # above (always in scope). General principle (no regime label): scale-in
+                # smoothing helps when no exit is pending, hurts when an exit/de-risk is
+                # trying to fire.
+                _te_press_headroom = max(0.0, min(1.0, (_exit_thresh - _exit_pressure) / 0.30))
+                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate * _te_press_headroom
                 _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
