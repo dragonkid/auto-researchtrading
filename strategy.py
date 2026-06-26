@@ -2597,6 +2597,31 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                # Exp3 (architectural, indep): TREND-ALIGNED SCALE-IN smoothing
+                # channel. The prior _target_ema channel smooths ONLY counter-trend
+                # positions (ct gate _ct_te_str); trend-aligned rally longs get alpha=0
+                # (byte-identical, no smoothing) -> their position-value tracking error
+                # during SCALE-IN (bars 0-3, where entry-timing shifts +-1 bar under
+                # noise move the linear scale-in trajectory) is unaddressed. The prior
+                # session exhausted ct smoothing (frontier net-negative: raw cost >
+                # stability benefit, because ct losers held longer = bigger losses).
+                # This is a DIFFERENT population: trend-ALIGNED positions in their
+                # SCALE-IN PHASE ONLY. Winners are not losers -> no ct-loser-holding
+                # raw cost; after scale-in completes (bars_held > _entry_full_bars_dyn)
+                # smoothing turns OFF -> trend winners run unsmoothed (no raw cost on
+                # the big trend capture, the prior smoothing-vs-raw tension's cost side).
+                # Small alpha 0.30 (vs ct's 0.99): a mild low-pass on the scale-in
+                # target only, damping sub-bar progress wobble without meaningful lag.
+                # New control flow: a SECOND smoothing channel on a new position class
+                # (trend-aligned scale-in), disjoint from the ct channel (alpha 0 for
+                # trend-aligned outside scale-in, alpha 0 for ct-losers outside this
+                # gate). Byte-identical for: ct positions (this channel's trend-align
+                # gate is 0), trend-aligned positions past scale-in (bars_held gate 0),
+                # losing positions (loss-gate already cuts alpha). Continuous tanh.
+                _te_ta_gate = max(0.0, np.tanh(_pos_dir_te * ret_vlong / 0.01))  # ~1 trend-aligned (multi-day), 0 ct
+                _te_scalein_gate = max(0.0, min(1.0, 1.0 - bars_held / max(_entry_full_bars_dyn, 1e-6)))  # 1 at entry, 0 past scale-in
+                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate
+                _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
