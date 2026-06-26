@@ -2113,33 +2113,20 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
-                # Exp2 (architectural, indep): MULTI-DAY trend-aligned WINNER max_hold
-                # extension via ret_vlong. NEW data dep in the time-pressure subsystem
-                # distinct from the per-bar slope _hold_adj (which uses noisy 16-bar slope
-                # and fires symmetrically). The ct shortening (_ct_hold_sat, validated)
-                # already uses ret_vlong*pos_dir at /0.01 (fast-saturating, noise-robust).
-                # This is the SYMMETRIC positive counterpart: a position ALIGNED with a
-                # STRONG multi-day trend (ret_vlong*pos_dir>0) that is also currently
-                # WINNING (pos_pnl>0) should hold LONGER to capture more of the trend move.
-                # Mechanism: crash is return-limited (Sh 1.307, 100pct WR, DD 2.83pct has
-                # HUGE headroom below the 5pct dd_gate knee) -- its trend shorts exit too
-                # early via time-pressure. Extending max_hold for trend-aligned winners
-                # captures more of the multi-day downtrend -> higher crash APY/Sharpe (the
-                # dominant score lever under v3: +0.2 Sharpe >> -0.5pct DD at crash). The
-                # /0.03 scale puts it in the FLAT saturated tail of tanh for crash's solidly-
-                # negative ret_vlong (noise-robust, the validated ct-gate lesson -- same
-                # near-constant property as _ct_hold_sat). Gated IN-PROFIT (pos_pnl>0) so
-                # LOSING trend-aligned positions (which should cut) keep baseline + the
-                # _ct_hold_sat shortening. Counter-trend-at-multi-day (mixed's wrong-side
-                # longs: ret_vlong<0, pos_dir=+1 -> product<0 -> gate 0) byte-identical.
-                # sideways (ret_vlong~0 -> gate 0) byte-identical. Max +2.5 bars extension
-                # (comparable to the _ct_hold_sat 2-bar shortening). New cross-component data
-                # dep: max_hold depends on multi-day-trend-align x winner-PnL interaction.
-                _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
-                _ta_winner = max(0.0, np.tanh(ret_vlong * _pos_dir_ta / 0.03))  # ~0 ct/flat, ~1 trend-aligned
-                _winner_pnl_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~0 loss/flat, ~1 deep profit
-                _max_hold = _max_hold + 2.5 * _ta_winner * _winner_pnl_gate
+                # Branch step6: DEEPEN the ct SHORTENING (opposite direction from the walled
+                # extension). Steps1-5 proved max_hold EXTENSION is walled (extending holds =
+                # more wobble exposure -> bull stab crashed 1.0->0.879 even with feed-forward
+                # cache; crash/bull inseparable on trend-align axis). The validated _ct_hold_sat
+                # SHORTENING works because (a) it is near-constant (saturated /0.01) AND (b)
+                # shortening moves exits EARLIER (deterministic bar count, less wobble exposure
+                # = the wobble-free direction). Deepen the coefficient 2.0 -> 3.0 so ct losers
+                # (crash dead-cat-bounce longs, rally pullback shorts) exit ~1 bar faster.
+                # Mechanism: faster ct-loser exits -> smaller realized losses -> higher crash
+                # Sharpe (crash is return-limited, Sh1.307, DD2.83pct headroom) AND higher
+                # rally Sharpe (rally's losing trades are ct pullback shorts). Trend-aligned
+                # holds (gate 0) byte-identical; sideways (ret_vlong~0) byte-identical. The
+                # /0.01 scale keeps the gate near-constant (noise-free, the validated lesson).
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 3.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
