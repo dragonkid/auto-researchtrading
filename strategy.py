@@ -2113,7 +2113,40 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
+                # Exp2 (architectural, indep): PERSISTENCE-GATED ct max_hold shortening.
+                # The 2-bar _ct_hold_sat shortening (Exp5 keep) cuts counter-trend positions
+                # faster (rally pullback shorts = losers). PROVEN diagnosis (this session +
+                # prior): mixed is the BINDING FLOOR (0.506) at 100pct WR, exit-time-pressure-
+                # bound (98.6pct time-pressure exits), INERT to entry-side sizing (Exp1
+                # byte-identical). mixed's longs ARE counter-trend at multi-day (ret_vlong<0
+                # during the down-leg) -> _ct_hold_sat FIRES on them -> shortens their hold by
+                # up to 2 bars -> cuts mixed's WINNING longs short (mixed is 100pct WR, its ct
+                # longs RECOVER -- the opposite of crash's ct dead-cat longs which are losers).
+                # The structural separator is the VALIDATED _down_persist duration-count (the
+                # 52a3e671/fe6acd4d keep mechanism): crash (persistent bear _down_persist~0.9)
+                # vs mixed (oscillating down-then-up _down_persist~0.5). Gate the hold-
+                # shortening AMOUNT by the persistence of the countered trend: fade toward 0
+                # (full hold) when the counter-trend is OSCILLATING (mixed -> longs hold to full
+                # _max_hold -> bigger winners -> higher APY, the return-limited binding floor
+                # at APY 4.6pct), keep full 2-bar shortening when PERSISTENT (crash dead-cat
+                # longs / rally pullback shorts = the losers -> cut fast -> crash/rally byte-
+                # identical). DIRECTION-CORRECT: a long counters a DOWNtrend (persistence =
+                # _down_persist); a short counters an UPtrend (persistence = 1-_down_persist).
+                # Continuous tanh on (persist-0.5)/0.15: ~0 at persist<=0.5 (oscillating/mixed
+                # -> no shortening -> mixed hold restored), ~1 at persist>=0.85 (persistent ->
+                # full 2-bar shortening -> crash/rally byte-identical). Trend-aligned positions
+                # (ret_vlong*pos_dir>0 -> _ct_hold_sat~0 -> no shortening regardless -> byte-
+                # identical for bull/crash trend-aligned/rally trend longs). Sideways (ret_vlong
+                # ~0 -> _ct_hold_sat~0 -> byte-identical). General principle (NO regime label):
+                # a counter-trend position against a PERSISTENT trend should exit faster (real
+                # reversal); against an OSCILLATING trend it is a temporary mispricing that
+                # recovers -> hold to full max_hold. New cross-component data dep: exit hold-
+                # shortening depends on the PERSISTENCE of the multi-day trend it counters
+                # (was uniform-strength). Exit-side (where mixed IS bound, unlike Exp1 entry).
+                _pos_dir_h = 1.0 if current_pos > 0 else -1.0
+                _ct_hold_persist = _down_persist if _pos_dir_h > 0 else (1.0 - _down_persist)
+                _ct_hold_gate = max(0.0, min(1.0, np.tanh((_ct_hold_persist - 0.5) / 0.15)))  # ~0 oscillating/mixed, ~1 persistent/crash|rally
+                _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat * _ct_hold_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
