@@ -2137,20 +2137,17 @@ class Strategy:
                 # (comparable to the _ct_hold_sat 2-bar shortening). New cross-component data
                 # dep: max_hold depends on multi-day-trend-align x winner-PnL interaction.
                 _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
-                _ta_winner = max(0.0, np.tanh(ret_vlong * _pos_dir_ta / 0.03))  # ~0 ct/flat, ~1 trend-aligned
-                # Branch step3: replace step2's noise-sensitive 16-bar slope-conf gate (it
-                # crashed bull stab 1.0->0.928 via per-bar slope wobble) with a DEEP-PROFIT
-                # threshold using pos_pnl alone (no per-bar slope). Step1's pos_pnl>0 onset
-                # over-held sideways/bull transient winners (-0.124/-0.083); step2's slope gate
-                # didn't recover sideways and crashed bull. The remaining noise-robust axis
-                # is the PROFIT DEPTH: raise onset to +0.8*stop, saturate ~+1.6*stop, so only
-                # SUSTAINED DEEP winners extend. Crash's trend shorts (100pct WR, large peak
-                # PnL) sit deep in profit through the downtrend -> full extension; sideways
-                # mean-reverters and bull pullback longs have shallow/transient profit -> spared.
-                # Drop the per-bar _lr_slope entirely (the noise source that crashed bull).
-                # ret_vlong (96-bar OLS) is the sole trend signal (validated noise-robust).
+                # Branch step4: FAST-SATURATING trend-align gate (/0.01 not /0.03) so the
+                # gate is a near-CONSTANT for bull/crash (whose solidly-trending ret_vlong
+                # sits deep in the saturated tail -> no per-bar wobble). Step3 showed the
+                # /0.03 mid-slope scale made _ta_winner noise-sensitive -> bull held position
+                # wobbled -> stab crashed 1.0->0.928. The validated _ct_hold_sat uses /0.01
+                # exactly for this reason (near-constant, noise-free). Mirror it here.
+                # Reduce magnitude 2.5->1.5 to limit the held-position delta (less wobble
+                # even at the gate transitions). Deep profit onset (+0.8*stop) retained.
+                _ta_winner = max(0.0, np.tanh(ret_vlong * _pos_dir_ta / 0.01))  # near-constant for bull/crash (saturated)
                 _winner_pnl_gate = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.8) / 0.8))  # 0 below +0.8*stop, 1 at +1.6*stop
-                _max_hold = _max_hold + 2.5 * _ta_winner * _winner_pnl_gate
+                _max_hold = _max_hold + 1.5 * _ta_winner * _winner_pnl_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
