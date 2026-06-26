@@ -2627,20 +2627,7 @@ class Strategy:
                     _vov_med_te = max(float(np.median(_vov_samples_te)), 1e-8)
                     _vov_te = float(np.std(_vov_samples_te)) / _vov_med_te
                     _vov_gate_te = max(0.0, min(1.0, np.tanh((_vov_te - 0.30) / 0.25)))
-                    # branch step2: WINNING-ONLY VoV boost. Step1 applied the VoV boost
-                    # to ALL ct positions (winners AND losers), re-strengthening loser
-                    # smoothing after the loss-gate had weakened it -> losers held longer
-                    # -> larger realized losses -> rally raw 0.992->0.876 (-0.117). The
-                    # loss-gate's purpose (let losers track the shrinking target faster
-                    # -> exit sooner) must be PRESERVED. Gate the VoV boost on pos_pnl>=0
-                    # (winners only): winners get stronger vol-flux smoothing (stability,
-                    # the target), losers keep the weak loss-gated alpha (fast exit,
-                    # smaller losses). New data dep: VoV alpha boost depends on pos_pnl
-                    # sign (was ct-gate only). Smooth tanh ramp on pos_pnl/|stop| so the
-                    # boost fades as a winner turns into a loser (no decision boundary);
-                    # full boost at pos_pnl>=+0.5*|stop|, fading to 0 by pos_pnl<=0.
-                    _te_win_gate = max(0.0, min(1.0, np.tanh((pos_pnl / abs(STOP_LOSS_PCT)) / 0.5)))
-                    _te_alpha = min(0.999, _te_alpha + 0.20 * _vov_gate_te * _ct_te_str * _te_win_gate)
+                    _te_alpha = min(0.999, _te_alpha + 0.20 * _vov_gate_te * _ct_te_str)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
