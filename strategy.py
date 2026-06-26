@@ -1829,6 +1829,34 @@ class Strategy:
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
+                    # Exp1 (architectural, indep): FEED-FORWARD scale_frac quantization
+                    # to a FIXED discrete fraction grid. The continuous scale-in ramp
+                    # (ENTRY_INITIAL_FRAC + (1-ENTRY_INITIAL_FRAC)*progress) lands at a
+                    # different continuous position value each bar; AR(1) close noise
+                    # perturbs the inputs (_entry_full_bars_dyn via _vov_gate, _adv_freeze
+                    # via _ct_si_gate) -> the scale_frac value wobbles bar-to-bar -> the
+                    # held position value during scale-in differs across the noise
+                    # ensemble -> stability tracking error. The prior session PROVED
+                    # scale-in consistency raises rally raw +0.012 (real lever) BUT every
+                    # TEMPORAL smoothing of scale-in (trend-aligned target EMA, alpha
+                    # sweep) crashed bull stability 1.0->0.954 INVARIANT to alpha/vol/
+                    # pressure/ER/growing gates -- smoothing-vs-raw tension is FUNDAMENTAL
+                    # for trend-aligned (lag holds pullback longs bigger -> bull loss).
+                    # Quantization is FEED-FORWARD (no temporal EMA, no lag): round the
+                    # scale_frac to a FIXED discrete set so the continuous wobble
+                    # collapses onto a FEW stable levels -> fewer distinct scale-in
+                    # position values across the noise ensemble -> the rally raw +0.012
+                    # consistency gain WITHOUT the bull lag crash. CRITICAL: the grid is a
+                    # CONSTANT fraction set (round to nearest 1/N), NOT a width gated on a
+                    # noisy quantity (the validated lesson: gating grid width on noisy
+                    # _er/churn doubled boundary noise and crushed rally). Rounding to a
+                    # fixed fraction grid is noise-IMMUNE in width (the step size is a
+                    # constant); only the LEVEL selected can shift, and only when the raw
+                    # scale_frac crosses a midpoint (a 1/N relative move -- far larger
+                    # than sub-5bps close noise moves the inputs). Applied AFTER the
+                    # _adv_freeze multiply so the freeze (real risk-reduction) executes
+                    # first and only the residual ramp is quantized.
+                    scale_frac = round(scale_frac * 4.0) / 4.0
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
                     # proportionally smaller for the whole hold instead of ramping back to
