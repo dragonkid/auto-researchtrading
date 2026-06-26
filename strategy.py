@@ -2649,7 +2649,7 @@ class Strategy:
                 # smoothing helps when no exit is pending, hurts when an exit/de-risk is
                 # trying to fire.
                 _te_press_headroom = max(0.0, min(1.0, (_exit_thresh - _exit_pressure) / 0.30))
-                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate * _te_press_headroom
+                _te_alpha_ta = 0.15 * _te_ta_gate * _te_scalein_gate * _te_vol_gate * _te_press_headroom  # step5: halve alpha 0.30->0.15 (less lag, less bull cost)
                 _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
