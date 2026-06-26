@@ -2324,7 +2324,15 @@ class Strategy:
                 # close-loc inert -> bull recovered; rally low-vol grind -> gate ~1 ->
                 # close-loc distribution exits kept. Sideways (low vol, low trend) ->
                 # already byte-identical at onset 0.35 (close-loc weakness rare in chop).
-                _cl_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
+                # Branch step11: widen the low-vol gate (full up to vol_ratio=1.0, off at
+                # 1.3) to capture more rally moderate-vol bars. Step10 gate (full<=0.8, off
+                # >=1.2) recovered bull byte-identical but may be leaving rally moderate-vol
+                # distribution bars uncaptured. rally's vol_ratio spans 0.6-1.1; extending
+                # the gate to full up to 1.0 captures more of rally's moderate-vol tops
+                # while still fading for bull's high-vol sharp (vol_ratio>1.0). Sideways
+                # (vol_ratio~0.8-1.0) stays full-gate but close-loc weakness is rare in
+                # chop -> still byte-identical. Continuous, no boundary.
+                _cl_vol_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.3))
                 _cl_pressure = 0.40 * _cl_weak * _cl_vol_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
