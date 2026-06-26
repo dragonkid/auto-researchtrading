@@ -2084,7 +2084,7 @@ class Strategy:
                     _vov_hold_med = max(float(np.median(_vov_hold_samples)), 1e-8)
                     _vov_hold = float(np.std(_vov_hold_samples)) / _vov_hold_med
                     _vov_hold_gate = max(0.0, min(1.0, np.tanh((_vov_hold - 0.30) / 0.25)))
-                    _ct_hold_sat = _ct_hold_sat * (1.0 + 0.50 * _vov_hold_gate)
+                    _ct_hold_sat = _ct_hold_sat * (1.0 + 0.80 * _vov_hold_gate)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
