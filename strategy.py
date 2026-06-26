@@ -313,6 +313,14 @@ class Strategy:
         # a concentrated book proportionally smaller through the whole hold. Deterministic
         # (set once at entry, noise-robust). Reset on full exit; default 1.0.
         self._conc_shrink_held = {}
+        # Branch step5: per-symbol CACHED entry-time trend-align winner flag. Set ONCE at
+        # entry (deterministic, feed-forward) based on the entry bar's ret_vlong*entry_dir
+        # agreement; applied as a CONSTANT extension to max_hold for the position's whole
+        # hold. Removes the per-bar pos_pnl toggle (the wobble source per step3/4 diagnosis:
+        # pos_pnl crossing the threshold under AR(1) noise toggled the extension on/off ->
+        # held position wobbled -> bull stab crashed 1.0->0.904). Feed-forward = no bar-to-
+        # bar wobble (same discipline as _conc_shrink_held / _vol_shrink_held). Reset on exit.
+        self._entry_ta_winner = {}
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
@@ -1680,10 +1688,16 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    # Branch step5: cache entry-time trend-align winner flag (feed-forward).
+                    # bull entry (pos_dir=+1): trend-aligned if ret_vlong>0 (uptrend).
+                    self._entry_ta_winner[symbol] = max(0.0, np.tanh(ret_vlong / 0.01))  # near-constant, noise-robust at entry
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
+                    # Branch step5: cache entry-time trend-align winner flag (feed-forward).
+                    # bear entry (pos_dir=-1): trend-aligned if ret_vlong<0 (downtrend).
+                    self._entry_ta_winner[symbol] = max(0.0, np.tanh(-ret_vlong / 0.01))  # near-constant, noise-robust at entry
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -2137,17 +2151,23 @@ class Strategy:
                 # (comparable to the _ct_hold_sat 2-bar shortening). New cross-component data
                 # dep: max_hold depends on multi-day-trend-align x winner-PnL interaction.
                 _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
-                # Branch step4: FAST-SATURATING trend-align gate (/0.01 not /0.03) so the
-                # gate is a near-CONSTANT for bull/crash (whose solidly-trending ret_vlong
-                # sits deep in the saturated tail -> no per-bar wobble). Step3 showed the
-                # /0.03 mid-slope scale made _ta_winner noise-sensitive -> bull held position
-                # wobbled -> stab crashed 1.0->0.928. The validated _ct_hold_sat uses /0.01
-                # exactly for this reason (near-constant, noise-free). Mirror it here.
-                # Reduce magnitude 2.5->1.5 to limit the held-position delta (less wobble
-                # even at the gate transitions). Deep profit onset (+0.8*stop) retained.
-                _ta_winner = max(0.0, np.tanh(ret_vlong * _pos_dir_ta / 0.01))  # near-constant for bull/crash (saturated)
-                _winner_pnl_gate = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.8) / 0.8))  # 0 below +0.8*stop, 1 at +1.6*stop
-                _max_hold = _max_hold + 1.5 * _ta_winner * _winner_pnl_gate
+                # Branch step5: FEED-FORWARD the trend-align winner flag. Step3/4 proved the
+                # per-bar _winner_pnl_gate (pos_pnl/|stop| crossing 0.8 under AR(1) noise)
+                # toggled the extension on/off bar-to-bar -> held position wobbled -> bull
+                # stab crashed 1.0->0.904. Fix at the root: cache the trend-align state ONCE
+                # at ENTRY (deterministic, set in the entry block above) and apply it as a
+                # CONSTANT extension for the position's whole hold. No per-bar pos_pnl
+                # evaluation -> no toggle -> no wobble. The flag is a near-constant at entry
+                # (ret_vlong/0.01 saturated) AND constant across the hold -> the extension is
+                # a fixed bar-count add for each position, determined once. Drop the per-bar
+                # _winner_pnl_gate entirely. Trend-aligned entries (bull/crash) get a fixed
+                # +1.5-bar extension; counter-trend entries (mixed ct longs, rally pullback
+                # shorts) get ~0 (cached flag 0 at entry) -> byte-identical. sideways (ret_vlong
+                # ~0 at entry) -> flag ~0 -> byte-identical. This is the feed-forward discipline
+                # (no lag, no per-bar wobble) that resolved the prior session's scale-in EMA
+                # wobble wall (c7ecdff1 keep).
+                _ta_winner_cached = self._entry_ta_winner.get(symbol, 0.0)
+                _max_hold = _max_hold + 1.5 * _ta_winner_cached
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
@@ -2991,7 +3011,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._entry_ta_winner):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
