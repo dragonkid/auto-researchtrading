@@ -1856,7 +1856,25 @@ class Strategy:
                     # than sub-5bps close noise moves the inputs). Applied AFTER the
                     # _adv_freeze multiply so the freeze (real risk-reduction) executes
                     # first and only the residual ramp is quantized.
-                    scale_frac = round(scale_frac * 4.0) / 4.0
+                    # BRANCH step2: VOL-GATE the quantization off for high-vol sharp
+                    # uptrends (bull). Step1 crashed bull stab 1.0->0.826: bull's pullback
+                    # longs are HIGH-vol SHARP uptrend entries (vol_ratio>1.0) where the
+                    # exact scale-in ramp matters (sharp pullback recovers fast -- a
+                    # quantized ramp misses the recovery timing). rally's beneficial
+                    # quantization is in a LOW-vol GRIND (vol_ratio<0.8) where scale-in
+                    # consistency is pure win. Gate the quantization strength on a vol ramp:
+                    # FULL at vol_ratio<=0.8 (calm grind = rally), fading to 0 at
+                    # vol_ratio>=1.2 (sharp = bull). Continuous tanh, no boundary. The
+                    # validated bull/rally separator (multi-day trend strength was ALSO
+                    # tried as the gate in the prior session's scale-in EMA branch and was
+                    # INVARIANT -- bull and rally are both trend-aligned uptrends at the
+                    # multi-day scale; VOL REGIME is the only axis that separates them:
+                    # bull HIGH-vol sharp vs rally LOW-vol grind). Blend quantized<->
+                    # continuous scale_frac by the vol gate so high-vol keeps the raw ramp.
+                    _sq_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # 1 at vol<=0.8, 0 at vol>=1.2
+                    _sq_raw = scale_frac
+                    _sq_quant = round(scale_frac * 4.0) / 4.0
+                    scale_frac = _sq_raw * (1.0 - _sq_vol_gate) + _sq_quant * _sq_vol_gate
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
                     # proportionally smaller for the whole hold instead of ramping back to
