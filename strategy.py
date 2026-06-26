@@ -2293,8 +2293,17 @@ class Strategy:
                 _cl_span = np.maximum(_cl_h - _cl_l, 1e-10)
                 _close_loc_held = float(np.mean((_cl_c - _cl_l) / _cl_span))  # [0,1], 3-bar mean
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
-                # long weakness = close near low (close_loc small); short weakness = close near high (close_loc large)
-                _cl_weak = max(0.0, np.tanh((0.45 - _close_loc_held) / 0.12)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.12))
+                # Branch step6: STRONGER close-loc weakness onset (fire only on clear
+                # distribution, spare mild pullback close-near-low). Step1 onset 0.45
+                # fired on mild pullback bars (close_loc 0.40-0.45) that recover in
+                # sideways -> sideways -0.0248. Raise onset to 0.30 so only STRONG close-loc
+                # weakness (close clearly near the low, <0.30) fires -- clear distribution
+                # signal, not routine pullback. Sideways mild pullbacks (close_loc 0.35-0.45)
+                # -> gate ~0 -> spared; rally deep distribution closes (close_loc <0.30 at
+                # tops) -> gate ~1 -> kept. Different axis than the trend/winner gates
+                # (steps 2-5): weakness MAGNITUDE, not regime classifier. Continuous tanh,
+                # no boundary. Bear side symmetric (onset 0.70 for close near high).
+                _cl_weak = max(0.0, np.tanh((0.30 - _close_loc_held) / 0.10)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.70) / 0.10))
                 _cl_pressure = 0.40 * _cl_weak
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
