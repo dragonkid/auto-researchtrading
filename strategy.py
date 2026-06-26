@@ -2434,38 +2434,7 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    # BRANCH step5: MODERATE-PEAK trend-align protection. Exp3 (base 0.60) hurt
-                    # bull -0.493 because _ts_supp's deep-peak gate (onset 2.8) gives NO protection
-                    # for moderate peaks (1.6-2.8) -> bull's moderate trend-long peaks over-harvested.
-                    # DIAGNOSTIC (this session, measured): mixed deep peaks ret_vlong mean +0.008
-                    # (WEAK), bull +0.031 (STRONG). trend_align factor tanh(ret_vlong*pos_dir/0.04):
-                    # mixed ~0.21 (weak suppression), bull ~0.65 (strong suppression). The trend_align
-                    # factor ALREADY separates them, but only applies at deep peaks (>2.8) via the
-                    # deep-peak gate. Extend a SEPARATE moderate-peak protection: a bell-shaped gate
-                    # peaked at tp_ratio~2.2 (zero below 1.6 and above 3.0, so deep peaks use the
-                    # existing _ts_supp path unchanged) x trend_align that REDUCES tp_scale for trend-
-                    # aligned moderate peaks. bull moderate peaks (trend_align 0.65) -> strongly
-                    # protected (harvest reduced); mixed moderate peaks (trend_align 0.21) -> mostly
-                    # harvest (the mixed +0.0019 lever from Exp3 preserved). The bell shape ensures
-                    # deep peaks (>3.0) are unaffected (existing _ts_supp handles them). Continuous
-                    # (smooth bell via product of two sigmoids), no new decision boundary. General
-                    # principle (NO regime label): a MODERATE peak (small winner) in a STRONG trend
-                    # is a trend-extension-in-progress -> let it run; in a WEAK trend it is a local
-                    # bounce -> harvest. New cross-component data dep: moderate-peak harvest strength
-                    # depends on multi-day trend-align magnitude (was unprotected, harvest fired
-                    # uniformly at base).
-                    _mod_peak = max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.3))) * max(0.0, min(1.0, np.tanh((3.0 - _tp_ratio) / 0.3)))  # bell ~1 at 1.9-2.7, ~0 outside [1.6,3.0]
-                    _trend_align_mod = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))  # 0 ct/weak, ~1 strong trend-aligned
-                    # BRANCH step6: SHARP threshold on trend_align. step5 used the raw factor
-                    # (mixed 0.21 -> 21pct protection -> killed mixed's +0.0019 gain). mixed's
-                    # deep-peak ret_vlong mean +0.008 (trend_align 0.21), bull +0.031 (0.65).
-                    # Apply a steep sigmoid that is ~0 below 0.4 (mixed, weak trend -> NO protection
-                    # -> harvest fires -> mixed gain preserved) and ~1 above 0.5 (bull, strong
-                    # trend -> FULL protection -> bull moderate peaks let-run). The sharp knee
-                    # between 0.4 and 0.5 cleanly separates mixed (0.21) from bull (0.65).
-                    _trend_align_sharp = max(0.0, min(1.0, np.tanh((_trend_align_mod - 0.4) / 0.10)))  # ~0 mixed, ~1 bull
-                    _mod_protect = _mod_peak * _trend_align_sharp  # [0,1] high only for STRONG-trend-aligned moderate peaks
-                    _tp_scale = 0.60 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp) * (1.0 - _mod_protect)
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
