@@ -2322,10 +2322,16 @@ class Strategy:
                     _pos_dir_mc = 1.0 if current_pos > 0 else -1.0
                     _mc_ct = max(0.0, np.tanh(-_pos_dir_mc * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     # Onset at chop>0.30 (the validated small-pos-exempt threshold at line ~2835),
-                    # saturate near 0.60 so a maximally whipsawing dead-capital position gets
-                    # modest pressure (0.35) -- below slope/pp peaks but enough to win MAX when
-                    # the other sources are ~0 (exactly the dead-capital case).
-                    _mc_pressure = 0.35 * max(0.0, np.tanh((_mc_chop - 0.30) / 0.15)) * _mc_ct
+                    # saturate near 0.60. Magnitude 0.75 (branch step2: was 0.35, byte-identical
+                    # on mixed because max 0.35 < de-risk floor 0.55*exit_thresh=0.55 -> never
+                    # entered the de-risk ramp -> no trim emitted). Raising above 0.55 crosses
+                    # the de-risk floor so mixed's choppy ct dead-capital positions actually get
+                    # trimmed: _dr_x = (pressure - 0.55)/(1-0.55), at pressure 0.75 -> _dr_x=0.44
+                    # -> _de_risk 1-0.44^k (k~1 for ct/loss) -> ~0.56 target multiplier -> 44pct
+                    # trim of the dead-capital position per sustained choppy bar. Still below
+                    # slope/pp saturation (1.0) so trend-aligned regimes with real slope/pp
+                    # pressure keep their faster exits.
+                    _mc_pressure = 0.75 * max(0.0, np.tanh((_mc_chop - 0.30) / 0.15)) * _mc_ct
                 _w_mc = 1.0  # direction-agnostic; chop is symmetric dead-capital either side
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
