@@ -2138,7 +2138,18 @@ class Strategy:
                 # dep: max_hold depends on multi-day-trend-align x winner-PnL interaction.
                 _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
                 _ta_winner = max(0.0, np.tanh(ret_vlong * _pos_dir_ta / 0.03))  # ~0 ct/flat, ~1 trend-aligned
-                _winner_pnl_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~0 loss/flat, ~1 deep profit
+                # Branch step3: replace step2's noise-sensitive 16-bar slope-conf gate (it
+                # crashed bull stab 1.0->0.928 via per-bar slope wobble) with a DEEP-PROFIT
+                # threshold using pos_pnl alone (no per-bar slope). Step1's pos_pnl>0 onset
+                # over-held sideways/bull transient winners (-0.124/-0.083); step2's slope gate
+                # didn't recover sideways and crashed bull. The remaining noise-robust axis
+                # is the PROFIT DEPTH: raise onset to +0.8*stop, saturate ~+1.6*stop, so only
+                # SUSTAINED DEEP winners extend. Crash's trend shorts (100pct WR, large peak
+                # PnL) sit deep in profit through the downtrend -> full extension; sideways
+                # mean-reverters and bull pullback longs have shallow/transient profit -> spared.
+                # Drop the per-bar _lr_slope entirely (the noise source that crashed bull).
+                # ret_vlong (96-bar OLS) is the sole trend signal (validated noise-robust).
+                _winner_pnl_gate = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.8) / 0.8))  # 0 below +0.8*stop, 1 at +1.6*stop
                 _max_hold = _max_hold + 2.5 * _ta_winner * _winner_pnl_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
