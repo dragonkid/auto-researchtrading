@@ -1005,8 +1005,46 @@ class Strategy:
                 # the saturation knee) is preserved. New mechanism: near-binary saturated
                 # ct-shrink profile (vs step-3's mid-slope linear region).
                 _calm_ct = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # per-bar: ~1 low churn, ~0 bursting
-                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
-                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
+                # Exp1 (architectural, indep): PERSISTENCE-GATED multi-day ct entry shrink.
+                # The 0.40 _ct_vlong cut was applied uniformly to ALL multi-day ct entries.
+                # PROVEN diagnosis (this session, from prior-session root-cause): mixed is the
+                # BINDING FLOOR (0.506 vs next-lowest 0.992) at 100pct WR, Sh0.838, exit-time-
+                # pressure-bound, INERT to entry-side sizing (_target_ema, tp_harvest, sideways_
+                # boost, strength_scale all byte-identical on mixed). mixed's longs ARE counter-
+                # trend at the multi-day scale (ret_vlong<0 during the down-leg of its down-
+                # then-up year) so the existing ct_vlong shrink FIRES on them and CUTS their
+                # first-bar size by up to 0.40x -- but mixed's ct longs are WINNERS (they
+                # oscillate then recover, 100pct WR), the OPPOSITE of crash's ct dead-cat-bounce
+                # longs (PERSISTENT downtrend, LOSERS). The structural separator is the
+                # VALIDATED _down_persist duration-count signal (the 52a3e671/fe6acd4d keep
+                # mechanism): crash (multi-month bear -> _down_persist~0.9) vs mixed (down-
+                # then-up oscillation -> _down_persist~0.5). Gate the ct-shrink's STRENGTH by a
+                # persistence factor that fades the shrink toward 0 (spared) when the counter-trend
+                # is OSCILLATING (mixed) and keeps full strength when PERSISTENT (crash/rally).
+                # _down_persist is ALREADY computed (line ~588, validated duration-count of
+                # ret_vlong<0 over PERSIST_WINDOW) -- this is a NEW control-flow application of
+                # an existing validated signal to the entry-ct-shrink subsystem (where it has
+                # NOT been used; it currently feeds only the persist_boost magnitude gate).
+                # DIRECTION-CORRECT: the persistence must measure the trend the position COUNTERS.
+                # A bull ct entry (long in downtrend) counters a DOWNtrend -> persistence of down
+                # = _down_persist. A bear ct entry (short in uptrend) counters an UPtrend ->
+                # persistence of up = 1-_down_persist. So the gate flips sign by entry side.
+                # Continuous tanh on (persist-0.5)/0.15: ~0 at persist<=0.5 (oscillating/mixed ->
+                # shrink spared -> mixed first-bar size restored toward 1.0 -> larger mixed
+                # winners -> higher mixed APY, the return-limited binding floor at low APY
+                # 4.6pct), ~1 at persist>=0.85 (persistent counter-trend = crash dead-cat longs /
+                # rally pullback shorts = the LOSERS -> full 0.40 shrink preserved -> crash +
+                # rally byte-identical). Sideways (ret_vlong~0 -> ~0 ct signal -> shrink ~0
+                # regardless -> byte-identical). General principle (NO regime label): a counter-
+                # trend entry against a PERSISTENT multi-day trend is a low-quality loser to cut;
+                # against an OSCILLATING trend it is a temporary mispricing that recovers ->
+                # spare. New cross-component data dep: entry ct-shrink strength depends on the
+                # PERSISTENCE of the multi-day trend it counters (was uniform-strength).
+                # Shrink-only family (caps at 1.0; _calm_ct + _ct_persist_gate both in [0,1]).
+                _ct_persist_down = max(0.0, min(1.0, np.tanh((_down_persist - 0.5) / 0.15)))            # persistence of downtrend (counters bull ct = crash dead-cat longs)
+                _ct_persist_up = max(0.0, min(1.0, np.tanh(((1.0 - _down_persist) - 0.5) / 0.15)))   # persistence of uptrend (counters bear ct = rally pullback shorts)
+                _bull_ct_vlong = 1.0 - 0.40 * _calm_ct * _ct_persist_down * max(0.0, np.tanh(-ret_vlong / 0.01))  # bull entry in multi-day downtrend
+                _bear_ct_vlong = 1.0 - 0.40 * _calm_ct * _ct_persist_up * max(0.0, np.tanh(ret_vlong / 0.01))   # bear entry in multi-day uptrend
                 # Exp3 (architectural): COUNTER-TREND-specific loss-streak size shrink.
                 # Distinct from Exp1's blanket escalation (which hurt bull by shrinking
                 # trend-aligned post-streak entries): this shrinks ONLY counter-trend
