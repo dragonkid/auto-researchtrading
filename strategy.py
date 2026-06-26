@@ -1997,6 +1997,37 @@ class Strategy:
                 _stop_abs = max(0.018, min(0.035, 2.5 * _atr_pct))
                 _loss = -pos_pnl
                 _band_half = (0.06 + 0.20 * min(1.0, vol_ratio)) * _stop_abs
+                # Exp2 (architectural, indep): PROFIT-DEPTH stop-band tightening for
+                # trend-aligned winners. The stop band (_band_half) is currently
+                # STATELESS w.r.t. profit depth -- a winner at +2*stop has the SAME
+                # protective band as a fresh entry. crash (return-limited Sh1.307,
+                # 100pct WR, DD2.83pct well below the 5pct knee) is the largest DD-
+                # headroom regime: its trend-aligned shorts ride the multi-month
+                # downtrend then give back peaks on counter-trend bounces. A TIGHTER
+                # trailing band on DEEP winners (pos_pnl >> stop) locks more of the
+                # realized gain before a bounce forces a full giveback exit -> higher
+                # crash APY (return_bonus) at preserved Sharpe (the trend-aligned
+                # winning population is 100pct WR, so a tighter trailing stop only
+                # decides HOW MUCH of the peak is locked, not WHETHER the trade wins).
+                # DISTINCT from max_hold extension (walled by extension-wobble: more
+                # bars of held position = more wobble exposure): this does NOT extend
+                # hold duration -- the tighter band either exits on a deeper reversion
+                # (FEWER bars, less wobble) or holds the ongoing trend (same bars). It
+                # changes the STOP ACTIVATION SHAPE, not the time cap.
+                # Trend-gated (_dr_align / _dr_slope_conf pattern) so only trend-
+                # aligned+confirmed-slope winners earn the tighter band; counter-trend
+                # (rally pullback shorts) and choppy/sideways positions keep the full
+                # band (no premature exit on their noisy pullbacks). Profit-depth
+                # ramp saturates by +1.5*stop so deep winners get up to ~0.6x tighter
+                # band. Continuous (no boundary); feed-forward in pos_pnl (realized,
+                # smooth, not a noisy price-derived gate). New control-flow dep on
+                # pos_pnl x trend-alignment x slope-confirmation at the stop subsystem.
+                _dr_pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _dr_align_sl = max(0.0, np.tanh(ret_long * _dr_pos_dir_sl / 0.04))  # 0 ct, 1 trend-aligned
+                _dr_slope_conf_sl = max(0.0, np.tanh(_lr_slope * _dr_pos_dir_sl / 0.0004))  # 16-bar slope still confirms (same signal as win-accelerator _slope_conf)
+                _profit_depth = max(0.0, min(1.0, np.tanh(max(0.0, pos_pnl) / (1.5 * abs(STOP_LOSS_PCT)))))  # 0 at entry, ~1 at +1.5*stop
+                _tighten_factor = 1.0 - 0.40 * _profit_depth * _dr_align_sl * _dr_slope_conf_sl  # 1.0 entry/ct, ~0.6 deep trend-aligned winner
+                _band_half = _band_half * _tighten_factor
                 _sl_pressure = max(0.0, min(1.0, (_loss - (_stop_abs - _band_half)) / (2.0 * _band_half)))
 
                 # Slope-against pressure: use MEDIAN of 3 slopes at different windows for
