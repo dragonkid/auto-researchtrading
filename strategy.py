@@ -1784,6 +1784,7 @@ class Strategy:
                 # for counter-trend entries in a vol-flux regime. New cross-timescale x
                 # cross-trend data dep at scale-in pace.
                 _vov_n = 6
+                _vov_gate = 0.0  # default (calm); overwritten when len(closes)>=24
                 if len(closes) >= 24:
                     _vov_samples = np.array([
                         float(np.std(np.diff(np.log(closes[-(i + _vov_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_n - 1:]))))
@@ -1828,6 +1829,20 @@ class Strategy:
                     # (same as other ret_vlong ct gates -> near-constant, noise-free).
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
+                    # Exp2 branch step5 (architectural): VOL-OF-VOL amplification of the
+                    # adverse-freeze (a CONTINUOUS scale-in size variable, distinct from
+                    # step1's integer-quantized time-cap). A counter-trend position scaling
+                    # in adversely (pos_pnl<0) DURING a vol-of-vol transition (the keep's
+                    # _vov_gate, already computed for scale-in pace at line ~1794) is even
+                    # more likely to keep losing -> FREEZE HARDER (smaller scale_frac) so
+                    # the losing ct position stays smaller through the transition ->
+                    # smaller losses -> higher Sharpe in the ct-loser regimes (rally
+                    # pullback shorts, crash dead-cat-bounce longs). Trend-aligned (ct_si
+                    # ~0) byte-identical; calm (_vov_gate ~0) byte-identical. Continuous
+                    # (scale_frac is fractional, no integer wall). Extends the keep's
+                    # vol-of-vol x ct mechanism to the adverse-freeze SIZE path (3rd path:
+                    # pace=keep, time-cap=step1, freeze=step5). Clamped.
+                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate))
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
