@@ -2620,7 +2620,19 @@ class Strategy:
                 # losing positions (loss-gate already cuts alpha). Continuous tanh.
                 _te_ta_gate = max(0.0, np.tanh(_pos_dir_te * ret_vlong / 0.01))  # ~1 trend-aligned (multi-day), 0 ct
                 _te_scalein_gate = max(0.0, min(1.0, 1.0 - bars_held / max(_entry_full_bars_dyn, 1e-6)))  # 1 at entry, 0 past scale-in
-                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate
+                # Branch step2: LOW-VOL gate on the trend-aligned scale-in smoothing.
+                # Step1 raised rally raw +0.012 but crashed bull stability 1.0->0.936:
+                # bull-2021 is a HIGH-VOL SHARP uptrend (vol_ratio>1) where the scale-in
+                # target must track sharp moves; smoothing lags it -> bull entry-timing
+                # divergence -> stability crash. rally grinds at LOW vol (vol_ratio<1),
+                # so the smoothing helps there. Gate on low vol_ratio: full at
+                # vol_ratio<=0.8 (calm rally grind), fading to 0 at vol_ratio>=1.2
+                # (sharp bull-2021). Continuous tanh (no boundary). The /0.04 ret_long
+                # trend-align gate already excludes sideways chop. General vol-regime
+                # principle (no regime label): scale-in smoothing helps calm-grind
+                # trends, hurts sharp-vol trends.
+                _te_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
+                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate
                 _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
