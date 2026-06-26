@@ -1092,6 +1092,41 @@ class Strategy:
                 # first-bar size depends on conviction margin above floor.
                 _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
+                # Exp2 (architectural, indep): FEED-FORWARD conviction-margin
+                # attenuator quantization (extends the c7ecdff1 keep's feed-forward
+                # quantization principle to the cold-entry conviction-size path). The
+                # keep note explicitly sanctions this: "feed-forward quantization
+                # extends to OTHER continuous noise-sensitive quantities feeding
+                # position value (_entry_frac_dyn, conviction-margin _entry_conv_adj)
+                # -- any continuous bar-to-bar wobble quantizing to a fixed grid without
+                # lag is a candidate." _bull_margin is (_bull_strong - _bull_strong_min)
+                # / _bull_strong_min, derived from the strong-sum (per-bar voter signals
+                # = noise-sensitive) -> _conv_atten wobbles bar-to-bar -> the first-bar
+                # position value wobbles across the AR(1) ensemble -> stability tracking
+                # error. Quantization is FEED-FORWARD (no temporal EMA, no lag): round
+                # the 0.70..1.00 conviction scale onto a fixed 1/8 grid so the continuous
+                # wobble collapses onto a FEW stable levels -> fewer distinct first-bar
+                # position values across the noise ensemble -> stability up WITHOUT the
+                # bull lag crash that capped every temporal-EMA approach (prior session
+                # 7-step trend-aligned EMA branch, smoothing-vs-raw tension FUNDAMENTAL).
+                # CRITICAL: mirror the keep's CT-GATE (c7ecdff1 step3 -- ungated
+                # quantization crashed bull stab 1.0->0.826; ct-gating spares
+                # trend-aligned longs by construction). Apply the grid ONLY to
+                # counter-trend-at-multi-day cold entries (rally pullback shorts, crash
+                # dead-cat-bounce longs -- the noise-sensitive ct population); trend-
+                # aligned cold entries (bull longs, crash shorts, rally longs) keep the
+                # raw continuous _conv_atten (byte-identical). Same fast-saturating /0.01
+                # ret_vlong ct indicator as the keep's _sq_ct_gate (near-constant,
+                # noise-free per the validated branch-step-9 lesson). New cross-component
+                # data dep: conviction-margin first-bar size quantization depends on
+                # multi-day-ct interaction (feed-forward, no lag). The 1/8 grid matches
+                # the keep's step5 sweet spot (1/4 cost too much raw, 1/8 keeps raw+stab).
+                _conv_ct_gate_bull = max(0.0, np.tanh(-ret_vlong / 0.01))  # bull ct in multi-day downtrend
+                _conv_ct_gate_bear = max(0.0, np.tanh(ret_vlong / 0.01))   # bear ct in multi-day uptrend (rally pullback shorts)
+                _conv_quant_bull = round(_bull_conv_atten * 8.0) / 8.0
+                _conv_quant_bear = round(_bear_conv_atten * 8.0) / 8.0
+                _bull_conv_atten = _bull_conv_atten * (1.0 - _conv_ct_gate_bull) + _conv_quant_bull * _conv_ct_gate_bull
+                _bear_conv_atten = _bear_conv_atten * (1.0 - _conv_ct_gate_bear) + _conv_quant_bear * _conv_ct_gate_bear
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
