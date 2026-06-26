@@ -2268,76 +2268,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp3 (architectural, indep): close-POSITION-WITHIN-BAR exit pressure
-                # (7th soft source). NEW data axis: close_loc = (close-low)/(high-low) in
-                # [0,1] is already computed for the entry close-conv boost (line ~1553) but
-                # NEVER used in the exit subsystem. All 6 existing soft sources use
-                # price-derived SERIES (slope/HL2/peak/time/vol/volume) -- NONE reads
-                # where the close sits within the bar's own range. A trend-aligned WINNER
-                # whose recent bars start closing near the LOW (long) / near the HIGH
-                # (short) is showing distribution / waning momentum -- a LEADING reversal
-                # signal that PRECEDES slope reversal (slope uses the HL2 MIDPOINT, which
-                # is direction-agnostic to whether the close is at the top or bottom of
-                # the bar). Distinct from _ve_pressure (vol-of-price expansion) and
-                # _pp_pressure (peak giveback magnitude). Profit-side only (lock gains on
-                # close-loc weakness; losers are handled by slope-against + SL). Compute
-                # 3-bar mean close_loc (single-bar close position flips under AR(1) noise;
-                # 3-bar mean smooths). For a long: pressure when close_loc low (closing
-                # near lows = distribution). For a short: pressure when close_loc high
-                # (closing near highs = buying against the short). Continuous tanh, no
-                # boundary. New exit-pressure source + new control flow in the MAX fusion.
-                # Targets rally/crash Sharpe via earlier winner exits at distribution.
-                _cl_h = bd.history["high"].values[-3:]
-                _cl_l = bd.history["low"].values[-3:]
-                _cl_c = closes[-3:]
-                _cl_span = np.maximum(_cl_h - _cl_l, 1e-10)
-                _close_loc_held = float(np.mean((_cl_c - _cl_l) / _cl_span))  # [0,1], 3-bar mean
-                _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
-                # Branch step6: STRONGER close-loc weakness onset (fire only on clear
-                # distribution, spare mild pullback close-near-low). Step1 onset 0.45
-                # fired on mild pullback bars (close_loc 0.40-0.45) that recover in
-                # sideways -> sideways -0.0248. Raise onset to 0.30 so only STRONG close-loc
-                # weakness (close clearly near the low, <0.30) fires -- clear distribution
-                # signal, not routine pullback. Sideways mild pullbacks (close_loc 0.35-0.45)
-                # -> gate ~0 -> spared; rally deep distribution closes (close_loc <0.30 at
-                # tops) -> gate ~1 -> kept. Different axis than the trend/winner gates
-                # (steps 2-5): weakness MAGNITUDE, not regime classifier. Continuous tanh,
-                # no boundary. Bear side symmetric (onset 0.70 for close near high).
-                # Branch step7: intermediate onset 0.35 (between step1 0.45 and step6
-                # 0.30) to capture more rally distribution signal while keeping sideways
-                # safe. Step6 0.30 was too conservative (rally +0.0001 only); step1 0.45
-                # too aggressive (sideways -0.0248). 0.35 fires on moderate-strong close-loc
-                # weakness (close_loc <0.35) -- captures more distribution closes at rally
-                # tops while still sparing sideways mild pullbacks (0.35-0.45). Narrower
-                # tanh width 0.10->0.08 for sharper onset.
-                # Branch step13: ASYMMETRIC bear-side onset (lower 0.65->0.55) to activate
-                # crash shorts at buying pressure. Crash is byte-identical in step10 (bear-
-                # side close-loc fires when shorts close near high, but crash downtrend bars
-                # close near LOW = continuation, not high; the 0.65 onset only fires at
-                # crash bottoms = rare). Lower the bear-side onset to 0.55 so crash shorts
-                # exit earlier on moderate buying pressure (dead-cat bounces, bottoming).
-                # Crash is return-limited (Sh1.307, largest headroom) -- earlier exit at
-                # buying pressure locks gains before the bounce gives back. Bull side
-                # onset unchanged (0.35, validated). Asymmetric is principled: long and
-                # short distribution dynamics differ (shorts bottom on bounces, longs top
-                # on distribution). Profit-side only. Continuous tanh, no boundary.
-                _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.08))
-                # Branch step10: LOW-VOL gate on close-loc (recover bull -0.0013 cost).
-                # Step7 onset 0.35 gave rally +0.0082 + mixed +0.0017 BUT bull -0.0013
-                # (close-loc fires on bull's SHARP pullback bars that close near low but
-                # RECOVER fast). bull/rally are inseparable on trend/multi-day/winner axes
-                # (steps 2-5), but the validated separator (from the prior-session scale-in
-                # EMA branch) is VOL REGIME: bull-2021 is HIGH-vol SHARP (vol_ratio>1.0,
-                # pullbacks recover fast); rally-2024 is LOW-vol GRIND (vol_ratio<0.8,
-                # distribution at tops is real). Gate close-loc on low vol_ratio: full at
-                # vol_ratio<=0.8 (rally grind), fading to 0 at vol_ratio>=1.2 (bull sharp).
-                # Continuous tanh, no boundary. bull high-vol pullbacks -> gate ~0 ->
-                # close-loc inert -> bull recovered; rally low-vol grind -> gate ~1 ->
-                # close-loc distribution exits kept. Sideways (low vol, low trend) ->
-                # already byte-identical at onset 0.35 (close-loc weakness rare in chop).
-                _cl_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
-                _cl_pressure = 0.40 * _cl_weak * _cl_vol_gate
-                _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2352,7 +2282,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
-                    _w_cl * _cl_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
