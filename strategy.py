@@ -2400,7 +2400,34 @@ class Strategy:
                     # distinguishes a genuine trend extension from a counter-trend bounce). Continuous
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
-                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # BRANCH step4: PERSISTENCE-GATED deep-peak suppression. mixed's deep
+                    # peaks (>2.8 tp_ratio, the $500-928 big-lump winners driving the realized-
+                    # PnL CV=1.79 Sharpe drag) form during its UP-LEG where ret_vlong>0 ->
+                    # trend-align factor HIGH -> _ts_supp suppresses -> let-run -> position
+                    # rides to a deep peak then exits as a LUMP (variance). The validated
+                    # _down_persist duration-count separates bull (PERSISTENT uptrend,
+                    # _down_persist~0.1 -> aligned persistence ~0.9 -> deep peak is a genuine
+                    # trend extension -> KEEP suppression -> let-run) from mixed (OSCILLATING
+                    # uptrend, _down_persist~0.5 -> aligned persistence ~0.5 -> deep peak is a
+                    # local bounce in a non-continuing trend -> WEAKEN suppression -> harvest
+                    # -> lock gains at the deep peak -> less lump at final exit -> lower
+                    # realized variance -> higher mixed Sharpe). Multiply the deep-peak factor
+                    # by aligned persistence so ONLY deep peaks (the mixed lever) are affected;
+                    # moderate peaks (1.6-2.8, where deep-peak factor is ~0 regardless) are
+                    # UNTOUCHED -> bull's moderate-peak harvest (the DD cap) is preserved.
+                    # Aligned persistence = (1-_down_persist) for longs, _down_persist for shorts
+                    # (the persistence of the trend the position rides). Continuous tanh on
+                    # (persist-0.5)/0.15: ~0 at persist<=0.5 (mixed -> suppression weakened ->
+                    # harvest), ~1 at persist>=0.85 (bull/crash/rally -> suppression kept ->
+                    # let-run, byte-identical deep-peak behavior). General principle (NO regime
+                    # label): a deep peak in a PERSISTENT trend is a genuine extension (let
+                    # run); in an OSCILLATING trend it is a local bounce (lock gains). New
+                    # cross-component data dep: deep-peak harvest suppression depends on the
+                    # aligned-trend PERSISTENCE (was uniform-strength at deep peaks).
+                    _pos_dir_ts = 1.0 if current_pos > 0 else -1.0
+                    _aligned_persist_ts = (1.0 - _down_persist) if _pos_dir_ts > 0 else _down_persist
+                    _deep_persist_gate = max(0.0, min(1.0, np.tanh((_aligned_persist_ts - 0.5) / 0.15)))  # ~0 oscillating/mixed, ~1 persistent/bull|crash|rally
+                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5))) * _deep_persist_gate
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
