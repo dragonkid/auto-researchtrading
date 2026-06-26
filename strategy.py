@@ -1842,7 +1842,7 @@ class Strategy:
                     # (scale_frac is fractional, no integer wall). Extends the keep's
                     # vol-of-vol x ct mechanism to the adverse-freeze SIZE path (3rd path:
                     # pace=keep, time-cap=step1, freeze=step5). Clamped.
-                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.65 * _vov_gate))
+                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate))
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
