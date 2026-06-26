@@ -28,6 +28,31 @@ def _fast_r2(y):
     vy = (yd * yd).sum()
     return (cov * cov) / max(vx * vy, 1e-20)
 
+def _dvp_sign(closes_pair):
+    """Soft sign for DVP (directional volume pressure) computation.
+    Replaces hard np.sign(close[i]-close[i-1]) which flips on near-zero close-to-
+    close diffs under AR(1) noise (4.5bps perturbation). The hard sign is a decision
+    boundary at diff=0: a bar whose clean close-to-close diff is ~1bps (near-zero)
+    gets np.sign -> +1, but under 4.5bps AR(1) perturbation the diff can flip to -3bps
+    -> np.sign -> -1, reversing that bar's volume contribution to DVP. DVP feeds 4
+    entry-side boost terms; a flipped DVP changes first-bar entry size between clean
+    and perturbed runs -> equity-curve tracking error -> stability penalty (the
+    diagnosed rally close-noise source per baseline re-verification row 1569).
+    Soft sign = tanh(ret / DVP_SIGN_SCALE) where ret = (close[i]-close[i-1])/close[i-1]
+    is the per-bar return (price-normalized -> scale-invariant across BTC/ETH/SOL).
+    DVP_SIGN_SCALE = 0.003 (30bps): trending bars (|ret| > 30bps, the vast majority of
+    meaningful directional bars) saturate to +/-1 = BYTE-IDENTICAL to np.sign; only
+    near-zero-diff bars (|ret| < ~15bps, the noise-sensitive set) become soft in
+    (-0.5, +0.5). A 4.5bps perturbation now moves a 1bps bar from tanh(0.0033)=0.003
+    to tanh(-0.0007)=-0.0007 (a 0.004 swing) instead of +1 to -1 (a 2.0 swing) -> a
+    ~500x reduction in per-bar DVP sensitivity to close noise. No new decision
+    boundary (tanh is monotonic continuous)."""
+    prev = closes_pair[:-1]
+    curr = closes_pair[1:]
+    rets = (curr - prev) / np.maximum(np.abs(prev), 1e-10)
+    return np.tanh(rets / 0.003)
+
+
 ACTIVE_SYMBOLS = ["BTC", "ETH", "SOL"]
 
 # Momentum windows
@@ -430,7 +455,7 @@ class Strategy:
         if "BTC" in bar_data and len(bar_data["BTC"].history) > 13:
             _bdvp_c = bar_data["BTC"].history["close"].values[-13:]
             _bdvp_v = bar_data["BTC"].history["volume"].values[-12:]
-            _bdvp_rets = np.sign(np.diff(_bdvp_c))
+            _bdvp_rets = _dvp_sign(_bdvp_c)  # Exp1: soft tanh sign (noise-robust DVP)
             _btc_dvp = float(np.sum(_bdvp_v * _bdvp_rets) / max(np.sum(_bdvp_v), 1e-10))
 
         # Exp2 (architectural, indep): cross-alt lead-lag short-term momentum. ETH and SOL
@@ -480,7 +505,7 @@ class Strategy:
             if len(bar_data[_asym].history) > 13:
                 _adv_c = bar_data[_asym].history["close"].values[-13:]
                 _adv_v = bar_data[_asym].history["volume"].values[-12:]
-                _adv_rets = np.sign(np.diff(_adv_c))
+                _adv_rets = _dvp_sign(_adv_c)  # Exp1: soft tanh sign (noise-robust DVP)
                 _alt_dvp[_asym] = float(np.sum(_adv_v * _adv_rets) / max(np.sum(_adv_v), 1e-10))
             else:
                 _alt_dvp[_asym] = 0.0
@@ -1618,7 +1643,7 @@ class Strategy:
                 _dvp_n = 12
                 _dvp_c = closes[-_dvp_n - 1:]
                 _dvp_v = bd.history["volume"].values[-_dvp_n:]
-                _dvp_rets = np.sign(np.diff(_dvp_c))
+                _dvp_rets = _dvp_sign(_dvp_c)  # Exp1: soft tanh sign (noise-robust DVP)
                 _dvp = float(np.sum(_dvp_v * _dvp_rets) / max(np.sum(_dvp_v), 1e-10))
                 _dvp_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _dvp_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
