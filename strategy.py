@@ -2628,6 +2628,23 @@ class Strategy:
                     _vov_te = float(np.std(_vov_samples_te)) / _vov_med_te
                     _vov_gate_te = max(0.0, min(1.0, np.tanh((_vov_te - 0.30) / 0.25)))
                     _te_alpha = min(0.999, _te_alpha + 0.20 * _vov_gate_te * _ct_te_str)
+                # branch step5: SMOOTH-STEADY-ONLY. Step4 diagnosis: the raw cost is the
+                # general lag on ALL ct exits (shrinking targets = de-risk/exit held
+                # longer). The stability benefit is on held position-value wobble. When
+                # |target|~|current_pos| (FLAT, no active resize), the position-value
+                # wobble is PURE noise (no signal to track) -> smooth aggressively.
+                # When target is GROWING (scale-in) or SHRINKING (exit), track raw
+                # (signal to follow, smoothing would lag the signal). Gate alpha on
+                # how close |target|/|current_pos| is to 1.0 (flat): full alpha at
+                # ratio~1.0, fading to 0 as |ratio-1|>0.05 (active resize). New control
+                # flow: smoothing depends on resize MAGNITUDE (steady vs active).
+                # Distinct from step3 (growing-only, backwards): step3 disabled smoothing
+                # on the GROWING phase (catastrophic); this keeps smoothing on the FLAT
+                # phase only (the pure-noise regime). Smooth tanh on |ratio-1| (no
+                # decision boundary). Trend-aligned (ct-gate 0 -> alpha 0) byte-identical.
+                _te_resize_ratio = abs(target) / max(abs(current_pos), 1e-6)
+                _te_steady_gate = max(0.0, min(1.0, 1.0 - np.tanh(abs(_te_resize_ratio - 1.0) / 0.05)))
+                _te_alpha = _te_alpha * _te_steady_gate
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
