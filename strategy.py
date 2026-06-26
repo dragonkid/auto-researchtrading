@@ -2268,6 +2268,35 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp3 (architectural, indep): close-POSITION-WITHIN-BAR exit pressure
+                # (7th soft source). NEW data axis: close_loc = (close-low)/(high-low) in
+                # [0,1] is already computed for the entry close-conv boost (line ~1553) but
+                # NEVER used in the exit subsystem. All 6 existing soft sources use
+                # price-derived SERIES (slope/HL2/peak/time/vol/volume) -- NONE reads
+                # where the close sits within the bar's own range. A trend-aligned WINNER
+                # whose recent bars start closing near the LOW (long) / near the HIGH
+                # (short) is showing distribution / waning momentum -- a LEADING reversal
+                # signal that PRECEDES slope reversal (slope uses the HL2 MIDPOINT, which
+                # is direction-agnostic to whether the close is at the top or bottom of
+                # the bar). Distinct from _ve_pressure (vol-of-price expansion) and
+                # _pp_pressure (peak giveback magnitude). Profit-side only (lock gains on
+                # close-loc weakness; losers are handled by slope-against + SL). Compute
+                # 3-bar mean close_loc (single-bar close position flips under AR(1) noise;
+                # 3-bar mean smooths). For a long: pressure when close_loc low (closing
+                # near lows = distribution). For a short: pressure when close_loc high
+                # (closing near highs = buying against the short). Continuous tanh, no
+                # boundary. New exit-pressure source + new control flow in the MAX fusion.
+                # Targets rally/crash Sharpe via earlier winner exits at distribution.
+                _cl_h = bd.history["high"].values[-3:]
+                _cl_l = bd.history["low"].values[-3:]
+                _cl_c = closes[-3:]
+                _cl_span = np.maximum(_cl_h - _cl_l, 1e-10)
+                _close_loc_held = float(np.mean((_cl_c - _cl_l) / _cl_span))  # [0,1], 3-bar mean
+                _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
+                # long weakness = close near low (close_loc small); short weakness = close near high (close_loc large)
+                _cl_weak = max(0.0, np.tanh((0.45 - _close_loc_held) / 0.12)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.12))
+                _cl_pressure = 0.40 * _cl_weak
+                _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2282,6 +2311,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
+                    _w_cl * _cl_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
