@@ -645,29 +645,6 @@ class Strategy:
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
             _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
-            # Exp1 (architectural, indep): 9th voter -- SLOPE ACCELERATION (2nd derivative
-            # of price). NEW orthogonal data axis: voter 5 is the 16-bar OLS slope LEVEL
-            # (_lr_slope, trend RATE), voter 6 is the EMA-slope LEVEL (_ea_slope). NEITHER
-            # measures the CHANGE in slope (acceleration) -- a 2nd-derivative leading
-            # signal genuinely absent from the 8-voter panel. A trend that is
-            # ACCELERATING in its direction is strengthening (continuation); one that is
-            # DECELERATING is exhausting (reversal). Computed as the difference between
-            # two adjacent-half OLS log-HL2 slopes (recent 8-bar minus prior 8-bar):
-            # positive = slope increasing (bullish momentum building OR downtrend
-            # bottoming), negative = slope decreasing (bearish momentum OR uptrend
-            # topping). Both half-slopes use _fast_slope (OLS over 8 points -> each
-            # bar's AR(1) noise carries 1/8 weight, ~2x noisier than the 16-bar slope
-            # but the DIFFERENCE cancels level noise; net smooth enough for a tanh
-            # voter). 16-bar total window matches LINREG_PERIOD. Appended WITHOUT
-            # modifying any of the 8 existing _base_weights (validated safe-family
-            # pattern: 8th rc_eff voter kept this way). Small fixed weight 0.55
-            # (below the 0.7 base floor), untouched by the trend-strength _wt_shift.
-            # Direction-agnostic general principle (no regime label). New cross-order
-            # data dep (2nd derivative, no existing voter reads slope-of-slope).
-            _acc_hl2 = (bd.history["high"].values + bd.history["low"].values) / 2.0
-            _acc_slope_recent = _fast_slope(np.log(_acc_hl2[-8:]))
-            _acc_slope_old = _fast_slope(np.log(_acc_hl2[-16:-8]))
-            _acc_signal = (_acc_slope_recent - _acc_slope_old) / 0.00008  # accel, signed
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
                 (_ef - _es) / (mid * 0.0008),
@@ -677,7 +654,6 @@ class Strategy:
                 (_ea_slope - 0.0005) / 0.00025,
                 _vwap_dev / 0.0030,  # 7th voter: VWAP deviation, halved sharpness (was 0.0015) for softer tanh, less noise in chop
                 _rc_signal / 1.0,  # 8th voter: range/close efficiency-continuation (sharpness 1.0)
-                _acc_signal,  # 9th voter: slope acceleration (2nd derivative), sharpness via /0.00008
             ]
             # Voter contribution clipping: each conf bounded to [0.1, 0.9] instead of (0,1).
             # Prevents any single voter from dominating the strong-sum under noise saturation.
@@ -704,7 +680,7 @@ class Strategy:
             # via _trend_strength_w. Preserves the rally/crash gain while reducing
             # the sideways regression introduced by full VWAP weight.
             _vwap_wt = 0.55 + 0.50 * _trend_strength_w  # in [0.55, ~1.05]
-            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55, 0.55)  # 8th: range/close efficiency voter; 9th: slope-accel voter (small fixed weight, untouched by _wt_shift)
+            _base_weights = (0.7, 1.25 + _wt_shift, 1.10 - _wt_shift, 1.00 - _wt_shift, 0.85, 1.10 + _wt_shift, _vwap_wt, 0.55)  # 8th: range/close efficiency voter (small fixed weight, untouched by _wt_shift)
             # Architectural: per-voter directional persistence weighting.
             # Track each voter's signal sign over last 8 bars. Persistence =
             # |sum(signs)| / count → 1.0 if voter held one direction continuously,
@@ -726,13 +702,13 @@ class Strategy:
                 _sig_hist = _sig_hist[-8:]
             self._voter_sign_history[symbol] = _sig_hist
             if len(_sig_hist) >= 4:
-                _arr = np.array(_sig_hist)  # (K, 9)
+                _arr = np.array(_sig_hist)  # (K, 8)
                 _num = np.abs(_arr.sum(axis=0))
                 _den = np.maximum(np.abs(_arr).sum(axis=0), 1e-10)
                 _persistence = _num / _den  # in [0, 1]
                 _persistence_mult = 0.7 + 0.6 * _persistence  # in [0.7, 1.3]
             else:
-                _persistence_mult = np.ones(9)
+                _persistence_mult = np.ones(8)
             _voter_weights = tuple(bw * pm for bw, pm in zip(_base_weights, _persistence_mult))
             # Architectural simplification: removed volume-weighted voter aggregation
             # amplifier (_vol_amp_raw, _bull_amp, _bear_amp). Trend-aligned one-sided
