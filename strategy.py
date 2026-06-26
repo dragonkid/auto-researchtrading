@@ -2321,21 +2321,24 @@ class Strategy:
                     _mc_chop = max(0.0, min(1.0, 1.0 - _mtm_eff_mc))  # 0 smooth, 1 whipsaw
                     _pos_dir_mc = 1.0 if current_pos > 0 else -1.0
                     _mc_ct = max(0.0, np.tanh(-_pos_dir_mc * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                    # Step5: drop the step4 near-breakeven gate (it made mixed byte-identical --
-                    # mixed's dead-capital longs are NOT near breakeven; they oscillate with
-                    # substantial paper PnL amplitude, peaks reaching tp_ratio up to 16.47 that
-                    # _tp_harvest catches). The REAL separator between mixed's ct longs and
-                    # rally's ct shorts is the MTM-path CHOP itself: mixed's longs whipsaw
-                    # (re-peak churn -> high chop); rally's ct shorts LOSE MONOTONICALLY (steady
-                    # loser -> LOW chop, high MTM-eff). So _mc_chop alone already separates them
-                    # -- step3's problem was MAGNITUDE (0.30 over-trimmed rally's few choppy ct
-                    # shorts + rally trend longs during pullback dips). Fix: keep _mc_chop gate
-                    # alone (no pos_pnl gate), raise the onset to 0.45 (only MAXIMALLY whipsawing
-                    # positions fire -> excludes rally's moderately-choppy ct shorts/longs),
-                    # lower magnitude to 0.12. Sharper onset -> narrower population -> mixed's
-                    # extreme whipsaw dead-capital caught, rally's milder chop spared.
-                    # Trend-aligned (chop~0 -> 0) byte-identical by construction.
-                    _mc_pressure = 0.12 * max(0.0, np.tanh((_mc_chop - 0.45) / 0.10)) * _mc_ct
+                    # Step6: replace the instantaneous _mc_ct gate (leaks bull: bull's multi-day
+                    # pullback dips make ret_vlong briefly negative -> bull longs momentarily ct
+                    # -> _mc_ct>0 -> pressure fires -> bull stab crashed 1.0->0.949) with the
+                    # VALIDATED duration-count DIRECTIONAL ct gate _down_persist (fraction of last
+                    # 48 bars where ret_vlong<0). The fe6acd4d keep principle: a DURATION count
+                    # over a long window separates PERSISTENT ct (mixed multi-day downtrend ~0.5-
+                    # 0.9; crash persistent bear ~0.9) from TRANSIENT ct (bull pullback dips
+                    # ~0.3, re-strengthens between pullbacks -> fraction stays low). Gate the chop
+                    # pressure on _down_persist>0.65 (persistent ct-at-multi-day) so bull's
+                    # transient pullback dips (~0.3) -> gate 0 -> byte-identical, while mixed's
+                    # persistent downtrend (~0.5-0.9) -> gate ~1 -> pressure fires. This is the
+                    # SAME validated separator the baseline uses for the persist_boost and
+                    # _persist_deep_gate (the only separator that finally isolated mixed from
+                    # bull after 12 failed attempts in the prior close-loc branch). Keep mag 0.12,
+                    # onset 0.45. Trend-aligned (down_persist low for bull/rally longs) byte-
+                    # identical.
+                    _mc_down_gate = max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
+                    _mc_pressure = 0.12 * max(0.0, np.tanh((_mc_chop - 0.45) / 0.10)) * _mc_down_gate
                 # _mc_pressure is applied ADDITIVELY to _exit_pressure (branch step3), not in
                 # the MAX fusion, so no _w_mc weight needed.
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
