@@ -2400,28 +2400,7 @@ class Strategy:
                     # distinguishes a genuine trend extension from a counter-trend bounce). Continuous
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
-                    # Exp1 (architectural, indep): DROP the deep-peak gate (3rd factor)
-                    # from _ts_supp. The deep-peak gate max(0, tanh((tp_ratio-2.8)/0.5))
-                    # was 0 for ALL moderate peaks (tp_ratio<2.8), which ZEROED the entire
-                    # 3-factor product -> trend-align suppression OFF for moderate peaks.
-                    # That meant bull/rally/crash trend-aligned MODERATE peaks got harvested
-                    # (the prior branch's catastrophic bull -0.493 when tp_harvest base
-                    # magnitude was raised 0.45->0.60: bull trend longs over-harvested).
-                    # The deep-peak gate was meant to suppress harvest only on DEEP trend
-                    # extensions, but because it is a multiplicative factor in [0,1] that is
-                    # 0 below 2.8, it DISABLES suppression entirely at moderate depths --
-                    # the opposite of safe. With 2 factors (MAE-clean x trend-align), the
-                    # trend-align factor alone protects trend-aligned winners at EVERY peak
-                    # depth (moderate AND deep), while counter-trend-at-multi-day positions
-                    # (mixed's wrong-side longs: ret_vlong<0, pos_dir=+1 -> product<0 ->
-                    # trend-align factor 0 -> _ts_supp 0 -> NO suppression -> FULL harvest)
-                    # remain fully harvested -- the mixed +0.0019 real lever from the prior
-                    # branch opener. New cross-component data dep: tp-harvest suppression
-                    # depth-dependence removed; trend-align protection now peak-depth-
-                    # invariant. Continuous (no new boundary; removed a tanh gate). Targets
-                    # mixed via the unchanged counter-trend trend-align factor; protects
-                    # bull/rally/crash moderate trend-aligned peaks.
-                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))
+                    _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
