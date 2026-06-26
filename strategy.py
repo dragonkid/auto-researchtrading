@@ -2295,18 +2295,7 @@ class Strategy:
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # long weakness = close near low (close_loc small); short weakness = close near high (close_loc large)
                 _cl_weak = max(0.0, np.tanh((0.45 - _close_loc_held) / 0.12)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.12))
-                # Branch step5: MULTI-DAY ret_vlong trend-direction gate on close-loc, LESS
-                # SENSITIVE /0.03 scale. Step4 /0.01 saturated at ret_vlong=0.01 (tiny)
-                # -> sideways transient multi-day swings saturated the gate -> sideways still
-                # regressed. /0.03 (same as the entry close-conv boost _cl_bull_vlong) needs
-                # ret_vlong>0.01 to start firing, saturates ~0.03+ -> only SOLID multi-day
-                # trends (rally 0.02+, crash -0.02+) fire; sideways transient swings
-                # (ret_vlong briefly 0.005-0.01) stay in the flat tail -> gate ~0 -> close-loc
-                # inert -> sideways recovered. Noise-robust (96-bar OLS, smooth). For a long:
-                # fire when ret_vlong>0 (uptrend distribution at tops); for a short: fire
-                # when ret_vlong<0 (downtrend buying at bottoms). Continuous tanh, no boundary.
-                _cl_vlong_gate = max(0.0, np.tanh(_pos_dir_cl * ret_vlong / 0.03))
-                _cl_pressure = 0.40 * _cl_weak * _cl_vlong_gate
+                _cl_pressure = 0.40 * _cl_weak
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
