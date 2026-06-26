@@ -2632,7 +2632,23 @@ class Strategy:
                 # principle (no regime label): scale-in smoothing helps calm-grind
                 # trends, hurts sharp-vol trends.
                 _te_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
-                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate
+                # Branch step7: GROWING-ONLY gate on the trend-aligned scale-in EMA.
+                # Steps 2-6 showed vol/pressure/ER/alpha gates all FAIL to recover
+                # bull (stab invariant 0.954): bull and rally share the same bar
+                # distribution on every tested market signal. New approach: gate the
+                # smoothing on resize DIRECTION -- only smooth when the raw target is
+                # GROWING (|target|>=|current_pos|, scale-in adding); snap to raw
+                # (alpha 0) when the target is SHRINKING (de-risk/reduction). Mechanism:
+                # the bull stability crash comes from smoothing LAGGING the target DOWN
+                # during bull correction bars (held target too big -> bigger DD). Smoothing
+                # only the GROW phase (consistent build through pullback noise = the rally
+                # benefit) while letting reductions pass through un-smoothed (no lag on
+                # tear-down, protects bull corrections). One-sided: a reduction is never
+                # smoothed, so it cannot be lagged. Distinct from prior gates (direction
+                # of position-value CHANGE, not a market signal). Continuous tanh on the
+                # grow margin /2pct of position.
+                _te_grow_gate = max(0.0, min(1.0, (abs(target) - abs(current_pos)) / (0.02 * max(abs(current_pos), 1e-6) + 1e-10)))
+                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate * _te_grow_gate
                 _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
