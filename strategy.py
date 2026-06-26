@@ -2311,7 +2311,16 @@ class Strategy:
                 # tops while still sparing sideways mild pullbacks (0.35-0.45). Narrower
                 # tanh width 0.10->0.08 for sharper onset.
                 _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.65) / 0.08))
-                _cl_pressure = 0.40 * _cl_weak
+                # Branch step9: raise close-loc source magnitude 0.40->0.55 (at the
+                # validated onset 0.35). Step7 onset 0.35 is byte-identical on sideways
+                # (the source fires too rarely there to matter), so a higher magnitude when
+                # it DOES fire (rally deep distribution closes, mixed bounce tops) captures
+                # more gain per fire without reintroducing the sideways cost. The source is
+                # profit-side only and the MAX fusion caps the contribution; a higher
+                # magnitude lets close-loc WIN the MAX argmax more often on distribution
+                # bars (vs slope/pp) -> earlier winner harvest -> higher rally/mixed
+                # Sharpe. Small magnitude raise (0.40->0.55, the source still rarely fires).
+                _cl_pressure = 0.55 * _cl_weak
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
