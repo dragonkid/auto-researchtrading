@@ -1627,6 +1627,29 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp5 (architectural, indep): LARGER DEEPER-GATED crash entry boost.
+                # Exp4 (+6pct, /0.02 own /0.03 BTC /0.15 DVP) was GRID-ABSORBED (byte-
+                # identical -- the 6pct first-bar bump did not cross the 0.06*equity*BASE
+                # grid lattice or the 1.0*LEVERAGE_K emission threshold for crash). The
+                # grid-absorption wall blocks small proportional entry changes in BOTH
+                # directions (Exp4 boost, prior-session shrinks). To BIND, the boost must
+                # be LARGE enough to cross the grid. This uses +20pct (3.3x Exp4) with
+                # STRICTER deep-coordinated-downtrend gates (/0.015 own ret_vlong, /0.02
+                # BTC, /0.10 DVP -- deeper than Exp4) so it fires RARELY (only the deepest
+                # broad-market crash distribution bars) but BINDS when it fires. crash DD
+                # 2.83pct has 2.2pct headroom below the 5pct dd_gate knee; a 20pct first-bar
+                # bump on deep coordinated crash bars raises crash DD marginally (the boost
+                # fires on a small fraction of crash entries) while APY rises via the
+                # 100pct-WR trend shorts capturing more downtrend -> return_bonus gain.
+                # Entry-side (first-bar-only, no held-position wobble). The conjunction
+                # (own-AND-BTC both deep down AND sell-side DVP) isolates crash: rally
+                # (ret_vlong>0 -> gate 0), bull (bear entries rare), sideways (no deep
+                # coordinated downtrend). Fast-saturating gates (near-constant, noise-free
+                # per validated lesson). New cross-symbol x cross-timescale data dep.
+                _cdt_own_down = max(0.0, np.tanh(-ret_vlong / 0.015))  # ~0 up/flat, ~1 deep downtrend (stricter)
+                _cdt_btc_down = max(0.0, np.tanh(-_btc_trend / 0.02))  # ~0 BTC up/flat, ~1 deep down (stricter)
+                _cdt_dvp_conf = max(0.0, np.tanh(-_dvp / 0.10))  # sell-side volume confirms (stricter)
+                _crash_boost_bear = 1.0 + 0.20 * _cdt_own_down * _cdt_btc_down * _cdt_dvp_conf
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
@@ -1681,7 +1704,7 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _crash_boost_bear
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
