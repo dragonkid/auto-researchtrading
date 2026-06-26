@@ -1842,7 +1842,18 @@ class Strategy:
                     # (scale_frac is fractional, no integer wall). Extends the keep's
                     # vol-of-vol x ct mechanism to the adverse-freeze SIZE path (3rd path:
                     # pace=keep, time-cap=step1, freeze=step5). Clamped.
-                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate))
+                    # Exp2 branch step8: SOFTER multi-day weighting on the freeze amplify
+                    # (recover bull without losing crash, vs step7s hard gate that broke
+                    # crash -0.0093). Step5 amplified uniformly (bull -0.0023 cost);
+                    # step7 gated amplify to multi-day-ct-only (crash -0.0093 -- crashs
+                    # gain partly comes from 20-bar-ct relief-bounce longs that are multi-
+                    # day-aligned). Blend: keep 40pct of the amplify for multi-day-aligned
+                    # ct positions (preserve crashs 20-bar-ct bounce-long freeze) while
+                    # reducing the bull over-freeze. Continuous (no hard gate), noise-free
+                    # (_ct_vlong_freeze_gate fast-saturates /0.01).
+                    _ct_vlong_freeze_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01))
+                    _freeze_amp = 1.0 + 0.50 * _vov_gate * (0.40 + 0.60 * _ct_vlong_freeze_gate)
+                    _adv_freeze = min(0.85, _adv_freeze * _freeze_amp)
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
