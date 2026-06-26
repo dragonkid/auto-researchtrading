@@ -2321,26 +2321,21 @@ class Strategy:
                     _mc_chop = max(0.0, min(1.0, 1.0 - _mtm_eff_mc))  # 0 smooth, 1 whipsaw
                     _pos_dir_mc = 1.0 if current_pos > 0 else -1.0
                     _mc_ct = max(0.0, np.tanh(-_pos_dir_mc * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                    # Step4: NEAR-BREAKEVEN dead-capital gate. Step3 (additive mag 0.30) reached
-                    # both rally ct shorts AND mixed dead-capital but hurt both: rally ct shorts
-                    # are LOSERS that should be cut (good) but the pressure ALSO fired on rally
-                    # trend-aligned longs during pullback dips (momentarily ct-at-multi-day) +
-                    # over-trimmed -> rally stab collapsed 0.999->0.721. Mixed dead-capital was
-                    # trimmed but Sharpe slightly DOWN (cut positions that would recover). The
-                    # clean separator: mixed's dead-capital longs whipsaw AROUND BREAKEVEN
-                    # (|pos_pnl| near 0, the wrong-side-long-in-a-down-year book); rally's
-                    # trend-aligned longs are in CLEAR PROFIT (pos_pnl >> 0) and its ct shorts
-                    # are in CLEAR LOSS (pos_pnl << 0). Gate _mc_pressure on |pos_pnl| < 0.5*|stop|
-                    # (the near-breakeven dead-capital zone) so it fires ONLY on mixed's
-                    # breakeven-whipsaw longs, NOT on rally's clearly-profitable trend longs or
-                    # clearly-losing ct shorts (both of which the existing slope/pp/sl pressure
-                    # already handle correctly). Continuous tanh fade on |pos_pnl|/|stop|.
-                    _mc_deadcap = max(0.0, 1.0 - np.tanh(abs(pos_pnl) / (0.5 * abs(STOP_LOSS_PCT))))  # 1 at breakeven, 0 clear winner/loser
-                    # Step4: lower magnitude 0.30->0.15 (step3 over-trimmed; near-breakeven gate
-                    # narrows the population so a smaller magnitude suffices). Additive to
-                    # _exit_pressure so it crosses the de-risk floor (0.55*exit_thresh) only when
-                    # combined with the small existing _soft_max for dead-capital positions.
-                    _mc_pressure = 0.15 * max(0.0, np.tanh((_mc_chop - 0.30) / 0.15)) * _mc_ct * _mc_deadcap
+                    # Step5: drop the step4 near-breakeven gate (it made mixed byte-identical --
+                    # mixed's dead-capital longs are NOT near breakeven; they oscillate with
+                    # substantial paper PnL amplitude, peaks reaching tp_ratio up to 16.47 that
+                    # _tp_harvest catches). The REAL separator between mixed's ct longs and
+                    # rally's ct shorts is the MTM-path CHOP itself: mixed's longs whipsaw
+                    # (re-peak churn -> high chop); rally's ct shorts LOSE MONOTONICALLY (steady
+                    # loser -> LOW chop, high MTM-eff). So _mc_chop alone already separates them
+                    # -- step3's problem was MAGNITUDE (0.30 over-trimmed rally's few choppy ct
+                    # shorts + rally trend longs during pullback dips). Fix: keep _mc_chop gate
+                    # alone (no pos_pnl gate), raise the onset to 0.45 (only MAXIMALLY whipsawing
+                    # positions fire -> excludes rally's moderately-choppy ct shorts/longs),
+                    # lower magnitude to 0.12. Sharper onset -> narrower population -> mixed's
+                    # extreme whipsaw dead-capital caught, rally's milder chop spared.
+                    # Trend-aligned (chop~0 -> 0) byte-identical by construction.
+                    _mc_pressure = 0.12 * max(0.0, np.tanh((_mc_chop - 0.45) / 0.10)) * _mc_ct
                 # _mc_pressure is applied ADDITIVELY to _exit_pressure (branch step3), not in
                 # the MAX fusion, so no _w_mc weight needed.
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
