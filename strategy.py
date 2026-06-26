@@ -1884,7 +1884,7 @@ class Strategy:
                     # saturating /0.01 near-constant noise-free per validated lesson).
                     _sq_ct_gate = _ct_si_gate  # 0 trend-aligned, ~1 ct-at-multi-day
                     _sq_raw = scale_frac
-                    _sq_quant = round(scale_frac * 4.0) / 4.0
+                    _sq_quant = round(scale_frac * 8.0) / 8.0  # step5: finer 1/8 grid (less raw cost, keeps stability benefit)
                     scale_frac = _sq_raw * (1.0 - _sq_ct_gate) + _sq_quant * _sq_ct_gate
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
