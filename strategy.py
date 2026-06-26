@@ -2596,16 +2596,7 @@ class Strategy:
                 # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                # branch step4: STRENGTHEN the loss-gate so deep LOSERS track the raw
-                # target near-unsmoothed (alpha -> ~0.10 of base for deep losers).
-                # Step1's 0.50 cut left alpha 0.495 for deep losers, still over-smoothing
-                # shrinking loser targets -> held longer -> rally raw 0.992->0.876.
-                # Raise the cut to 0.90 (deep losers keep 10% of base alpha). Winners
-                # (pos_pnl>=0 -> loss_gate 0) keep full alpha+VoV boost (stability);
-                # losers ramp to near-unsmoothed (raw: fast exit, smaller losses).
-                # Smooth tanh on pos_pnl/|stop| (no decision boundary). Trend-aligned
-                # (ct-gate 0 -> alpha 0) byte-identical.
-                _te_alpha = _te_alpha * (1.0 - 0.90 * _te_loss_gate)
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
                 # Exp1 (architectural, indep): VOL-OF-VOL-ADAPTIVE emitted-target EMA
                 # alpha. The noise test was recalibrated 2026-06-26 (std 3->4.5bps,
                 # AC1 grid floor 0.70->0.50), exposing rally close-noise sensitivity
