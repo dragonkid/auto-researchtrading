@@ -2295,22 +2295,7 @@ class Strategy:
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # long weakness = close near low (close_loc small); short weakness = close near high (close_loc large)
                 _cl_weak = max(0.0, np.tanh((0.45 - _close_loc_held) / 0.12)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.12))
-                # Branch step3: STRONG-WINNER gate on the close-loc exit source. Step1
-                # fired on sideways winners' pullback bars (close near low but recover ->
-                # sideways -0.0248); step2's trend-strength gate was the WRONG separator
-                # (spared sideways but crashed rally stab 0.999->0.987 by narrowing firing
-                # to high-|ret_long| bars). The sideways regression is from close-loc
-                # firing on MODEST-pos_pnl sideways winners (mean-reverting pullbacks
-                # recover). Gate on STRONG winner pos_pnl: onset at +0.5*|stop| (modest
-                # winners spared), full at +1.5*|stop| (deep winners where distribution is
-                # a real reversal signal). Sideways modest winners (pos_pnl small) ->
-                # gate ~0 -> close-loc inert -> sideways recovered. rally/crash deep
-                # trend winners (pos_pnl large) -> gate ~1 -> close-loc distribution exits
-                # kept. Continuous tanh on pos_pnl/|stop| (no boundary). Mirrors the
-                # winner-fade pattern used in the MTM-throttle (line ~2917). Profit-side
-                # only (the gate itself requires pos_pnl>0).
-                _cl_winner_gate = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))
-                _cl_pressure = 0.40 * _cl_weak * _cl_winner_gate
+                _cl_pressure = 0.40 * _cl_weak
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
