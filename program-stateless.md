@@ -251,6 +251,8 @@ Stability penalty (applied per-regime when score > 0, uses AR(1) correlated nois
 - stability 0.50–0.80 → factor ramps linearly 0.0 → 1.0
 - stability ≥ 0.80 → factor 1.0 (no penalty)
 
+Noise parameters re-calibrated 2026-06-26: close std 4.5bps (was 3.0), AC1 grid 0.50-0.97 (was 0.70-0.97), matching measured cross-source diff (BTC 4.77bps/AC1 0.622, ETH 5.08bps/AC1 0.623, SOL 4.00bps/AC1 0.611 on the 2025-11-22+ window). The prior calibration was under-scaled and missed sign-flip sensitivity — strategies that got stability=1.0 under the old params may score lower now. If your experiment's stability drops vs baseline under the new calibration, the mechanism is likely sensitive to sub-5bps close micro-differences (DVP sign flips) and will degrade on real cross-exchange data.
+
 Every stability value has a usable gradient — improving stability always raises the factor, no tier cliffs.
 
 ### Diagnostic-first approach (optional, recommended for new sessions)

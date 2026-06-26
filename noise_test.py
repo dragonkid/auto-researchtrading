@@ -53,15 +53,22 @@ STABILITY_WORKERS = 4  # parallel trial workers inside one regime (nested under
 # (Binance↔OKX 2yr full sample + HL↔Binance/OKX recent) is close ~2.5-3.3 /
 # high ~3.5-4.4 / low ~4-8 bps. Values below sit just above the empirical
 # median, keeping a modest robustness margin without the prior 2-3x overstatement.
-NOISE_CLOSE_STD_BPS = 3.0
-NOISE_HIGH_STD_BPS = 4.0
-NOISE_LOW_STD_BPS = 5.0
+#
+# Re-calibrated 2026-06-26 against the 2025-11-22+ cross-ex window (the actual
+# regime_test period): BTC std=4.77bps/AC1=0.622, ETH std=5.08bps/AC1=0.623,
+# SOL std=4.00bps/AC1=0.611. The prior std=3.0 was UNDER-scaled (real is 4-5bps)
+# and the AC1 grid floor 0.70 was above the real AC1≈0.61, so the test missed
+# sign-flip sensitivity at the real persistence level. New std values sit at the
+# empirical mean; the AC1 grid floor is lowered to 0.50 to cover AC1=0.61.
+NOISE_CLOSE_STD_BPS = 4.5
+NOISE_HIGH_STD_BPS = 5.5
+NOISE_LOW_STD_BPS = 6.5
 
 # AC1: fixed grid across empirical range (each trial = one difficulty level)
 # All strategies face the same 20 AC1 values — enables paired comparison
-NOISE_CLOSE_AC1_GRID = np.linspace(0.70, 0.97, N_TRIALS)
-NOISE_HIGH_AC1_GRID = np.linspace(0.55, 0.83, N_TRIALS)
-NOISE_LOW_AC1_GRID = np.linspace(0.29, 0.78, N_TRIALS)
+NOISE_CLOSE_AC1_GRID = np.linspace(0.50, 0.97, N_TRIALS)
+NOISE_HIGH_AC1_GRID = np.linspace(0.35, 0.83, N_TRIALS)
+NOISE_LOW_AC1_GRID = np.linspace(0.20, 0.78, N_TRIALS)
 
 CROSS_SYMBOL_CORR = 0.922  # sqrt(0.85) — achieves 0.85 cross-correlation
 
@@ -96,6 +103,11 @@ def _perturb_data(data, rng, trial_idx):
     """Apply AR(1) correlated noise matching real cross-exchange differences.
 
     AC1 values come from fixed grid (trial_idx selects the difficulty level).
+    The grid spans 0.50-0.97 for close, covering the real cross-source AC1≈0.61
+    (measured 2026-06-26 on the 2025-11-22+ window). Low-AC1 trials (≈0.50)
+    produce noisier, less-persistent perturbations that flip sign(close[i]-
+    close[i-1]) on near-zero-diff bars — catching DVP/sign-flip sensitivity
+    that high-AC1-only grids miss.
     """
     symbols = sorted(data.keys())  # deterministic order
     max_len = max(len(data[sym]) for sym in symbols)

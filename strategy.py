@@ -2211,36 +2211,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp1 (architectural, indep): CROSS-SYMBOL BTC-LEADER-REVERSAL exit
-                # pressure (7th soft source). NEW cross-symbol data dep at the exit
-                # subsystem: all 6 existing soft sources (slope/pp/time/ve/ar/vc) read
-                # OWN-symbol price/volume only. _btc_trend (BTC's 96-bar OLS log-HL2
-                # slope*n, computed once per bar at line ~387, already feeds cross-
-                # symbol ENTRY sizing) is the market leader's structural direction; a
-                # WINNING held position facing BTC's multi-day trend REVERSING against
-                # it (leader turning against the position) is a high-value harvest
-                # signal -- when the leader reverses, correlated alt winners give back
-                # their gains (rally pullbacks after BTC tops; crash relief bounces
-                # after BTC bottoms). Mechanism: harvest the winner at leader reversal
-                # before the alt's own slope/pp signals confirm the giveback (lags).
-                # Profit-side only (lock gains at leader reversal; don't punish losers
-                # for leader noise -- slope-against handles them). BTC self-referential
-                # -> _btc_trend == own ret_vlong, so for BTC this is a trend-reversal-
-                # against-position signal (BTC winner facing own multi-day reversal) --
-                # still valid (a BTC trend long whose own 96-bar slope rolls over).
-                # Continuous tanh on the leader-reversal magnitude (no boundary);
-                # direction-aware (reversal AGAINST pos_dir). Small max 0.40, deep-
-                # saturated /0.02 (near-constant where it fires, noise-free per the
-                # validated safe-family lesson). _btc_trend is 96-bar-averaged so each
-                # bar's AR(1) noise carries ~1/96 weight. New exit-pressure source +
-                # new control flow in the MAX fusion. Targets rally/crash Sharpe via
-                # earlier winner harvest at leader reversal (the two low-Sharpe trend
-                # regimes the v3 scoring prioritizes); sideways (BTC~flat -> gate~0)
-                # and bull (weak-trend, BTC drifts -> mild) largely spared.
-                _pos_dir_xlr = 1.0 if current_pos > 0 else -1.0
-                _xlr_reversal = max(0.0, np.tanh(-_btc_trend * _pos_dir_xlr / 0.02))  # ~0 leader with pos, ~1 leader against
-                _xlr_pressure = 0.40 * _xlr_reversal
-                _w_xlr = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2255,7 +2225,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
-                    _w_xlr * _xlr_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
