@@ -2295,7 +2295,20 @@ class Strategy:
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # long weakness = close near low (close_loc small); short weakness = close near high (close_loc large)
                 _cl_weak = max(0.0, np.tanh((0.45 - _close_loc_held) / 0.12)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.12))
-                _cl_pressure = 0.40 * _cl_weak
+                # Branch step2: TREND-STRENGTH gate on the close-loc exit source. Step1
+                # fired on sideways winners' pullback bars (close near low but RECOVER ->
+                # premature exit -> sideways -0.0248). The close-loc distribution signal is
+                # a TREND-REVERSAL indicator (meaningful in trending regimes where a
+                # winner closing near the low is distribution), NOT a chop signal (in chop
+                # closing near the low is routine mean-reverting noise that recovers).
+                # Gate on the validated _trend_strength_w (|ret_long|/0.04, 0 in chop ~1
+                # trend): full activation in trends (rally/crash/bull), ~0 in sideways
+                # chop. Continuous tanh, no boundary. Mirrors the validated separator
+                # pattern used by the close-conv entry boost (_cl_trend_w). Sideways (low
+                # |ret_long|) -> gate ~0 -> close-loc source inert -> sideways recovered.
+                # rally/crash (trend) -> gate ~1 -> close-loc distribution exits kept.
+                _cl_trend_gate = _trend_strength_w  # 0 chop, ~1 trend
+                _cl_pressure = 0.40 * _cl_weak * _cl_trend_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
