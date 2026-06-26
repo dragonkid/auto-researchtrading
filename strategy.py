@@ -391,6 +391,17 @@ class Strategy:
             _btc_hl2 = (bar_data["BTC"].history["high"].values[-_btc_n:] + bar_data["BTC"].history["low"].values[-_btc_n:]) / 2.0
             _btc_trend = _fast_slope(np.log(_btc_hl2)) * _btc_n
 
+        # Exp3 (architectural, indep): portfolio AGGREGATE net-long notional fraction
+        # (computed once per bar at the top, available to both the entry-side
+        # _conc_shrink path and the held-position pp_min path). Sum of all open
+        # LONG positions across symbols / equity. The cross-symbol portfolio-state
+        # signal that isolates mixed (net-long in a BTC downtrend) from bull (net-
+        # long in a BTC uptrend) -- a separator OUTSIDE any within-position signal.
+        _long_notional_pp = 0.0
+        for _opos_pp in portfolio.positions.values():
+            if _opos_pp > 0:
+                _long_notional_pp += _opos_pp
+
         # Exp1 (architectural, indep): BTC (market leader) VOLUME-participation trend. NEW
         # cross-symbol x cross-data-type data dep: prior cross-symbol deps used BTC PRICE
         # (96-bar trend) feeding alt sizing; this uses BTC VOLUME (6/18-bar mean ratio), a
@@ -2032,6 +2043,34 @@ class Strategy:
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
+                # Exp3 (architectural, indep): PORTFOLIO-NET-EXPOSURE x BTC-TREND
+                # adaptive pp_min (peak-profit activation threshold). The binding floor
+                # mixed (Sh0.838, CV=1.79) has a return-VOLATILITY drag: its oscillating
+                # wrong-side-long book rides paper PnL to +30%, gives back to +24%, re-
+                # peaks (8 big-up-hours = the entire year's gain concentrated). Prior
+                # sessions walled every within-position separator (mixed/bull inseparable
+                # on trend_align, persistence, MTM-efficiency); the sanctioned untested
+                # axis is a separator OUTSIDE position-level signals -- portfolio-level
+                # state. mixed's signature: portfolio NET-LONG in a multi-day BTC
+                # DOWNTREND (wrong-side aggregate book in a down market). bull is also
+                # net-long BUT in a BTC UPTREND (correct-side). The cross-symbol
+                # portfolio-state signal (net-long-frac x BTC-trend-direction) isolates
+                # mixed from bull on a signal NO within-position primitive can read.
+                # Mechanism: when portfolio is net-long AND BTC is in a multi-day
+                # downtrend, LOWER _pp_min so _pp_pressure (giveback trailing) AND
+                # tp_harvest (peak >= 1.6*_pp_min) activate on SMALLER peaks -> mixed's
+                # bounce peaks get harvested sooner -> paper PnL converted to realized
+                # faster -> less re-peak oscillation -> lower return volatility -> higher
+                # mixed Sharpe. Spares bull (BTC uptrend -> gate 0 -> byte-identical),
+                # crash (net-SHORT in downtrend -> long-gate doesn't fire), sideways
+                # (BTC ~flat -> gate ~0). Continuous tanh on net-long-frac and BTC
+                # trend; fast-saturating /0.03 BTC-trend (near-constant, noise-free per
+                # validated lesson). Max 15% pp_min reduction. New cross-symbol x
+                # portfolio-state data dep at the peak-profit subsystem (was vol-only).
+                _net_long_frac = _long_notional_pp / max(equity, 1e-10)
+                _btc_down = max(0.0, np.tanh(-_btc_trend / 0.03))  # ~0 BTC up/flat, ~1 BTC down
+                _pp_min_netlong_gate = max(0.0, np.tanh((_net_long_frac - 0.05) / 0.06)) * _btc_down  # 0 unless net-long in BTC downtrend
+                _pp_min = _pp_min * (1.0 - 0.15 * _pp_min_netlong_gate)
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
