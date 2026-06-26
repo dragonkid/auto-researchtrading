@@ -2631,7 +2631,7 @@ class Strategy:
                 # trend-align gate already excludes sideways chop. General vol-regime
                 # principle (no regime label): scale-in smoothing helps calm-grind
                 # trends, hurts sharp-vol trends.
-                _te_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
+                _te_vol_gate = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.25))  # step3: tighten to deep-calm (full at vol_ratio<=0.75, off at >=1.0)
                 _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate
                 _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
