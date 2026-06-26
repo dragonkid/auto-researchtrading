@@ -1842,7 +1842,20 @@ class Strategy:
                     # (scale_frac is fractional, no integer wall). Extends the keep's
                     # vol-of-vol x ct mechanism to the adverse-freeze SIZE path (3rd path:
                     # pace=keep, time-cap=step1, freeze=step5). Clamped.
-                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate))
+                    # Exp2 branch step12: LOSS-DEPTH gate on the freeze amplify (spare
+                    # shallow-loss bull ct-bounce longs that recover). Step5 amplified
+                    # uniformly for all ct-vol-flux losing positions, costing bull -0.0023
+                    # (bull ct-bounce longs have SHALLOW losses, recover when uptrend
+                    # resumes; crash ct dead-cat longs and rally ct pullback shorts have
+                    # DEEPER losses, keep losing). Gate the amplify on loss DEPTH: only
+                    # amplify the freeze when pos_pnl is meaningfully negative (past half
+                    # the stop band), so shallow-loss ct positions (bull bounces) keep
+                    # baseline freeze while deep-loss ct losers (crash/rally) get amplified.
+                    # NEW data dep: freeze amplify depends on pos_pnl depth (continuous tanh,
+                    # no boundary). Distinct from multi-day gating (step7, broke crash) --
+                    # this keys on REALIZED loss magnitude, not trend timescale.
+                    _loss_depth_gate = max(0.0, np.tanh(-pos_pnl / (abs(STOP_LOSS_PCT) * 0.5)))  # ~0 shallow loss, ~1 deep loss
+                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate * _loss_depth_gate))
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
