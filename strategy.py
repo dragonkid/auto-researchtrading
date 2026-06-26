@@ -2322,17 +2322,19 @@ class Strategy:
                     _pos_dir_mc = 1.0 if current_pos > 0 else -1.0
                     _mc_ct = max(0.0, np.tanh(-_pos_dir_mc * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     # Onset at chop>0.30 (the validated small-pos-exempt threshold at line ~2835),
-                    # saturate near 0.60. Magnitude 0.75 (branch step2: was 0.35, byte-identical
-                    # on mixed because max 0.35 < de-risk floor 0.55*exit_thresh=0.55 -> never
-                    # entered the de-risk ramp -> no trim emitted). Raising above 0.55 crosses
-                    # the de-risk floor so mixed's choppy ct dead-capital positions actually get
-                    # trimmed: _dr_x = (pressure - 0.55)/(1-0.55), at pressure 0.75 -> _dr_x=0.44
-                    # -> _de_risk 1-0.44^k (k~1 for ct/loss) -> ~0.56 target multiplier -> 44pct
-                    # trim of the dead-capital position per sustained choppy bar. Still below
-                    # slope/pp saturation (1.0) so trend-aligned regimes with real slope/pp
-                    # pressure keep their faster exits.
-                    _mc_pressure = 0.75 * max(0.0, np.tanh((_mc_chop - 0.30) / 0.15)) * _mc_ct
-                _w_mc = 1.0  # direction-agnostic; chop is symmetric dead-capital either side
+                    # saturate near 0.60. Step3: ADDITIVE magnitude 0.30 (was MAX-competing 0.75
+                    # in step2 -- byte-identical on mixed: lost the MAX argmax to other sources
+                    # OR never reached the de-risk floor because mixed's dead-capital positions
+                    # produce small slope/pp/time so _soft_max is tiny but the de-risk ramp
+                    # needs pressure >= 0.55*exit_thresh; additive bypasses the MAX argmax).
+                    # Routing _mc_pressure as ADDITIVE to _exit_pressure (like _voter_bias)
+                    # directly raises exit pressure on choppy ct positions so they cross the
+                    # de-risk floor -> trim emitted. At chop~0.5 (mixed whipsaw) + ct~1 ->
+                    # +0.30 additive -> combined exit_pressure pushes into the de-risk ramp.
+                    # Trend-aligned (chop~0 -> 0) and bull pullback (ct~0 -> 0) byte-identical.
+                    _mc_pressure = 0.30 * max(0.0, np.tanh((_mc_chop - 0.30) / 0.15)) * _mc_ct
+                # _mc_pressure is applied ADDITIVELY to _exit_pressure (branch step3), not in
+                # the MAX fusion, so no _w_mc weight needed.
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2347,7 +2349,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
-                    _w_mc * _mc_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
@@ -2390,7 +2391,15 @@ class Strategy:
                 _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
                 self._voter_bias_ema[symbol] = _voter_bias
-                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
+                # Branch step3: ADD _mc_pressure (MTM-path-chop) additively to _exit_pressure
+                # (like _voter_bias). In step1/step2 _mc_pressure competed in the MAX fusion
+                # but was byte-identical on mixed (lost the MAX argmax to other sources, OR
+                # reached max 0.35/0.75 but the de-risk ramp needs pressure>=0.55*exit_thresh
+                # and mixed's dead-capital positions produce tiny slope/pp/time so _soft_max
+                # stays small -- additive bypasses the MAX argmax entirely). Additive raises
+                # exit pressure DIRECTLY on choppy ct positions -> crosses de-risk floor ->
+                # trim emitted. Trend-aligned/bull-pullback -> _mc_pressure 0 -> byte-identical.
+                _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias + _mc_pressure
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
