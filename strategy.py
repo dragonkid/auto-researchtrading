@@ -2434,7 +2434,37 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # BRANCH step8: MTM-PATH-EFFICIENCY-GATED tp_harvest boost. Steps 1-7 hit a
+                    # FUNDAMENTAL WALL: mixed and bull OVERLAP on trend_align (ret_vlong*pos_dir)
+                    # at the actual harvest decision points (both trend-aligned at multi-day
+                    # during peaks -- mixed's bounce peaks have ret_vlong>0). PIVOT to the
+                    # position's OWN pos_pnl PATH efficiency (validated mixed/bull separator
+                    # already used in the emission throttle, line ~2876): MTM-eff =
+                    # |net pos_pnl| / sum|bar-delta| over the 12-bar held-pos path. bull/crash/
+                    # rally trend longs CLIMB SMOOTHLY (eff~1, efficient continuation); mixed's
+                    # oscillating longs WHIPSAW (eff~0.3, choppy dead-capital that mean-reverts).
+                    # Boost tp_harvest base for LOW-MTM-eff positions (mixed: lock gains at peak
+                    # -> less lump at final exit -> lower realized PnL variance -> higher Sharpe,
+                    # the CV=1.79 drag); keep base 0.45 for HIGH-MTM-eff (bull: smooth climbers
+                    # extend -> let-run -> byte-identical). Clean separator on the position's OWN
+                    # path (not market trend -- mixed/bull overlap there). Sharp sigmoid on
+                    # (eff-0.5)/0.12: ~0 below 0.4 (mixed -> boost to 0.60), ~1 above 0.6 (bull ->
+                    # base 0.45 byte-identical). The boost applies across all tp_ratios but only
+                    # where _ts_supp does NOT suppress (low-eff positions are choppy -> often ct
+                    # at multi-day -> _ts_supp ~0 -> boost active). General principle (NO regime
+                    # label): harvest CHOPPY-path peaks more (they mean-revert), let SMOOTH-path
+                    # peaks run (they extend). New cross-component data dep: tp_harvest base
+                    # magnitude depends on the held position's MTM-path efficiency (was uniform).
+                    _ppp_tp = self._pnl_path.get(symbol, [])
+                    _mtm_eff_tp = 1.0  # default smooth (no path yet -> no boost, conservative)
+                    if len(_ppp_tp) >= 4:
+                        _ppa_tp = np.array(_ppp_tp)
+                        _net_tp = abs(_ppa_tp[-1] - _ppa_tp[0])
+                        _tot_tp = float(np.sum(np.abs(np.diff(_ppa_tp))))
+                        _mtm_eff_tp = _net_tp / max(_tot_tp, 1e-10)
+                    _chop_boost = 1.0 - max(0.0, min(1.0, np.tanh((_mtm_eff_tp - 0.5) / 0.12)))  # ~1 choppy/mixed, ~0 smooth/bull
+                    _tp_base = 0.45 + 0.15 * _chop_boost  # 0.45 smooth (bull byte-identical), 0.60 choppy (mixed)
+                    _tp_scale = _tp_base * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
