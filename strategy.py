@@ -2310,7 +2310,18 @@ class Strategy:
                 # weakness (close_loc <0.35) -- captures more distribution closes at rally
                 # tops while still sparing sideways mild pullbacks (0.35-0.45). Narrower
                 # tanh width 0.10->0.08 for sharper onset.
-                _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.65) / 0.08))
+                # Branch step13: ASYMMETRIC bear-side onset (lower 0.65->0.55) to activate
+                # crash shorts at buying pressure. Crash is byte-identical in step10 (bear-
+                # side close-loc fires when shorts close near high, but crash downtrend bars
+                # close near LOW = continuation, not high; the 0.65 onset only fires at
+                # crash bottoms = rare). Lower the bear-side onset to 0.55 so crash shorts
+                # exit earlier on moderate buying pressure (dead-cat bounces, bottoming).
+                # Crash is return-limited (Sh1.307, largest headroom) -- earlier exit at
+                # buying pressure locks gains before the bounce gives back. Bull side
+                # onset unchanged (0.35, validated). Asymmetric is principled: long and
+                # short distribution dynamics differ (shorts bottom on bounces, longs top
+                # on distribution). Profit-side only. Continuous tanh, no boundary.
+                _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.08))
                 # Branch step10: LOW-VOL gate on close-loc (recover bull -0.0013 cost).
                 # Step7 onset 0.35 gave rally +0.0082 + mixed +0.0017 BUT bull -0.0013
                 # (close-loc fires on bull's SHARP pullback bars that close near low but
