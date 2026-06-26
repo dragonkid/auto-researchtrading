@@ -2597,37 +2597,6 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                # Exp1 (architectural, indep): VOL-OF-VOL-ADAPTIVE emitted-target EMA
-                # alpha. The noise test was recalibrated 2026-06-26 (std 3->4.5bps,
-                # AC1 grid floor 0.70->0.50), exposing rally close-noise sensitivity
-                # that the prior calibrated alpha cap 0.99 + loss-gate no longer fully
-                # damps (rally stability_factor dropped 1.0->0.973 = the sole penalized
-                # regime). NEW cross-component data dep: the smoothing STRENGTH now
-                # scales with the validated vol-of-vol signal (_vov_gate, the 2nd-order
-                # vol statistic already proven by the fb29965f keep on the scale-in pace
-                # path) -- during vol-flux (when AR(1) perturbations cause the most
-                # DVP sign-flips and held-position-value wobble), alpha strengthens
-                # adaptively toward the cap; in calm vol (sideways/bull) _vov_gate~0
-                # -> alpha unchanged -> byte-identical for the calm regimes. This is
-                # new control flow (smoothing strength depends on a 2nd-order vol
-                # statistic, distinct from the ct-gate + loss-gate), NOT a parameter
-                # sweep (the VoV coupling is a new data dependency at the smoothing
-                # decision). Recompute _vov_gate here (the scale-in block's copy is
-                # guarded by len(closes)>=24 and runs only during scale-in; the
-                # smoothing block runs every held bar). Same 6-sample/18-window VoV
-                # formula as the keep. Max +0.20 alpha boost at deep VoV (cap 0.99 ->
-                # effective 1.0 for ct+vol-flux bars); trend-aligned (_ct_te_str=0 ->
-                # alpha 0) byte-identical by construction.
-                if len(closes) >= 24:
-                    _vov_n_te = 6
-                    _vov_samples_te = np.array([
-                        float(np.std(np.diff(np.log(closes[-(i + _vov_n_te) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_n_te - 1:]))))
-                        for i in range(18)
-                    ])
-                    _vov_med_te = max(float(np.median(_vov_samples_te)), 1e-8)
-                    _vov_te = float(np.std(_vov_samples_te)) / _vov_med_te
-                    _vov_gate_te = max(0.0, min(1.0, np.tanh((_vov_te - 0.30) / 0.25)))
-                    _te_alpha = min(0.999, _te_alpha + 0.08 * _vov_gate_te * _ct_te_str)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
