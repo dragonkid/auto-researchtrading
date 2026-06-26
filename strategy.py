@@ -2310,7 +2310,7 @@ class Strategy:
                 # weakness (close_loc <0.35) -- captures more distribution closes at rally
                 # tops while still sparing sideways mild pullbacks (0.35-0.45). Narrower
                 # tanh width 0.10->0.08 for sharper onset.
-                _cl_weak = max(0.0, np.tanh((0.33 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.67) / 0.08))
+                _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.65) / 0.08))
                 _cl_pressure = 0.40 * _cl_weak
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
