@@ -2366,11 +2366,41 @@ class Strategy:
                 # ramp, and take-profit scale-down — orthogonal to giveback trailing.
                 if target != 0 and self.peak_pnl[symbol] > 1.6 * _pp_min and _sl_pressure < 0.5:
                     _tp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                    # Trend-gated activation: in chop (low |ret_long|), peaks are
-                    # rare AND likely mean-reverting — disable harvest to let small
-                    # sideways wins run. In trending regimes (high |ret_long|), peaks
-                    # are real and worth locking. Continuous tanh on |ret_long|/0.04.
-                    _tp_trend_gate = max(0.0, np.tanh(abs(ret_long) / 0.04))  # in [0, ~1]
+                    # BRANCH step2: PERSISTENCE-GATED tp_harvest activation (replaces the
+                    # |ret_long| trend gate, which was BACKWARDS for the bull/mixed separator).
+                    # Exp3 (branch opener) PROVED: raising tp_harvest base 0.45->0.60 lifts mixed
+                    # +0.0019 (REAL signal -- tp_harvest base magnitude IS binding on mixed,
+                    # contradicting prior-session deep-peak-amp-inert conclusion; prior tested the
+                    # 2.8 deep-peak GATE not the BASE) BUT collapsed bull -0.493 (over-harvested
+                    # bull's trend longs). Root cause: _tp_trend_gate=tanh(|ret_long|/0.04) ENABLES
+                    # harvest in trends (bull HIGH |ret_long| -> gate ~1 -> harvest fires on bull's
+                    # 1.6-2.8 tp_ratio winners where _ts_supp's deep-peak factor is ~0 -> no
+                    # suppression -> bull over-harvested) and DISABLES in chop (mixed LOW |ret_long|
+                    # -> gate ~0 -> harvest off -> mixed under-harvested). The gate direction is
+                    # WRONG: bull (PERSISTENT trend, peaks are trend extensions -> let run -> harvest
+                    # OFF) vs mixed (OSCILLATING, peaks are local bounces that mean-revert -> lock
+                    # gains -> harvest ON). The correct separator is DIRECTIONAL PERSISTENCE of the
+                    # multi-day trend the position rides, NOT |ret_long| magnitude. Use the VALIDATED
+                    # _down_persist duration-count (52a3e671/fe6acd4d keep mechanism, fraction of
+                    # last PERSIST_WINDOW bars where ret_vlong<0). Persistence of the position's
+                    # ALIGNED trend = (1-_down_persist) for longs (fraction ret_vlong>0), _down_persist
+                    # for shorts (fraction ret_vlong<0). High persistence (bull longs ~0.9, crash
+                    # shorts ~0.9, rally longs ~0.9) -> trend is a genuine continuing extension ->
+                    # SUPPRESS harvest (let-run). Low persistence (mixed longs ~0.5, oscillating
+                    # down-then-up) -> peak is a local bounce in a non-continuing trend -> ENABLE
+                    # harvest (lock gains before they mean-revert). Gate = 1 - persistence (high ->
+                    # harvest on for oscillating/mixed; low -> harvest off for persistent/bull).
+                    # Continuous tanh fade on (persistence-0.5)/0.15: ~1 at persist<=0.5 (mixed ->
+                    # full harvest), ~0 at persist>=0.85 (bull/crash/rally -> harvest OFF). The
+                    # _ts_supp deep-peak suppression (>2.8) is RETAINED as a second layer (protects
+                    # very deep trend-extension peaks even at moderate persistence). General
+                    # principle (NO regime label): harvest peaks when the trend is NOT persisting
+                    # (bounce -> mean-revert), let peaks run when the trend IS persisting (extension).
+                    # New cross-component data dep: tp_harvest activation depends on multi-day trend
+                    # DIRECTIONAL PERSISTENCE (was |ret_long| magnitude). Replaces the _tp_trend_gate.
+                    _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
+                    _aligned_persist = (1.0 - _down_persist) if _pos_dir_tp > 0 else _down_persist
+                    _tp_harvest_gate = 1.0 - max(0.0, min(1.0, np.tanh((_aligned_persist - 0.5) / 0.15)))  # ~1 oscillating/mixed, ~0 persistent/bull|crash|rally
                     # MAE-cleanliness × trend-align × deep-peak gate suppresses harvest
                     # when peak is a confirmed trend extension. Counter-trend or rally
                     # pullback peaks get full harvest (mean-reverting by structure).
@@ -2434,7 +2464,9 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    _tp_scale = 0.60 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # BRANCH step2: base 0.60 (Exp3) x _tp_harvest_gate (persistence, replaces
+                    # _tp_trend_gate) x _ts_supp deep-peak suppression (retained).
+                    _tp_scale = 0.60 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_harvest_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
