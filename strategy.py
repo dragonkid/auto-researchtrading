@@ -2293,29 +2293,6 @@ class Strategy:
                 _cl_span = np.maximum(_cl_h - _cl_l, 1e-10)
                 _close_loc_held = float(np.mean((_cl_c - _cl_l) / _cl_span))  # [0,1], 3-bar mean
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
-                # Branch step12: MULTI-BAR close-loc persistence (sharpen the signal).
-                # Step10 close-loc fires on a 3-bar MEAN close_loc, which can fire on a
-                # single strong-distribution bar averaged with 2 recovery bars. Require
-                # the weakness to PERSIST: compute the close_loc over the last 2 bars
-                # separately, and gate the weakness on BOTH showing weakness (onset 0.40
-                # for the 2-bar check, slightly higher than the 3-bar 0.35 onset since the
-                # 2-bar is noisier). A single noisy distribution bar (one bar closes near
-                # low, prior bar recovered) -> 2-bar check fails -> no fire; a persistent
-                # distribution (both bars close near low) -> fires -> higher-quality exit
-                # signal -> fewer false fires -> potentially more gain. Noise-robust (2
-                # bars of confirmation). Profit-side only via _w_cl. Different axis than
-                # onset/magnitude/vol-gate (steps 6-11): TEMPORAL persistence.
-                _cl_h2 = bd.history["high"].values[-2:]
-                _cl_l2 = bd.history["low"].values[-2:]
-                _cl_c2 = closes[-2:]
-                _cl_span2 = np.maximum(_cl_h2 - _cl_l2, 1e-10)
-                _close_loc_2 = (_cl_c2 - _cl_l2) / _cl_span2  # 2 values, per-bar
-                _cl_persist_weak = 1.0
-                for _clv in _close_loc_2:
-                    if _pos_dir_cl > 0:
-                        _cl_persist_weak *= max(0.0, np.tanh((0.40 - _clv) / 0.08))
-                    else:
-                        _cl_persist_weak *= max(0.0, np.tanh((_clv - 0.60) / 0.08))
                 # Branch step6: STRONGER close-loc weakness onset (fire only on clear
                 # distribution, spare mild pullback close-near-low). Step1 onset 0.45
                 # fired on mild pullback bars (close_loc 0.40-0.45) that recover in
@@ -2348,7 +2325,7 @@ class Strategy:
                 # close-loc distribution exits kept. Sideways (low vol, low trend) ->
                 # already byte-identical at onset 0.35 (close-loc weakness rare in chop).
                 _cl_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
-                _cl_pressure = 0.40 * _cl_weak * _cl_vol_gate * _cl_persist_weak
+                _cl_pressure = 0.40 * _cl_weak * _cl_vol_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
