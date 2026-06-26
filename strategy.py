@@ -2138,20 +2138,8 @@ class Strategy:
                 # dep: max_hold depends on multi-day-trend-align x winner-PnL interaction.
                 _pos_dir_ta = 1.0 if current_pos > 0 else -1.0
                 _ta_winner = max(0.0, np.tanh(ret_vlong * _pos_dir_ta / 0.03))  # ~0 ct/flat, ~1 trend-aligned
-                # Branch step2: tighten the winner gate. Step1's max(0, tanh(pos_pnl/|stop|))
-                # fired at pos_pnl>0 -> transient winners (sideways mean-reverters, bull
-                # pullback longs briefly in profit) got over-held (-0.124 sideways, -0.083
-                # bull). Require BOTH (a) DEEP profit: onset at +0.5*stop, saturating ~+1.5*stop
-                # so only SUSTAINED winners extend; (b) SLOPE confirmation: the 16-bar _lr_slope
-                # still agreeing with position direction (the validated _slope_conf gate from
-                # the win-accelerator -- a trend-aligned winner whose near-term slope has
-                # weakened is facing a real pullback, not a trend continuation -> cut, don't
-                # extend). Crash's deep winning shorts (Sh1.32 at step1) have solid slope
-                # confirmation through the multi-month downtrend -> keep the extension; sideways
-                # mean-reverters have weak/negative slope agreement + shallow profit -> spared.
-                _winner_pnl_gate = max(0.0, min(1.0, (pos_pnl / abs(STOP_LOSS_PCT) - 0.5) / 1.0))  # 0 below +0.5*stop, 1 at +1.5*stop
-                _winner_slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_ta / 0.0004))  # near-term slope still confirming
-                _max_hold = _max_hold + 2.5 * _ta_winner * _winner_pnl_gate * _winner_slope_conf
+                _winner_pnl_gate = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # ~0 loss/flat, ~1 deep profit
+                _max_hold = _max_hold + 2.5 * _ta_winner * _winner_pnl_gate
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
