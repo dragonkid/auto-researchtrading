@@ -2434,35 +2434,7 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    # BRANCH step7: WEAK-TREND peak harvest boost (inverse of step5 protection).
-                    # STEPS 1-6 FINDINGS: Exp3 (uniform base 0.60) gave mixed +0.0019 BUT bull
-                    # -0.493 (over-harvested bull's moderate peaks; bull NEEDS 0.45 moderate-peak
-                    # harvest to cap DD -- protecting them removes the DD cap -> DD 2.50->2.66,
-                    # Sharpe 2.067->1.744). The bull/mixed peaks are NOT cleanly separable on
-                    # trend_align for MODERATE peaks (1.6-2.8) because bull needs them harvested.
-                    # PIVOT: keep base 0.45 for TREND-ALIGNED peaks (bull BYTE-IDENTICAL to
-                    # baseline -- bull's DD cap preserved) and BOOST base to 0.60 ONLY for WEAK-
-                    # TREND peaks (mixed's weak-trend peaks harvest more -> the Exp3 +0.0019 lever
-                    # isolated to where it does not touch bull). DIAGNOSTIC (measured): mixed deep
-                    # peaks ret_vlong mean +0.008 (trend_align 0.21, weak), bull +0.031 (0.65,
-                    # strong). Sharp sigmoid tanh((trend_align-0.4)/0.10): ~0 below 0.4 (mixed ->
-                    # full boost to 0.60), ~1 above 0.5 (bull -> base 0.45 byte-identical). The
-                    # boost applies across ALL tp_ratios (moderate + deep) but only fires where
-                    # _ts_supp does NOT already suppress (trend_align low -> _ts_supp ~0 -> no
-                    # suppression -> boost active; trend_align high -> _ts_supp suppresses ->
-                    # boost term irrelevant since _ts_supp zeroes harvest anyway). So for bull's
-                    # peaks (trend_align 0.65): _ts_supp suppresses deep peaks (let-run), base
-                    # stays 0.45 at moderate peaks (DD cap) -> bull BYTE-IDENTICAL. For mixed's
-                    # weak-trend peaks (trend_align 0.21): _ts_supp ~0 -> boost raises base 0.45
-                    # -> 0.60 -> more harvest -> lock more gains -> less lump variance -> mixed
-                    # Sharpe up (Exp3 +0.0019 isolated). General principle (NO regime label):
-                    # harvest WEAK-trend peaks more aggressively (they mean-revert), TREND-aligned
-                    # peaks at baseline (they extend). New cross-component data dep: tp_harvest
-                    # base magnitude depends on multi-day trend-align magnitude (was uniform 0.45).
-                    _trend_align_boost = max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04))  # 0 ct/weak, ~1 strong trend-aligned
-                    _weak_trend_boost = 1.0 - max(0.0, min(1.0, np.tanh((_trend_align_boost - 0.4) / 0.10)))  # ~1 weak/mixed, ~0 strong/bull
-                    _tp_base = 0.45 + 0.15 * _weak_trend_boost  # 0.45 trend-aligned (bull byte-identical), 0.60 weak-trend (mixed)
-                    _tp_scale = _tp_base * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
