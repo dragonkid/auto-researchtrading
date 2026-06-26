@@ -1882,7 +1882,20 @@ class Strategy:
                     # pullback shorts) while sparing ALL trend-aligned entries (bull). Uses
                     # the SAME _ct_si_gate already computed above (multi-day ct, fast-
                     # saturating /0.01 near-constant noise-free per validated lesson).
-                    _sq_ct_gate = _ct_si_gate  # 0 trend-aligned, ~1 ct-at-multi-day
+                    # BRANCH step4: FULL-STRENGTH multi-day ct gate (separate from
+                    # _ct_si_gate which is shared with _adv_freeze at 0.6 cap). Step3 used
+                    # _ct_si_gate directly but its multi-day term is capped at 0.6 (to
+                    # protect the adverse-freeze from over-firing). That left rally stab at
+                    # 0.992 (not the 1.0 target). Use a DEDICATED full-strength multi-day ct
+                    # gate (1.0 cap) for the quantization so rally's solidly-positive
+                    # ret_vlong pullback shorts get FULLY quantized -> rally stab toward 1.0.
+                    # Trend-aligned (bull longs, rally longs, crash shorts: ret_vlong*pos_dir
+                    # >0 -> tanh(neg)=0 -> gate 0 -> byte-identical). Same fast-saturating
+                    # /0.01 (near-constant, noise-free). crash dead-cat-bounce longs (ret_
+                    # vlong<0, pos_dir=+1 -> product<0 -> ct) get quantized too but crash is
+                    # a sustained-downtrend regime where scale-in is brief and exits via
+                    # slope/stop before quantization binds (crash byte-identical in step3).
+                    _sq_ct_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01))
                     _sq_raw = scale_frac
                     _sq_quant = round(scale_frac * 4.0) / 4.0
                     scale_frac = _sq_raw * (1.0 - _sq_ct_gate) + _sq_quant * _sq_ct_gate
