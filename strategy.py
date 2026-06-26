@@ -2268,6 +2268,65 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp1 (architectural, indep): MTM-PATH-CHOP exit pressure (7th soft source).
+                # NEW data dependency at the exit-pressure MAX fusion: every existing soft
+                # source (slope/pp/time/ve/vc) reads PRICE-derived series only; NONE reads
+                # the held position's own PnL PATH. The MTM-path-efficiency signal (|net pos_pnl|
+                # / sum|bar-to-bar pos_pnl delta| over the 12-bar path, in [0,1]) is the proven
+                # mixed-dead-capital separator (load-bearing at the emission throttle since the
+                # 1d764b9f keep) -- high = smooth climber (bull/crash/sideways/rally trend
+                # longs); low = whipsaw dead capital (mixed's wrong-side-long-in-a-down-year
+                # book, eq-autocorr -0.427). Currently that signal only PASSIVELY amplifies
+                # existing reductions at the emission layer; it never generates ACTIVE exit
+                # pressure. A choppy dead-capital position produces little slope/pp/time
+                # pressure (its net pos_pnl is near zero -> no giveback -> no slope-against ->
+                # not held long enough for time pressure) -> MAX fusion ~0 -> it lingers,
+                # oscillating bar-to-bar (the intrinsic mixed return_vol 5.54pct drag).
+                # Routing MTM-chop into the fusion as a 7th soft source converts the passive
+                # throttle into active exit signaling for the binding regime: a position whose
+                # mark-to-market whipsaws with little net progress gets a smooth exit pressure
+                # proportional to its choppiness -> MAX fusion fires -> de-risk ramp trims the
+                # dead capital earlier -> smaller oscillation amplitude -> lower MTM vol ->
+                # higher mixed Sharpe (the binding floor 0.506, the regime whose 0.311 std
+                # contribution dominates the composite via the std penalty).
+                # Safety (the lessons that killed prior exit-source additions):
+                # (1) Trend-aligned smooth winners have chop~0 -> _mc_pressure ~0 -> byte-
+                #     identical by construction (the MTM-eff is ~1 for a smooth climber).
+                # (2) COUNTER-TREND-AT-MULTI-DAY gated: mixed's dead-capital longs are
+                #     counter-trend at the 96-bar scale (ret_vlong<0, pos_dir=+1 -> product<0);
+                #     bull's pullback longs (which ALSO have low MTM-eff during sharp
+                #     pullbacks) are trend-aligned at multi-day (ret_vlong>0, pos_dir=+1 ->
+                #     product>0). Gate on the SAME fast-saturating /0.01 ret_vlong ct indicator
+                #     the validated ct-vlong shrink / max_hold shortening / target EMA use, so
+                #     bull's pullback longs (ct indicator 0) get ZERO pressure -> byte-identical,
+                #     while mixed's ct dead-capital longs (ct indicator ~1) get full pressure.
+                #     This is the branch-step-13b separator that finally isolated mixed from
+                #     bull at the emission layer after 12 failed attempts.
+                # (3) Reduction-only intent realized via MAX (the fusion already takes the
+                #     single most-pressing term; _mc_pressure just becomes the binding term
+                #     for the dead-capital population where the others are ~0). Profit-side
+                #     weight NOT applied (chop is direction-agnostic -- a choppy LOSER is also
+                #     dead capital to trim; the slope-against loss-side weight already covers
+                #     losers, but a choppy near-zero position is neither winner nor loser and
+                #     needs its own gate). Continuous tanh on chop (no decision boundary).
+                #     New cross-component data dep: exit fusion reads the held position's PnL
+                #     path (was price-only).
+                _mc_pressure = 0.0
+                _ppp_mc = self._pnl_path.get(symbol, [])
+                if len(_ppp_mc) >= 4:
+                    _ppa_mc = np.array(_ppp_mc)
+                    _net_mc = abs(_ppa_mc[-1] - _ppa_mc[0])
+                    _tot_mc = float(np.sum(np.abs(np.diff(_ppa_mc))))
+                    _mtm_eff_mc = _net_mc / max(_tot_mc, 1e-10)  # [0,1], 1 smooth climber
+                    _mc_chop = max(0.0, min(1.0, 1.0 - _mtm_eff_mc))  # 0 smooth, 1 whipsaw
+                    _pos_dir_mc = 1.0 if current_pos > 0 else -1.0
+                    _mc_ct = max(0.0, np.tanh(-_pos_dir_mc * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                    # Onset at chop>0.30 (the validated small-pos-exempt threshold at line ~2835),
+                    # saturate near 0.60 so a maximally whipsawing dead-capital position gets
+                    # modest pressure (0.35) -- below slope/pp peaks but enough to win MAX when
+                    # the other sources are ~0 (exactly the dead-capital case).
+                    _mc_pressure = 0.35 * max(0.0, np.tanh((_mc_chop - 0.30) / 0.15)) * _mc_ct
+                _w_mc = 1.0  # direction-agnostic; chop is symmetric dead-capital either side
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2282,6 +2341,7 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
+                    _w_mc * _mc_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
