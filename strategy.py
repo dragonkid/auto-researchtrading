@@ -2099,13 +2099,7 @@ class Strategy:
                     _vov_hold_med = max(float(np.median(_vov_hold_samples)), 1e-8)
                     _vov_hold = float(np.std(_vov_hold_samples)) / _vov_hold_med
                     _vov_hold_gate = max(0.0, min(1.0, np.tanh((_vov_hold - 0.30) / 0.25)))
-                    # Exp2 branch step10: DISABLE step1s ct-hold time-cap amplify (test
-                    # whether step5s freeze ALONE subsumes step1s rally gain, and whether
-                    # removing the integer-quantized time-cap amplify recovers bull). The
-                    # freeze (step5, continuous) and time-cap (step1, integer) both cut rally
-                    # ct losers; step5 may subsume step1. If composite holds/improves without
-                    # step1, the simpler 1-mechanism version is preferred.
-                    # _ct_hold_sat = _ct_hold_sat * (1.0 + 0.50 * _vov_hold_gate)  # step1, disabled
+                    _ct_hold_sat = _ct_hold_sat * (1.0 + 0.50 * _vov_hold_gate)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
