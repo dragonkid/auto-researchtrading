@@ -1785,7 +1785,6 @@ class Strategy:
                 # cross-trend data dep at scale-in pace.
                 _vov_n = 6
                 _vov_gate = 0.0  # default (calm); overwritten when len(closes)>=24
-                _vov = 0.0  # default (calm); overwritten when len(closes)>=24
                 if len(closes) >= 24:
                     _vov_samples = np.array([
                         float(np.std(np.diff(np.log(closes[-(i + _vov_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_n - 1:]))))
@@ -1843,18 +1842,7 @@ class Strategy:
                     # (scale_frac is fractional, no integer wall). Extends the keep's
                     # vol-of-vol x ct mechanism to the adverse-freeze SIZE path (3rd path:
                     # pace=keep, time-cap=step1, freeze=step5). Clamped.
-                    # Exp2 branch step9: DEDICATED higher-onset vol-of-vol gate for the
-                    # freeze (separate from the keep's _vov_gate at /0.30 onset, which also
-                    # drives scale-in PACE). Step5 used the shared _vov_gate and gained
-                    # crash+rally but cost bull -0.0023. Bull's vol-flux is MILDER than
-                    # crash/rally's (bull uptrend has smaller vol transitions). A HIGHER-
-                    # onset gate (0.40 vs 0.30, /0.20 scale) fires only on STRONGER vol
-                    # transitions -> spares bull's mild vol-flux (-> recover bull) while
-                    # keeping crash/rally's stronger transitions (-> preserve gains). New
-                    # separate gate so the keep's pace path is byte-identical. Noise-free
-                    # (smooth windowed stat).
-                    _vov_freeze_gate = max(0.0, min(1.0, np.tanh((_vov - 0.40) / 0.20)))
-                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_freeze_gate))
+                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate))
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
