@@ -2632,7 +2632,22 @@ class Strategy:
                 # principle (no regime label): scale-in smoothing helps calm-grind
                 # trends, hurts sharp-vol trends.
                 _te_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
-                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate
+                # Branch step6: EFFICIENCY-RATIO gate on the trend-aligned scale-in
+                # smoothing. Steps 2-5 showed vol-gating and alpha-tuning CANNOT
+                # recover bull (stab invariant 0.954): bull-2021 has calm bars too
+                # (vol gate leaks) and the crash is invariant to alpha magnitude. The
+                # real bull/rally separator on calm bars: rally is a DIRECTIONAL GRIND
+                # (high ER -- price moves efficiently one way, smooth scale-in trajectory
+                # benefits from consistency smoothing); bull-2021's uptrend has SHARP
+                # corrections interspersed (lower ER -- path is choppier despite the
+                # uptrend, smoothing lags the correction recovery). Gate on high ER:
+                # full at ER>=0.40 (directional grind = rally), fading to 0 at ER<=0.25
+                # (choppier path = bull corrections). Continuous tanh (no boundary).
+                # _er is computed at line ~878 (in scope). Distinct from vol (path
+                # efficiency vs magnitude). General principle (no regime label): scale-in
+                # smoothing helps directional-grind trends, hurts choppier-path trends.
+                _te_er_gate = max(0.0, min(1.0, (_er - 0.25) / 0.15))
+                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate * _te_er_gate
                 _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
