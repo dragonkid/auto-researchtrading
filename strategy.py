@@ -2303,7 +2303,14 @@ class Strategy:
                 # tops) -> gate ~1 -> kept. Different axis than the trend/winner gates
                 # (steps 2-5): weakness MAGNITUDE, not regime classifier. Continuous tanh,
                 # no boundary. Bear side symmetric (onset 0.70 for close near high).
-                _cl_weak = max(0.0, np.tanh((0.30 - _close_loc_held) / 0.10)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.70) / 0.10))
+                # Branch step7: intermediate onset 0.35 (between step1 0.45 and step6
+                # 0.30) to capture more rally distribution signal while keeping sideways
+                # safe. Step6 0.30 was too conservative (rally +0.0001 only); step1 0.45
+                # too aggressive (sideways -0.0248). 0.35 fires on moderate-strong close-loc
+                # weakness (close_loc <0.35) -- captures more distribution closes at rally
+                # tops while still sparing sideways mild pullbacks (0.35-0.45). Narrower
+                # tanh width 0.10->0.08 for sharper onset.
+                _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.65) / 0.08))
                 _cl_pressure = 0.40 * _cl_weak
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
