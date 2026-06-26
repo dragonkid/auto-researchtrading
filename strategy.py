@@ -1829,6 +1829,22 @@ class Strategy:
                     # (same as other ret_vlong ct gates -> near-constant, noise-free).
                     _ct_si_gate = max(_ct_si_gate, 0.6 * max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01)))
                     _adv_freeze = 0.75 * max(0.0, np.tanh(-pos_pnl / (0.4 * abs(STOP_LOSS_PCT)))) * _ct_si_gate
+                    # Exp2 branch step7: MULTI-DAY ct gate on the vol-of-vol freeze amplify
+                    # (isolate from bull pullback longs). Step5 gained crash+rally but
+                    # regressed bull -0.0023: bull pullback longs (ret_long<0 temporarily,
+                    # pos_dir=+1, ret_vlong>0 uptrend-intact) are 20-bar-ct (caught by
+                    # _ct_si_gate's first term) but MULTI-DAY trend-aligned (recover when
+                    # the uptrend resumes). Freezing them harder cost bull capture. Gate the
+                    # amplify on the MULTI-DAY ct indicator (ret_vlong*pos_dir<0): only
+                    # amplify the freeze for positions counter-trend at the multi-day scale
+                    # (crash ct dead-cat longs: ret_vlong<0,pos_dir=+1 -> product<0; rally
+                    # ct pullback shorts: ret_vlong>0,pos_dir=-1 -> product<0). Bull pullback
+                    # longs (product>0) -> gate 0 -> no amplify -> recover bull. Fast-saturating
+                    # /0.01 (near-constant, noise-free). Distinct from _ct_si_gate (which
+                    # fires on EITHER timescale); this isolates the amplify to the multi-day
+                    # ct losers (the true losers). Recovers step5's bull regression while
+                    # keeping crash+rally gains -> push composite over +0.003 keep threshold.
+                    _ct_vlong_freeze_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_si / 0.01))
                     # Exp2 branch step5 (architectural): VOL-OF-VOL amplification of the
                     # adverse-freeze (a CONTINUOUS scale-in size variable, distinct from
                     # step1's integer-quantized time-cap). A counter-trend position scaling
@@ -1842,7 +1858,7 @@ class Strategy:
                     # (scale_frac is fractional, no integer wall). Extends the keep's
                     # vol-of-vol x ct mechanism to the adverse-freeze SIZE path (3rd path:
                     # pace=keep, time-cap=step1, freeze=step5). Clamped.
-                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate))
+                    _adv_freeze = min(0.85, _adv_freeze * (1.0 + 0.50 * _vov_gate * _ct_vlong_freeze_gate))
                     scale_frac = scale_frac * (1.0 - _adv_freeze)
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
