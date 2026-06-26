@@ -1871,10 +1871,21 @@ class Strategy:
                     # multi-day scale; VOL REGIME is the only axis that separates them:
                     # bull HIGH-vol sharp vs rally LOW-vol grind). Blend quantized<->
                     # continuous scale_frac by the vol gate so high-vol keeps the raw ramp.
-                    _sq_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # 1 at vol<=0.8, 0 at vol>=1.2
+                    # BRANCH step3: COUNTER-TREND gate (replaces vol gate which left bull
+                    # stab crashed at 0.838). The vol gate was insufficient because bull's
+                    # scale-in bars span vol 0.8-1.2 (partial quantization). The rally
+                    # stability benefit is specifically on COUNTER-TREND scale-in positions
+                    # (rally pullback SHORTS, which are counter-trend at the multi-day scale
+                    # -- _ct_si_gate). Trend-aligned scale-in (bull longs, rally longs,
+                    # crash shorts) gets byte-identical raw ramp. This isolates the
+                    # quantization to exactly the noise-sensitive ct population (rally
+                    # pullback shorts) while sparing ALL trend-aligned entries (bull). Uses
+                    # the SAME _ct_si_gate already computed above (multi-day ct, fast-
+                    # saturating /0.01 near-constant noise-free per validated lesson).
+                    _sq_ct_gate = _ct_si_gate  # 0 trend-aligned, ~1 ct-at-multi-day
                     _sq_raw = scale_frac
                     _sq_quant = round(scale_frac * 4.0) / 4.0
-                    scale_frac = _sq_raw * (1.0 - _sq_vol_gate) + _sq_quant * _sq_vol_gate
+                    scale_frac = _sq_raw * (1.0 - _sq_ct_gate) + _sq_quant * _sq_ct_gate
                     # Exp5: sustain the Exp4 entry-time concentration shrink through scale-in
                     # (cached at entry, deterministic). Keeps a concentrated book
                     # proportionally smaller for the whole hold instead of ramping back to
