@@ -643,7 +643,16 @@ class Strategy:
             _rc_intrabar = float(np.mean(_rc_high - _rc_low))
             _rc_interbar = float(np.mean(np.abs(np.diff(closes[-_rc_n - 1:]))))
             _rc_eff = _rc_interbar / max(_rc_intrabar, 1e-10)  # ~1 chop, >1 trending
-            _rc_dir = 1.0 if closes[-1] >= closes[-_rc_n] else -1.0
+            # Exp2: soften the 12-bar direction sign (was hard `1.0 if closes[-1]>=
+            # closes[-12] else -1.0`). The hard comparison flips on near-zero 12-bar
+            # net returns under 4.5bps AR(1) noise -> _rc_signal flips -> voter
+            # strong-sum flips -> admission/sizing tracking error (rally close-noise).
+            # Soft tanh on the 12-bar net return /0.01 (100bps scale): trending bars
+            # (|12-bar ret| > 100bps, the meaningful directional cases) saturate to
+            # +/-1 = byte-identical to the hard sign; near-zero 12-bar returns (the
+            # noise-sensitive pullback-flat cases) become soft in (-1,+1). Monotonic,
+            # no decision boundary. Scale-invariant (price-normalized).
+            _rc_dir = np.tanh((closes[-1] - closes[-_rc_n]) / (closes[-_rc_n] * 0.01))
             _rc_signal = (_rc_eff - 1.0) / 0.5 * _rc_dir  # >0 trend-continuation in dir
             _voter_signals_bull = [
                 (ret_short - dyn_threshold) / max(dyn_threshold * 0.20, 1e-6),
