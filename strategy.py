@@ -2627,7 +2627,7 @@ class Strategy:
                     _vov_med_te = max(float(np.median(_vov_samples_te)), 1e-8)
                     _vov_te = float(np.std(_vov_samples_te)) / _vov_med_te
                     _vov_gate_te = max(0.0, min(1.0, np.tanh((_vov_te - 0.30) / 0.25)))
-                    _te_alpha = min(0.999, _te_alpha + 0.20 * _vov_gate_te * _ct_te_str)
+                    _te_alpha = min(0.999, _te_alpha + 0.08 * _vov_gate_te * _ct_te_str)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
