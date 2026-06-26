@@ -2597,59 +2597,6 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
-                # Exp3 (architectural, indep): TREND-ALIGNED SCALE-IN smoothing
-                # channel. The prior _target_ema channel smooths ONLY counter-trend
-                # positions (ct gate _ct_te_str); trend-aligned rally longs get alpha=0
-                # (byte-identical, no smoothing) -> their position-value tracking error
-                # during SCALE-IN (bars 0-3, where entry-timing shifts +-1 bar under
-                # noise move the linear scale-in trajectory) is unaddressed. The prior
-                # session exhausted ct smoothing (frontier net-negative: raw cost >
-                # stability benefit, because ct losers held longer = bigger losses).
-                # This is a DIFFERENT population: trend-ALIGNED positions in their
-                # SCALE-IN PHASE ONLY. Winners are not losers -> no ct-loser-holding
-                # raw cost; after scale-in completes (bars_held > _entry_full_bars_dyn)
-                # smoothing turns OFF -> trend winners run unsmoothed (no raw cost on
-                # the big trend capture, the prior smoothing-vs-raw tension's cost side).
-                # Small alpha 0.30 (vs ct's 0.99): a mild low-pass on the scale-in
-                # target only, damping sub-bar progress wobble without meaningful lag.
-                # New control flow: a SECOND smoothing channel on a new position class
-                # (trend-aligned scale-in), disjoint from the ct channel (alpha 0 for
-                # trend-aligned outside scale-in, alpha 0 for ct-losers outside this
-                # gate). Byte-identical for: ct positions (this channel's trend-align
-                # gate is 0), trend-aligned positions past scale-in (bars_held gate 0),
-                # losing positions (loss-gate already cuts alpha). Continuous tanh.
-                _te_ta_gate = max(0.0, np.tanh(_pos_dir_te * ret_vlong / 0.01))  # ~1 trend-aligned (multi-day), 0 ct
-                _te_scalein_gate = max(0.0, min(1.0, 1.0 - bars_held / max(_entry_full_bars_dyn, 1e-6)))  # 1 at entry, 0 past scale-in
-                # Branch step2: LOW-VOL gate on the trend-aligned scale-in smoothing.
-                # Step1 raised rally raw +0.012 but crashed bull stability 1.0->0.936:
-                # bull-2021 is a HIGH-VOL SHARP uptrend (vol_ratio>1) where the scale-in
-                # target must track sharp moves; smoothing lags it -> bull entry-timing
-                # divergence -> stability crash. rally grinds at LOW vol (vol_ratio<1),
-                # so the smoothing helps there. Gate on low vol_ratio: full at
-                # vol_ratio<=0.8 (calm rally grind), fading to 0 at vol_ratio>=1.2
-                # (sharp bull-2021). Continuous tanh (no boundary). The /0.04 ret_long
-                # trend-align gate already excludes sideways chop. General vol-regime
-                # principle (no regime label): scale-in smoothing helps calm-grind
-                # trends, hurts sharp-vol trends.
-                _te_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
-                # Branch step7: GROWING-ONLY gate on the trend-aligned scale-in EMA.
-                # Steps 2-6 showed vol/pressure/ER/alpha gates all FAIL to recover
-                # bull (stab invariant 0.954): bull and rally share the same bar
-                # distribution on every tested market signal. New approach: gate the
-                # smoothing on resize DIRECTION -- only smooth when the raw target is
-                # GROWING (|target|>=|current_pos|, scale-in adding); snap to raw
-                # (alpha 0) when the target is SHRINKING (de-risk/reduction). Mechanism:
-                # the bull stability crash comes from smoothing LAGGING the target DOWN
-                # during bull correction bars (held target too big -> bigger DD). Smoothing
-                # only the GROW phase (consistent build through pullback noise = the rally
-                # benefit) while letting reductions pass through un-smoothed (no lag on
-                # tear-down, protects bull corrections). One-sided: a reduction is never
-                # smoothed, so it cannot be lagged. Distinct from prior gates (direction
-                # of position-value CHANGE, not a market signal). Continuous tanh on the
-                # grow margin /2pct of position.
-                _te_grow_gate = max(0.0, min(1.0, (abs(target) - abs(current_pos)) / (0.02 * max(abs(current_pos), 1e-6) + 1e-10)))
-                _te_alpha_ta = 0.30 * _te_ta_gate * _te_scalein_gate * _te_vol_gate * _te_grow_gate
-                _te_alpha = max(_te_alpha, _te_alpha_ta)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
