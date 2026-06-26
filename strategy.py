@@ -2056,6 +2056,35 @@ class Strategy:
                 # ret_vlong sideways spared. New mechanism: near-binary saturated time-cap
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                # Exp2 (architectural, indep): VOL-OF-VOL AMPLIFICATION of ct-hold
+                # shortening. Extends the validated keep mechanism (vol-of-vol x ct-gate
+                # on scale-in pace, fb29965f) to the EXIT-HOLD shortening path. A counter-
+                # trend-at-multi-day position during a vol-of-vol TRANSITION (std of
+                # rolling 6-bar realized-vol samples / median, the 2nd-order vol statistic
+                # proven live in the keep) fights BOTH the multi-day trend AND a shifting
+                # vol regime -> most likely to keep losing. The fixed 2.0-bar ct shortening
+                # under-cuts these; amplify it (up to +1.0 extra bar) when vol-of-vol is
+                # elevated so ct losers exit faster during transitions -> smaller losses ->
+                # higher Sharpe in the two low-Sharpe ct-loser regimes (crash dead-cat-bounce
+                # longs, rally pullback shorts). Trend-aligned holds (pos_dir*ret_vlong>0 ->
+                # _ct_hold_sat ~0) byte-identical; the amplify term is itself gated by
+                # _ct_hold_sat so it ONLY applies to already-ct positions (zero trend-aligned
+                # effect). Noise-robust: vol-of-vol uses the keep's 18-sample median window
+                # (smooth, /0.30 scale); ct-gate fast-saturates /0.01 (near-constant). New
+                # cross-subsystem data dep: exit-hold shortening magnitude depends on the
+                # 2nd-order vol-of-vol signal (distinct from vol_ratio level and _ve_pressure
+                # vol-of-price expansion). Direction-agnostic general principle (no regime
+                # label): a counter-trend position losing vol-stability earns faster time-cap.
+                _vov_hold_n = 6
+                if len(closes) >= 24:
+                    _vov_hold_samples = np.array([
+                        float(np.std(np.diff(np.log(closes[-(i + _vov_hold_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_hold_n - 1:]))))
+                        for i in range(18)
+                    ])
+                    _vov_hold_med = max(float(np.median(_vov_hold_samples)), 1e-8)
+                    _vov_hold = float(np.std(_vov_hold_samples)) / _vov_hold_med
+                    _vov_hold_gate = max(0.0, min(1.0, np.tanh((_vov_hold - 0.30) / 0.25)))
+                    _ct_hold_sat = _ct_hold_sat * (1.0 + 0.50 * _vov_hold_gate)
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
