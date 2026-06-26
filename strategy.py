@@ -2311,7 +2311,21 @@ class Strategy:
                 # tops while still sparing sideways mild pullbacks (0.35-0.45). Narrower
                 # tanh width 0.10->0.08 for sharper onset.
                 _cl_weak = max(0.0, np.tanh((0.35 - _close_loc_held) / 0.08)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.65) / 0.08))
-                _cl_pressure = 0.40 * _cl_weak
+                # Branch step10: LOW-VOL gate on close-loc (recover bull -0.0013 cost).
+                # Step7 onset 0.35 gave rally +0.0082 + mixed +0.0017 BUT bull -0.0013
+                # (close-loc fires on bull's SHARP pullback bars that close near low but
+                # RECOVER fast). bull/rally are inseparable on trend/multi-day/winner axes
+                # (steps 2-5), but the validated separator (from the prior-session scale-in
+                # EMA branch) is VOL REGIME: bull-2021 is HIGH-vol SHARP (vol_ratio>1.0,
+                # pullbacks recover fast); rally-2024 is LOW-vol GRIND (vol_ratio<0.8,
+                # distribution at tops is real). Gate close-loc on low vol_ratio: full at
+                # vol_ratio<=0.8 (rally grind), fading to 0 at vol_ratio>=1.2 (bull sharp).
+                # Continuous tanh, no boundary. bull high-vol pullbacks -> gate ~0 ->
+                # close-loc inert -> bull recovered; rally low-vol grind -> gate ~1 ->
+                # close-loc distribution exits kept. Sideways (low vol, low trend) ->
+                # already byte-identical at onset 0.35 (close-loc weakness rare in chop).
+                _cl_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))
+                _cl_pressure = 0.40 * _cl_weak * _cl_vol_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
