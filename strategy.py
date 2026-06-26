@@ -2295,7 +2295,27 @@ class Strategy:
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # long weakness = close near low (close_loc small); short weakness = close near high (close_loc large)
                 _cl_weak = max(0.0, np.tanh((0.45 - _close_loc_held) / 0.12)) if _pos_dir_cl > 0 else max(0.0, np.tanh((_close_loc_held - 0.55) / 0.12))
-                _cl_pressure = 0.40 * _cl_weak
+                # Branch step4: MULTI-DAY trend-DIRECTION gate on the close-loc exit
+                # source. Step1 (no gate): rally +0.0123 BUT sideways -0.0248 (close-loc
+                # fires on sideways winners' pullback bars that close near low but
+                # RECOVER). Step2 (|ret_long| trend gate): crashed rally stab 0.999->0.987
+                # (the 20-bar trend gate is noisy and narrowed firing on high-|ret_long|
+                # rally bars). Step3 (winner pos_pnl gate): rally/sideways share moderate-
+                # pos_pnl winners -> inseparable. The separator is MULTI-DAY trend
+                # DIRECTION (ret_vlong, the validated 96-bar OLS, fast-saturating /0.01
+                # near-constant noise-free): a long winner closing near the low after a run
+                # is DISTRIBUTION at a top when the multi-day trend is UP (rally/bull,
+                # ret_vlong>0); it is routine PULLBACK noise when the multi-day trend is
+                # FLAT (sideways, ret_vlong~0). For a short: closing near high = buying at
+                # a bottom when multi-day DOWN (crash, ret_vlong<0); routine when flat.
+                # Gate = tanh(pos_dir*ret_vlong/0.01): ~1 trend-aligned-at-multi-day
+                # (rally long, crash short), ~0 sideways. Sideways (ret_vlong~0) -> gate
+                # ~0 -> close-loc inert -> sideways recovered. rally/crash (trend-aligned)
+                # -> gate ~1 -> close-loc distribution exits kept. Distinct from step2's
+                # 20-bar gate: ret_vlong is 96-bar-averaged (noise-robust), fast-saturating
+                # (near-constant where it fires -> no exit-timing noise). Continuous tanh.
+                _cl_vlong_gate = max(0.0, np.tanh(_pos_dir_cl * ret_vlong / 0.01))
+                _cl_pressure = 0.40 * _cl_weak * _cl_vlong_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
