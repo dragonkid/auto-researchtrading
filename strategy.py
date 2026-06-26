@@ -2076,7 +2076,6 @@ class Strategy:
                 # vol-of-price expansion). Direction-agnostic general principle (no regime
                 # label): a counter-trend position losing vol-stability earns faster time-cap.
                 _vov_hold_n = 6
-                _vov_hold_gate = 0.0  # default (calm); overwritten when len(closes)>=24
                 if len(closes) >= 24:
                     _vov_hold_samples = np.array([
                         float(np.std(np.diff(np.log(closes[-(i + _vov_hold_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_hold_n - 1:]))))
@@ -2450,24 +2449,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp2 branch step4 (architectural): VOL-OF-VOL x CT RAISE on the
-                    # de-risk floor (a CONTINUOUS exit variable, unlike the integer-
-                    # quantized _max_hold time-cap that saturated at step1). Step1's
-                    # _ct_hold_sat amplify gained rally +0.0042 but is capped by integer
-                    # bar-boundary quantization (step2/3 byte-identical). This complements
-                    # it on the continuous de-risk ramp: a counter-trend-at-multi-day
-                    # position (the validated _ct_hold_sat indicator, fast-saturating
-                    # /0.01 -> near-constant) during a vol-of-vol transition (_vov_hold_gate)
-                    # is a likely continued loser -> RAISE _de_floor toward 1.0 (binary
-                    # fast exit) so it de-risks through the continuous ramp faster instead
-                    # of riding the transition. The ramp floor is continuous so EVERY
-                    # incremental gate value moves the de-risk curve (no integer wall).
-                    # Trend-aligned (_ct_hold_sat ~0) byte-identical; calm (_vov_hold_gate
-                    # ~0) byte-identical. New cross-subsystem dep: de-risk floor depends on
-                    # vol-of-vol x ct interaction (extends the keep's mechanism to a 2nd
-                    # exit path). Clamped to [0, 0.92] so the binary SL/opp paths still
-                    # govern terminal exits. Direction-agnostic general principle.
-                    _de_floor = min(0.92, _de_floor + 0.20 * _ct_hold_sat * _vov_hold_gate)
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
