@@ -2016,6 +2016,42 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp1 (architectural, indep): CROSS-WINDOW SLOPE-AGREEMENT modulator on
+                # the slope-against exit pressure. NEW data dependency in the exit-slope
+                # fusion: the 3 slope windows (12/16/22-bar) are currently AVERAGED into
+                # _exit_slope, so a momentary dip in the shortest window is averaged with
+                # the two longer windows -> the mean still moves, but the AGREEMENT
+                # structure (how many windows agree on direction) is discarded. A trend-
+                # aligned winner facing slope-against where ALL THREE windows agree on the
+                # reversal is a genuine trend break (exit pressure is real -> keep full);
+                # where only the shortest window flipped while longer windows still
+                # confirm the position, it is pullback noise (attenuate). Compute the
+                # signed agreement fraction of the 3 windows with position direction and
+                # modulate _sl_slope_pressure by it: full pressure at unanimous agreement,
+                # attenuated down to 0.70x at maximal disagreement (1 window against 2
+                # still-confirming). This is a NEW control-flow dependency on cross-window
+                # sign-agreement (distinct from the mean and from per-voter persistence
+                # which aggregates voter signals not slope windows), targeting the noise-
+                # sensitivity wall that capped every prior exit-source branch: single-window
+                # slope dips during pullbacks produce slope-against pressure that wobbles
+                # the exit decision bar-to-bar -> stability tracking error; requiring
+                # multi-window confirmation damps that wobble at its source (the pressure
+                # itself), not via a downstream EMA. Continuous tanh on the agreement
+                # fraction (no boundary). Trend-aligned holds in confirmed trends (all 3
+                # windows confirm) -> agreement=1 -> byte-identical; choppy regimes where
+                # windows disagree get the noise-damped pressure.
+                _pos_dir_slp = 1.0 if current_pos > 0 else -1.0
+                _slope_agree = sum(1 if (_ll * _pos_dir_slp) > 0 else -1 for _ll in _slopes) / 3.0  # in [-1, +1]
+                _slope_conf_frac = max(0.0, min(1.0, 0.5 + 0.5 * _slope_agree))  # [0,1], 1 unanimous confirm
+                # Attenuate slope-against pressure when confirmation is LOW (a reversal
+                # signal from disagreeing windows is more likely noise). Saturate so a
+                # fully-confirmed reversal (agree=-1 -> conf 0) keeps FULL pressure (a
+                # genuine unanimous trend break must still exit fast); only the mid-
+                # agreement region (1-of-3 flips, the pullback-noise case) is attenuated.
+                # Map conf to a multiplier: 1.0 at conf>=0.67 (2-of-3 confirm position),
+                # fading to 0.70 at conf<=0.33 (2-of-3 disagree = noise dip).
+                _slope_conf_mult = 0.70 + 0.30 * max(0.0, min(1.0, (_slope_conf_frac - 0.33) / 0.34))
+                _sl_slope_pressure = _sl_slope_pressure * _slope_conf_mult
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
