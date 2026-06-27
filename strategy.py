@@ -2054,6 +2054,28 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                # Exp2 (architectural, indep): MULTI-DAY-COUNTER-TREND giveback-tolerance
+                # tightener on pp_pressure. NEW data dep at the pp giveback: a winner that
+                # is COUNTER-TREND-AT-MULTI-DAY (pos_dir opposes ret_vlong sign -> the
+                # position fights the 96-bar trend) is structurally a mean-reverting bounce
+                # (mixed's wrong-side longs in a multi-day downtrend, eq-autocorr -0.427:
+                # paper gains are bounce-driven and evaporate) -> its peaks should give back
+                # LESS before pp_pressure harvests (lock the bounce gains faster). A trend-
+                # aligned winner (bull/crash/rally longs & shorts, pos_dir matches ret_vlong)
+                # is a genuine trend extension -> keeps the wider giveback (let winners run).
+                # Uses the SAME validated multi-day-ct separator (ret_vlong*pos_dir, fast-
+                # saturating /0.01 -> near-constant, noise-free per branch-step-9 lesson)
+                # that already separates mixed from bull/crash/rally at entry sizing and
+                # tp-harvest (_ts_supp uses the same factor at row 2403). Distinct from the
+                # walled slope-agreement / max_hold / close-loc axes: this is the GIVEBACK
+                # tolerance path, keyed on the validated multi-day-ct separator. Continuous
+                # tanh (no boundary); shrink-only (tighter giveback, floor 0.65x). Trend-
+                # aligned (ct=0) -> byte-identical. Targets mixed (binding floor 0.506);
+                # protects all trend-aligned regimes by construction.
+                _pp_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _pp_ct_vlong = max(0.0, np.tanh(-_pp_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                _pp_ct_tighten = 1.0 - 0.35 * _pp_ct_vlong  # max 35% tighter giveback for ct-at-multi-day winners
+                _pp_tighten = _pp_tighten * _pp_ct_tighten
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
