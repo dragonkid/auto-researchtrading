@@ -2565,7 +2565,30 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp3 (architectural, indep): MULTI-DAY-COUNTER-TREND gate on the
+                        # de-risk convex cushion. The cushion (k>1 -> hold near full size
+                        # through moderate giveback, the validated stability lever) is gated
+                        # on trend-ALIGNMENT (ret_long*pos_dir) + slope-conf + profit. But
+                        # ret_long is a 20-bar window: during mixed's local bounces ret_long>0
+                        # AND pos_dir=+1 -> _dr_align>0 -> cushion ACTIVE -> mixed's bounce-
+                        # long winners (modest-PnL, mean-reverting by structure) get held
+                        # bigger through giveback -> they give back more -> lower mixed Sharpe.
+                        # mixed's longs are COUNTER-TREND at the MULTI-DAY (96-bar) scale
+                        # (ret_vlong<0, pos_dir=+1). Add the multi-day-ct factor: a counter-
+                        # trend-at-multi-day WINNER gets the LINEAR fast cut (k=1, giveback
+                        # cuts faster) while trend-aligned winners (bull/crash/rally, ret_vlong
+                        # matches pos_dir) keep the full convex cushion. Uses the SAME validated
+                        # multi-day-ct separator (ret_vlong*pos_dir, fast-saturating /0.01 ->
+                        # near-constant, noise-free per branch-step-9 lesson) used by _ts_supp
+                        # (row 2403) and Exp2. Distinct from the walled giveback-tolerance (Exp2
+                        # inert), slope-agreement (Exp1 bull/mixed inseparable), max_hold
+                        # (wobble wall), close-loc (MAX cap) axes: this is the DE-RISK RAMP
+                        # SHAPE path. New control-flow dep: cushion k depends on multi-day-ct.
+                        # Trend-aligned (ct=0) -> factor 1 -> byte-identical. Targets mixed
+                        # (binding floor 0.506) via faster giveback-cut on bounce winners.
+                        _dr_ct_vlong = max(0.0, np.tanh(-_dr_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                        _dr_cushion_gate = 1.0 - _dr_ct_vlong  # 1 trend-aligned (full cushion), 0 ct (linear cut)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_cushion_gate  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
