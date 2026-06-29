@@ -2268,30 +2268,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp3 (architectural, indep): PARTNER-ALT LEAD-LAG DIVERGENCE exit pressure
-                # (7th soft MAX source). NEW cross-symbol exit data dep: the exit subsystem
-                # reads ZERO cross-symbol data (all 6 soft sources own-symbol price/vol); the
-                # entry side has _alt_lead (partner 20-bar momentum boost) but exit never uses
-                # partner momentum. ETH frequently LEADS SOL on intraday-daily moves; when a
-                # held alt's position is OPPOSED by the partner alt's 20-bar momentum (e.g. SOL
-                # long held but ETH's 20-bar slope turned negative = the leader diverging
-                # downward), that is early reversal evidence the own-symbol slope has not yet
-                # reflected. Distinct from the inert prior BTC-trend divergence exit (96-bar,
-                # too slow -> sub-noise inert): this is the 20-bar PARTNER alt (faster, and ETH-
-                # leads-SOL is a tighter lead-lag than BTC-leads-alt). Profit-side only (lock
-                # gains when the partner rolls over against a winner; losers handled by slope-
-                # against). Deep-saturated /0.02 (only STRONG partner opposition fires -> near-
-                # constant, noise-free per the validated safe-family lesson), capped 0.40.
-                # BTC self-referential -> no partner -> 0 -> byte-identical. New exit source +
-                # new control flow in MAX fusion. Targets mixed/rally alt legs (ETH-SOL pair
-                # divergences during choppy pullback sequences).
-                _pd_pressure = 0.0
-                if symbol != "BTC":
-                    _pd_partner = _alt_lead.get(_partner, 0.0) if _partner else 0.0
-                    _pd_dir = 1.0 if current_pos > 0 else -1.0
-                    _pd_diverge = max(0.0, np.tanh(-_pd_partner * _pd_dir / 0.02))
-                    _pd_pressure = 0.40 * _pd_diverge
-                _w_pd = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2306,7 +2282,6 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_ep * _ep_pressure,
                     _w_vc * _vc_pressure,
-                    _w_pd * _pd_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
