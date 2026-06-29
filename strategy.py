@@ -741,7 +741,30 @@ class Strategy:
             _eh = self._entry_bar_history.setdefault(symbol, [])
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
-            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            # Exp3 (architectural, indep): VOL-GATED softening of the trade-freq regulator
+            # (sample_factor lever). Exp2 softened the density penalty by _trend_strength_w
+            # -- WRONG separator: bull 2021 saturates trend_strength -> penalty nearly
+            # removed -> bull over-traded 46->102t (Sharpe 2.07->1.70, -0.332), while mixed
+            # (low |ret_long|) was UNREACHABLE (byte-identical). The prior f7af0069 keep
+            # PROVED the bull/rally-mixed separator is VOL REGIME (bull HIGH-vol SHARP vs
+            # mixed/rally LOW-vol GRIND) -- the separator the vlong boost keep used to keep
+            # bull byte-identical. Re-gate the freq softening on LOW vol_ratio instead:
+            # soften the density penalty only in the calm low-vol grind (mixed/rally
+            # trend-aligned continuation clusters) where clustered re-entries are
+            # continuation signal, NOT churn. Bull (high-vol sharp) -> vol_gate~0 -> FULL
+            # penalty -> byte-identical (protects bull's 46-trade quality, no over-trading).
+            # Sideways (calm but chop, ret_long~0): vol_gate fires BUT sideways already
+            # has 57 trades (>50 knee) so adding a few trades there is sample_factor-neutral
+            # (capped at 1.0) -- the softening cannot help sideways score, only risks it, so
+            # keep magnitude modest (0.30). mixed (low-vol grind, 47t below knee) is the
+            # TARGET: softening fires -> admit a few continuation trades -> toward 50 ->
+            # sample_factor 0.97->1.0 -> mixed raw +3pct. New cross-component data dep:
+            # freq regulator strength depends on vol_ratio (was density+trend-strength only).
+            # Continuous tanh vol-gate (no boundary); reduction-only on the penalty.
+            _freq_density = max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
+            _freq_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 high-vol, ~1 low-vol
+            _freq_soften = 1.0 - 0.30 * _freq_vol_gate  # [0.7 calm, 1.0 sharp]
+            _freq_factor = 1.0 + 0.20 * _freq_density * _freq_soften
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
