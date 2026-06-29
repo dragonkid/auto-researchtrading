@@ -2689,7 +2689,15 @@ class Strategy:
                     _dvp_og_rets = np.sign(np.diff(_dvp_og_c))
                     _dvp_og = float(np.sum(_dvp_og_v * _dvp_og_rets) / max(np.sum(_dvp_og_v), 1e-10))
                     _dvp_confirm_og = max(0.0, np.tanh(_dvp_og * _pos_dir_og / 0.15))  # 0 disagree/ct, ~1 confirm
-                    _opp_exit_frac_grad = max(0.25, _opp_exit_frac_grad - 0.15 * _dvp_confirm_og)
+                    # Branch step2 (this branch): PROFIT-SCALED DVP protection. Scale the DVP
+                    # confirmation strength by profit magnitude so DEEP winners (the most
+                    # valuable to protect from opp-voter noise spikes) get stronger protection
+                    # while shallow winners keep the baseline 0.15. mixed's rally-phase longs
+                    # that have run deep are the high-value rides; shallow ones may be noise.
+                    # _profit_gate_og already in [0,1] (tanh pos_pnl/|stop|); scale the floor
+                    # reduction magnitude 0.15 -> up to 0.25 at deep profit. Caps at 0.20 floor.
+                    _dvp_profit_scale = 0.15 + 0.10 * _profit_gate_og
+                    _opp_exit_frac_grad = max(0.20, _opp_exit_frac_grad - _dvp_profit_scale * _dvp_confirm_og)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
