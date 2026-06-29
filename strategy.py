@@ -2307,35 +2307,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Exp4 (architectural, indep): MULTIPLICATIVE agreement amplification on
-                # soft_max, gated on ct-LONG-IN-DOWNTREND (mixed's dead-capital signature).
-                # Exp1 (discarded) tried this ct-gated on _ct_pos_str (ret_vlong*pos_dir<0)
-                # but that gate fires for BOTH mixed's ct longs (ret_vlong<0, pos_dir=+1)
-                # AND rally's ct shorts (ret_vlong>0, pos_dir=-1) -> both product<0 ->
-                # amplified rally pullback shorts -> rally stability collapsed. The CLEAN
-                # separator missed in Exp1: mixed's dead-capital longs are ct longs IN A
-                # DOWNTREND (ret_vlong<0 AND pos_dir=+1), while rally's ct shorts are in
-                # an UPTREND (ret_vlong>0 AND pos_dir=-1). So gate the amplification on
-                # LONG-ONLY (pos_dir>0) x DOWNTREND-STRENGTH (tanh(-ret_vlong/0.03)): fires
-                # for mixed's oscillating ct longs, is 0 for ALL shorts (rally pullback
-                # shorts, crash trend shorts) AND 0 for trend-aligned longs in an uptrend
-                # (bull/rally longs). crash (downtrend but shorts -> long-gate 0) SPARED;
-                # rally (uptrend -> downtrend-strength 0) SPARED; bull (uptrend -> 0) SPARED.
-                # General principle (no regime label): counter-trend LONGS in a sustained
-                # downtrend are dead capital that oscillates -> amplify multi-source exit
-                # agreement to trim them faster -> less MTM oscillation -> higher Sharpe on
-                # that population. Multiplicative (not the dead additive blend: amplification
-                # factor driven by _agree_gate ratio, a shape stat -> correlated noise
-                # perturbs both sources together but preserves the ratio -> far less noise
-                # re-amplification than additive). Small AMP 0.20, capped. ret_vlong is the
-                # validated 96-bar OLS (noise-robust); pos_dir is the held sign. New fusion-
-                # shape control flow + new gate (ct-long-in-downtrend, distinct from Exp1's
-                # product-gate). Targets mixed (binding floor 0.506); spares all shorts +
-                # uptrend longs by construction.
-                _pd_dc = 1.0 if current_pos > 0 else 0.0  # long-only
-                _dc_trend = max(0.0, np.tanh(-ret_vlong / 0.03))  # downtrend strength (0 up, ~1 down)
-                _dc_gate = _pd_dc * _dc_trend
-                _soft_max = _soft_max * (1.0 + 0.20 * _agree_gate * _dc_gate)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
