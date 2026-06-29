@@ -2156,7 +2156,30 @@ class Strategy:
                 # on slope-confirmation x position-direction.
                 _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
                 _tp_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_tp / 0.0004))
-                _time_pressure = _time_pressure * (1.0 - 0.50 * _tp_slope_conf)
+                # BRANCH step2: gate the slope-conf mute TREND-ALIGNED-AND-PROFIT-ONLY.
+                # Step1 (unconditional 0.50 mute) catastrophically regressed bull stab
+                # (1.0->0.729) and sideways (raw -0.442, stab 0.545) because it over-
+                # suppressed time-pressure for ALL slope-confirming positions, including
+                # sideways MEAN-REVERTERS (whose slope briefly confirms during a counter-
+                # trend swing -> held through the mean-reversion -> overstay -> stability
+                # collapse + raw drop). The crash +0.041 gain (the real signal) comes
+                # from TREND-ALIGNED winners running longer; the regression comes from
+                # the mute firing on non-trend-aligned positions. Gate the mute on BOTH
+                # (a) trend-alignment (pos_dir matches ret_long sign = ongoing trend,
+                # crash shorts in downtrend, rally/bull longs in uptrend) AND (b) in-
+                # profit (pos_pnl>0 = the held position IS a winner worth running; losers
+                # keep full time-pressure -> exit losers on time). This isolates the
+                # crash/rally/bull trend-winner prize while sparing sideways mean-
+                # reverters (low trend-alignment: ret_long~0 -> gate~0) and losers
+                # (pos_pnl<0 -> profit gate 0). ALSO reduce magnitude 0.50->0.15 (step1's
+                # 0.50 was far too aggressive even where the gate should fire). Continuous
+                # tanh on both gates (no boundary); one-sided mute (never amplifies);
+                # direction-agnostic general principle (no regime label): time-pressure is
+                # muted for trend-aligned in-profit winners whose near-term slope confirms.
+                _tp_trend_align = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))  # 0 ct/sideways, ~1 trend-aligned
+                _tp_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
+                _tp_gate = _tp_trend_align * _tp_profit  # both required
+                _time_pressure = _time_pressure * (1.0 - 0.15 * _tp_slope_conf * _tp_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
