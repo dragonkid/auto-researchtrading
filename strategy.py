@@ -2586,7 +2586,21 @@ class Strategy:
                         # SHAPE path. New control-flow dep: cushion k depends on multi-day-ct.
                         # Trend-aligned (ct=0) -> factor 1 -> byte-identical. Targets mixed
                         # (binding floor 0.506) via faster giveback-cut on bounce winners.
-                        _dr_ct_vlong = max(0.0, np.tanh(-_dr_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                        # Branch step5: SMOOTHER ct-indicator saturation (/0.02 vs step1's
+                        # /0.01). Step1's /0.01 makes the gate near-binary -> the cut onset
+                        # is sharp at the trend boundary -> rally ct-short winners near the
+                        # boundary wobble (stab 0.999->0.997, the binding drag on step1's
+                        # +0.0033 raw). A gentler /0.02 scale smooths the transition: solidly
+                        # trend-aligned positions (rally trend longs, ret_vlong*pos_dir strongly
+                        # positive) STILL saturate to _dr_ct_vlong~0 -> byte-identical cushion;
+                        # solidly ct positions (rally pullback shorts, mixed bounce longs) STILL
+                        # saturate to ~1 -> full linear cut preserved; only NEAR-boundary
+                        # positions (weak |ret_vlong|) get a gradual transition -> less onset
+                        # wobble -> stability recovers WITHOUT diluting the saturated cut (unlike
+                        # step4's profit-ramp which diluted). Distinct from step2 (floor) and
+                        # step3 (concave k): this changes the GATE INPUT smoothness, not the
+                        # ramp shape or floor. Same validated ret_vlong signal, gentler scale.
+                        _dr_ct_vlong = max(0.0, np.tanh(-_dr_pos_dir * ret_vlong / 0.02))  # ~0 trend-aligned, ~1 ct-at-multi-day (gentler onset)
                         _dr_cushion_gate = 1.0 - _dr_ct_vlong  # 1 trend-aligned (full cushion), 0 ct (linear cut)
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_cushion_gate  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
