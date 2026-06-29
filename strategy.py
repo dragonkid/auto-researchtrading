@@ -2128,48 +2128,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp1 (architectural, indep): SHORT-ONLY TREND-ALIGNED-DOWNTREND max_hold
-                # extension. crash_bear is return-limited (Sh1.307, APY13.6pct, 100pct WR,
-                # DD2.83pct) and has the MOST stability headroom of any regime (stab 0.941
-                # vs the 0.80 knee -> factor 1.0, large wobble budget before any penalty).
-                # A real crash return-extension lever exists (prior sessions measured +0.064
-                # Sharpe from extending crash trend holds) but EVERY prior symmetric hold
-                # extension walled: symmetric slope-conf time-pressure mute -> bull/rally
-                # inseparability wall (both uptrend longs get extended -> extension-wobble ->
-                # stab crash); old-baseline clean+multiday-aligned+winning suppress -> sideways
-                # drift-up-long coupling (crash relief-rally longs structurally identical to
-                # sideways drift-up longs on every noise-robust axis). The common failure mode
-                # is the extension firing on LONGS (bull/rally/sideways uptrend or drift-up
-                # longs) whose stability is at/near the 0.80 knee (rally 0.800, bull 0.803).
-                # This isolates the lever to SHORTS ONLY that are TREND-ALIGNED TO A MULTI-DAY
-                # DOWNTREND (pos_dir=-1 AND ret_vlong<0 -> product>0). That conjunction:
-                #  (a) SHORT-ONLY -> avoids the bull/rally uptrend-LONG wall AND the sideways
-                #      drift-up-LONG wall (both blockers were longs); crash's lever at the
-                #      current baseline comes from crash TREND SHORTS (the dominant 100pct-WR
-                #      trade in the 2022 deep bear), not relief-rally longs.
-                #  (b) TREND-ALIGNED-TO-DOWNTREND (ret_vlong<0, pos_dir=-1) -> fires on crash
-                #      trend shorts; EXCLUDES rally pullback shorts (pos_dir=-1, ret_vlong>0
-                #      -> product<0 -> counter-trend -> the _ct_hold_sat gate already
-                #      SHORTENS those, this term adds 0); EXCLUDES sideways (ret_vlong~0 ->
-                #      gate~0) and all longs (pos_dir>0 -> the short-only max(0,pos_dir<0)
-                #      guard zeroes it). The clean separator that isolates crash trend shorts
-                #      from every other regime's positions on the noise-robust ret_vlong axis.
-                # Fast-saturating /0.01 ret_vlong scale (the validated branch-step-9 lesson):
-                # crash's solidly-negative ret_vlong sits in the FLAT saturated tail of tanh
-                # -> the extension AMOUNT is a near-CONSTANT (sensitivity ~0.4, not the ~5 of
-                # a mid-slope linear gate) -> the exit fires at a deterministic bars_held
-                # (bar counter is noise-immune; clean and perturbed exit the SAME bar -> zero
-                # tracking error) while keeping the longer-ride raw gain. Trend-aligned holds
-                # (product>0) and shorts in flat/up multi-day trend (product<0 or ret_vlong~0)
-                # -> gate 0 -> byte-identical. Max +2.0 bars (matches the _ct_hold_sat
-                # shortening magnitude on the opposite side; modest, bounded). Crash stab
-                # 0.941 absorbs the extension wobble with ~0.14 headroom before the 0.80 knee.
-                # New control flow: a direction-asymmetric trend-aligned time-pressure term
-                # (was symmetric/vol-only). Direction-agnostic general principle (no regime
-                # label): trend-aligned shorts in a sustained downtrend ride the trend longer.
-                _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
-                _short_downtrend_ext = max(0.0, np.tanh(-ret_vlong / 0.01)) if _pos_dir_tp < 0 else 0.0  # short AND multi-day downtrend; 0 for all longs
-                _max_hold += 2.0 * _short_downtrend_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
