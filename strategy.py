@@ -2054,7 +2054,42 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
+                # Exp2 (architectural, indep): DIRECTION-ASYMMETRIC pp giveback LOOSENING
+                # for SHORT positions in a PERSISTENT multi-day downtrend. crash_bear is
+                # return-limited (Sh1.307, APY13.6pct, 100pct WR, DD2.83pct, stab 0.941 =
+                # most headroom) and its winners exit via pp_pressure (giveback after peak)
+                # per Exp2-bd53ef01 (stop/time not binding). The trend-aligned gates already
+                # suppress tp_harvest (_ts_supp) + attenuate giveback AMPLIFICATION
+                # (_pm_trend_atten) for crash shorts, but the BASE giveback tolerance
+                # (_pp_giveback_eff) is still symmetric -> crash shorts give back profit at
+                # the same giveback ratio as sideways/bull, exiting on bear-bounce giveback
+                # before the downtrend resumes. Loosen the giveback TOLERANCE (ride the bear
+                # bounce deeper) for SHORTS in a persistent downtrend -> more APY. DISTINCT
+                # from the walled GLOBAL giveback loosen (affdf6c0 -0.396 catastrophic: it
+                # loosened rally/bull longs too, whose DD is at the 5pct knee); this is
+                # SHORT-ONLY (no long coupling -> avoids bull/rally uptrend-LONG wall AND
+                # sideways drift-up-LONG wall, both prior blockers were longs) + downtrend-
+                # DURATION-gated. Uses _down_persist (fraction of last 48 bars where
+                # ret_vlong<0: crash ~0.9, rally ~0.3, sideways ~0.5, mixed ~0.5) NOT
+                # instantaneous ret_vlong -- avoids the TRANSIENT ret_vlong<0 dip leak that
+                # killed Exp1-69d7715b (rally pullback shorts during momentary 96-bar-slope
+                # dips got extended -> rally stab 0.999->0.982). The duration gate saturates
+                # for crash's persistent bear (gate ~1, near-constant noise-free) and stays
+                # ~0 for rally's transient dips (rally re-strengthens between pullbacks ->
+                # 48-bar fraction stays low). Crash's solidly-negative ret_vlong sits deep
+                # in the flat tail -> the loosen AMOUNT is near-constant (sensitivity ~0.4,
+                # not noise-tracking) -> exit fires at deterministic giveback (zero TE).
+                # Max loosen 0.40 (giveback tolerance +40pct for deep-downtrend shorts;
+                # modest, bounded; PEAK_PROFIT_GIVEBACK 0.22 -> eff up to ~0.31). Trend-
+                # aligned longs (pos_dir>0), all shorts in flat/up multi-day trend (rally CT
+                # shorts, sideways), and shallow-downtrend positions -> gate 0 -> byte-
+                # identical. New control flow: direction-asymmetric trend-duration term in
+                # the giveback tolerance (was symmetric/vol/DD only). Direction-agnostic
+                # general principle (no regime label): trend-aligned shorts in a sustained
+                # downtrend ride bear-bounce giveback longer.
+                _pos_dir_pp = 1.0 if current_pos > 0 else -1.0
+                _pp_short_downtrend_loosen = 0.40 * (max(0.0, _down_persist - 0.5) / 0.25) if _pos_dir_pp < 0 else 0.0  # short + persistent downtrend (crash ~0.9 -> ~1.0; rally ~0.3 -> 0; clamped via min in eff)
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * (1.0 + min(1.0, _pp_short_downtrend_loosen))
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
