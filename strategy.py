@@ -2697,6 +2697,32 @@ class Strategy:
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
+                    # Exp3 (architectural, indep): 24-bar OWN-DVP-CONFIRMATION boost to the
+                    # opp-gate GRADUATION gate _grad_gate (the SYMMETRIC boost counterpart to
+                    # the 85a2e23e keep's floor-lowering, on the SAME rare opp-gate path,
+                    # ADDITIVE). The keep LOWERS the graduated-exit floor (less trimming ->
+                    # ride winners longer -> mixed APY); THIS RAISES _grad_gate itself
+                    # (more graduated-protection weight, less full-exit weight) when own-side
+                    # 24-bar directional volume confirms a trend-aligned in-profit winner ->
+                    # the winner is sustained by its own volume participation -> ride it
+                    # longer through the opp-voter spike -> more APY at preserved Sharpe (the
+                    # validated ride-winners direction, 2nd additive lever on the rare opp-gate
+                    # path that produced the biggest mixed gain ever measured). The opp-gate
+                    # path fires ONLY on opposite-side reversal detection (rare, _opp_gate) ->
+                    # NO every-bar bull-overlap exposure (the wall that killed Exp1 opp-bias
+                    # and Exp2 tp-harvest: those fired every held bar so bull's overlap could
+                    # not be gated). Here the envelope (vol-gate x trend-align x magnitude
+                    # floor x DVP24) gates a RARE event, and _grad_gate already requires
+                    # trend-align+in-profit so counter-trend rally pullback shorts / crash
+                    # dead-cat longs (_trend_align_og~0 -> _grad_gate~0) are byte-identical
+                    # (full exit, the desired fast-cut). Bull trend longs: _opp_gate rarely
+                    # fires in bull's uptrend (bear-votes below FLIP_MIN_VOTES) -> opp-gate
+                    # block dormant -> byte-identical. Sideways: ret_vlong~0 -> magnitude
+                    # floor ~0 -> boost 0 -> byte-identical. Capped via min(1.0). Reuses the
+                    # SAME _dvp24_conv / _dvp24_mag_gate / _ret_vlong_term_og / _vlong_vol_gate
+                    # already computed above (no new price-derived reads). Amplify-only.
+                    _dvp24_grad_boost = 0.20 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
+                    _grad_gate = min(1.0, _grad_gate + _dvp24_grad_boost)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
