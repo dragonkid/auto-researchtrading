@@ -2602,6 +2602,32 @@ class Strategy:
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    # Exp4 (architectural, indep): DIRECTION-ASYMMETRIC opp-gate graduation
+                    # FLOOR lowering for SHORT positions in a PERSISTENT multi-day downtrend.
+                    # Exp1-69d7715b (time) + Exp2-c9776b1b (pp) + Exp3-3ed72b31 (slope) ALL
+                    # byte-identical for crash -> the 3 soft MAX-fusion terms are NOT the
+                    # binding exit for crash trend shorts; crash exits via the OPP-GATE (bull-
+                    # voter reversal on bear bounces: bull_votes>=FLIP_MIN_VOTES AND trend_avg>0
+                    # fires on the bounce). The opp-gate graduation floor (0.4 = min exit
+                    # fraction for trend-aligned+in-profit crash shorts) means even a MARGINAL
+                    # opp-spike exits 40pct of a crash short; lowering the floor for shorts in
+                    # a PERSISTENT downtrend makes marginal opp-spikes (small bull-voter
+                    # bounces within the bear) cause MORE GRADUAL partial exits -> ride bear
+                    # bounces deeper -> capture more of the resumed downtrend -> higher crash
+                    # APY (return-limited Sh1.307, 100pct WR so bounces have historically
+                    # resolved). SHORT-ONLY (no long coupling -> avoids bull/rally uptrend-long
+                    # wall) + downtrend-DURATION-gated (_down_persist>0.5: crash ~0.9 -> floor
+                    # 0.20; rally ~0.3 -> 0.40 baseline; sideways/mixed ~0.5 -> ~0.40). Duration
+                    # gate avoids the transient ret_vlong<0 dip leak (Exp1 failure). The full
+                    # exit CEILING (1.0 at strong opp_margin) is PRESERVED -> a strong opp-spike
+                    # (real reversal, high bull-voter margin) still fully exits (risk control
+                    # retained); only the MARGINAL-opp-spike floor is lowered. crash stab 0.941
+                    # absorbs ride wobble. New control flow: direction-asymmetric trend-duration
+                    # term on the opp-gate graduation floor (was symmetric). Direction-agnostic
+                    # general principle (no regime label): trend-aligned shorts in a sustained
+                    # downtrend tolerate marginal opp-voter bounces more gradually.
+                    _og_short_downtrend = max(0.0, min(1.0, (_down_persist - 0.5) / 0.25)) if _pos_dir_og < 0 else 0.0  # short + persistent downtrend (crash ~1; rally 0)
+                    _opp_exit_frac_grad = _opp_exit_frac_grad - 0.20 * _og_short_downtrend  # floor 0.4 -> 0.20 for crash shorts; ceiling 1.0 preserved (only the low-margin floor shifts)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
