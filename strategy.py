@@ -2226,7 +2226,18 @@ class Strategy:
                 # regimes (bull/crash/rally-longs: ret_long term ~1 -> capped -> no change).
                 _ret_long_term_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))   # baseline term (20-bar, /0.05)
                 _ret_vlong_term_vb = max(0.0, np.tanh(ret_vlong * _pos_dir_vb / 0.04)) # multi-day confirmation (slower /0.04 = smooth, not near-binary)
-                _vlong_boost_vb = 0.30 * _ret_vlong_term_vb  # small additive boost when multi-day confirms
+                # branch step4: VOL-GATE the vlong boost on LOW vol_ratio (calm grind).
+                # step3 recovered mixed +0.006 (ret_vlong confirmation sustains opp-atten
+                # on mixed's trend-aligned rally-phase longs) BUT bull -0.34 (stab 1.0->
+                # 0.881): the 96-bar ret_vlong LAGS bull's sharp 2021 corrections (stays
+                # positive while ret_long dips -> boost keeps opp-atten high -> holds
+                # losing bull longs through corrections -> stability crash). The
+                # bull/mixed separator is VOL REGIME (the validated scale-in quantization
+                # keep separator: bull HIGH-vol SHARP vs rally/mixed LOW-vol GRIND). Gate
+                # the boost on low vol_ratio so it fires in the calm grind (mixed/rally)
+                # and ~off in the sharp high-vol regime (bull). Continuous tanh, no boundary.
+                _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
+                _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
                 _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
