@@ -2184,26 +2184,6 @@ class Strategy:
                 # non-counter-trend holds, taper _chop_amp toward 1.0 by strong-sum divergence.
                 _div_taper = max(0.0, np.tanh(abs(_bull_strong - _bear_strong) / max(_bull_strong + _bear_strong, 1e-6) / 0.30)) * max(0.0, np.tanh((0.015 - abs(ret_long)) / 0.010)) * max(0.0, np.tanh(((1.0 if current_pos > 0 else -1.0) * ret_long + 0.005) / 0.010))
                 _chop_amp = (1.0 + 0.7 * max(0.0, min(1.0, (0.03 - abs(ret_long)) / 0.025))) * (1.0 - _div_taper) + _div_taper
-                # branch step8: VOL-GATED vlong-confirmation boost to _chop_amp (own-side
-                # hold, NEW additive gain source distinct from step4's opp-side atten).
-                # step4 (opp-atten vlong boost) reaches +0.0019 but saturates at the cap
-                # and the coef-raise path (step5-7) could not cleanly separate bull from
-                # mixed on the multi-day-trend-strength axis. Extend the SAME "ride
-                # trend-aligned mixed winners" direction to the OWN-SIDE voter_bias term:
-                # _chop_amp amplifies the own-side subtraction (-0.20*_chop_amp*margin)
-                # that LETS WINNERS RUN. For mixed's trend-aligned rally-phase longs
-                # (ret_vlong*pos_dir>0, multi-day confirms), boost _chop_amp -> MORE own-
-                # side hold -> ride winners longer -> higher mixed Sharpe. SAME vol-gate
-                # as step4 (low vol_ratio = mixed/rally grind, sparing bull high-vol sharp)
-                # + SAME ret_vlong confirmation term (_ret_vlong_term_vb, computed at the
-                # opp-atten block above). The own-side term is a DIFFERENT voter_bias
-                # component (subtraction, not addition) so this gain source is ADDITIVE
-                # with step4 (non-saturating). Continuous, no boundary. Byte-identical when
-                # vol-gate=0 (bull high-vol) or ret_vlong term=0 (ct positions: chop_amp
-                # unchanged -> fast exit for rally ct shorts + mixed wrong-side longs).
-                # Retain the step4 opp-atten boost (already in _trend_align_vb above).
-                _chop_amp_vlong_boost = 1.0 + 0.20 * _vlong_vol_gate * _ret_vlong_term_vb  # up to +20% own-side hold for low-vol trend-aligned
-                _chop_amp = _chop_amp * _chop_amp_vlong_boost
                 # Architectural: trend-aligned opp-bias attenuator (new cross-component dep).
                 # In strong long-window trends WHERE position is trend-aligned, attenuate
                 # the opposite-side voter_bias ADDITION. Mechanism: when winning trend
