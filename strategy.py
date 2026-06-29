@@ -2477,20 +2477,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Branch step2: MULTI-DAY-CT floor NARROWING (complement to the
-                    # cushion gate of step1). The trend-aligned relaxation above widens
-                    # the ramp for trend-aligned winners; symmetrically, NARROW the ramp
-                    # for counter-trend-at-multi-day winners (rally pullback shorts,
-                    # mixed bounce longs) so they graduate to exit faster. Raises _de_floor
-                    # up to +0.10 for ct-at-multi-day positions (the floor bounds how long
-                    # the position lingers at partial size before full exit). Uses the SAME
-                    # validated multi-day-ct separator (ret_vlong*pos_dir, fast-saturating
-                    # /0.01). Only in profit (ct losers already get the 0.85 loss floor);
-                    # trend-aligned (ct=0) byte-identical. Targets rally ct-short losers
-                    # (faster graduation -> smaller losses -> higher Sharpe).
-                    _de_pos_dir = 1.0 if current_pos > 0 else -1.0
-                    _de_ct_vlong = max(0.0, np.tanh(-_de_pos_dir * ret_vlong / 0.01))
-                    _de_floor += 0.10 * _de_ct_vlong * _ta_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
