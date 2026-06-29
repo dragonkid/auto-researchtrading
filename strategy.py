@@ -2016,6 +2016,31 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp3 (architectural, indep): DIRECTION-ASYMMETRIC slope-against ATTENUATION
+                # for SHORT positions in a PERSISTENT multi-day downtrend. Exp1-69d7715b ruled
+                # out time-pressure (max_hold) and Exp2-c9776b1b ruled out pp-giveback as the
+                # binding exit for crash trend shorts (both byte-identical). The remaining MAX-
+                # fusion candidate that binds on bear-bounce bars (when the 2022 downtrend
+                # briefly bounces up -> _exit_slope turns positive -> _slope_against fires for
+                # shorts) is _sl_slope_pressure. A prior SYMMETRIC trend-aligned slope-pressure
+                # attenuation was REMOVED (line ~2019 comment: slope-against IS signal, the
+                # attenuation delayed exits on real reversals for bull/rally longs); this is
+                # SHORT-ONLY + downtrend-DURATION-gated so it does NOT touch bull/rally longs
+                # (avoids that removal's failure mode) -- only crash trend shorts (pos_dir<0,
+                # _down_persist>0.5: crash ~0.9 -> full attenuate; rally ~0.3 -> 0; sideways ~0.5
+                # -> ~0; mixed ~0.5 -> ~0). Hypothesis: in a PERSISTENT bear (down_persist~0.9),
+                # upward slope spikes are BOUNCE noise within the downtrend, not reversals -- a
+                # crash trend short that rides the bounce captures more of the resumed downtrend
+                # -> higher crash APY (return-limited Sh1.307, 100pct WR so riding bounces has
+                # historically worked out). Duration gate (not instantaneous ret_vlong) avoids
+                # the transient-dip leak that killed Exp1. Max attenuate 0.30 (slope-against
+                # pressure reduced up to 30pct for deep-downtrend shorts; modest). Trend-aligned
+                # longs (pos_dir>0), shorts in flat/up trend -> gate 0 -> byte-identical. crash
+                # stab 0.941 absorbs any ride wobble. New control flow: direction-asymmetric
+                # trend-duration term on slope-against pressure (was symmetric/vol-only).
+                _pos_dir_sa = 1.0 if current_pos > 0 else -1.0
+                _sa_short_downtrend_atten = 1.0 - 0.30 * (max(0.0, min(1.0, (_down_persist - 0.5) / 0.25))) if _pos_dir_sa < 0 else 1.0  # short + persistent downtrend -> 0.70x; else 1.0
+                _sl_slope_pressure = _sl_slope_pressure * _sa_short_downtrend_atten
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
