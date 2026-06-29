@@ -2236,34 +2236,10 @@ class Strategy:
                 # keep separator: bull HIGH-vol SHARP vs rally/mixed LOW-vol GRIND). Gate
                 # the boost on low vol_ratio so it fires in the calm grind (mixed/rally)
                 # and ~off in the sharp high-vol regime (bull). Continuous tanh, no boundary.
-                _vlong_vol_gate = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))  # branch step6: tightened (full<=0.7, zero>=1.0) so bull (vol rarely<1.0) fully spared
+                _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
                 _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
                 _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
-                # branch step5: RAISE the max opp-atten for the low-vol grind (non-saturating
-                # extension of step4). step4's boost saturates at _trend_align_vb=1.0
-                # (cap), so magnitude raise (0.30->0.50) was flat. Instead raise the
-                # ATTEN COEFFICIENT itself in the low-vol regime: 0.50 baseline (byte-
-                # identical for high-vol bull where vol-gate=0) up to 0.70 in the low-vol
-                # grind (vol-gate=1, mixed/rally). A higher coefficient means mixed's
-                # trend-aligned positions get up to 70% opp-atten (vs 50% baseline) ->
-                # even less opp-bias -> ride mixed's rally-phase winners LONGER -> higher
-                # mixed Sharpe. NON-SATURATING (raises the ceiling, not the input). Same
-                # vol-gate isolates mixed from bull. Byte-identical when vol-gate=0 (bull).
-                # branch step7: ADD a WEAK-MULTI-DAY-TREND gate to the coef raise. step6
-                # tightened the vol-gate but bull stab stayed 0.978 -- the few bull bars
-                # with vol_ratio<1.0 still activated the higher coef and destabilized
-                # (bull raw byte-identical). The clean bull/mixed separator is MULTI-DAY
-                # TREND STRENGTH: bull ret_vlong solidly POSITIVE (strong uptrend); mixed
-                # ret_vlong WEAK/oscillating (down-then-up-then-chop year, |ret_vlong|
-                # small). Gate the coef raise on (1 - tanh(|ret_vlong|/0.03)) so it is ~0
-                # for strong-multi-day-trend bull (ret_vlong solidly nonzero -> gate 0 ->
-                # coef stays 0.50 byte-identical) and ~1 for weak-multi-day-trend mixed.
-                # Conjunction: low-vol AND weak-multi-day-trend. Byte-identical for bull
-                # (both gates: strong ret_vlong -> weak-trend gate 0). Fast-saturating /0.03
-                # (near-constant, noise-free per validated lesson).
-                _weak_vlong_gate = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.03))  # ~1 weak multi-day (mixed), ~0 strong (bull)
-                _opp_atten_coef = 0.50 + 0.20 * _vlong_vol_gate * _weak_vlong_gate  # 0.50 strong-trend (bull), up to 0.70 weak-trend+low-vol (mixed)
-                _opp_atten = 1.0 - _opp_atten_coef * _trend_align_vb  # max 50% (bull) / 70% (mixed) attenuation
+                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
                 # directional backing) — mute opp_bias contribution. In trends, opp-voter
