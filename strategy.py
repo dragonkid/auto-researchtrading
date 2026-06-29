@@ -1953,6 +1953,31 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
+                    # Exp4 (architectural, indep): MAE-DEEP SHRINK on the sustained
+                    # persist_boost (inverse of Exp3's failed MAE-clean amp). Exp3 proved
+                    # the _persist_sustain path is size-SENSITIVE: bigger sustained trend
+                    # positions raise DD enough to net negative (crash -0.0096, bull
+                    # -0.0124 from over-commit). The structurally OPPOSITE direction is a
+                    # SHRINK for at-risk positions: a held position whose MAE (maximum
+                    # adverse excursion, low-water pos_pnl) is DEEP (dipped hard toward
+                    # the stop) is at risk of realizing a large loss -> shrink its
+                    # sustained size through scale-in so the eventual realized loss is
+                    # smaller -> higher Sharpe via smaller loser magnitude (loser
+                    # magnitude directly raises the return std in the Sharpe denom).
+                    # Shrink-only (safe family, caps at 1.0 -> never below baseline),
+                    # targets LOSERS not winners (avoids Exp3's over-commit failure).
+                    # NEW cross-component data dep: sustain magnitude depends on MAE
+                    # depth (position health, distinct from trend-direction/down_persist
+                    # and weak-trend-duration gates). Noise-robustness: MAE is a low-
+                    # water mark (only updates DOWNWARD) -> a single-bar AR(1) spike
+                    # cannot lift it -> near-monotone clean/perturbed -> no per-bar wobble.
+                    # The shrink fades the sustained boost toward 0 (not below baseline)
+                    # as MAE deepens past 0.5*|stop|; clean-MAE positions keep the full
+                    # fe6acd4d/52a3e671 baseline sustain. Crash/rally losers (deep MAE)
+                    # get smaller sustained size -> smaller realized losses; trend winners
+                    # (clean MAE) byte-identical. Bounded max 0.25 shrink.
+                    _mae_deep = max(0.0, min(1.0, np.tanh((-self._mae.get(symbol, 0.0) - 0.5 * abs(STOP_LOSS_PCT)) / (0.5 * abs(STOP_LOSS_PCT)))))
+                    _persist_sustain_mag = _persist_sustain_mag * (1.0 - 0.25 * _mae_deep)
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
