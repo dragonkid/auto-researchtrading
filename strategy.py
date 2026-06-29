@@ -741,29 +741,7 @@ class Strategy:
             _eh = self._entry_bar_history.setdefault(symbol, [])
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
-            # Exp2 (architectural, indep): TREND-ALIGNED conditional softening of the
-            # trade-frequency self-regulator. The density penalty (_freq_factor up to
-            # +20% threshold) is load-bearing for CHOP (sideways/rally-pullback re-entry
-            # churn = noise -> removing it floods chop with flippy losers, prior full-removal
-            # attempts catastrophic sideways -0.20 / rally -0.15). BUT in a CONFIRMED TREND
-            # a clustered re-entry is CONTINUATION signal, not churn (the afa6281 keep
-            # principle: trend-aligned clustered entries are valid). bull_2021 (46t),
-            # mixed_2025 (47t), crash_bear (49t) all sit BELOW the 50-trade sample_factor
-            # knee -> a 4-7pct raw drag on 3 regimes -- the largest untested multi-regime
-            # lever. Soften the density penalty ONLY when the long-window trend is strong
-            # (|ret_long| large): trend-leg clustered entries (bull uptrend legs, crash
-            # downtrend legs, mixed trend phases) get up to ~40% less density penalty ->
-            # admit a few more continuation trades -> raise bull/mixed/crash toward 50.
-            # Chop (ret_long~0 -> _trend_strength_w~0 -> no softening -> FULL penalty)
-            # is byte-identical, protecting sideways + rally pullback churn filtering.
-            # Continuous tanh on |ret_long| (no boundary); max softening 0.40 of the 0.20
-            # penalty (effective penalty 0.20->0.12 for trend-aligned clusters). New
-            # cross-timescale data dep: the freq regulator's strength now depends on
-            # long-window trend magnitude (was density-only). Reduction-only on the
-            # penalty (never negative -> never ADDS threshold beyond baseline).
-            _freq_density = max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            _trend_soften = 1.0 - 0.40 * _trend_strength_w  # [0.6 strong trend, 1.0 chop]
-            _freq_factor = 1.0 + 0.20 * _freq_density * _trend_soften
+            _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
