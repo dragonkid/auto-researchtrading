@@ -1953,37 +1953,6 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
-                    # Exp3 (architectural, indep): MAE-CLEANLINESS amplification on the
-                    # sustained persist_boost magnitude. The _persist_sustain path is the
-                    # ONE validated non-grid-absorbed sizing lever (it operates on the
-                    # scale-in full_target, persisting across the hold, NOT first-bar-only
-                    # -> not grid-absorbed per prior-session root cause). It currently
-                    # boosts via down_persist duration only. Add a NEW cross-component data
-                    # dep: sustain magnitude depends on the held position's MAE (maximum
-                    # adverse excursion, the low-water mark of pos_pnl since entry). A
-                    # trend-aligned winner whose MAE is CLEAN (small adverse excursion,
-                    # never dipped much into loss) is a high-conviction trend winner that
-                    # is tracking the trend cleanly -> sustain its size DEEPER -> capture
-                    # more of the trend move at the scale-in full_target -> more APY at
-                    # preserved Sharpe (the return-limited prize for crash Sh1.307 100pct
-                    # WR trend-aligned shorts with clean MAE, and mixed Sh0.838 decisive
-                    # bounce winners). MAE-deep positions (dipped hard -> near stop) get
-                    # NO extra sustain (they are at risk -> keep baseline). Mechanism:
-                    # _mae_clean = 1 - tanh(-MAE / (0.5*|stop|)) ∈ [0,1]: 1.0 clean (MAE~0),
-                    # 0.0 deep (MAE near -stop). Amplify-only (floor at baseline mag;
-                    # never shrinks below the fe6acd4d/52a3e671 keeps). Bounded (+0.08 max
-                    # on the magnitude, mirroring the 0.10 deep-gate increment scale).
-                    # Noise-robustness: MAE is a low-water mark (only updates DOWNWARD,
-                    # confirmed by adverse move) -> a single-bar AR(1) spike cannot lift
-                    # it -> the gate is a near-monotone clean/perturbed quantity -> no
-                    # per-bar wobble. The gate keys on position HEALTH (MAE), structurally
-                    # distinct from the trend-DIRECTION (down_persist) and weak-trend-
-                    # DURATION (_weak_persist) gates: a clean trend winner with deep MAE
-                    # (rare sharp dip that recovered) gets baseline sustain; a clean-MAE
-                    # trend winner gets the amp. New control flow: sustain magnitude now
-                    # depends on (down_persist duration, MAE cleanliness) conjunction.
-                    _mae_clean = 1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / (0.5 * abs(STOP_LOSS_PCT)))))
-                    _persist_sustain_mag = _persist_sustain_mag + 0.08 * _mae_clean * _persist_down_gate_dur
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
