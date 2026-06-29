@@ -2683,7 +2683,7 @@ class Strategy:
                     # aligned regimes whose DVP confirms (mixed rally-phase longs with buy-side
                     # volume, bull longs, crash shorts) get the protection; wrong-side get none.
                     # New control flow: opp-gate exit fraction depends on own-DVP x pos_dir.
-                    _dvp_og_n = 24
+                    _dvp_og_n = 12
                     _dvp_og_c = closes[-_dvp_og_n - 1:]
                     _dvp_og_v = bd.history["volume"].values[-_dvp_og_n:]
                     _dvp_og_rets = np.sign(np.diff(_dvp_og_c))
