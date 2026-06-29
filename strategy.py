@@ -2198,24 +2198,19 @@ class Strategy:
                 # (ret_vlong~0) spared. New cross-timescale gate on the mute.
                 _tp_vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # 0 choppy/ct, ~1 persistent trend-aligned
                 _tp_gate = _tp_trend_align * _tp_profit * _tp_vlong_align  # all three required
-                # BRANCH step5: vol-gate the mute to LOW-VOL regimes only. Steps2-4 proved
-                # bull is a structural wall: bull-2021 trend-aligned profitable longs with
-                # confirming slope get muted -> held longer -> extension-wobble -> stab crash
-                # (0.769 at mag 0.15, 0.585 at 0.08 -- wobble scales with HELD-BAR COUNT not
-                # magnitude). bull/rally are inseparable on trend-alignment (both uptrends,
-                # both ret_vlong strongly +). The ONE validated bull/rally separator across
-                # prior sessions is VOL REGIME: bull-2021 is HIGH-vol SHARP (vol_ratio>1.0),
-                # rally-2024 is LOW-vol GRIND (vol_ratio<0.8). Gate the mute on low vol_ratio
-                # (full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.1) so the mute fires
-                # for rally (low-vol grind) NOT bull (high-vol sharp). CRASH is high-vol so
-                # this LOSES the crash +0.020 gain (the trade-off: crash gain was real but
-                # came with bull instability on the same trend-aligned axis; vol-gating
-                # sacrifices crash to recover bull). sideways (low vol, low trend_align) still
-                # spared by the trend-align gate. mixed (low vol) may benefit. Test: if bull
-                # stab fully recovers to ~1.0 AND rally/mixed (low-vol) net positive, the
-                # composite may clear baseline. Continuous tanh on vol_ratio (no boundary).
-                _tp_vol_gate = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.3))  # 1 low-vol, 0 high-vol
-                _time_pressure = _time_pressure * (1.0 - 0.15 * _tp_slope_conf * _tp_gate * _tp_vol_gate)
+                # BRANCH step6: DEEP-SLOPE-SATURATION gate (replaces step5 vol-gate). Step5's
+                # vol-gate did not recover bull (bull has low-vol grinding stretches where the
+                # mute fires). The remaining untested separator: SLOPE MAGNITUDE. The _tp_slope_conf
+                # uses /0.0004 (saturates at modest slope) so bull's grinding-uptrend bars
+                # (modest but positive slope) saturate the gate -> mute fires -> wobble.
+                # Tighten the slope gate to /0.00015 (deep saturation: only STRONGLY
+                # confirming slope fires) so bull's modest-slope grinding bars are EXCLUDED
+                # while crash/rally persistent-trend bars (strong slope) are kept. Remove
+                # step5's vol-gate (it sacrificed crash without recovering bull) and rely on
+                # slope-magnitude as the separator. This is the ONE remaining untested axis
+                # (slope magnitude vs vol regime vs trend-alignment -- all three now tried).
+                _tp_slope_conf_deep = max(0.0, np.tanh(_exit_slope * _pos_dir_tp / 0.00015))  # deep saturation
+                _time_pressure = _time_pressure * (1.0 - 0.15 * _tp_slope_conf_deep * _tp_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
