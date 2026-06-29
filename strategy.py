@@ -2653,26 +2653,7 @@ class Strategy:
                     # when vol-gate=0 (bull) or ret_vlong term=0 (ct positions: full exit fast,
                     # the desired behavior for rally pullback shorts + mixed wrong-side longs).
                     _ret_vlong_term_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))
-                    # Exp5 (architectural, indep): SLOPE-CONFIRMATION gate on the opp-gate
-                    # vlong boost (recover the keep's rally stability cost). The f7af0069
-                    # keep's opp-gate vlong boost (this line) sustains graduated-exit
-                    # protection for low-vol trend-aligned longs (mixed +0.018 KEEP) BUT
-                    # cost rally stability -0.005 (raw unchanged): the boost holds rally
-                    # trend-aligned longs through AR(1)-perturbed bars -> slight tracking
-                    # error. Gate the boost on near-term SLOPE confirmation (the validated
-                    # _dr_slope_conf lesson: smoother multi-window _exit_slope, not the single
-                    # 16-bar): sustain the protection ONLY when the near-term slope STILL
-                    # CONFIRMS the position. When slope weakens (genuine pullback deepening
-                    # vs AR(1) noise) the boost turns off -> less position-value wobble ->
-                    # rally stability up, recovering the keep's cost. mixed's rally-phase
-                    # longs have a positive near-term slope (that's why they're rally-phase)
-                    # -> _exit_slope*pos_dir>0 -> gate fires -> mixed +0.018 PRESERVED.
-                    # Byte-identical when slope weakens (gate 0 -> boost 0 -> reverts to the
-                    # 20-bar ret_long base term, the pre-keep behavior for those bars only).
-                    # New cross-component data dep: opp-gate vlong boost depends on near-term
-                    # slope confirmation (was vol x ret_vlong only).
-                    _slope_conf_og = max(0.0, np.tanh(_exit_slope * _pos_dir_og / 0.0004))
-                    _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og * _slope_conf_og)
+                    _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
