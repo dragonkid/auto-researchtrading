@@ -1404,22 +1404,8 @@ class Strategy:
                 # (independent signals: gross-concentration vs net-direction). Sparing
                 # magnitude (max 0.20) since it rides on top of _conc_shrink.
                 _net_tilt = (_long_notional - _short_notional) / max(equity, 1e-10)
-                # Branch step3: HIGH-CONVICTION-EXEMPTION on the net-tilt shrink. Step2 vol-gate
-                # did not restore bull stab (bull grind-leg vol_ratio is moderate, not high) ->
-                # the bull stab cost is NOT vol-regime-coupled, it is from shrinking bull's
-                # DECISIVE trend-long pile-up entries (the winners) inconsistently under AR(1)
-                # -> entry-size wobble -> exit-timing TE -> stab penalty. Exempt decisive entries:
-                # fade the net-tilt shrink to 0 as conviction margin rises (margin>=0.40 -> 0
-                # shrink), so only MARGINAL pile-up entries (rally's churny lower-conviction
-                # re-entries) get trimmed. bull's trend longs are high-conviction -> exempt ->
-                # bull BYTE-IDENTICAL (stab restored); rally's marginal re-entries trimmed ->
-                # rally raw gain preserved. Continuous tanh on margin/0.20 (exemption ramps
-                # 0->1 over margin 0..0.20, fully exempt by ~0.40). Replaces step2 vol-gate
-                # (which was the wrong separator) with the conviction-separator.
-                _net_tilt_conv_exemp = max(0.0, min(1.0, np.tanh(_bull_margin / 0.20)))  # 0 marginal, ~1 decisive
-                _net_tilt_conv_exemp_bear = max(0.0, min(1.0, np.tanh(_bear_margin / 0.20)))
-                _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * (1.0 - _net_tilt_conv_exemp) * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
-                _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * (1.0 - _net_tilt_conv_exemp_bear) * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
+                _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
+                _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
