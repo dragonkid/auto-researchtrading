@@ -2178,7 +2178,26 @@ class Strategy:
                 # muted for trend-aligned in-profit winners whose near-term slope confirms.
                 _tp_trend_align = max(0.0, np.tanh(ret_long * _pos_dir_tp / 0.04))  # 0 ct/sideways, ~1 trend-aligned
                 _tp_profit = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 loss, ~1 profit
-                _tp_gate = _tp_trend_align * _tp_profit  # both required
+                # BRANCH step3: add MULTI-DAY trend-alignment requirement to the mute gate.
+                # Step2 still crashed bull stab (1.0->0.769) and raw (-0.266): bull-2021 is
+                # a CHOPPY high-vol uptrend whose 20-bar ret_long stays positive through
+                # corrections (uptrend intact locally) -> _tp_trend_align fires -> mute holds
+                # longs through sharp corrections -> giveback -> stab crash + raw drop. The
+                # 20-bar ret_long is too SHORT-TERM to distinguish a persistent trend (crash
+                # multi-month downtrend, rally grinding uptrend) from a choppy one (bull-2021
+                # sharp up-with-deep-corrections). Use the MULTI-DAY ret_vlong (96-bar OLS,
+                # the validated persistent-trend signal): crash persistent downtrend (ret_vlong
+                # strongly negative, short pos_dir=-1 -> product strongly +) and rally grinding
+                # uptrend (ret_vlong strongly +, long -> product +) have STRONG multi-day
+                # trend-alignment; bull-2021 choppier uptrend has noisier/weaker ret_vlong ->
+                # product smaller -> gate fades -> mute suppressed -> bull spared. Fast-
+                # saturating /0.02 (near-constant where it fires, noise-free per validated
+                # lesson). Combined with the 20-bar _tp_trend_align (both required: persistent
+                # multi-day AND current 20-bar aligned = a genuine ONGOING trend, not a choppy
+                # local uptrend). Crash/rally kept; bull (choppy multi-day) spared. sideways
+                # (ret_vlong~0) spared. New cross-timescale gate on the mute.
+                _tp_vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # 0 choppy/ct, ~1 persistent trend-aligned
+                _tp_gate = _tp_trend_align * _tp_profit * _tp_vlong_align  # all three required
                 _time_pressure = _time_pressure * (1.0 - 0.15 * _tp_slope_conf * _tp_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
