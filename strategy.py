@@ -1951,7 +1951,7 @@ class Strategy:
                     # (the amplified increment 0.10 still requires the deeper 0.75 threshold,
                     # the base 0.12 requires the shallower 0.5 threshold so crash's full
                     # sustained gain from Exp5 is preserved).
-                    _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
+                    _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.35) / 0.15))  # base gate: persistent downtrend. Exp5 (this session): onset 0.5->0.35 to address the documented Exp5-60de39c8 root cause (mixed down_persist ~0.5 sat right at the 0.5 threshold -> gate ~0 -> sustain path barely fired for mixed regardless of magnitude amplifier). Lowering the ONSET (the gate itself, not the magnitude) lets mixed's ~0.5 down_persist produce gate ~0.84 (vs ~0 at onset 0.5) so the validated sustain boost actually reaches mixed's held-long positions. crash (~0.9) stays saturated (gate ~1, byte-identical); rally (~0.3) stays ~0 (excluded, byte-identical); sideways (~0.5) gets some gate -- monitored for leak.
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
