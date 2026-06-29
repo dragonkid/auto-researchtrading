@@ -2657,39 +2657,6 @@ class Strategy:
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
-                    # Exp1 (architectural, indep): OWN-DVP-confirmation exit-PROTECTION on the
-                    # opp-gate graduated fraction. NEW cross-data-type dep at the opp-gate
-                    # decision (the ONE exit path that moves mixed, per f7af0069 keep): the
-                    # existing graduation protects trend-aligned+in-profit WINNERS from full
-                    # exit on opp-voter SPIKES via the 20-bar ret_long / 96-bar ret_vlong
-                    # (PRICE-trend confirmation). This adds an orthogonal VOLUME-DIRECTION
-                    # confirmation: when the held position's own-symbol directional volume
-                    # pressure (12-bar normalized OBV, _dvp) still AGREES with the position
-                    # direction (buy-side volume present for a long, sell-side for a short),
-                    # the opp-voter spike is more likely a pullback noise spike than a genuine
-                    # reversal -> raise the graduation ceiling (protect the winner from full
-                    # exit) by LOWERING _opp_exit_frac_grad's floor. DVP is a differentiator
-                    # the price-trend terms cannot see: a price can pull back (ret_long dips)
-                    # while buy-side volume is STILL accumulating (DVP>0) = participation
-                    # confirms the position even as price wobbles. Distinct from the entry-side
-                    # _dvp_boost (line ~1628, first-bar size) and BTC/partner DVP boosts: this
-                    # is OWN-DVP at the EXIT decision on the opp-gate path. Deep-saturated
-                    # (/0.15 DVP -> near-constant where it fires, noise-free per the validated
-                    # safe-family lesson). Shrink-only on the exit fraction (caps the
-                    # protection at 0.15 floor reduction; never exits MORE than baseline).
-                    # Byte-identical when DVP disagrees with position (ct/wrong-side ->
-                    # max(0,..)=0 -> no protection -> full graduated exit, the desired
-                    # behavior for rally pullback shorts + mixed wrong-side longs). Trend-
-                    # aligned regimes whose DVP confirms (mixed rally-phase longs with buy-side
-                    # volume, bull longs, crash shorts) get the protection; wrong-side get none.
-                    # New control flow: opp-gate exit fraction depends on own-DVP x pos_dir.
-                    _dvp_og_n = 12
-                    _dvp_og_c = closes[-_dvp_og_n - 1:]
-                    _dvp_og_v = bd.history["volume"].values[-_dvp_og_n:]
-                    _dvp_og_rets = np.sign(np.diff(_dvp_og_c))
-                    _dvp_og = float(np.sum(_dvp_og_v * _dvp_og_rets) / max(np.sum(_dvp_og_v), 1e-10))
-                    _dvp_confirm_og = max(0.0, np.tanh(_dvp_og * _pos_dir_og / 0.10))  # 0 disagree/ct, ~1 confirm (sharper /0.10: deep DVP saturates faster)
-                    _opp_exit_frac_grad = max(0.25, _opp_exit_frac_grad - 0.15 * _dvp_confirm_og)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
