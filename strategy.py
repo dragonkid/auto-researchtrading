@@ -2248,23 +2248,6 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # branch step5: VOL-GATED vlong-confirmation REDUCTION to _opp_trend_amp.
-                # step4 added a vlong boost to _trend_align_vb (opp-atten): mixed +0.006
-                # (ride mixed trend-aligned rally-phase longs). But the boost SATURATES
-                # at _trend_align_vb=1.0 (cap), so magnitude raise (step5-attempt, 0.30->
-                # 0.50) was FLAT. Extend the SAME "ride winners" direction to the OTHER
-                # opp-bias factor _opp_trend_amp (scales opp-bias activation by 20-bar
-                # |ret_long|): when the multi-day trend CONFIRMS the position (ret_vlong*
-                # pos_dir>0) AND low-vol grind, LOWER _opp_trend_amp toward 0.5 -> less
-                # opp-bias activation -> ride trend-aligned mixed winners longer (the
-                # same mechanism as step4, on the activation-magnitude axis instead of the
-                # atten axis -> non-saturating, additive gain source). Same vol-gate as
-                # step4 (low vol_ratio = mixed/rally grind, sparing bull high-vol sharp).
-                # ret_vlong term already computed (_ret_vlong_term_vb); _vlong_vol_gate
-                # already computed. Continuous, no boundary. Byte-identical when ret_vlong
-                # term=0 (ct positions: full amp, fast exit) or vol-gate=0 (bull high-vol).
-                _opp_trend_amp = _opp_trend_amp - 0.15 * _vlong_vol_gate * _ret_vlong_term_vb  # lower amp when multi-day confirms + low-vol
-                _opp_trend_amp = max(0.5, _opp_trend_amp)  # floor at 0.5 (never fully mute opp-bias)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
