@@ -2656,7 +2656,35 @@ class Strategy:
                     _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    # Exp2 (architectural, indep): 24-bar OWN-DVP-CONFIRMATION on the
+                    # opp-gate exit-FRACTION FLOOR (the uncapped lever). Prior-session
+                    # own-DVP branch: 12-bar DVP lowering this floor moved mixed +0.005338
+                    # REAL (step1); 24-bar ungated amplified mixed +0.005336 EXTRA but
+                    # crashed sideways stability 1.0->0.44 (lag-induced exit-timing
+                    # divergence on sideways chop). Exp1 (this session, discarded)
+                    # CONFIRMED the structural fix: gating the 24-bar DVP on multi-day
+                    # trend-alignment (ret_vlong*pos_dir>0 via _ret_vlong_term_og) SPARES
+                    # sideways (ret_vlong~0 -> term~0 -> boost 0 -> byte-identical) -- but
+                    # Exp1 routed through _trend_align_og which is capped at 1.0 (absorbed).
+                    # HERE the DVP lowers the FLOOR of _opp_exit_frac_grad (uncapped: 0.4
+                    # can drop toward 0.25), the SAME lever the 12-bar version moved mixed
+                    # on, so the 24-bar amplification has REAL headroom. Gated on the
+                    # validated f7af0069 envelope: vol-gate (low-vol grind, spares bull) x
+                    # ret_vlong trend-align (spares sideways + ct). Lower exit-frac floor =
+                    # less trimming of trend-aligned in-profit winners when own-volume still
+                    # confirms -> ride mixed rally-phase longs longer -> higher mixed Sharpe
+                    # (the validated ride-winners direction). Byte-identical when vol-gate=0
+                    # (bull), ret_vlong term=0 (sideways + ct), or DVP=0. 24-bar own-DVP
+                    # computed fresh (sum vol[i]*sign(close[i]-close[i-1])/sum vol[i] over
+                    # 24 bars); deep-saturated /0.15 (near-constant where it fires, noise-free).
+                    _dvp24_n = 24
+                    _dvp24_c = closes[-_dvp24_n - 1:]
+                    _dvp24_v = bd.history["volume"].values[-_dvp24_n:]
+                    _dvp24_rets = np.sign(np.diff(_dvp24_c))
+                    _dvp24 = float(np.sum(_dvp24_v * _dvp24_rets) / max(np.sum(_dvp24_v), 1e-10))
+                    _dvp24_conv = max(0.0, np.tanh(_pos_dir_og * _dvp24 / 0.15))
+                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv
+                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
