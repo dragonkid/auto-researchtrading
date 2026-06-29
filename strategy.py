@@ -192,7 +192,6 @@ CONC_EXP_SCALE = 0.06 * LEVERAGE_K   # tanh saturation scale of the concentratio
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-DERISK_CONCAVE_AMP = 0.3  # ct-at-multi-day profit ramp exponent reduction 1.0->0.7 (concave = cut earlier in band)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2590,24 +2589,6 @@ class Strategy:
                         _dr_ct_vlong = max(0.0, np.tanh(-_dr_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                         _dr_cushion_gate = 1.0 - _dr_ct_vlong  # 1 trend-aligned (full cushion), 0 ct (linear cut)
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_cushion_gate  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
-                        # Branch step3: CONCAVE cut for ct-at-multi-day winners (opener's
-                        # named untested lever, distinct from step2's FAILED floor-narrowing
-                        # which compressed the ramp into a narrower band -> sharper boundary
-                        # -> rally stab crash 0.999->0.984). Step1's cushion gate already
-                        # makes ct positions revert to LINEAR (k=1). The opener hypothesis:
-                        # go further to CONCAVE (k<1) for ct winners -> 1 - x^k with k<1
-                        # cuts EARLIER in the ramp band (more de-risk at low pressure) so
-                        # ct-at-multi-day winners (rally pullback shorts, mixed bounce longs)
-                        # graduate to exit faster WITHOUT compressing _de_floor (the band
-                        # stays wide -> the cut onset stays smooth -> no boundary-sharpening
-                        # wobble, unlike step2). Targets the same ct-winner giveback that
-                        # step1's cushion gate targets, but via the ramp-SHAPE axis (k<1)
-                        # not the band-width axis (floor, step2's failure). Continuous (smooth
-                        # x^k, no new boundary), profit-gated (ct losers already get the 0.85
-                        # loss floor), trend-aligned (_dr_ct_vlong=0 -> k unchanged) byte-
-                        # identical. Amplifies step1's real rally signal.
-                        _dr_k -= DERISK_CONCAVE_AMP * _dr_ct_vlong * max(0.0, _pnl_scale)
-                        _dr_k = max(0.5, _dr_k)  # floor k at 0.5 (avoid pathological steepness)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
