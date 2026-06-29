@@ -2198,16 +2198,24 @@ class Strategy:
                 # (ret_vlong~0) spared. New cross-timescale gate on the mute.
                 _tp_vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # 0 choppy/ct, ~1 persistent trend-aligned
                 _tp_gate = _tp_trend_align * _tp_profit * _tp_vlong_align  # all three required
-                # BRANCH step4: reduce mute magnitude 0.15->0.08 to minimize the extension-
-                # wobble on bull. Step3 isolated the crash/rally benefit (the vlong gate)
-                # but bull remains the wall: the mute fires on bull uptrend bars -> longer
-                # held position -> extension-wobble -> stab 0.769. Crash scales with
-                # magnitude (step1 0.50->+0.041, step2/3 0.15->+0.020) so a gentler 0.08 keeps
-                # ~half the crash signal while halving the wobble exposure on bull. Test if
-                # bull stability can recover toward 1.0 at a smaller mute, accepting a
-                # smaller crash gain. If bull stab recovers AND crash stays positive, the
-                # net composite may clear closer to baseline.
-                _time_pressure = _time_pressure * (1.0 - 0.08 * _tp_slope_conf * _tp_gate)
+                # BRANCH step5: vol-gate the mute to LOW-VOL regimes only. Steps2-4 proved
+                # bull is a structural wall: bull-2021 trend-aligned profitable longs with
+                # confirming slope get muted -> held longer -> extension-wobble -> stab crash
+                # (0.769 at mag 0.15, 0.585 at 0.08 -- wobble scales with HELD-BAR COUNT not
+                # magnitude). bull/rally are inseparable on trend-alignment (both uptrends,
+                # both ret_vlong strongly +). The ONE validated bull/rally separator across
+                # prior sessions is VOL REGIME: bull-2021 is HIGH-vol SHARP (vol_ratio>1.0),
+                # rally-2024 is LOW-vol GRIND (vol_ratio<0.8). Gate the mute on low vol_ratio
+                # (full at vol_ratio<=0.8, fading to 0 at vol_ratio>=1.1) so the mute fires
+                # for rally (low-vol grind) NOT bull (high-vol sharp). CRASH is high-vol so
+                # this LOSES the crash +0.020 gain (the trade-off: crash gain was real but
+                # came with bull instability on the same trend-aligned axis; vol-gating
+                # sacrifices crash to recover bull). sideways (low vol, low trend_align) still
+                # spared by the trend-align gate. mixed (low vol) may benefit. Test: if bull
+                # stab fully recovers to ~1.0 AND rally/mixed (low-vol) net positive, the
+                # composite may clear baseline. Continuous tanh on vol_ratio (no boundary).
+                _tp_vol_gate = max(0.0, min(1.0, (1.1 - vol_ratio) / 0.3))  # 1 low-vol, 0 high-vol
+                _time_pressure = _time_pressure * (1.0 - 0.15 * _tp_slope_conf * _tp_gate * _tp_vol_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
