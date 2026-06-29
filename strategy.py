@@ -2654,38 +2654,6 @@ class Strategy:
                     # the desired behavior for rally pullback shorts + mixed wrong-side longs).
                     _ret_vlong_term_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))
                     _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
-                    # Exp1 (architectural, indep): OWN-DVP-CONFIRMATION exit-protection on
-                    # the opp-gate graduated fraction. NEW orthogonal data axis at the exit
-                    # decision: when the own-symbol's DIRECTIONAL volume pressure (24-bar
-                    # normalized OBV) still AGREES with the held position (buy-side volume
-                    # for a long, sell-side for a short), an opp-voter spike is more likely
-                    # pullback noise than genuine reversal -> raise the trend-align protection
-                    # (cap) so the graduated exit trims less -> ride winners longer. Mirrors
-                    # the prior-session own-DVP-opp-gate mechanism (mixed +0.005338 REAL at
-                    # 12-bar) BUT uses a 24-BAR window: the prior branch measured 24-bar
-                    # AMPLIFIES mixed +0.005336 EXTRA (longer window captures more sustained
-                    # mixed buy-side volume on rally phases) -- BUT ungated it crashed
-                    # sideways stability 1.0->0.44 (longer DVP lags -> exit-timing divergence
-                    # on sideways chop). The FRESH structural fix: gate the DVP boost on the
-                    # SAME validated f7af0069 envelope -- (1) multi-day trend-alignment
-                    # (ret_vlong*pos_dir>0 via _ret_vlong_term_og: trend-aligned mixed rally-
-                    # phase longs; SIDEWAYS has ret_vlong~0 -> term ~0 -> DVP boost ~0 ->
-                    # sideways SPARED by construction, fixing the 24-bar sideways casualty),
-                    # (2) low-vol grind (_vlong_vol_gate: mixed/rally calm, spares bull high-
-                    # vol). The DVP confirmation is ADDITIVE with the price-trend boost
-                    # (orthogonal volume-DIRECTION axis). 24-bar own-DVP computed on the
-                    # 24 most recent bars (sum vol[i]*sign(close[i]-close[i-1])/sum vol[i]).
-                    # Deep-saturated (/0.15 -> near-constant where it fires, noise-free per
-                    # validated safe-family lesson); capped via min(1.0). Byte-identical
-                    # when vol-gate=0 (bull), ret_vlong term=0 (sideways + ct), or DVP=0.
-                    _dvp24_n = 24
-                    _dvp24_c = closes[-_dvp24_n - 1:]
-                    _dvp24_v = bd.history["volume"].values[-_dvp24_n:]
-                    _dvp24_rets = np.sign(np.diff(_dvp24_c))
-                    _dvp24 = float(np.sum(_dvp24_v * _dvp24_rets) / max(np.sum(_dvp24_v), 1e-10))
-                    _dvp24_conv = max(0.0, np.tanh(_pos_dir_og * _dvp24 / 0.15))  # buy-side for long / sell-side for short
-                    _dvp24_boost = 0.20 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv
-                    _trend_align_og = min(1.0, _trend_align_og + _dvp24_boost)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
