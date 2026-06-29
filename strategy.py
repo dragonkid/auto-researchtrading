@@ -2248,29 +2248,7 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # Exp4 (architectural, indep): TREND-ALIGNED + IN-PROFIT gate on the own-side
-                # hold term (ride-winners on the OWN-side fusion path, additive with the opp-
-                # side vlong-boost keep). The own-side subtraction (-0.20*_chop_amp*own_margin)
-                # holds winners when own-side voters confirm, but fires whenever side_margin>0
-                # INCLUDING losing trend-aligned positions -> prior step8 own-side _chop_amp
-                # boost was CATASTROPHIC (DD 36-101pct, held losers). The opp-GATE keep
-                # (f7af0069) validated a DIFFERENT ride-winners envelope: trend-align x profit
-                # gate (_grad_gate = trend_align * profit_gate) graduated-exits ONLY trend-
-                # aligned WINNERS. Apply the SAME gate to the own-side hold: multiply the own-
-                # side subtraction by (trend_align x profit_gate) so it fires ONLY for trend-
-                # aligned profitable positions (mixed's low-vol trend-aligned rally-phase
-                # longs -> ride winners longer -> higher mixed Sharpe, same direction as the
-                # opp-gate keep on the OWN-side term -> additive). Losers (profit_gate~0) and
-                # counter-trend positions (trend_align~0) get the own-side hold ZEROED -> the
-                # _chop_amp own-side term contributes 0 -> NO loser-hold (fixes step8 DD).
-                # Byte-identical for ct/losing positions (gate~0 -> own-side already ~0 when
-                # side_margin small; the gate only REMOVES hold, never adds it). The opp-side
-                # term is untouched. New cross-component data dep: own-side hold depends on
-                # trend-alignment x profit (was chop x own-margin only).
-                _own_side_gate_ta = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.04))  # 0 ct, 1 trend-aligned
-                _own_side_gate_pf = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
-                _own_side_gate = _own_side_gate_ta * _own_side_gate_pf  # both required
-                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) * _own_side_gate + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
+                _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
                 # realized vol (vol-of-vol expansion), the price regime has
