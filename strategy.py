@@ -2640,6 +2640,20 @@ class Strategy:
                     # graduated behavior to engage. Continuous via tanh blend.
                     _pos_dir_og = 1.0 if current_pos > 0 else -1.0
                     _trend_align_og = max(0.0, np.tanh(ret_long * _pos_dir_og / 0.04))  # [0, ~1]
+                    # branch step9: VOL-GATED vlong-confirmation boost to opp-gate trend-align
+                    # (NEW exit path, additive with step4's opp-bias). The opp-gate graduated
+                    # exit (this block) protects trend-aligned+in-profit WINNERS from full
+                    # exit on opp-voter spikes, using 20-bar ret_long. For mixed's trend-
+                    # aligned rally-phase longs, the 96-bar ret_vlong is more STABLE (doesn't
+                    # flicker off during pullbacks) -> sustaining the graduated protection
+                    # longer -> ride mixed winners longer (same ride-winners direction as
+                    # step4, on the opp-GATE path instead of the opp-BIAS path -> additive).
+                    # Same vol-gate (low vol_ratio = mixed/rally grind, sparing bull high-vol)
+                    # + same ret_vlong confirmation term. Capped via min(1.0). Byte-identical
+                    # when vol-gate=0 (bull) or ret_vlong term=0 (ct positions: full exit fast,
+                    # the desired behavior for rally pullback shorts + mixed wrong-side longs).
+                    _ret_vlong_term_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))
+                    _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
