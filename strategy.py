@@ -2129,6 +2129,34 @@ class Strategy:
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Exp5 (architectural, indep): SLOPE-CONFIRMATION mute on time-pressure.
+                # Time-pressure currently fires purely on bars_held vs _max_hold (a bar
+                # counter) regardless of whether the trend is still ongoing. The _w_time
+                # weight is trend-MAGNITUDE-muted (|ret_long|, 20-bar return) but a trend-
+                # aligned winner can have strong ret_long yet a WEAKENING near-term slope
+                # (trend faltering -> genuinely time to exit) OR a strong ret_long with a
+                # CONFIRMING near-term slope (trend ongoing -> time-pressure is premature).
+                # This adds a NEW cross-component data dep on the time-pressure subsystem:
+                # mute _time_pressure when the multi-window exit-slope (mean of 12/16/22-
+                # bar OLS log-HL2 slopes, already computed at line ~2014, noise-robust via
+                # 3-window averaging) STILL CONFIRMS the position direction. Mechanism: a
+                # trend-aligned winner whose near-term slope confirms is an ONGOING trend
+                # -> suppress the time-based exit (let it run) -> capture more of the trend
+                # move -> higher APY at preserved Sharpe (the return-limited prize for crash
+                # Sh1.307 100pct WR trend-aligned shorts, rally Sh1.552 grinding longs). When
+                # slope weakens/flattens (trend faltering), the mute fades -> time-pressure
+                # resumes -> exit fires -> protects giveback. Distinct from the _w_time
+                # trend-magnitude gate (ret_long magnitude, not slope): slope is a NEAR-TERM
+                # (12-22 bar) trajectory signal vs ret_long's 20-bar net-return magnitude; a
+                # flat-period-after-uptrend has ret_long still positive but slope ~0 -> this
+                # gate catches what _w_time misses. Continuous tanh (no boundary); one-sided
+                # mute (max(0,...), never amplifies time-pressure); direction-agnostic (uses
+                # pos_dir sign). Max 50% mute at full slope-confirmation. Byte-identical when
+                # slope disagrees (gate 0). New control flow: time-pressure activation depends
+                # on slope-confirmation x position-direction.
+                _pos_dir_tp = 1.0 if current_pos > 0 else -1.0
+                _tp_slope_conf = max(0.0, np.tanh(_exit_slope * _pos_dir_tp / 0.0004))
+                _time_pressure = _time_pressure * (1.0 - 0.50 * _tp_slope_conf)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
