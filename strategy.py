@@ -2683,7 +2683,19 @@ class Strategy:
                     _dvp24_rets = np.sign(np.diff(_dvp24_c))
                     _dvp24 = float(np.sum(_dvp24_v * _dvp24_rets) / max(np.sum(_dvp24_v), 1e-10))
                     _dvp24_conv = max(0.0, np.tanh(_pos_dir_og * _dvp24 / 0.15))
-                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv
+                    # branch step2: add a MULTI-DAY TREND-MAGNITUDE floor to isolate mixed's
+                    # rally-phase longs (ret_vlong solidly positive) from sideways noise
+                    # (ret_vlong~0). _ret_vlong_term_og=tanh(ret_vlong*pos_dir/0.04) is ~0.5
+                    # at ret_vlong=0.02 (sideways noise band) -- enough for the 24-bar DVP lag
+                    # to destabilize sideways exit timing (Exp2 stab 1.0->0.44). mixed's
+                    # beneficial rally-phase longs sit at ret_vlong~0.04-0.08 (solid uptrend
+                    # leg in the oscillating year) -> a magnitude floor at ~0.03 lets mixed
+                    # through at full strength while fading sideways to ~0. Continuous tanh
+                    # on |ret_vlong*pos_dir|/0.03 (no boundary); fast-saturating so mixed's
+                    # solid legs saturate to 1.0 (near-constant, noise-free) while sideways
+                    # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
+                    _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
+                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
