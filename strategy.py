@@ -2236,7 +2236,7 @@ class Strategy:
                 # keep separator: bull HIGH-vol SHARP vs rally/mixed LOW-vol GRIND). Gate
                 # the boost on low vol_ratio so it fires in the calm grind (mixed/rally)
                 # and ~off in the sharp high-vol regime (bull). Continuous tanh, no boundary.
-                _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
+                _vlong_vol_gate = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.3))  # branch step6: tightened (full<=0.7, zero>=1.0) so bull (vol rarely<1.0) fully spared
                 _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
                 _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
                 # branch step5: RAISE the max opp-atten for the low-vol grind (non-saturating
