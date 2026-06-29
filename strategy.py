@@ -2587,7 +2587,21 @@ class Strategy:
                         # Trend-aligned (ct=0) -> factor 1 -> byte-identical. Targets mixed
                         # (binding floor 0.506) via faster giveback-cut on bounce winners.
                         _dr_ct_vlong = max(0.0, np.tanh(-_dr_pos_dir * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                        _dr_cushion_gate = 1.0 - _dr_ct_vlong  # 1 trend-aligned (full cushion), 0 ct (linear cut)
+                        # Branch step4: PROFIT-RAMPED cushion gate onset. Step1's gate is
+                        # binary-ish (/0.01 saturation) -> rally ct-short winners near the
+                        # profit=0 onset wobble (the gate toggles cushion on/off across the
+                        # noise ensemble at the profit boundary) -> rally stab 0.999->0.997
+                        # (the only thing between step1 and a real gain: raw +0.0033 but stab
+                        # drags composite to +0.000166 sub-noise). Ramp the gate's STRENGTH
+                        # with profit magnitude (max(0,_pnl_scale), same continuous profit
+                        # signal used by the cushion itself): near-breakeven ct winners get a
+                        # PARTIAL gate (cushion partially retained -> smooth onset -> less
+                        # wobble); solid ct winners get the full linear cut (step1's real
+                        # gain preserved). Byte-identical for losers (profit<=0 -> gate 0 ->
+                        # cushion via _pnl_scale=0 anyway) AND trend-aligned (_dr_ct_vlong=0
+                        # -> gate factor 1 -> full cushion). Targets the stab drag directly.
+                        _dr_ct_profit_ramp = max(0.0, _pnl_scale)
+                        _dr_cushion_gate = 1.0 - _dr_ct_vlong * _dr_ct_profit_ramp  # 1 trend-aligned/loss, 0 solid-ct-winner
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_cushion_gate  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
