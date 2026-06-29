@@ -2475,7 +2475,40 @@ class Strategy:
                     # tanh activation uniformly). New data dep: none (parameter change riding the Exp4
                     # structural fix that unblocked the crash wall). Targets mixed; crash protected by
                     # the multi-day _ts_supp.
-                    _tp_scale = 0.45 * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
+                    # Exp2 (architectural, indep): MTM-PATH-CHOP-ADAPTIVE tp-harvest
+                    # magnitude. The uniform 0.45 magnitude realizes mixed's deep-peak
+                    # paper gains (the ride-winners APY lever, byte-identical for trend-
+                    # aligned regimes via _ts_supp~1 -> harvest suppressed). But mixed's
+                    # oscillating longs are CHOPPY dead capital (low MTM-path efficiency:
+                    # |net pos_pnl| / sum|bar-to-bar pos_pnl delta| ~ 0.3 vs ~0.9 for
+                    # smooth trend winners) that RE-PEAKS and gives back — converting MORE
+                    # of each re-peak to realized (deeper harvest on choppy positions)
+                    # cuts the re-peak "ride again" churn -> lower MTM oscillation ->
+                    # higher mixed SHARPE (the binding floor 0.534, Sh 0.839; scoring v3:
+                    # Sharpe gain dominates 11-36x over APY/DD, so a Sharpe lever is the
+                    # score-efficient direction vs the prior APY/return_bonus ride-winner
+                    # keeps). NEW cross-subsystem data dep: tp-harvest magnitude depends
+                    # on the held position's MTM-path efficiency (the SAME 12-bar pos_pnl
+                    # path signal the emission-layer reduction throttle uses, computed
+                    # fresh here). Byte-identical for trend-aligned regimes (_ts_supp~1 ->
+                    # harvest suppressed -> magnitude irrelevant regardless of chop) AND
+                    # for smooth winners (chop~0 -> magnitude stays 0.45). Amplify-only
+                    # (floor 0.45 = the validated base; max 0.65 at deep chop). The _ts_supp
+                    # already isolates the harvest to mixed's ct-at-multi-day oscillating
+                    # longs (ret_vlong<0, pos_dir=+1 -> product<0 -> _ts_supp~0 -> active),
+                    # so the chop-amplifier lands ONLY on the choppy dead-capital population
+                    # = mixed. Direction-agnostic (uses own pos_pnl path). Continuous tanh
+                    # on chop (no boundary). Targets mixed Sharpe; spares all trend-aligned.
+                    _tp_pp = self._pnl_path.get(symbol, [])
+                    _tp_chop = 0.0
+                    if len(_tp_pp) >= 4:
+                        _tp_pa = np.array(_tp_pp)
+                        _tp_net = abs(_tp_pa[-1] - _tp_pa[0])
+                        _tp_tot = float(np.sum(np.abs(np.diff(_tp_pa))))
+                        _tp_eff = _tp_net / max(_tp_tot, 1e-10)
+                        _tp_chop = max(0.0, min(1.0, 1.0 - _tp_eff))
+                    _tp_mag = 0.45 + 0.20 * _tp_chop
+                    _tp_scale = _tp_mag * max(0.0, min(1.0, np.tanh((_tp_ratio - 1.6) / 0.6))) * _tp_trend_gate * max(0.0, 1.0 - 1.5 * _ts_supp)
                     target = target * (1.0 - _tp_scale)
 
                 # Architectural: removed binary soft-exit clause (-3 LOC).
