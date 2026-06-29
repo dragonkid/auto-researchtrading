@@ -2654,21 +2654,6 @@ class Strategy:
                     # the desired behavior for rally pullback shorts + mixed wrong-side longs).
                     _ret_vlong_term_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))
                     _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
-                    # Branch step2 (this branch): DVP-confirmation boost to _trend_align_og
-                    # (widens the POPULATION of graduated winners, vs Exp1's floor-depth lever).
-                    # When own-DVP confirms the position, raise the graduation GATE so MORE
-                    # mixed rally-phase longs qualify for graduated (partial) exit instead of
-                    # binary full exit on opp-voter spikes. Structurally different from Exp1
-                    # (which lowered the exit FRACTION floor for already-graduated positions):
-                    # this raises _grad_gate itself, expanding the protected set. Vol-gated
-                    # identically to the vlong boost (low-vol grind = mixed/rally; bull spared).
-                    _dvp_og_n = 12
-                    _dvp_og_c = closes[-_dvp_og_n - 1:]
-                    _dvp_og_v = bd.history["volume"].values[-_dvp_og_n:]
-                    _dvp_og_rets = np.sign(np.diff(_dvp_og_c))
-                    _dvp_og = float(np.sum(_dvp_og_v * _dvp_og_rets) / max(np.sum(_dvp_og_v), 1e-10))
-                    _dvp_term_og = max(0.0, np.tanh(_dvp_og * _pos_dir_og / 0.15))  # 0 disagree, ~1 confirm
-                    _trend_align_og = min(1.0, _trend_align_og + 0.25 * _vlong_vol_gate * _dvp_term_og)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
