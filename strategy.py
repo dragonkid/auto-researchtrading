@@ -2307,6 +2307,37 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
+                # Exp1 (architectural, indep): CONFIRMATION-AMPLIFIED FUSION SHAPE.
+                # The prior MAX-fusion keeps each soft source bounded (no correlated-
+                # noise SUM addition, validated). But its structural ceiling: when 2
+                # sources agree (e.g. slope-against + pp-giveback BOTH firing on a
+                # trend-aligned winner whose trend just broke), the MAX takes only the
+                # larger and IGNORES the 2nd's confirming evidence -> the exit fires at
+                # the single-source magnitude even though two independent pressure
+                # families corroborate -> delayed exit on corroborated reversals.
+                # This is the exit-pressure FUSION SHAPE axis: 3 recent sessions
+                # (results.tsv rows 1624/1633/1653) sanctioned "alter the MAX fusion
+                # to favor crash's trend-short winners" as the ONE untested exit axis.
+                # Mechanism: in TREND regimes (where single-source signals are real per
+                # the _chop_atten_w discipline, NOT chop noise), when two sources agree
+                # (high _agree_gate), AMPLIFY the fused pressure by a BOUNDED top-2
+                # blend: add up to 0.18 * second-highest to the top. Bounded (<20pct
+                # of the 2nd term) so it CANNOT exceed ~1.2*top even at full agreement
+                # (no runaway amplification); max-term remains dominant (stability of
+                # the MAX's noise-rejection preserved). Chop (_chop_atten_w~1) keeps
+                # PURE MAX (the attenuator still rules; no amplification of choppy
+                # single-source noise). Trend-aligned (_chop_atten_w~0) with 2-source
+                # agreement gets the confirmation boost -> corroborated trend-break
+                # exits fire slightly stronger -> faster realized-gain lock on the
+                # trend-aligned winners whose giveback is the binding DD/raw drag
+                # (rally Sh1.552 giveback, crash Sh1.307 return-limited). Continuous
+                # (tanh agreement * tanh trend, no new decision boundary), bounded
+                # (<0.18*2nd), direction-agnostic (no regime label). New control flow:
+                # fusion shape changes from pure MAX to trend-gated top-2 confirmation
+                # blend (the sanctioned untested FUSION SHAPE axis).
+                _trend_conf_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend (inverse of _chop_atten_w)
+                _conf_amp = 0.18 * _agree_gate * _trend_conf_w * _sorted_terms[1]
+                _soft_max = _soft_max + _conf_amp
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
