@@ -2198,7 +2198,16 @@ class Strategy:
                 # (ret_vlong~0) spared. New cross-timescale gate on the mute.
                 _tp_vlong_align = max(0.0, np.tanh(ret_vlong * _pos_dir_tp / 0.02))  # 0 choppy/ct, ~1 persistent trend-aligned
                 _tp_gate = _tp_trend_align * _tp_profit * _tp_vlong_align  # all three required
-                _time_pressure = _time_pressure * (1.0 - 0.15 * _tp_slope_conf * _tp_gate)
+                # BRANCH step4: reduce mute magnitude 0.15->0.08 to minimize the extension-
+                # wobble on bull. Step3 isolated the crash/rally benefit (the vlong gate)
+                # but bull remains the wall: the mute fires on bull uptrend bars -> longer
+                # held position -> extension-wobble -> stab 0.769. Crash scales with
+                # magnitude (step1 0.50->+0.041, step2/3 0.15->+0.020) so a gentler 0.08 keeps
+                # ~half the crash signal while halving the wobble exposure on bull. Test if
+                # bull stability can recover toward 1.0 at a smaller mute, accepting a
+                # smaller crash gain. If bull stab recovers AND crash stays positive, the
+                # net composite may clear closer to baseline.
+                _time_pressure = _time_pressure * (1.0 - 0.08 * _tp_slope_conf * _tp_gate)
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
