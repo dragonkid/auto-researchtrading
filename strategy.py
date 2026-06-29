@@ -2688,7 +2688,7 @@ class Strategy:
                     _dvp_og_v = bd.history["volume"].values[-_dvp_og_n:]
                     _dvp_og_rets = np.sign(np.diff(_dvp_og_c))
                     _dvp_og = float(np.sum(_dvp_og_v * _dvp_og_rets) / max(np.sum(_dvp_og_v), 1e-10))
-                    _dvp_confirm_og = max(0.0, np.tanh(_dvp_og * _pos_dir_og / 0.15))  # 0 disagree/ct, ~1 confirm
+                    _dvp_confirm_og = max(0.0, np.tanh(_dvp_og * _pos_dir_og / 0.10))  # 0 disagree/ct, ~1 confirm (sharper /0.10: deep DVP saturates faster)
                     _opp_exit_frac_grad = max(0.25, _opp_exit_frac_grad - 0.15 * _dvp_confirm_og)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
