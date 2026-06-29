@@ -2559,7 +2559,30 @@ class Strategy:
                         # earned by trading WITH the long-window trend, not by path shape.
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
-                        _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        # Exp1 (architectural, indep): vol-gated vlong-confirmation boost to
+                        # the de-risk trend-align factor. This is the SAME validated-safe
+                        # envelope the prior session's f7af0069 KEEP applied to the opp-bias
+                        # path (step4 +0.006) and the opp-gate path (step9 +0.018 -> KEEP),
+                        # extended here to the de-risk ramp _dr_align -- the prior session's
+                        # session-summary explicitly listed _dr_align as the untested additive
+                        # exit path that mixed/crash exits flow through. _dr_align currently
+                        # uses 20-bar ret_long*pos_dir (exactly parallel to the opp-bias base
+                        # term). For mixed's low-vol trend-aligned rally-phase longs, the 96-
+                        # bar ret_vlong is more STABLE than ret_long (doesn't flicker off
+                        # during pullbacks) -> sustaining _dr_align toward 1.0 longer raises
+                        # _dr_k -> the convex cushion (1 - x^k) holds near full size through
+                        # moderate giveback longer -> rides mixed winners longer (exit-TIMING
+                        # change, NOT a position-size change -> NOT grid-absorbed like the
+                        # walled size-boost attempts). Same vol-gate (low vol_ratio = mixed/
+                        # rally calm grind, sparing bull high-vol sharp corrections where
+                        # ret_vlong lags) + same ret_vlong confirmation term, capped via
+                        # min(1.0). Byte-identical when vol-gate=0 (bull high-vol) or
+                        # ret_vlong term=0 (ct positions: _dr_align stays at the 20-bar value,
+                        # fast linear cut preserved for rally pullback shorts + mixed wrong-
+                        # side longs). Multi-day ret_vlong is the 96-bar OLS slope (already
+                        # computed, noise-robust); _vlong_vol_gate already computed at fusion.
+                        _ret_vlong_term_dr = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.04))
+                        _dr_align = max(0.0, min(1.0, np.tanh(ret_long * _dr_pos_dir / 0.04) + 0.30 * _vlong_vol_gate * _ret_vlong_term_dr))  # 0 ct, 1 trend-aligned
                         # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
                         # convex cushion. The cushion (k>1 -> hold near full size through
                         # moderate giveback, the validated stability lever) was gated only on
