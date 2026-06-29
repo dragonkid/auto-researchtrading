@@ -2689,16 +2689,7 @@ class Strategy:
                     _dvp_og_rets = np.sign(np.diff(_dvp_og_c))
                     _dvp_og = float(np.sum(_dvp_og_v * _dvp_og_rets) / max(np.sum(_dvp_og_v), 1e-10))
                     _dvp_confirm_og = max(0.0, np.tanh(_dvp_og * _pos_dir_og / 0.15))  # 0 disagree/ct, ~1 confirm
-                    # Branch step2: CONJUNCTION amplification. When BOTH the DVP confirms AND
-                    # the validated vol-gate is active (low-vol grind = mixed/rally), apply an
-                    # ADDITIONAL floor reduction. Isolates mixed's regime (low-vol grind where
-                    # price-trend AND volume-direction both confirm) vs the high-vol regimes
-                    # where the vlong vol-gate is ~0 (bull sharp). The conjunction requires
-                    # BOTH signals -> amplifies protection only for the doubly-confirmed low-
-                    # vol winner (mixed's rally-phase longs). _vlong_vol_gate already computed
-                    # above (line ~2239). Shrink-only on exit fraction (caps protection).
-                    _dvp_vol_conj = _dvp_confirm_og * _vlong_vol_gate
-                    _opp_exit_frac_grad = max(0.20, _opp_exit_frac_grad - 0.15 * _dvp_confirm_og - 0.10 * _dvp_vol_conj)
+                    _opp_exit_frac_grad = max(0.25, _opp_exit_frac_grad - 0.15 * _dvp_confirm_og)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
