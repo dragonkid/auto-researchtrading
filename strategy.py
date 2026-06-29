@@ -1161,19 +1161,25 @@ class Strategy:
                 # tracking error and Sharpe drag are down-weighted, while clean-trend
                 # entries (high R^2, e.g. grinding bull/crash legs) keep full size and stay
                 # ~inert. Direction-agnostic (same scalar both sides). Continuous tanh on
-                # Exp2 (architectural simplification): REMOVED the _tq_atten (R^2 trend-
-                # quality first-bar attenuator). It overlapped with two other path-quality
-                # measures already in the multiply chain: _er_adj (Kaufman efficiency ratio,
-                # line ~866, measures path efficiency via |net|/sum|deltas|) and
-                # _consensus_atten (multi-window slope consensus, line ~1029, measures
-                # slope sign-agreement across 8/16/32 windows). R^2 of the 16-bar log-HL2
-                # fit is a THIRD path-linearity statistic on the same 16-bar window _lr_slope
-                # already reads -> triple-counts path cleanliness. The churn-gate (_tq_calm)
-                # confined its effect to low-churn regimes (crash/sideways/bull), but there
-                # it stacks on top of _er_adj (also low-churn-active) -> redundant. Test: if
-                # score-neutral/positive, simpler version (better OOS); if negative, the R^2
-                # term carried distinct signal. Removed: _fast_r2 call + 4 lines + the
-                # _tq_calm churn gate.
+                # R^2 (no zero-crossing -> not the walled admission-boundary family); shrink
+                # only (caps at 1.0). New data dep: first-bar size depends on path linearity.
+                _tq_r2 = _fast_r2(np.log((bd.history["high"].values[-LINREG_PERIOD:] + bd.history["low"].values[-LINREG_PERIOD:]) / 2.0))
+                _tq_atten = 0.25 + 0.75 * max(0.0, min(1.0, np.tanh(_tq_r2 / 0.30)))
+                # Branch step 6: CHURN-GATE the R^2 shrink (active in low-churn, OFF in
+                # high-churn bursts). The R^2 atten's raw gains live in sparse-entry regimes
+                # (low len(_eh)) but its noise COST falls on the bursty-entry regime whose
+                # stability is the binding constraint — R^2-dependent sizing on bursty
+                # entries adds a noise-sensitive quantity to the choppy regime's positions,
+                # dropping its stability below baseline. Gate the shrink by the SAME
+                # noise-immune integer churn count the baseline grids use: _tq_calm ~1 at
+                # len(_eh)<=1 (sparse-entry regimes get the full R^2 shrink -> raw gains kept)
+                # fading to ~0 at len(_eh)>=3 (bursty entries get NO shrink -> positions
+                # revert to un-attenuated size, sparing the choppy regime's stability).
+                # Self-measured behavioral gate (NOT a regime label) — same family as the
+                # baseline's churn-gated grids/deadband; regime effects fall out of realized
+                # per-symbol entry density. Blend toward 1.0 (no shrink) as churn rises.
+                _tq_calm = 1.0 - max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+                _tq_atten = 1.0 - (1.0 - _tq_atten) * _tq_calm
                 # Architectural: anti-noise-dip admission stickiness (avg5 RE-TEST).
                 # Re-tests commit 45942a93 (results.tsv row 689) which was RAW BYTE-IDENTICAL
                 # on all 4 regimes (zero clean-trade delta: prev-bar crossings are already
@@ -1671,11 +1677,11 @@ class Strategy:
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
