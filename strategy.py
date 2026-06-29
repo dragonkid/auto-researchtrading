@@ -1676,12 +1676,33 @@ class Strategy:
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
+                # Exp2 (architectural, indep): ENTRY-SIDE crash-trend-short extension
+                # (sanctioned-untested direction (a) from prior session). Prior session
+                # proved a REAL +0.041 crash Sharpe signal exists from extending crash's
+                # 100%-WR trend shorts (the return-limited prize: Sh1.307, DD2.83pct =
+                # large headroom), but EVERY time-pressure/max_hold path to extend them
+                # WALLed on the bull/rally inseparability wall (extending held positions
+                # adds bar-varying wobble that crashes bull stability). This tests the
+                # untested alternative: extend via ENTRY-SIDE first-bar size, NOT held-
+                # position time. First-bar-only sizing has NO held-position wobble (the
+                # wall's root cause) -> structurally avoids the bull/rally inseparability.
+                # The separator: crash's trend shorts are a PERSISTENT downtrend
+                # (_down_persist~0.9, validated crash signature per the _persist_down_gate
+                # diagnostics at line 1668), distinct from bull's transient pullback dips
+                # (~0.3) AND mixed's oscillation (~0.5). Gate a small bear-entry first-bar
+                # boost on _down_persist>0.75 (persistent downtrend): crash bear shorts
+                # get +0.08 larger first-bar commitment -> capture more of the 100%-WR
+                # downtrend move -> higher crash APY/Sharpe (return-limited, DD headroom).
+                # bull longs (bear path not taken) + rally longs (bear path not taken) +
+                # mixed (0.5 -> gate 0 -> byte-identical) all SPARED. Bear-only, first-bar-
+                # only, persistent-downtrend-gated. New control flow at entry sizing.
+                _crash_short_boost = 1.0 + 0.08 * max(0.0, min(1.0, np.tanh((_down_persist - 0.75) / 0.08)))
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _crash_short_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
