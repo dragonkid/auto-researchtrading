@@ -2248,54 +2248,6 @@ class Strategy:
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
                 _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
-                # Exp1 (architectural, indep): 24-bar OWN-DVP-CONFIRMATION on the opp-BIAS
-                # exit path (the 2nd additive mixed-gain source sanctioned by the 85a2e23e
-                # keep session-summary UNTESTED lead (a)). The validated 24-bar own-DVP
-                # exit-protection mechanism is ADDITIVE on the opp-GATE exit-FRACTION floor
-                # (85a2e23e keep, mixed +0.0107 via ride-winners at preserved Sharpe); the
-                # opp-GATE path only fires when an opposite-side voter reversal is detected
-                # (_opp_gate), so it is dormant for most held bars. The opp-BIAS path fires
-                # EVERY held bar (additive _voter_bias term) and currently reads NO volume/
-                # DVP signal. This routes the SAME 24-bar own-DVP confirmation onto the
-                # opp-bias path through the UNCAPPED sub-parameter _opp_trend_amp (the session
-                # summary notes _opp_atten saturates at the 0.50 cap = documented wall, BUT
-                # _opp_trend_amp magnitude is uncapped). Mechanism: when the held position's
-                # OWN-side 24-bar volume is still confirming the position direction (sustained
-                # buy-side volume on a mixed rally-phase long), the opp-voter-spike exit
-                # contribution is WEAKENED (ride the winner longer through the noise spike ->
-                # more APY at preserved Sharpe, the validated ride-winners direction on a NEW
-                # orthogonal volume-DIRECTION axis additive to the opp-gate floor keep).
-                # Reuses the VALIDATED envelope EXACTLY (byte-identical envelope-zero path):
-                #  (1) vol-gate _vlong_vol_gate (low vol_ratio = mixed/rally calm grind,
-                #      spares bull high-vol sharp uptrend where opp-bias is load-bearing for
-                #      exit-timing; computed unconditionally above for the opp-gate path);
-                #  (2) multi-day trend-align _ret_vlong_term_og (ret_vlong*pos_dir>0 ->
-                #      spares sideways ret_vlong~0 AND counter-trend rally pullback shorts +
-                #      mixed wrong-side longs that SHOULD exit fast);
-                #  (3) multi-day trend-MAGNITUDE floor _dvp24_mag_gate (|ret_vlong*pos_dir|>0.03
-                #      -> the validated sideways-sparer: mixed's solid uptrend-leg rally phases
-                #      saturate to full strength while sideways noise fades to ~0);
-                #  (4) DVP24 confirmation _dvp24_conv (own-side 24-bar directional volume
-                #      pressure, deep-saturated /0.15 -> near-constant where it fires, noise-free).
-                # Byte-identical when ANY envelope term is 0 (bull vol-gate, sideways/ct
-                # trend-align/magnitude, no own-side volume). Direction-agnostic (uses own
-                # pos_dir). Same 24-bar DVP computed fresh here (unconditional, for all held
-                # positions; the opp-gate block recomputes it locally — keeping that local
-                # copy avoids entangling the opp-gate keep's exact arithmetic). Lower the
-                # opp-bias magnitude by up to 0.15 (a 30% relative cut on the 0.5 opp_trend_amp
-                # band; shrink-only, caps at the baseline _opp_trend_amp).
-                _dvp24_ob_n = 24
-                if len(closes) > _dvp24_ob_n:
-                    _dvp24_ob_c = closes[-_dvp24_ob_n - 1:]
-                    _dvp24_ob_v = bd.history["volume"].values[-_dvp24_ob_n:]
-                    _dvp24_ob_rets = np.sign(np.diff(_dvp24_ob_c))
-                    _dvp24_ob = float(np.sum(_dvp24_ob_v * _dvp24_ob_rets) / max(np.sum(_dvp24_ob_v), 1e-10))
-                    _pos_dir_ob = 1.0 if current_pos > 0 else -1.0
-                    _dvp24_ob_conv = max(0.0, np.tanh(_pos_dir_ob * _dvp24_ob / 0.15))
-                    _ret_vlong_term_ob = max(0.0, np.tanh(ret_vlong * _pos_dir_ob / 0.04))
-                    _dvp24_ob_mag = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_ob) - 0.03) / 0.02)))
-                    _dvp24_ob_protect = _vlong_vol_gate * _ret_vlong_term_ob * _dvp24_ob_mag * _dvp24_ob_conv
-                    _opp_trend_amp = _opp_trend_amp * (1.0 - 0.15 * _dvp24_ob_protect)
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
