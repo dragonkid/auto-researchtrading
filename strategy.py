@@ -2307,31 +2307,6 @@ class Strategy:
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
                 _soft_max = _soft_max * _soft_atten
-                # Exp1 (architectural, indep): MULTIPLICATIVE agreement amplification on
-                # soft_max. Prior session sanctioned-untested axis (b): the ADDITIVE fusion
-                # blend (top1 + small*top2) was a confirmed dead end -- two mildly-correlated
-                # pressure sources (slope-against + pp-giveback share HL2/closes inputs) both
-                # fire on trend-aligned winners -> ADD sums the correlated noise -> DD explosion
-                # + stability collapse on bull/sideways. A MULTIPLICATIVE shape is structurally
-                # distinct: _soft_max *= (1 + AMP*_agree_gate*ct_gate) amplifies the top source
-                # by a factor driven by _agree_gate (the 2nd/1st RATIO, a shape statistic in
-                # [0,1]) NOT by the magnitude of top2. If AR(1) noise perturbs both sources up
-                # together (correlated), top1 rises but the ratio (and thus the amplification
-                # factor) is near-preserved -> far less noise re-amplification than the additive
-                # blend (which summed the perturbed magnitudes). Capped small (AMP 0.20 max).
-                # GATED on counter-trend-at-multi-day (_ct_pos_str, the validated fast-saturating
-                # /0.04 ret_vlong ct indicator) so trend-aligned winners (bull longs, crash
-                # shorts, rally longs -> ct gate ~0 -> byte-identical) are SPARED -- this is the
-                # critical safety from the dead additive-blend which over-fired on trend winners
-                # and blew up bull DD. Targets mixed (choppy oscillating counter-trend longs in
-                # a multi-day down year): when 2+ exit pressures agree there (slope-against +
-                # giveback + time), that is genuine "trim this oscillating dead-capital position"
-                # confirmation -> amplified exit -> less MTM oscillation -> higher mixed Sharpe
-                # (the binding floor 0.506, dominates the 0.311 std). _ct_pos_str reused below at
-                # the voter_bias EMA so computing it here adds no new price-derived reads. New
-                # fusion-shape control flow (multiplicative, ct-gated, not additive blend).
-                _ct_pos_str_amp = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
-                _soft_max = _soft_max * (1.0 + 0.20 * _agree_gate * _ct_pos_str_amp)
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
                 # additive _voter_bias term). Step1 (remove both): rally +0.003 (exit-
