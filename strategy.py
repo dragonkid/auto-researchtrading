@@ -2197,30 +2197,37 @@ class Strategy:
                 # positions and chop: unchanged. New cross-timescale data dep: opp-side
                 # voter_bias depends on (ret_long, position direction).
                 _pos_dir_vb = 1.0 if current_pos > 0 else -1.0
-                # branch step2: CT-GATED BLEND of the opp-bias trend-alignment atten.
-                # Exp1 rekeyed _trend_align_vb wholesale to multi-day ret_vlong (/0.01):
-                # mixed +0.013 (real -- trims mixed wrong-side longs) BUT bull -0.546
-                # (ret_vlong too SLOW for bull 2021 sharp corrections; /0.01 near-binary
-                # destabilized trend regimes, bull stab 1.0->0.698) and crash byte-
-                # identical (opp-atten is not the crash exit lever). The FIX: restore
-                # the 20-bar ret_long baseline for TREND-ALIGNED positions (ret_vlong*
-                # pos_dir>0: bull longs, crash shorts, rally longs -- where ret_long is
-                # the load-bearing fast signal) and use ret_vlong only for COUNTER-TREND-
-                # AT-MULTI-DAY positions (ret_vlong*pos_dir<0: mixed's wrong-side longs
-                # in a multi-day downtrend + rally pullback shorts in a multi-day
-                # uptrend -- where the 20-bar ret_long can momentarily agree with the
-                # position during bounces, weakening protection that the multi-day trend
-                # should keep ON for mixed's dead-capital trim and OFF for rally's
-                # losing ct shorts). The proven ct-long-in-downtrend separator
-                # (ret_vlong*pos_dir sign), validated as the mixed/rally separator in
-                # the c7ecdff1 session. Blend factor = ct-ness (smooth tanh, no boundary):
-                # _trend_align_vb = ret_long_blend*ret_long_term + (1-ret_long_blend)*ret_vlong_term.
-                # Trend-aligned (ct=0) -> pure ret_long (BYTE-IDENTICAL to baseline);
-                # ct-at-multi-day (ct=1) -> pure ret_vlong (Exp1's mixed-beneficial term).
+                # branch step3: MULTI-DAY-CONFIRMATION boost to the opp-bias trend-align
+                # term, WEAK-TREND-GATED (replaces step2's ct-blend which lost mixed's
+                # +0.013). Re-analysis of step1 (pure ret_vlong, mixed +0.013): the mixed
+                # benefit came from ret_vlong STRENGTHENING opp-atten on mixed's TREND-
+                # ALIGNED positions (ret_vlong*pos_dir>0 during mixed's rally phases) ->
+                # the 96-bar ret_vlong is more STABLE than the 20-bar ret_long (doesn't
+                # flicker off during pullbacks) -> sustained protection -> ride mixed's
+                # rally-phase longs longer -> higher mixed Sharpe (NOT dead-capital trim;
+                # the prior step2 diagnosis was wrong). Step2's ct-blend gave trend-aligned
+                # positions the ret_long term (baseline) -> no change for trend-aligned
+                # mixed -> mixed benefit lost. FIX: ADD a ret_vlong confirmation term to
+                # the baseline ret_long term (strengthen opp-atten when BOTH agree) so
+                # trend-aligned mixed positions get the sustained multi-day protection.
+                # GATE on WEAK multi-day trend (|ret_vlong|<0.03, mixed's regime) so
+                # STRONG-trend bull (|ret_vlong|~0.027... actually bull ret_vlong ~+0.027
+                # is NOT weak) -- use a DIFFERENT gate: the 20-bar ret_long MAGNITUDE.
+                # mixed's rally phases have MODEST 20-bar ret_long (weak local trend);
+                # bull's grind has LARGE 20-bar ret_long. Gate the boost on modest
+                # |ret_long| so bull (strong 20-bar) gets ~no boost (ret_long term already
+                # ~1 -> can't boost further) while mixed (modest ret_long -> ret_long term
+                # ~0.3-0.6 -> room to boost toward 1). The boost is naturally self-limiting
+                # for bull (ret_long term already saturated). max(0, min(1, ret_long_term
+                # + boost)) caps at 1.0 -> bull byte-identical (term already 1). Continuous
+                # tanh, no boundary. ct positions (ret_vlong*pos_dir<0 -> ret_vlong_term 0)
+                # get NO boost -> opp-bias full (fast exit for rally pullback shorts +
+                # mixed wrong-side longs that ARE ct). Byte-identical for strong-trend
+                # regimes (bull/crash/rally-longs: ret_long term ~1 -> capped -> no change).
                 _ret_long_term_vb = max(0.0, np.tanh(ret_long * _pos_dir_vb / 0.05))   # baseline term (20-bar, /0.05)
-                _ret_vlong_term_vb = max(0.0, np.tanh(ret_vlong * _pos_dir_vb / 0.01)) # Exp1 term (multi-day, fast-sat /0.01)
-                _ct_blend_vb = max(0.0, np.tanh(-ret_vlong * _pos_dir_vb / 0.01))      # ~0 trend-aligned, ~1 ct-at-multi-day
-                _trend_align_vb = (1.0 - _ct_blend_vb) * _ret_long_term_vb + _ct_blend_vb * _ret_vlong_term_vb
+                _ret_vlong_term_vb = max(0.0, np.tanh(ret_vlong * _pos_dir_vb / 0.04)) # multi-day confirmation (slower /0.04 = smooth, not near-binary)
+                _vlong_boost_vb = 0.30 * _ret_vlong_term_vb  # small additive boost when multi-day confirms
+                _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
