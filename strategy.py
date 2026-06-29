@@ -1404,8 +1404,20 @@ class Strategy:
                 # (independent signals: gross-concentration vs net-direction). Sparing
                 # magnitude (max 0.20) since it rides on top of _conc_shrink.
                 _net_tilt = (_long_notional - _short_notional) / max(equity, 1e-10)
-                _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
-                _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
+                # Branch step2: VOL-GATE the net-tilt shrink on LOW vol_ratio. Exp1 opener
+                # helped rally raw +0.006 but cost bull stab 1.0->0.9989 (raw up): the net-tilt
+                # shrink wobbles bull's HIGH-vol sharp correlated-long pile-up entry size
+                # under AR(1) -> exit-timing TE -> stab penalty. The validated bull/rally
+                # separator is VOL REGIME (bull HIGH-vol SHARP vs rally LOW-vol GRIND, the
+                # f7af0069/85a2e23e keep separator): gate the shrink on low vol_ratio so it
+                # fires in rally's low-vol grind pile-ups and is ~off in bull's sharp pile-ups.
+                # Continuous tanh, no boundary. Sparing: bull (vol_ratio>~1.2) -> gate ~0 ->
+                # bull BYTE-IDENTICAL; rally (vol_ratio~0.6-0.9) -> gate ~1 -> rally gain
+                # preserved; sideways (low-vol but single-leg, net-tilt rarely builds) -> ~no
+                # net-tilt to shrink regardless.
+                _net_tilt_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
+                _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * _net_tilt_vol_gate * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
+                _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * _net_tilt_vol_gate * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
