@@ -765,6 +765,28 @@ class Strategy:
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
             _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
+            # Exp4 (architectural, indep): MULTI-DAY ret_vlong-SIGN bull admission
+            # tightening. The existing bull ct-tightening uses 20-bar ret_long (fires on
+            # local downtrend). mixed's WRONG-SIDE LONG admissions (the binding drag: a
+            # 100pct-long book in a multi-day DOWN year) happen during LOCAL bounces where
+            # ret_long>0 -> the existing term does NOT tighten them. The validated mixed/bull
+            # separator is the multi-day ret_vlong SIGN (mixed persistently ret_vlong<0 vs
+            # bull ret_vlong>0): tighten bull admission when ret_vlong<0 (multi-day downtrend)
+            # regardless of local ret_long, filtering mixed's bounce-long entries at the
+            # ADMISSION SOURCE (cuts wrong-side-long COUNT -> higher mixed Sharpe, the score-
+            # efficient lever per scoring v3) rather than at exit (where every lever walls on
+            # the bull-overlap: Exp1 opp-bias, Exp2 tp-harvest, Exp3 opp-gate-boost all
+            # regressed). Byte-identical for bull (ret_vlong>0 -> tanh(-ret_vlong/..)=0 ->
+            # no tighten, the regime we must protect). crash dead-cat-bounce bull longs
+            # (ret_vlong<0) also tightened (they are losers -> helps crash too, but crash is
+            # 100pct WR so few bull entries there). Fast-saturating /0.015 ret_vlong scale
+            # (near-constant where it fires, noise-free per the validated ct-gate lesson; the
+            # 96-bar OLS slope already averages 96 bars of AR(1) noise). Continuous tanh, no
+            # new decision boundary (tightens an existing continuous threshold). Max 12%
+            # tighten, admission-only (Shrink at the gate, not the exit decision). NEW
+            # cross-timescale data dep: bull admission threshold depends on multi-day trend
+            # SIGN (was 20-bar ret_long only).
+            _bull_strong_min *= 1.0 + 0.12 * max(0.0, np.tanh(-ret_vlong / 0.015))
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
             # portfolio loss streak, tighten the admission bar for COUNTER-TREND entries
