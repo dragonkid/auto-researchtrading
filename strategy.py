@@ -2238,7 +2238,28 @@ class Strategy:
                 # and ~off in the sharp high-vol regime (bull). Continuous tanh, no boundary.
                 _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
                 _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
-                _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
+                # Branch step2 (this branch): OWN-DVP-confirmation boost to opp-bias trend-align
+                # (additive exit-PROTECTION on the opp-BIAS path, parallel to Exp1's opp-GATE
+                # protection). The f7af0069 keep validated the vlong boost on this _trend_align_vb
+                # (step4 +0.006); this adds an ORTHOGONAL volume-direction confirmation term:
+                # when the held position's own-symbol DVP still agrees with pos_dir (buy-side
+                # volume for a long), the opp-voter spike is pullback noise -> MORE opp-atten
+                # (block the opp-bias exit addition). Same structure as the vlong boost
+                # (additive to _trend_align_vb, capped via min(1.0)) so byte-identical when DVP
+                # disagrees (ct/wrong-side -> max(0,..)=0). Vol-gated identically to the vlong
+                # boost (low-vol grind = mixed/rally; bull high-vol spared). Deep-saturated
+                # /0.15 DVP (near-constant where it fires, noise-free, validated safe family).
+                # Distinct from Exp1 (opp-GATE exit fraction): this is the opp-BIAS additive
+                # _voter_bias term, a DIFFERENT exit path (f7af0069 keep: the two are additive).
+                # New cross-data-type dep at opp-bias fusion (own-DVP, currently only entry-side).
+                _dvp_vb_n = 12
+                _dvp_vb_c = closes[-_dvp_vb_n - 1:]
+                _dvp_vb_v = bd.history["volume"].values[-_dvp_vb_n:]
+                _dvp_vb_rets = np.sign(np.diff(_dvp_vb_c))
+                _dvp_vb = float(np.sum(_dvp_vb_v * _dvp_vb_rets) / max(np.sum(_dvp_vb_v), 1e-10))
+                _dvp_term_vb = max(0.0, np.tanh(_dvp_vb * _pos_dir_vb / 0.15))  # 0 disagree, ~1 confirm
+                _dvp_boost_vb = 0.25 * _vlong_vol_gate * _dvp_term_vb  # additive boost when DVP confirms AND low-vol grind
+                _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb + _dvp_boost_vb)
                 _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
