@@ -190,6 +190,22 @@ STRONG_WEIGHT_MIN = 1.75  # required sum of margin-above-0.5 voter contributions
 CONC_EXP_FLOOR = 0.05 * LEVERAGE_K   # concurrent same-dir notional/equity below which no shrink (scaled by LEVERAGE_K: 2x size -> 2x notional/equity -> threshold scales to keep activation invariant)
 CONC_EXP_SCALE = 0.06 * LEVERAGE_K   # tanh saturation scale of the concentration ramp (scaled by LEVERAGE_K for decision invariance)
 CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.65x)
+# Exp1 (this session, architectural indep): PORTFOLIO NET-DIRECTIONAL-TILT shrink.
+# A genuinely new PORTFOLIO-LEVEL data dependency (0 prior experiments on net-book
+# exposure; sanctioned untested lead: "portfolio-level state"). _conc_shrink above
+# fires on GROSS same-direction notional (long_notional OR short_notional, computed
+# per side) — it cannot distinguish a BALANCED long+short book (low net directional
+# risk, hedged) from a TILTED book (high net directional risk, all one way). The net
+# tilt (long_notional - short_notional)/equity is a structurally different portfolio
+# signal: a new entry that ADDS to the existing net tilt piles directional risk onto
+# an already-one-way book, whereas an entry that REDUCES the tilt (hedges) carries
+# less portfolio directional risk. Shrink the tilt-adding side only; the tilt-hedging
+# side is unshrunk (floor 1.0). Symmetric, shrink-only, continuous tanh. Scaled by
+# LEVERAGE_K (same decision-invariance discipline as CONC_EXP_FLOOR/SCALE: 2x size ->
+# 2x notional/equity -> net-tilt threshold scales to keep activation invariant).
+NET_TILT_FLOOR = 0.10 * LEVERAGE_K   # net |tilt|/equity below which no shrink (scaled by LEVERAGE_K for decision invariance)
+NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ramp (scaled by LEVERAGE_K)
+NET_TILT_MAX_SHRINK = 0.20            # max first-bar shrink at full net-tilt (-> 0.80x); conservative (orthogonal to _conc_shrink, composed multiplicatively)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
@@ -1373,6 +1389,23 @@ class Strategy:
                 _conc_frac_bear = _short_notional / max(equity, 1e-10)
                 _conc_shrink_bull = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bull - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
                 _conc_shrink_bear = 1.0 - CONC_EXP_MAX_SHRINK * max(0.0, np.tanh((_conc_frac_bear - CONC_EXP_FLOOR) / CONC_EXP_SCALE))
+                # Exp1 (architectural, indep): PORTFOLIO NET-DIRECTIONAL-TILT shrink.
+                # Reuses the cross-symbol notional aggregated above (the per-side
+                # _long_notional/_short_notional loop). Net tilt = (long-short)/equity
+                # is the SIGNED book directional exposure — orthogonal to the per-side
+                # gross concentration (_conc_shrink). A new BULL entry adds to net-long
+                # tilt: shrink by how net-long the book already is. A new BEAR entry
+                # REDUCES net-long tilt (hedges): shrink by how net-SHORT the book
+                # already is. So only the tilt-ADDING side is shrunk; the hedge side is
+                # unshrunk (floor 1.0). Symmetric, shrink-only, continuous tanh. Falls
+                # out per regime: single-leg/spike regimes rarely build net tilt -> ~1.0;
+                # correlated one-way pile-ups (already rare via _conc_shrink) get an
+                # extra directional-risk trim. Composed multiplicatively with _conc_shrink
+                # (independent signals: gross-concentration vs net-direction). Sparing
+                # magnitude (max 0.20) since it rides on top of _conc_shrink.
+                _net_tilt = (_long_notional - _short_notional) / max(equity, 1e-10)
+                _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
+                _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
                 # validated volume as an exit-side exhaustion signal (bull +0.021). Mirror
                 # it to the ENTRY side: a fresh entry taken DURING a volume spike (z>2) is
@@ -1677,11 +1710,11 @@ class Strategy:
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
