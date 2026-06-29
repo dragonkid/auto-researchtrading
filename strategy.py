@@ -1953,6 +1953,28 @@ class Strategy:
                     # sustained gain from Exp5 is preserved).
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
+                    # Exp5 (architectural, indep): ct-LONG-IN-DOWNTREND amplifier on the
+                    # sustain magnitude (mixed's dead-capital longs). The base _persist_sustain
+                    # fires for ALL downtrend positions (crash trend shorts AND mixed ct longs,
+                    # both down_persist>0.5); prior Exp3 raised the UNIFORM magnitude and over-
+                    # committed crash trend shorts (DD up, Sh down). This adds a LONG-ONLY
+                    # amplifier on top of the base mag: crash (shorts -> pos_dir<0 -> long-gate
+                    # 0 -> byte-identical) is SPARED, while mixed's ct longs in a downtrend
+                    # (pos_dir>0, ret_vlong<0 -> downtrend-strength>0) get a LARGER sustained
+                    # scale-in size. Mechanism: mixed's 100%-WR longs in a down year oscillate
+                    # but net-positive; a bigger sustained position captures more of the net
+                    # upside per trade -> higher mixed APY -> return_bonus (mixed APY 4.6pct is
+                    # low, the return-limited lever per scoring v3). The clean ct-long-in-
+                    # downtrend separator (Exp4 this session: long-only x downtrend-strength,
+                    # distinct from crash's trend-aligned shorts and rally's ct shorts in an
+                    # uptrend). mixed's small choppy positions bypass the calm grid via the
+                    # validated _small_pos_exempt chop gate -> the sustain boost reaches mixed.
+                    # Amplify-only (floor at base mag), small +0.06. New cross-component data
+                    # dep: sustain magnitude depends on (pos_dir sign, ret_vlong sign) -- the
+                    # ct-long-in-downtrend conjunction. Targets mixed (binding floor 0.506,
+                    # return-limited); crash spared by construction (long-gate 0).
+                    _sustain_long_dc = (1.0 if current_pos > 0 else 0.0) * max(0.0, np.tanh(-ret_vlong / 0.03))
+                    _persist_sustain_mag = _persist_sustain_mag + 0.06 * _sustain_long_dc
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
                     full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
