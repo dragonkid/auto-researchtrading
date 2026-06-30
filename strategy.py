@@ -2730,36 +2730,8 @@ class Strategy:
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
-                    # Exp3 (architectural, indep): 24-bar OWN-DVP-CONFIRMATION on the
-                    # opp-gate FULL-EXIT CEILING (uncapped lever, distinct from the 85a2e23e
-                    # keep's FLOOR-lower). The keep lowers the graduated-TRIM floor (0.4->0.25)
-                    # for trend-aligned in-profit winners whose own-volume confirms; the
-                    # CEILING (1.0 = full exit on a strong opp-voter reversal spike) is
-                    # fixed. Here, when ALL of {trend-aligned + in-profit + deep-profit +
-                    # own-DVP24 confirms + multi-day magnitude floor} hold -- the validated
-                    # f7af0069/85a2e23e envelope PLUS a deep-profit gate -- reduce the full-
-                    # exit ceiling toward 0.85 so even a STRONG opp-voter spike (bear votes
-                    # >= FLIP_MIN AND trend_avg<0) gets a 15% graduated trim instead of full
-                    # exit. Mechanism: a DEEP winning trend-aligned position whose own 24-bar
-                    # buy-side volume STILL confirms the direction is a confirmed trend winner
-                    # riding a genuine trend; an opp-voter spike on such a position is more
-                    # often pullback noise than reversal -> graduate the exit (preserve the
-                    # winner through the spike) rather than full-exit. Distinct from the keep
-                    # floor-lower (a different opp-gate sub-parameter). The deep-profit gate
-                    # (_tp_ratio high, the SAME deep-peak condition _ts_supp uses) is the
-                    # critical safeguard: SHALLOW profit positions do NOT get ceiling relief
-                    # (full exit on strong reversal preserved) -- only DEEP confirmed winners
-                    # ride spikes. Vol-gate (spares bull high-vol) + ret_vlong magnitude
-                    # floor (spares sideways) + DVP24 confirm (ride-winners direction).
-                    # Byte-identical when any gate is 0 (the envelope fails -> ceiling stays
-                    # 1.0 -> baseline full-exit behavior). Continuous tanh, no boundary.
-                    _dvp24_ceil_gate = _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
-                    _deep_profit_og = max(0.0, min(1.0, np.tanh((self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 2.8) / 0.6)))
-                    _ceil_lower = 0.15 * _dvp24_ceil_gate * _deep_profit_og
-                    _opp_exit_ceil = 1.0 - _ceil_lower
-                    # Blend: graduated (1.0->ceil) when _grad_gate holds; full-exit ceiling
-                    # lowered only when the deep-winner envelope fires.
-                    _opp_exit_frac = _opp_exit_ceil + (_opp_exit_frac_grad - _opp_exit_ceil) * _grad_gate
+                    # Blend: full exit (1.0) by default, graduated only when both gates hold.
+                    _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
 
             # Exp1 (this session): counter-trend-DIRECTION-gated temporal EMA on the
