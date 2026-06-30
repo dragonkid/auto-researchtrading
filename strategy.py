@@ -2716,6 +2716,53 @@ class Strategy:
                     _dvp24_rets = np.sign(np.diff(_dvp24_c))
                     _dvp24 = float(np.sum(_dvp24_v * _dvp24_rets) / max(np.sum(_dvp24_v), 1e-10))
                     _dvp24_conv = max(0.0, np.tanh(_pos_dir_og * _dvp24 / 0.15))
+                    # Exp1 (architectural, indep, THIS session): EMA-SMOOTHED 48-bar
+                    # own-DVP confirmation as a SECOND additive floor-lowering path.
+                    # Sanctioned untested lead from the 85a2e23e/f7af0069 session-
+                    # summaries: "amplification requires a STABILITY-SAFE longer-DVP-
+                    # signal source (e.g., an EMA-smoothed DVP that avoids the lag-
+                    # induced sideways exit-timing divergence)." The prior own-DVP
+                    # branch measured raw 24-bar DVP amplifies mixed +0.005336 EXTRA vs
+                    # 12-bar BUT raw windows >=18 bars crash sideways stability
+                    # 1.0->0.44 because LENGTHENING THE WITHIN-WINDOW SUM lags the
+                    # floor-lowering (fires late on sideways chop -> exit-timing TE).
+                    # NEW CONTROL-FLOW STRUCTURE (not a parameter change): instead of
+                    # lengthening the within-window sum, keep the window FIXED at the
+                    # stability-bound 12 bars but compute the DVP at EACH of the last
+                    # 48 bars, then EMA-smooth that DVP SERIES over time (span 6). The
+                    # smoothed DVP retains a LONGER effective lookback (48 bars of
+                    # directional-volume history) while the per-bar value moves
+                    # smoothly bar-to-bar (no single-window-sum lag cliff) -> the
+                    # floor-lowering amount is temporally stable under AR(1) close
+                    # perturbation -> spares sideways exit timing. Temporal EMA on the
+                    # DVP SIGNAL is a structurally distinct smoothing point from the
+                    # within-window sum (the prior branch's only lever). Composed
+                    # ADDITIVELY with the 24-bar path (max 0.10 extra floor-lower,
+                    # capped at 0.25 total floor) so mixed's ride-winners gain can
+                    # extend past the 24-bar ceiling without re-attempting the walled
+                    # raw-window-length path. Gated by the SAME validated envelope
+                    # (vol-gate x ret_vlong trend-align x magnitude-floor) -> byte-
+                    # identical for bull (vol-gate~0), sideways (ret_vlong~0 ->
+                    # magnitude-floor~0), and ct (ret_vlong term~0).
+                    _dvp48_smooth_n = 48
+                    _dvp48_win = 12  # per-bar DVP window (stability-bound length)
+                    _dvp48_c = closes[-_dvp48_smooth_n - _dvp48_win - 1:]
+                    _dvp48_v = bd.history["volume"].values[-(_dvp48_smooth_n + _dvp48_win):]
+                    # per-bar DVP over the trailing 12-bar window, for each of the last 48 bars
+                    _dvp48_series = np.empty(_dvp48_smooth_n, dtype=float)
+                    for _di in range(_dvp48_smooth_n):
+                        _e = _dvp48_win + 1 + _di  # end index into the slice (exclusive)
+                        _s = _e - (_dvp48_win + 1)
+                        _cc = _dvp48_c[_s:_e]
+                        _vv = _dvp48_v[_s:_e - 1]
+                        _rr = np.sign(np.diff(_cc))
+                        _dvp48_series[_di] = float(np.sum(_vv * _rr) / max(np.sum(_vv), 1e-10))
+                    # temporal EMA on the DVP series (span 6)
+                    _dvp48_alpha = 2.0 / (6.0 + 1.0)
+                    _dvp48_ema = _dvp48_series[0]
+                    for _di in range(1, _dvp48_smooth_n):
+                        _dvp48_ema = _dvp48_alpha * _dvp48_series[_di] + (1.0 - _dvp48_alpha) * _dvp48_ema
+                    _dvp48_conv = max(0.0, np.tanh(_pos_dir_og * _dvp48_ema / 0.15))
                     # branch step2: add a MULTI-DAY TREND-MAGNITUDE floor to isolate mixed's
                     # rally-phase longs (ret_vlong solidly positive) from sideways noise
                     # (ret_vlong~0). _ret_vlong_term_og=tanh(ret_vlong*pos_dir/0.04) is ~0.5
@@ -2728,7 +2775,15 @@ class Strategy:
                     # solid legs saturate to 1.0 (near-constant, noise-free) while sideways
                     # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
-                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
+                    # Exp1 (this session): the EMA-smoothed 48-bar DVP shares the SAME
+                    # validated envelope (vol-gate x ret_vlong trend-align x magnitude-
+                    # floor) so it is byte-identical for bull/sideways/ct by construction.
+                    # Additive 2nd path: max 0.10 extra floor-lower on top of the 24-bar
+                    # 0.15, capped so the total floor cannot drop below 0.25.
+                    _dvp48_floor_lower = 0.10 * _vlong_vol_gate * _ret_vlong_term_og * _dvp48_conv * _dvp24_mag_gate
+                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate + _dvp48_floor_lower
+                    # Cap total floor-lowering so _opp_exit_frac_grad floor stays >= 0.25.
+                    _dvp24_floor_lower = min(_dvp24_floor_lower, 0.15)
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
