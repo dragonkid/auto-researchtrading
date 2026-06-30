@@ -1660,6 +1660,38 @@ class Strategy:
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
                 _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                # Exp2 (architectural, indep): PORTFOLIO 3-SYMBOL DVP-BREADTH confirmation
+                # boost at entry. NEW portfolio-level data dep (sanctioned untested lead
+                # 05532576 keep note (c): "portfolio-level signals ... cross-symbol net
+                # book DIRECTION x multi-day-trend"). Distinct from the existing pairwise
+                # DVP boosts (_btcdvp = BTC x alt, _partnerdvp = partner x alt): those are
+                # 2-symbol PAIR conjunctions. This is a 3-symbol PORTFOLIO BREADTH gate --
+                # the MEAN directional-volume-pressure across BTC+ETH+SOL, signed by the
+                # entry direction. When all 3 symbols' volume is on the SAME side as the
+                # entry (broad-market participation confirming the direction), the entry is
+                # a high-quality broad-market-trend / broad-market-capitulation entry ->
+                # larger first-bar commitment. Distinct from net-tilt (position NOTIONAL,
+                # a level) and from own-DVP (1 symbol): this is the portfolio volume-
+                # DIRECTION breadth. Computed from the already-available _btc_dvp (line
+                # ~450) + _alt_dvp ETH/SOL (line ~500) + own _dvp; falls to 1.0 if <2
+                # symbols present. Deep-saturated /0.10 (mean DVP breadth saturates near
+                # 1.0 only when all 3 strongly agree -> near-constant where it fires,
+                # noise-free per the validated safe-family lesson), trend-ALIGNMENT gated
+                # (|ret_long|/0.04 so only genuine trend entries boost -> spares sideways
+                # chop where breadth is mean-reverting noise), first-bar-only, small
+                # +0.05 max, bilateral. Direction-agnostic general principle (no regime
+                # label). New portfolio-level cross-symbol data dep at entry sizing.
+                _port_dvp_list = [_dvp]
+                if "BTC" in bar_data:
+                    _port_dvp_list.append(_btc_dvp)
+                _port_dvp_list.append(_alt_dvp.get("ETH" if symbol != "ETH" else "SOL", 0.0))
+                _port_dvp_list.append(_alt_dvp.get("SOL" if symbol != "SOL" else "ETH", 0.0))
+                _port_dvp_arr = [d for d in _port_dvp_list if d != 0.0]
+                _port_dvp_breadth = (float(np.mean(_port_dvp_arr)) if len(_port_dvp_arr) >= 2 else 0.0)
+                _dvp_breadth_bull_conv = max(0.0, np.tanh(_port_dvp_breadth / 0.10))
+                _dvp_breadth_bear_conv = max(0.0, np.tanh(-_port_dvp_breadth / 0.10))
+                _dvp_breadth_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_breadth_bull_conv
+                _dvp_breadth_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_breadth_bear_conv
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
@@ -1710,11 +1742,11 @@ class Strategy:
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _dvp_breadth_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _dvp_breadth_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
