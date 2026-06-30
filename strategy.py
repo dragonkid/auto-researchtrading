@@ -2210,6 +2210,31 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp2 (architectural, indep): MULTI-DAY trend-ALIGNED + SLOPE-CONFIRMED
+                # max_hold extension. Exp1 showed crash +0.022 REAL from extending persistent-
+                # downtrend shorts, but the trend-align-ONLY gate leaked into sideways/mixed
+                # transient trend stretches and bull corrections (those have multi-day align
+                # on paper but mean-revert / correct) -> sideways -0.099, mixed -0.036, bull
+                # -0.048. FIX: require BOTH (a) multi-day trend-alignment (ret_vlong*pos_dir>0,
+                # the validated 96-bar signal) AND (b) near-term slope STILL CONFIRMING the
+                # position (_exit_slope*pos_dir>0, the multi-window mean already computed for
+                # the exit subsystem, smoother than single-16-bar). The conjunction fires ONLY
+                # on genuine ongoing trends: crash shorts in persistent downtrend whose near-term
+                # slope is still down, rally longs in grinding uptrend whose slope is still up.
+                # Sideways/mixed transient stretches have multi-day align on paper but their near-
+                # term slope is NOT confirming (mean-reverting) -> conjunction 0 -> byte-identical.
+                # bull corrections: slope weakens BEFORE the correction deepens -> conjunction 0
+                # -> bull spared. Same fast-saturating /0.03 ret_vlong scale (near-constant,
+                # noise-free per branch-step-9 lesson) + /0.0004 slope scale (validated slope-conf
+                # scale from win-accelerator/de-risk cushion). Small max +12pct at deep conj.
+                # Continuous tanh product, no boundary, direction-agnostic general principle (no
+                # regime label): extend holds only when BOTH the multi-day trend AND near-term
+                # slope confirm the position. New cross-component data dep: time-pressure
+                # activation depends on (ret_vlong, exit_slope) conjunction.
+                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
+                _md_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.03))
+                _slope_conf_mh = max(0.0, np.tanh(_exit_slope * _pos_dir_mh / 0.0004))
+                _max_hold *= 1.0 + 0.12 * _md_trend_align * _slope_conf_mh
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
