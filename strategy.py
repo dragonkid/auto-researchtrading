@@ -389,7 +389,26 @@ class Strategy:
         # fraction as baseline (decision invariance under leverage). Without this
         # scaling (Exp1 discarded fcae6004) the breaker fired harder/erratically
         # under AR(1) noise -> rally stability crashed 1.0->0.23.
-        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10)) / (0.008 * LEVERAGE_K)))
+        # Exp1 (architectural, indep): SMOOTH THE CIRCUIT-BREAKER INPUT. The breaker
+        # reads INSTANTANEOUS equity (1.0 - equity/peak), which under AR(1) close noise
+        # wobbles bar-to-bar -> the tanh/0.008 shrink AMOUNT wobbles bar-to-bar -> entry
+        # first-bar size wobbles across the noise ensemble -> stability tracking error.
+        # The giveback-tightening (line ~2090) ALREADY proved this exact fix: it reads the
+        # EMA-smoothed _equity_ema for ITS DD fraction (validated noise-robust: smoothing
+        # makes the tightening AMOUNT bar-to-bar stable under AR(1) while preserving the
+        # pullback-depth signal). Apply the SAME validated smoothing to the breaker's DD
+        # fraction input. The breaker is a documented load-bearing stability component
+        # (removing it regresses bull/rally stab); smoothing its INPUT (not removing it)
+        # should reduce the bar-to-bar size-variance it injects while preserving the same
+        # average activation level (same DD fraction -> same mean shrink, just stable).
+        # Byte-identical at portfolio peak (dd_frac=0 -> no shrink either way); leveraged-
+        # coupled scale retained. Span uses PORT_DD_GIVEBACK_EQUITY_SPAN (same validated
+        # EMA span as the giveback-tightening — one noise-robustness discipline for both
+        # portfolio-DD consumers). Distinct from the walled equity-CURVE-SLOPE entry
+        # shrink (c84577dc: that added a NEW derivative signal; this smooths an EXISTING
+        # load-bearing signal's input).
+        _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+        _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
