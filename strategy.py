@@ -416,7 +416,11 @@ class Strategy:
         if equity <= _prev_eq_exit:
             self._equity_ema_exit = equity  # fast-fall: instant, zero lag
         else:
-            self._equity_ema_exit = 0.3 * equity + 0.7 * _prev_eq_exit  # slow-rise: smooth recovery noise
+            # step4: raise rise alpha 0.3->0.5 (match symmetric span-3's 0.5) so recovery
+            # releases tightening FASTER -> less over-harvesting of bull/crash/sideways
+            # winners (step1's bull raw cost) while keeping zero-lag fall (rally's fast
+            # cycles capped sooner). No blend boundary (avoids step3's bull stab wobble).
+            self._equity_ema_exit = 0.5 * equity + 0.5 * _prev_eq_exit  # gentle rise: fast release, mild smoothing
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -2180,17 +2184,7 @@ class Strategy:
                 # computed from the symmetric EMA's DD fraction (the stable reference),
                 # so the gate doesn't wobble under the asym EMA. Continuous tanh on the
                 # DD fraction (no boundary); leverage-coupled scale (same as the tightening).
-                _exit_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
-                _exit_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                # step3: lower the blend onset+scale so the asym path engages at SHALLOWER
-                # DD where rally's ~5pct cycles sit (step2's 0.5*SCALE*K onset was too deep,
-                # rally reverted to baseline). Onset 0.2*SCALE*K (~0.0096 frac ~= 1pct DD,
-                # below bull/crash/sideways mild episodes so they still start on symmetric)
-                # with a FINER scale 0.2*SCALE*K so the blend saturates by ~3pct DD (rally
-                # fully on asym, milder episodes partially blended). Continuous tanh.
-                _asym_blend = max(0.0, min(1.0, np.tanh((_exit_dd_frac_sym - 0.2 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K) / (0.2 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
-                _exit_dd_frac = _exit_dd_frac_sym * (1.0 - _asym_blend) + _exit_dd_frac_asym * _asym_blend
-                _port_dd_frac = _exit_dd_frac
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
