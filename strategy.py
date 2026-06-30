@@ -1419,28 +1419,7 @@ class Strategy:
                 _vol_mean_en = float(np.mean(_vol_arr_en))
                 _vol_std_en = max(float(np.std(_vol_arr_en)), 1e-10)
                 _vol_z_en = (float(bd.history["volume"].values[-1]) - _vol_mean_en) / _vol_std_en
-                # Exp4 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY gate on the
-                # volume-spike entry shrink. The existing _vol_entry_spike shrinks ALL
-                # spike entries (z>2) by up to 0.25 (capitulation/exhaustion chases). But a
-                # spike entry that is TREND-ALIGNED at the multi-day scale (ret_vlong
-                # confirms the entry direction) is a confirmed BREAKOUT on volume, not
-                # exhaustion -- the high volume is participation confirming the trend, the
-                # exact high-quality entry worth MORE commitment, not less. Restrict the
-                # shrink to COUNTER-TREND-at-multi-day spike entries (the genuine
-                # capitulation chases: rally FOMO longs at tops against a maturing uptrend
-                # that is rolling over, crash capitulation shorts at bottoms). Uses the
-                # validated fast-saturating /0.01 ret_vlong ct indicator (_bull_ctmd/
-                # _bear_ctmd, already computed at line ~1163 for _churn_ct_atten): near-
-                # constant, noise-free per the branch-step-9 lesson. Trend-aligned spike
-                # entries (bull longs on volume breakouts, crash shorts on capitulation
-                # volume, rally confirmed-trend longs) get _vol_entry_spike = 1.0 (NO
-                # shrink) -> larger first-bar commitment on confirmed breakouts -> higher
-                # Sharpe in trend regimes. Byte-identical when not a spike (z<2). New
-                # cross-component data dep: spike-entry size depends on volume-z x multi-day-
-                # trend-direction x entry-direction conjunction. Direction-agnostic.
-                _vol_spike_raw = max(0.0, min(1.0, np.tanh((_vol_z_en - 2.0) / 1.5)))
-                _vol_entry_spike_bull = 1.0 - 0.25 * _vol_spike_raw * _bull_ctmd
-                _vol_entry_spike_bear = 1.0 - 0.25 * _vol_spike_raw * _bear_ctmd
+                _vol_entry_spike = 1.0 - 0.25 * max(0.0, min(1.0, np.tanh((_vol_z_en - 2.0) / 1.5)))  # max 25% shrink at deep spike
                 # Exp3 (architectural, indep): volume-DECLINE entry shrink (volume-price
                 # divergence). Complementary to _vol_entry_spike (shrinks HIGH-volume spike
                 # entries = capitulation/exhaustion chases): this shrinks LOW-volume entries
@@ -1731,13 +1710,13 @@ class Strategy:
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike_bull * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
-                    self._vol_shrink_held[symbol] = _vol_entry_spike_bull  # Exp9: cache for scale-in sustain
+                    self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike_bear * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
-                    self._vol_shrink_held[symbol] = _vol_entry_spike_bear  # Exp9: cache for scale-in sustain
+                    self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
