@@ -2210,6 +2210,30 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
+                # Exp1 (architectural, indep): MULTI-DAY trend-ALIGNED max_hold extension.
+                # NEW data dep in the time-pressure subsystem: max_hold currently uses
+                # vol_ratio (_vol_hold_ext) and near-term slope (_hold_adj) but NOT the
+                # multi-day 96-bar ret_vlong (the validated structural trend signal used
+                # pervasively in entry/exit sizing). The two return-limited regimes (crash
+                # Sh1.307 DD2.83pct huge headroom; rally raw-limited) are both PERSISTENT
+                # multi-day trends whose trend-aligned winners (crash shorts in sustained
+                # downtrend, rally longs in sustained uptrend) currently get the SAME time-
+                # pressure window as choppy sideways winners -> cut before the multi-day
+                # move fully plays out -> lower APY (return_bonus). Under v3 scoring, Sharpe/
+                # APY gain dominates 11-36x over DD shaving, so extending trend-aligned
+                # winners is the score-efficient direction. Gate STRICTLY on trend-ALIGNMENT
+                # (ret_vlong*pos_dir>0): trend-aligned holds (crash shorts, rally/bull longs)
+                # get longer window; counter-trend (rally pullback shorts, mixed wrong-side
+                # longs, crash dead-cat longs) get ZERO extension (gate 0 -> byte-identical,
+                # they should exit FAST not slow). Fast-saturating /0.03 scale (rally's
+                # solidly-positive ret_vlong sits in the flat tail -> near-constant, noise-
+                # free per the validated branch-step-9 lesson). Small max +15pct at deep
+                # trend-align. Continuous tanh, no boundary, direction-agnostic general
+                # principle (no regime label). New cross-timescale data dep: time-pressure
+                # activation depends on multi-day trend-alignment.
+                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
+                _md_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.03))
+                _max_hold *= 1.0 + 0.15 * _md_trend_align
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
