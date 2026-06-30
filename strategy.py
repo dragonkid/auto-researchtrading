@@ -2210,26 +2210,6 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp4 (architectural, indep): DEEP-PROFIT-GATED multi-day trend-align max_hold
-                # extension. Exp1/Exp2 showed crash +0.019-0.022 REAL from extending trend-
-                # aligned winners, but the trend-align / slope-conf gates leaked into
-                # sideways/bull (transient trend-aligned stretches). NEW separator: a DEEP-
-                # PROFIT gate (pos_pnl > +1.0*|stop| = a clear winner). Sideways mean-reverters
-                # never reach deep profit (they give back before +1*stop); bull corrections
-                # give back before the extension binds; only genuine ongoing-trend winners
-                # (crash shorts in persistent downtrend, rally longs in grinding uptrend)
-                # reach +1*stop AND have multi-day trend-align. The conjunction (deep-profit
-                # AND ret_vlong*pos_dir>0) isolates the trend-extension benefit to confirmed
-                # winners that have PROVEN the trend (pos_pnl evidence) not just traders'
-                # multi-day alignment on paper. Fast-saturating /0.03 ret_vlong (near-constant,
-                # noise-free). Small max +12pct. Continuous tanh, no boundary, direction-
-                # agnostic general principle (no regime label): extend holds only for deep-
-                # profit trend-aligned positions. New cross-component data dep: time-pressure
-                # activation depends on (pos_pnl, ret_vlong) conjunction.
-                _pos_dir_mh = 1.0 if current_pos > 0 else -1.0
-                _mh_profit_gate = max(0.0, np.tanh((pos_pnl / abs(STOP_LOSS_PCT) - 1.0) / 0.6))
-                _mh_trend_align = max(0.0, np.tanh(ret_vlong * _pos_dir_mh / 0.03))
-                _max_hold *= 1.0 + 0.12 * _mh_profit_gate * _mh_trend_align
                 _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
