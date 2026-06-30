@@ -94,6 +94,17 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # (both long/short), Sharpe-affecting (alters exit timing of WINNERS, not size).
 # Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
 PORT_DD_GIVEBACK_TIGHTEN = 0.50   # max fractional reduction of giveback at deep DD (probing higher; step3 mag0.40 gave +0.0124 keep, rally DD 6.80pct has headroom below 8pct knee)
+# Exp1 branch step5 (architectural): EXIT-side giveback-tightening magnitude cap.
+# The entry-side breaker uses the full PORT_DD_GIVEBACK_TIGHTEN=0.50 on the asym
+# _equity_ema_atten (gates first-bar SIZE, regime-isolated by DD-timing). Step1
+# applied the same 0.50 magnitude to the EXIT-side asym _equity_ema_exit, but the
+# exit-side tightening operates on WINNERS across all regimes (giveback harvests
+# trend longs/shorts every held bar) -> over-harvested bull/crash/sideways winners
+# during their milder DD episodes (bull raw -0.052). The exit side needs a SMALLER
+# magnitude: enough to cap rally's fast DD cycles sooner (the zero-lag fall benefit,
+# rally stab clearing) but less aggressive winner-harvesting. New separate constant
+# (decouples exit-side tightening magnitude from the entry-side breaker magnitude).
+PORT_DD_GIVEBACK_TIGHTEN_EXIT = 0.25   # exit-side cap (half the entry-side 0.50); step5 isolates rally gain from bull over-harvest
 PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
 PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
 # Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE PROFIT-TARGET HARVEST.
@@ -416,11 +427,10 @@ class Strategy:
         if equity <= _prev_eq_exit:
             self._equity_ema_exit = equity  # fast-fall: instant, zero lag
         else:
-            # step4: raise rise alpha 0.3->0.5 (match symmetric span-3's 0.5) so recovery
-            # releases tightening FASTER -> less over-harvesting of bull/crash/sideways
-            # winners (step1's bull raw cost) while keeping zero-lag fall (rally's fast
-            # cycles capped sooner). No blend boundary (avoids step3's bull stab wobble).
-            self._equity_ema_exit = 0.5 * equity + 0.5 * _prev_eq_exit  # gentle rise: fast release, mild smoothing
+            # step5: revert to rise alpha 0.3 (step1's rally-clearing config); cap the
+            # exit-side tightening MAGNITUDE separately (below) instead of gentling the
+            # EMA shape (step4's 0.5 reverted rally). Zero-lag fall + 0.3 rise smoothing.
+            self._equity_ema_exit = 0.3 * equity + 0.7 * _prev_eq_exit  # slow-rise: smooth recovery noise
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -2185,7 +2195,7 @@ class Strategy:
                 # so the gate doesn't wobble under the asym EMA. Continuous tanh on the
                 # DD fraction (no boundary); leverage-coupled scale (same as the tightening).
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN_EXIT * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
