@@ -205,7 +205,7 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 # 2x notional/equity -> net-tilt threshold scales to keep activation invariant).
 NET_TILT_FLOOR = 0.10 * LEVERAGE_K   # net |tilt|/equity below which no shrink (scaled by LEVERAGE_K for decision invariance)
 NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ramp (scaled by LEVERAGE_K)
-NET_TILT_MAX_SHRINK = 0.40            # max first-bar shrink at full net-tilt (-> 0.60x); raised 0.30->0.40 (step5: step4 0.30 gave +0.003 rally raw, test scaling headroom vs bull stab acceleration)
+NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
