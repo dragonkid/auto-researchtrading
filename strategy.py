@@ -434,7 +434,15 @@ class Strategy:
         # asymmetric.
         _prev_eq_atten = getattr(self, "_equity_ema_atten", equity)
         if equity <= _prev_eq_atten:
-            self._equity_ema_atten = equity  # fast-fall: instant, zero lag
+            # Exp4: fall-side alpha 1.0->0.7. The 702c0366 keep used alpha=1.0 fall
+            # (instant, zero-lag DD-detection for rally's fast cycles) and swept ONLY
+            # the rise alpha (0.3->0.05). Fall=1.0 tracks instantaneous equity exactly,
+            # so AR(1) close noise on the FALL side (a real drawdown bar) still wobbles
+            # the shrink amount bar-to-bar. A SMALL fall smoothing (alpha=0.7) trades a
+            # little lag for reduced fall-side wobble. Hypothesis: the keep's bull stab
+            # gain came from RISE smoothing; the residual rally stab gap (0.7953 vs 0.80
+            # knee) may have a fall-side wobble component alpha=1.0 leaves on the table.
+            self._equity_ema_atten = 0.7 * equity + 0.3 * _prev_eq_atten  # fall: slight smoothing (was instant 1.0)
         else:
             self._equity_ema_atten = 0.05 * equity + 0.95 * _prev_eq_atten  # step7: slow-rise 0.1->0.05 (test if more smoothing improves margin)
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
