@@ -344,13 +344,6 @@ class Strategy:
         # bull, whose post-streak entries are trend-aligned longs). General risk-off
         # principle; no regime label.
         self._loss_streak = 0
-        # Exp2 (this session): per-symbol EMA of the scale-in PACE
-        # (_entry_full_bars_dyn) for counter-trend-at-multi-day held positions.
-        # Smooths the bar-to-bar pace wobble (driven by _win_accel pos_pnl/slope
-        # noise + _vov_gate) that perturbs ct held-position value during scale-in
-        # -> rally stability (the binding constraint). Trend-aligned byte-identical
-        # (gate 0 -> raw pace). Reset on full exit.
-        self._scale_pace_ema = {}
         # Exp1 (this session): per-symbol rolling pos_pnl PATH history (the MTM
         # trajectory since entry). Used to compute MTM-path-efficiency =
         # |net pos_pnl| / sum(|bar-to-bar pos_pnl change|) over the window, in [0,1].
@@ -1886,30 +1879,6 @@ class Strategy:
                     _pos_dir_vov = 1.0 if current_pos > 0 else -1.0
                     _ct_vov_gate = max(0.0, np.tanh(-ret_vlong * _pos_dir_vov / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
                     _entry_full_bars_dyn = _entry_full_bars_dyn + 0.6 * _vov_gate * _ct_vov_gate
-                # Exp2 (architectural, indep): COUNTER-TREND-CONDITIONED scale-in
-                # PACE EMA. _entry_full_bars_dyn varies bar-to-bar because _win_accel
-                # (pos_pnl x 16-bar slope_conf) and _vov_gate are noise-sensitive ->
-                # the scale_frac ramp value wobbles -> held-position value during
-                # scale-in differs across the AR(1) ensemble -> stability tracking
-                # error (the binding rally constraint, stab 0.7953 just below the 0.80
-                # knee). Prior session PROVED temporal smoothing of TREND-ALIGNED
-                # scale-in crashes bull (lag holds pullback longs bigger -> bull loss,
-                # INVARIANT to alpha). HERE the smoothing is GATED on counter-trend-at-
-                # multi-day ONLY: the validated _ct_si partition (ret_vlong, fast-
-                # saturating /0.01 near-constant noise-free) -> trend-aligned scale-in
-                # (bull longs, crash shorts, rally trend longs) keeps the RAW pace
-                # byte-identical (gate 0 -> EMA alpha 0 -> raw); ONLY ct-at-multi-day
-                # holds (rally pullback shorts, crash dead-cat longs) get a smoothed
-                # pace. A ct hold's pace is itself noise-driven (its _win_accel fires
-                # on noisy pos_pnl), so smoothing REDUCES bar-to-bar position-value
-                # variance without the trend-aligned lag cost. New per-symbol state +
-                # new control flow on scale-in pace for the ct partition.
-                _pos_dir_pe = 1.0 if current_pos > 0 else -1.0
-                _ct_pace_gate = max(0.0, np.tanh(-_pos_dir_pe * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
-                _pace_alpha = 0.5 * _ct_pace_gate  # EMA memory; 0 trend-aligned (raw)
-                _prev_pace = self._scale_pace_ema.get(symbol, _entry_full_bars_dyn)
-                _entry_full_bars_dyn = (1.0 - _pace_alpha) * _entry_full_bars_dyn + _pace_alpha * _prev_pace
-                self._scale_pace_ema[symbol] = _entry_full_bars_dyn
                 if bars_held <= _entry_full_bars_dyn:
                     _eff_progress = bars_held / max(_entry_full_bars_dyn, 1e-6)
                     _eff_progress = max(0.0, min(1.0, _eff_progress))
@@ -3165,7 +3134,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._scale_pace_ema):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
