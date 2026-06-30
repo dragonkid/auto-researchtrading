@@ -2830,29 +2830,7 @@ class Strategy:
                 # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                # Exp5 (architectural, indep): SLOPE-CONFIRMATION gate on the ct
-                # target-EMA alpha. The _target_ema lifts rally stab via ct-position-
-                # value consistency BUT its full-alpha smoothing (even with the loss-
-                # gate) rides ct positions that are REVERSING (near-term slope against
-                # the position) -> lag holds reversing ct losers bigger -> larger
-                # realized losses -> rally raw cost (the documented stab/raw tension).
-                # Mirrors the validated Exp4 de-risk slope-conf pattern (ce66fec6 keep)
-                # on a DIFFERENT lever: when the near-term multi-window slope STILL
-                # CONFIRMS the ct position (trending, smoothing is safe), keep full
-                # alpha; when slope weakens (reversing), cut alpha so the ct position
-                # tracks the raw shrinking target faster -> de-risk/exit sooner ->
-                # smaller losses -> rally raw up. Distinct from the loss-gate (pos_pnl
-                # sign): a WINNING ct position whose slope has weakened is about to give
-                # back / reverse -> the loss-gate (pos_pnl still positive) keeps full
-                # alpha but slope-conf cuts it. Uses the already-computed _exit_slope
-                # (mean of 12/16/22-bar OLS, smoother than single 16-bar). Smooth tanh
-                # on slope*pos_dir/0.0004 (no boundary). Trend-aligned (gate 0 -> alpha
-                # 0) byte-identical. Max additional 50% alpha cut when slope fully
-                # against. Reduction-only on alpha (never boosts smoothing).
-                _te_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _te_slope_conf = max(0.0, np.tanh(_exit_slope * _te_pos_dir / 0.0004))  # ~1 slope confirms, ~0 against
-                _te_slope_gate = 1.0 - 0.50 * (1.0 - _te_slope_conf)  # 1.0 confirmed, 0.5 slope-against
-                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate) * _te_slope_gate
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
