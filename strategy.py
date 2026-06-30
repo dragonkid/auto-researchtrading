@@ -2651,33 +2651,33 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp3 branch step2: PROFIT-VELOCITY on the de-risk cushion,
-                        # ADDITIVE BOOST-ONLY form (replaces step1's 4th multiplicative
-                        # factor). Step1 (multiplicative _dr_pnl_vel as a 4th factor)
-                        # moved rally +0.029 and mixed (binding) +0.0025 BUT regressed
-                        # bull -0.277 / crash -0.042 / sideways -0.067: the multiplicative
-                        # factor goes to 0 on plateau (pos_pnl ~ EMA) -> KILLS the
-                        # cushion (k->1, linear fast cut) for clean-trend regimes whose
-                        # winners legitimately PLATEAU during healthy grind-up (bull),
-                        # mean-reversion (sideways), or crash trend shorts. The velocity
-                        # signal is real for OSCILLATING regimes (rally/mixed winners
-                        # that should ride while rising, cut when plateauing) but the
-                        # multiplicative-to-zero form over-de-risks clean-trend plateauing
-                        # winners. FIX: keep the baseline cushion (3 original gates:
-                        # trend-align + profit + slope-conf) BYTE-IDENTICAL, and ADD a
-                        # velocity BOOST on top (capped small) so RISING winners get an
-                        # EXTRA cushion while PLATEAUING winners keep the baseline cushion
-                        # (no regression). Boost-only discipline (prior sessions
-                        # validated: boost the target regime, do not gate the others).
-                        # Boost magnitude 0.20 max, profit-gated + trend-align-gated +
-                        # slope-conf-gated so it only strengthens an already-cushioned
-                        # winner that is ALSO still rising -> isolated to the rally/mixed
-                        # oscillating-winner ride path. Smooth tanh (no boundary);
-                        # direction-agnostic; plateau (vel~0) -> boost~0 -> baseline k.
+                        # Exp3 branch step3: PROFIT-VELOCITY on the de-risk cushion,
+                        # MULTIPLICATIVE form (restored from step1) BUT VOL-GATED on LOW
+                        # vol_ratio (the validated bull/(rally,mixed) separator). Step1
+                        # (ungated multiplicative) moved rally +0.029 + mixed +0.0025 BUT
+                        # regressed bull -0.277: plateau->fast-cut fired in bull's healthy
+                        # grind-up plateaus. Step2 (boost-only) recovered crash/sideways
+                        # BUT lost the rally/mixed gains (boost too weak at saturation).
+                        # KEY INSIGHT from step1/step2: the rally/mixed gain IS the
+                        # plateau->fast-cut (multiplicative-to-zero) direction, which
+                        # OVER-de-risks bull's legitimate plateaus. The validated
+                        # separator is VOL REGIME (bull HIGH-vol SHARP vs rally/mixed
+                        # LOW-vol GRIND, per scale-in quantization keep + opp-gate DVP
+                        # keep). VOL-GATE the velocity factor so multiplicative-to-zero
+                        # fires ONLY in the calm grind (rally/mixed: plateau = real
+                        # reversal -> cut) and is ~0 in the sharp high-vol regime (bull:
+                        # plateau = healthy consolidation -> ride, baseline cushion).
+                        # _vlong_vol_gate ~0 vol_ratio>=1.2 (bull), ~1 vol_ratio<=0.8
+                        # (rally/mixed grind). Byte-identical to 05532576 baseline for
+                        # high-vol (vol-gate~0 -> velocity factor 1.0 -> baseline k).
+                        # Smooth tanh (no boundary); direction-agnostic; profit-gated.
                         _pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
                         _dr_pnl_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr) / 0.01))
-                        _dr_k_base = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # baseline cushion (byte-identical to 05532576 when vel~0)
-                        _dr_k = _dr_k_base + 0.20 * _dr_pnl_vel * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # +0.20 max extra cushion when rising AND trend-aligned AND profit
+                        # velocity factor: 1.0 (baseline cushion) in high-vol/bull OR when
+                        # profit still rising; fades toward 0 (fast cut) ONLY in low-vol
+                        # grind (rally/mixed) when profit plateaus.
+                        _dr_vel_factor = 1.0 - _vlong_vol_gate * (1.0 - _dr_pnl_vel)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vel_factor  # baseline in bull/rising; fast-cut in rally/mixed plateau
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
