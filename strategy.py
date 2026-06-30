@@ -2688,10 +2688,20 @@ class Strategy:
                         # (shallow profit OR low magnitude), ct (align~0), shallow winners.
                         _dr_mag_floor = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _dr_pos_dir) - 0.03) / 0.02)))
                         _dr_depth_gate = max(0.0, min(1.0, np.tanh((max(0.0, _pnl_scale) - 0.85) / 0.10)))
-                        # velocity factor: 1.0 (baseline cushion) unless ALL of: low-vol
-                        # grind + solid multi-day trend + DEEP profit + plateauing.
-                        _dr_vel_factor = 1.0 - _vlong_vol_gate * _dr_mag_floor * _dr_depth_gate * (1.0 - _dr_pnl_vel)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vel_factor  # baseline in bull/sideways/shallow/rising/ct; fast-cut in deep rally/mixed solid-trend plateau
+                        # Exp3 branch step6: BOUND the velocity factor magnitude. Step5's
+                        # full-to-zero factor (kills cushion completely on plateau) crashed
+                        # sideways stab even when gated. Bound the max cushion reduction to
+                        # 30% (factor min 0.7) so the exit-timing perturbation is sub-noise
+                        # for sideways while rally/mixed deep-trend plateauing winners still
+                        # get a MILD cut (30% cushion reduction vs 100%). The structural
+                        # coupling (sideways and rally/mixed share the low-vol+trend+deep
+                        # envelope) means a full cut cannot isolate them; a BOUNDED mild
+                        # cut trades rally/mixed gain magnitude for sideways stab tolerance.
+                        # Smooth (bounded tanh), no new boundary. Byte-identical when any
+                        # gate is 0 (vol-gate bull, mag-floor sideways noise, depth shallow,
+                        # align ct) OR when rising (vel~1 -> factor 1.0).
+                        _dr_vel_factor = 1.0 - 0.30 * _vlong_vol_gate * _dr_mag_floor * _dr_depth_gate * (1.0 - _dr_pnl_vel)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vel_factor  # baseline in bull/sideways/shallow/rising/ct; MILD cut (max 30%) in deep rally/mixed solid-trend plateau
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
