@@ -2168,7 +2168,20 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _mtm_chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                _tighten_gate = max(0.0, min(1.0, np.tanh((_mtm_chop_ex - 0.50) / 0.15)))  # 0 smooth winners (fully spared), ~1 deep chop (rally ct losers, mixed dead capital). onset 0.50 so bull/sideways smooth winners (chop well below 0.50) get ZERO tightening.
+                # Branch step4: CONJUNCTION of MTM-chop AND counter-trend-at-multi-day. Step3
+                # (chop alone, onset 0.50) still over-tightened bull/sideways (their recovery
+                # positions have chop too) AND under-tightened rally (onset too high -> rally stab
+                # dropped below 0.80 knee). The wall: chop alone cannot separate bull's winning ct
+                # shorts from rally's losing ct shorts because BOTH are choppy during DD-recovery.
+                # The prior session found ct-ALONE also fires on both (bull's pullback shorts ARE
+                # ct-at-multi-day). The CONJUNCTION (chop x ct) isolates rally's ct-LOSERS: a
+                # position that is BOTH choppy AND counter-trend-at-multi-day is a losing ct pullback
+                # short (rally); a ct position that is SMOOTH is a winning ct short (bull -- winners
+                # have smooth MTM by construction). ct computed inline (same -pos_dir*ret_vlong/0.01
+                # fast-saturating scale as _ct_te_str). Byte-identical at portfolio peak (dd_frac=0).
+                _pos_dir_tg = 1.0 if current_pos > 0 else -1.0
+                _ct_tg = max(0.0, np.tanh(-_pos_dir_tg * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                _tighten_gate = max(0.0, min(1.0, np.tanh((_mtm_chop_ex - 0.30) / 0.20))) * _ct_tg  # chop x ct conjunction; onset 0.30 (chop) restored since ct conjunction narrows the population
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
