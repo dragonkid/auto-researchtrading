@@ -476,7 +476,7 @@ class Strategy:
         # slow regime property, not a per-bar signal). Byte-identical at portfolio peak (frac=0 ->
         # fast rise -> but no tightening active anyway).
         _prev_frac_exit = getattr(self, "_prev_port_dd_frac_exit", 0.0)
-        _rise_fast = 0.60   # branch step11: shallow DD (sideways) fast relaxation 0.40->0.60 (relax sideways faster, sideways drag is binding)
+        _rise_fast = 0.40   # shallow DD (sideways): fast relaxation
         _rise_slow = 0.05   # branch step10: deep DD (rally) slow relaxation 0.08->0.05 (keep's optimum, push rally stab 0.7993 past 0.80 knee -> stab_factor 1.0 -> rally score jump)
         _rise_alpha_exit = _rise_fast - (_rise_fast - _rise_slow) * max(0.0, min(1.0, np.tanh(_prev_frac_exit / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
         if equity <= _prev_eq_exit:
