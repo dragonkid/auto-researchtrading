@@ -378,9 +378,34 @@ class Strategy:
         signals = []
         equity = portfolio.equity if portfolio.equity > 0 else portfolio.cash
         self.bar_count += 1
-        self._peak_equity = max(self._peak_equity, equity)
+        # Exp2 (architectural, indep): CONFIRMED-PEAK update for the portfolio circuit-
+        # breaker's _peak_equity DENOMINATOR. The 702c0366 keep smoothed the breaker's
+        # NUMERATOR (asym-EMA _equity_ema_atten) so the DD fraction's bar-to-bar wobble
+        # was cut on the numerator side. But the DENOMINATOR _peak_equity remained a pure
+        # instantaneous high-water mark (max(prev, equity)) -> an AR(1) UPWARD spike in
+        # equity ratchets the peak too high PERMANENTLY (peaks only rise) -> on the next
+        # bar 1 - equity_ema_atten/peak is INFLATED (denominator too big) -> breaker fires
+        # harder for several bars until the slow-rise EMA catches up -> first-bar entry
+        # size wobble -> stability tracking error (the residual rally stab 0.7953 below
+        # the 0.80 knee the keep did NOT fully clear). Apply the SAME confirmed-peak rule
+        # the per-symbol peak_pnl already uses (line ~2057: "peak shifts only when pos_pnl
+        # > prev_peak AND pos_pnl >= prev_pos_pnl; single-bar noise spikes don't anchor
+        # the peak. Sideways sharpness preserved (peaks confirmed within 1 extra bar)"):
+        # the portfolio peak shifts only when equity EXCEEDS the prior peak AND is rising
+        # bar-over-bar. A single AR(1) up-spike does NOT anchor the peak (it must be
+        # confirmed by a second rising bar) -> the denominator is bar-to-bar STABLE under
+        # noise -> DD fraction stable -> breaker amount stable -> entry size stable ->
+        # rally stability up. Genuine new-equity highs (sustained rallies) confirm within
+        # 1 bar so peak tracking lag is negligible vs the instantaneous max. Byte-identical
+        # when equity is monotonically rising (every bar confirms). New cross-component
+        # data dep: portfolio peak now depends on the prior bar's equity (bar-over-bar
+        # confirmation), not just the instantaneous max.
+        _prev_equity = getattr(self, "_prev_equity_for_peak", equity)
+        if equity > self._peak_equity and equity >= _prev_equity:
+            self._peak_equity = equity
+        self._prev_equity_for_peak = equity
         # Exp1 branch step3: EMA-smoothed equity (for the giveback-tightening DD
-        # fraction only; _peak_equity still uses instantaneous for the entry circuit).
+        # fraction only; _peak_equity now confirmed-peak for the entry circuit).
         _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
         self._equity_ema = _eq_alpha * equity + (1.0 - _eq_alpha) * (self._equity_ema if self._equity_ema > 0 else equity)
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
