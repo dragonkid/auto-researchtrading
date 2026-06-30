@@ -2830,28 +2830,7 @@ class Strategy:
                 # -- profit-continuous); loss-gate ramp 0 profit -> ~1 deep loss, cuts
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                # Exp3 (architectural, indep): GIVEBACK-AWARE alpha gate on the ct
-                # target-EMA. The loss-gate above cuts alpha only when pos_pnl<0,
-                # so a ct WINNER that is GIVING BACK gains from its peak (peak_pnl >
-                # pos_pnl > 0) keeps FULL alpha -> the smoothing rides the giveback
-                # (holds the ct position bigger while it declines) -> larger realized
-                # giveback -> lower rally raw AND more held-position-value wobble ->
-                # lower rally stab (both axes cost). The proven _target_ema lifts rally
-                # stab via ct-position-value consistency, but the giveback phase is the
-                # ONE regime where smoothing HURTS both stab and raw. Cut alpha
-                # proportional to the GIVEBACK RATIO (peak_pnl - pos_pnl)/peak_pnl so
-                # a ct winner giving back tracks the raw (shrinking) target faster ->
-                # faster de-risk -> less giveback -> rally raw up AND less wobble ->
-                # rally stab up (breaking the stab/raw tension). Still-climbing ct
-                # winners (giveback~0) keep full alpha (preserve the consistency that
-                # holds rally stab above the 0.80 knee). Byte-identical when giveback
-                # is 0 (no peak yet, or pos_pnl at peak). Smooth tanh on the giveback
-                # ratio /0.30 (no boundary). Trend-aligned (gate 0 -> alpha 0) still
-                # byte-identical. Max additional 50% alpha cut at deep giveback.
-                _te_peak = self.peak_pnl.get(symbol, 0.0)
-                _te_giveback_ratio = max(0.0, (_te_peak - pos_pnl) / max(_te_peak, abs(STOP_LOSS_PCT)))
-                _te_giveback_gate = max(0.0, min(1.0, np.tanh(_te_giveback_ratio / 0.30)))
-                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate) * (1.0 - 0.50 * _te_giveback_gate)
+                _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
