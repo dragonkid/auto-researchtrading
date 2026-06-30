@@ -2164,7 +2164,20 @@ class Strategy:
                 # Exp2 (this session): use the ASYM fast-fall/slow-rise exit-path EMA
                 # (_equity_ema_exit, computed at line ~444) instead of the symmetric span-3
                 # _equity_ema. Same mechanism (702c0366 keep) applied to the EXIT-path DD input.
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
+                # branch step4: BLEND the asym-EMA DD-fraction with the symmetric span-3 DD-fraction.
+                # Step1 (full asym, rise 0.05): rally +0.003 but bull/sideways crash (over-tightens
+                # recovery). Step2 (rise 0.20): rally +0.017, bull recovered, sideways -0.255 (still
+                # over-tightened). Step3 (deep-DD gate): bull stab crash (delayed activation). The
+                # asym-EMA lifts rally (deep fast DD cycles benefit from fall-instant) but over-
+                # tightens sideways (shallow frequent DD cycles, slow-ish rise keeps frac elevated).
+                # BLEND: take a fraction of the asym-EMA frac and (1-frac) of the symmetric span-3
+                # frac. Blend=1 = step2 (full asym); Blend=0 = baseline (symmetric, no rally gain,
+                # no sideways cost). A mid blend captures part of the rally gain with less sideways
+                # cost. Continuous (no boundary), same DD-LEVEL activation (both fracs are DD-level
+                # invariant). General principle (no regime label): partial asym smoothing.
+                _port_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _port_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
+                _port_dd_frac = 0.5 * _port_dd_frac_sym + 0.5 * _port_dd_frac_asym
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
