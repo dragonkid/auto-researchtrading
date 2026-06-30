@@ -307,6 +307,27 @@ class Strategy:
         # makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation
         # while preserving the pullback-depth signal that drives the rally DD relief.
         self._equity_ema = 0.0
+        # Exp1 (architectural, indep): ASYMMETRIC fast-fall/slow-rise EMA for the
+        # EXIT-side portfolio-DD fraction (giveback-tightening + tp-harvest DD-relax).
+        # The 702c0366 keep applied asym (alpha=1.0 fall / 0.05 rise) to the BREAKER
+        # (entry-side size shrink) and left the exit-side DD levers on symmetric span-3
+        # (alpha=0.5 both ways). The keep note reasoned the exit side "tolerates span-3
+        # lag because it gates a SLOW exit-timing decision" -- but rally's portfolio DD
+        # episodes are FAST/choppy (3-5 bar swings), so the symmetric span-3 LAGS by ~1
+        # bar here too: a stale giveback-tightening / tp-harvest-relax fires when DD has
+        # already partially recovered -> slower DD cap on the exit side (the DD source
+        # = rally pullbacks) AND exit-timing variance -> stability cost. This applies
+        # the SAME validated asym discipline to the exit-side DD-fraction input: instant
+        # on the fall (zero-lag DD-detection -> faster tightening/harvest-relax on the
+        # pullback -> caps DD sooner), smoothed on the rise (stable tightening amount
+        # under AR(1) recovery bounces). Moderate rise alpha 0.3 (between symmetric 0.5
+        # and the breaker's 0.05) since the exit side is a SLOWER decision than the
+        # breaker's first-bar size -- releases tightening reasonably fast on recovery
+        # (avoids over-harvesting winners) while still smoothing recovery noise.
+        # Byte-identical at portfolio peak (dd_frac=0). Direction-agnostic (no regime
+        # label). New data dependency: exit-side DD fraction reads a direction-asymmetric
+        # EMA (was symmetric). Generalizes the 702c0366 keep mechanism to the exit side.
+        self._equity_ema_exit = 0.0
         # Architectural (Exp2): per-symbol entry-readiness EMA accumulator (bull, bear)
         # of the conviction margin. Smooths single-bar AR(1) noise out of the entry
         # decision; replaces the strong-sum-threshold + anti-dip + persist admission stack.
@@ -383,6 +404,19 @@ class Strategy:
         # fraction only; _peak_equity still uses instantaneous for the entry circuit).
         _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
         self._equity_ema = _eq_alpha * equity + (1.0 - _eq_alpha) * (self._equity_ema if self._equity_ema > 0 else equity)
+        # Exp1 (architectural, indep): ASYMMETRIC fast-fall/slow-rise EMA for the
+        # exit-side DD fraction. alpha=1.0 on FALL (instant DD-detection, zero lag ->
+        # giveback-tightening + tp-harvest-relax engage the moment rally's fast/choppy
+        # DD episodes start, not 1 bar late), alpha=0.3 on RISE (smooth the noisy
+        # recovery bounces -> tightening AMOUNT bar-to-bar stable under AR(1)). Same
+        # validated asym discipline as the 702c0366 breaker-input keep; moderate rise
+        # alpha (0.3, between symmetric 0.5 and the breaker's 0.05) fits the exit
+        # side's slower decision role.
+        _prev_eq_exit = self._equity_ema_exit if self._equity_ema_exit > 0 else equity
+        if equity <= _prev_eq_exit:
+            self._equity_ema_exit = equity  # fast-fall: instant, zero lag
+        else:
+            self._equity_ema_exit = 0.3 * equity + 0.7 * _prev_eq_exit  # slow-rise: smooth recovery noise
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -2134,7 +2168,7 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
