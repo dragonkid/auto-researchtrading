@@ -2165,22 +2165,7 @@ class Strategy:
                 # (_equity_ema_exit, computed at line ~444) instead of the symmetric span-3
                 # _equity_ema. Same mechanism (702c0366 keep) applied to the EXIT-path DD input.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                # branch step3: DEEP-DD ACTIVATION GATE on the giveback-tightening magnitude.
-                # Step2's faster rise recovered bull but sideways still regressed (-0.255): the
-                # asym-EMA over-tightens sideways' frequent shallow DD-recovery cycles (sideways
-                # has many small DDs -> even the faster-rise EMA keeps frac elevated -> harvesting
-                # sideways winners early -> Sharpe crash). Gate the tightening MAGNITUDE by a deep-
-                # DD activation: ~0 at shallow frac (sideways/bull small DDs -> no tightening ->
-                # byte-identical giveback -> trend winners run), fading to ~1 at deep frac (rally's
-                # deep/fast DD cycles -> full tightening -> rally stab gain preserved). Continuous
-                # tanh on (frac - floor)/scale, NO new decision boundary (smooth). The floor is a
-                # continuous multiple of the LEVERAGE_K-coupled SCALE so activation is DD-LEVEL
-                # invariant (same discipline as the scale itself). Distinct from the EMA smoothing
-                # (which smooths the INPUT over time; this gates the MAGNITUDE by DD depth). General
-                # principle (no regime label): giveback-tightening should only engage at portfolio
-                # DD depths where capping winner-ride DD is worth the return cost.
-                _deep_dd_gate = max(0.0, min(1.0, np.tanh((_port_dd_frac - 1.5 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K) / (0.5 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _deep_dd_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
@@ -2580,11 +2565,7 @@ class Strategy:
                     # size scale-down) from the maxed giveback-tolerance tightening.
                     # Byte-identical at portfolio peak (dd_frac=0 -> factor 1.0). Same
                     # leverage-coupled DD-fraction scale as giveback tightening.
-                    # branch step3: SAME deep-DD activation gate as giveback-tightening
-                    # (consistent: both exit-path DD-driven adjustments engage only at deep DD,
-                    # sparing shallow sideways/bull DD-recovery cycles).
-                    _deep_dd_gate_tp = max(0.0, min(1.0, np.tanh((_port_dd_frac - 1.5 * PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K) / (0.5 * PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K))))
-                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * _deep_dd_gate_tp * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
+                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
