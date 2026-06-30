@@ -208,11 +208,6 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-# Exp1 (architectural, this session): EMA alpha for the profit-side _pnl_scale feeding
-# the de-risk ramp EXPONENT _dr_k (ct-gated: alpha 0 for trend-aligned -> byte-identical).
-# Caps at 0.5 (matches _target_ema's alpha-cap family). Smaller = more smoothing of the
-# exponent input; tuned to reduce rally held-position-value wobble at its source.
-DR_PNLSCALE_EMA_ALPHA = 0.5
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -327,20 +322,6 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
-        # Exp1 (architectural, this session): per-symbol counter-trend EMA of the
-        # profit-side pnl_scale feeding the de-risk convex-cushion EXPONENT. The
-        # _target_ema (above) smooths the emitted LEVEL after the de-risk ramp; this
-        # smooths the RAMP EXPONENT INPUT (max(0,_pnl_scale) -> _dr_k) BEFORE the ramp,
-        # a NEW orthogonal smoothing point no prior session touched. Under AR(1) close
-        # noise pos_pnl wobbles bar-to-bar -> max(0,_pnl_scale) wobbles -> _dr_k
-        # (1.0..1.6) wobbles -> the de-ramped target wobbles -> equity TE. _target_ema
-        # partially absorbs this downstream, but its full-alpha is at a structural
-        # ceiling (every conditional alpha-cut crashes rally stab per the 702c0366
-        # session's measured wall). Smoothing the EXPONENT INPUT upstream reduces the
-        # wobble AT ITS SOURCE so _target_ema has less to absorb. CT-gated (alpha 0 for
-        # trend-aligned -> byte-identical for bull longs / crash shorts, the validated
-        # discipline of _target_ema); low-ret_vlong sideways spared. Reset on full exit.
-        self._dr_pnlscale_ema = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2707,30 +2688,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp1 (architectural, this session): EMA-smooth the profit-side
-                        # _pnl_scale feeding the de-risk EXPONENT, ct-gated (the sanctioned
-                        # untested lead: a NEW orthogonal smoothing point). The _target_ema
-                        # smooths the emitted LEVEL AFTER the ramp (at structural ceiling);
-                        # this smooths the ramp EXPONENT INPUT before the ramp, reducing the
-                        # held-position-value wobble AT ITS SOURCE. CT-gated via the SAME
-                        # fast-saturating /0.01 ret_vlong ct indicator _target_ema uses:
-                        # alpha=0 for trend-aligned (bull longs / crash shorts ->
-                        # byte-identical, the validated discipline), full alpha for ct-at-
-                        # multi-day (rally pullback shorts, the rally-stab source). Byte-
-                        # identical at portfolio peak (no DD). The smoothed value replaces
-                        # ONLY the max(0,_pnl_scale) term in _dr_k (the pressure weights
-                        # _w_slope/_w_pp/etc keep the raw _pnl_scale -- they need fast loss
-                        # reaction, NOT smoothing). Loss side unaffected (max(0,..) floors
-                        # negatives to 0 either way; smoothing a near-zero profit-side value
-                        # toward 0 only weakens the cushion on a just-turned-profit bar ->
-                        # negligible, and _dr_align/_dr_slope_conf already gate it).
-                        _dr_ct_str = max(0.0, np.tanh(-_dr_pos_dir * ret_vlong / 0.01))
-                        _dr_ps_alpha = DR_PNLSCALE_EMA_ALPHA * _dr_ct_str
-                        _dr_ps_raw = max(0.0, _pnl_scale)
-                        _prev_drps = self._dr_pnlscale_ema.get(symbol, _dr_ps_raw)
-                        _dr_ps_smooth = (1.0 - _dr_ps_alpha) * _dr_ps_raw + _dr_ps_alpha * _prev_drps
-                        self._dr_pnlscale_ema[symbol] = _dr_ps_smooth
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * _dr_ps_smooth * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
@@ -3176,7 +3134,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._dr_pnlscale_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
