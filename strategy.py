@@ -280,13 +280,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Exp3 (architectural, indep, THIS session): per-symbol EMA of pos_pnl (span 4)
-        # for the PROFIT-VELOCITY gate on the de-risk cushion. Distinct from
-        # _smoothed_pnl (1-step lag for peak confirmation) and _pnl_path (12-bar raw
-        # history for MTM-efficiency): this is a proper low-pass on the pos_pnl LEVEL so
-        # that pos_pnl - _pnl_ema_dr measures whether profit is ABOVE its recent trend
-        # (still rising) or below (plateauing/decaying) -> velocity signal.
-        self._pnl_ema_dr = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -1737,11 +1730,6 @@ class Strategy:
                 if len(_pp_hist) > 12:
                     _pp_hist = _pp_hist[-12:]
                 self._pnl_path[symbol] = _pp_hist
-                # Exp3 (this session): EMA of pos_pnl (span 4) for the profit-velocity
-                # gate on the de-risk cushion. Initialized to the first observed pos_pnl.
-                _pnl_ema_alpha_dr = 2.0 / (4.0 + 1.0)
-                _prev_pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
-                self._pnl_ema_dr[symbol] = _pnl_ema_alpha_dr * pos_pnl + (1.0 - _pnl_ema_alpha_dr) * _prev_pnl_ema_dr
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -2487,27 +2475,6 @@ class Strategy:
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
-                    # Exp3 branch step7: PROFIT-VELOCITY weakening of _ts_supp (ride-winners
-                    # harvest path, NOT the de-risk cushion). Steps1-6 established a
-                    # STRUCTURAL COUPLING WALL: the velocity factor on the de-risk cushion
-                    # perturbs SOME regime's exit timing no matter how gated (bull/sideways
-                    # share the low-vol+trend+deep envelope with rally/mixed), and any bound
-                    # weak enough to spare the others is too weak to help rally/mixed (step6
-                    # byte-identical rally/mixed, stab moved to bull). ROUTE CHANGE: _ts_supp
-                    # only fires at DEEP peaks (_tp_ratio > 2.8, a NARROWER condition than the
-                    # de-risk cushion which fires on ALL held positions) -> the velocity
-                    # weakening fires only at deep-peak harvest events, isolating mixed's deep
-                    # oscillating peaks from sideways's shallow mean-reverters (which never
-                    # reach _tp_ratio 2.8). Weaken _ts_supp (harvest more) when the deep-peak
-                    # winner is PLATEAUING (pos_pnl below its EMA = momentum exhausted at the
-                    # peak -> the re-peak is a real local top, harvest it) vs keep full
-                    # suppression when RISING (still extending, let-run). Byte-identical for
-                    # shallow winners (_tp_ratio<2.8 -> _ts_supp 0 anyway) and rising peaks.
-                    # New cross-component data dep: tp-harvest suppression depends on profit
-                    # velocity at the peak. Smooth tanh, no boundary; direction-agnostic.
-                    _pnl_ema_dr_ts = self._pnl_ema_dr.get(symbol, pos_pnl)
-                    _ts_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr_ts) / 0.01))  # 1 rising, 0 plateau
-                    _ts_supp = _ts_supp * (1.0 - 0.30 * (1.0 - _ts_vel))  # weaken up to 30% on plateau; rising -> unchanged
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
@@ -2672,7 +2639,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf (BASELINE restored; step7 moves velocity to _ts_supp)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
@@ -3118,7 +3085,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._pnl_ema_dr):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
