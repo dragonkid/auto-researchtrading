@@ -1766,43 +1766,6 @@ class Strategy:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                # Exp1 (architectural, indep): COUNTER-TREND-AT-MULTI-DAY-gated entry-
-                # target GRID QUANTIZATION on the FIRST-BAR entry value. Entries (current_pos
-                # ==0) are currently EXEMPT from all grid quantization (the existing churn-gated
-                # grids at line ~2902 require current_pos!=0 via _is_resize). So a fresh entry's
-                # first-bar target is a CONTINUOUS price-derived value: combined_mult (which
-                # reads vol_ratio, strength_scale, calm_boost, sideways_boost -- all bar-varying
-                # under AR(1) close noise) directly scales `size` -> the entry target wobbles bar-
-                # to-bar across the noise ensemble -> held-position-value variance at the ENTRY
-                # bar -> stability tracking error. The prior session explicitly identified the
-                # untested lever: "a NEW orthogonal smoothing point downstream of the emitted
-                # level, or a structural change to what the ct position VALUE is." This is a
-                # structural change to what the ct entry VALUE is: round the first-bar entry
-                # target onto the SAME stable lattice the held-resize grids use (0.06*equity*
-                # BASE_POSITION_SIZE -- equity slow + BASE const = noise-stable lines per the
-                # scale-in-quantization keep), GATED on the validated fast-saturating /0.01
-                # ret_vlong ct indicator. rally's solidly-positive ret_vlong sits in the FLAT
-                # saturated tail of tanh -> gate is a near-CONSTANT (~1 for rally ct shorts),
-                # NOT a noise-tracking quantity (the validated branch-step-9 lesson: a ct gate
-                # on the fast-saturating /0.01 scale is noise-free because rally's operating
-                # range is deep in the saturated tail). Trend-aligned entries (bull longs in
-                # uptrend, crash shorts in downtrend, rally trend longs) -> pos_dir matches
-                # ret_vlong sign -> gate 0 -> byte-identical; low-ret_vlong sideways -> gate ~0
-                # -> byte-identical. Only counter-trend-at-multi-day entries (rally pullback
-                # shorts = the documented losing rally trades, the binding rally-stab source)
-                # get quantized. NEW control flow: entry-target quantization on the entry path
-                # (was resize-only). Round-toward-target (preserves entry direction, never
-                # flips sign). Distinct from _churn_size_atten (which shrinks SIZE; this
-                # stabilizes the emitted VALUE). Does NOT touch admission (entry still admits
-                # on the same gates; only the emitted first-bar value is rounded).
-                if target != 0:
-                    _ct_entry_gate = max(0.0, np.tanh(-(1.0 if target > 0 else -1.0) * ret_vlong / 0.01))
-                    if _ct_entry_gate > 0.0:
-                        _grid_en = 0.06 * equity * BASE_POSITION_SIZE
-                        if _grid_en > 0:
-                            _qt_en = round(target / _grid_en) * _grid_en
-                            if (_qt_en > 0) == (target > 0) and _qt_en != 0:
-                                target = _qt_en
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
