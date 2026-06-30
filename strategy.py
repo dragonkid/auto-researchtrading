@@ -2728,37 +2728,7 @@ class Strategy:
                     # solid legs saturate to 1.0 (near-constant, noise-free) while sideways
                     # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
-                    # Exp2 (architectural, indep, THIS session): 6-bar RESPONSIVE own-DVP
-                    # as a 2nd additive floor-lower path. Prior own-DVP branch tested
-                    # windows 12/18/24 ONLY (12 = stability bound, 24 = amplifies mixed
-                    # +0.005336 extra but crashes sideways ungated, fixed by magnitude
-                    # floor in the 85a2e23e keep). Exp1 (this session, discarded) tested
-                    # EMA-smoothing (persistence) -> catastrophic loser-holding (DD38pct):
-                    # confirmation PERSISTENCE lags reversals -> holds losers. The
-                    # OPPOSITE direction is untested: a SHORTER 6-bar DVP that FADES FAST
-                    # when the move reverses (responsive, not persistent). Hypothesis:
-                    # mixed's rally-phase longs last >6 bars (sustained buy-side volume),
-                    # so a 6-bar DVP still confirms them (ride-winners), BUT it fades
-                    # within ~6 bars of a reversal -> does NOT lag-rebound into loser-
-                    # holding (the Exp1/long-window failure). New control-flow structure:
-                    # a 2nd DVP source at a DIFFERENT window (6 vs 24), composed additively
-                    # (not lengthening the single 24-bar sum). Sharper tanh /0.10 (6-bar
-                    # DVP has smaller per-bar magnitude; /0.10 keeps it responsive but
-                    # bounded). Small max (0.08 extra), capped at 0.15 total floor so the
-                    # floor cannot drop below 0.25 even if both paths saturate -> bounds
-                    # DD risk. SAME validated envelope (vol-gate x ret_vlong trend-align x
-                    # magnitude-floor) -> byte-identical for bull (vol-gate~0), sideways
-                    # (ret_vlong~0 -> magnitude-floor~0), ct (ret_vlong term~0).
-                    _dvp6_n = 6
-                    _dvp6_c = closes[-_dvp6_n - 1:]
-                    _dvp6_v = bd.history["volume"].values[-_dvp6_n:]
-                    _dvp6_rets = np.sign(np.diff(_dvp6_c))
-                    _dvp6 = float(np.sum(_dvp6_v * _dvp6_rets) / max(np.sum(_dvp6_v), 1e-10))
-                    _dvp6_conv = max(0.0, np.tanh(_pos_dir_og * _dvp6 / 0.10))
-                    _dvp6_floor_lower = 0.08 * _vlong_vol_gate * _ret_vlong_term_og * _dvp6_conv * _dvp24_mag_gate
-                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate + _dvp6_floor_lower
-                    # Cap total floor-lowering so _opp_exit_frac_grad floor stays >= 0.25.
-                    _dvp24_floor_lower = min(_dvp24_floor_lower, 0.15)
+                    _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
                     _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
