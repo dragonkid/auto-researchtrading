@@ -462,10 +462,27 @@ class Strategy:
         # portfolio-DD dynamics. NEW cross-component data dep: exit-path giveback/tp-harvest
         # DD-input now uses asym-EMA (was symmetric span-3).
         _prev_eq_exit = getattr(self, "_equity_ema_exit", equity)
+        # branch step8: DD-DEPTH-DEPENDENT rise alpha. Step7 found a fundamental tension on the
+        # rise-alpha axis: slow rise (0.20) -> rally stab +0.0165 but sideways -0.033 (over-tightens
+        # sideways' fast shallow DD-recovery cycles); fast rise (0.40) -> sideways recovered but
+        # rally gain shrank to +0.0057 (faster rise relaxes tightening during rally's recovery
+        # phases too -> rally stab drops back below 0.80 knee). The separator: rally's DD is DEEP
+        # (high frac -> slow rise preserves tightening -> rally stab), sideways' DD is SHALLOW
+        # (low frac -> fast rise relaxes tightening -> spares sideways winners). Make the rise
+        # alpha DD-depth-dependent: slow rise when the PREVIOUS bar's DD-fraction was deep (rally),
+        # fast rise when it was shallow (sideways). Continuous tanh on prev_frac/scale (no boundary).
+        # Uses prev bar's frac (this EMA update runs at top of on_bar, before the exit-path frac is
+        # recomputed at line ~2167) -- a 1-bar lag on the DEPTH gate, which is fine (depth is a
+        # slow regime property, not a per-bar signal). Byte-identical at portfolio peak (frac=0 ->
+        # fast rise -> but no tightening active anyway).
+        _prev_frac_exit = getattr(self, "_prev_port_dd_frac_exit", 0.0)
+        _rise_fast = 0.40   # shallow DD (sideways): fast relaxation
+        _rise_slow = 0.08   # deep DD (rally): slow relaxation preserves tightening -> rally stab
+        _rise_alpha_exit = _rise_fast - (_rise_fast - _rise_slow) * max(0.0, min(1.0, np.tanh(_prev_frac_exit / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
         if equity <= _prev_eq_exit:
             self._equity_ema_exit = equity  # fast-fall: instant, zero lag
         else:
-            self._equity_ema_exit = 0.40 * equity + 0.60 * _prev_eq_exit  # branch step7: faster rise 0.20->0.40 (relax tightening faster during sideways shallow recovery, keep fall-instant for rally deep DD)
+            self._equity_ema_exit = _rise_alpha_exit * equity + (1.0 - _rise_alpha_exit) * _prev_eq_exit
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -2177,7 +2194,8 @@ class Strategy:
                 # invariant). General principle (no regime label): partial asym smoothing.
                 _port_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _port_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                _port_dd_frac = 0.7 * _port_dd_frac_sym + 0.3 * _port_dd_frac_asym
+                _port_dd_frac = 0.5 * _port_dd_frac_sym + 0.5 * _port_dd_frac_asym  # branch step8: blend back to 0.5 (depth-dependent rise alpha handles sideways/rally separation, so more asym weight for rally gain)
+                self._prev_port_dd_frac_exit = _port_dd_frac  # branch step8: cache for next bar's rise-alpha depth gate
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
