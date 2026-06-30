@@ -417,9 +417,26 @@ class Strategy:
         # span-3 is undisturbed. Faster smoothing keeps the bar-to-bar stability (the bull
         # gain source: smoothing kills the AR(1) wobble in the shrink amount) while halving
         # the lag (the rally loss source: stale shrink during fast DD swings).
-        PORT_DD_ATTEN_EQUITY_SPAN = 1.5
-        _atten_alpha = 2.0 / (PORT_DD_ATTEN_EQUITY_SPAN + 1)
-        self._equity_ema_atten = _atten_alpha * equity + (1.0 - _atten_alpha) * (getattr(self, "_equity_ema_atten", 0.0) if self._equity_ema > 0 else equity)
+        # Branch step3: ASYMMETRIC fast-fall / slow-rise EMA for the breaker input. Step2
+        # (shorter symmetric span) only PARTIALLY recovered rally stab (0.987->0.990) while
+        # losing some bull gain (1.401->1.398): symmetric smoothing trades lag vs noise-
+        # reduction at a FIXED rate, but the breaker needs OPPOSITE response on the two DD
+        # phases. When equity FALLS (DD deepening = a real drawdown, rally's fast pullbacks),
+        # the breaker must respond FAST (no lag -> stale-shrink wobble gone -> rally stab
+        # recovers). When equity RISES (DD recovering = the noise-prone phase, bull's sharp
+        # recovery bounces that flicker the breaker off/on), the breaker should respond
+        # SLOWLY (smooth the recovery -> stable shrink-amount -> bull stab gain preserved).
+        # An asymmetric EMA realizes both: alpha=1.0 on fall (instant DD-detection, zero
+        # lag), alpha=0.3 on rise (smoothed recovery). The AR(1) noise that drove bull's
+        # wobble is mostly on the RECOVERY side (sharp bounces); the FALL side is the real
+        # drawdown signal. Smooths the noisy phase, preserves the real phase. Byte-identical
+        # at portfolio peak (dd_frac=0). New control flow: breaker-input EMA direction-
+        # asymmetric.
+        _prev_eq_atten = getattr(self, "_equity_ema_atten", equity)
+        if equity <= _prev_eq_atten:
+            self._equity_ema_atten = equity  # fast-fall: instant, zero lag
+        else:
+            self._equity_ema_atten = 0.3 * equity + 0.7 * _prev_eq_atten  # slow-rise: smoothed recovery
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
 
