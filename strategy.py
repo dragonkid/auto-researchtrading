@@ -2134,32 +2134,7 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                # Exp1 (architectural, indep): FAST-FALL zero-lag on the exit-side DD
-                # fraction. The 702c0366 keep applied asym-EMA to the entry-side breaker
-                # (instant DD-detection on fall, smoothed rise) but left the exit-side
-                # giveback-tightening + tp-harvest DD-relax on symmetric span-3. Rally's
-                # portfolio DD episodes are FAST/choppy (3-5 bar swings) so the symmetric
-                # span-3 LAGS ~1 bar -> stale tightening fires when DD already partially
-                # recovered -> slower DD cap + exit-timing variance (rally stab 0.984).
-                # Branch steps1-5 tried a separate asym EMA + blend/magnitude variants but
-                # hit the bull/rally DD-depth overlap wall (any DD-depth threshold that
-                # engages rally also engages bull) + magnitude-cap ramp-coupling. HERE:
-                # take the MAX of the symmetric-EMA DD fraction and the INSTANTANEOUS-
-                # equity DD fraction. On a falling equity (DD deepening = rally's fast
-                # pullbacks) the instantaneous fraction leads -> tightening engages the
-                # moment the DD starts (zero-lag fall detection, rally stab clearing). On
-                # a rising equity (recovery = bull's noise-prone bounces) the symmetric
-                # EMA fraction leads (it's higher during recovery since EMA lags below
-                # equity) -> the validated symmetric span-3 governs the release -> bull
-                # recovery noise-robustness preserved (no new rise-smoothing state, no
-                # blend boundary). Byte-identical at portfolio peak (both 0) and during
-                # monotone DD growth (instantiate == EMA when equity falls as fast as EMA).
-                # Direction-agnostic (no regime label). New data dependency: exit-side
-                # DD fraction reads instantaneous equity via a max() with the symmetric EMA
-                # fraction (was symmetric EMA only). Generalizes the 702c0366 fast-fall
-                # discipline to the exit side without a separate EMA state.
-                _port_dd_frac_inst = max(0.0, 1.0 - equity / max(self._peak_equity, 1e-10))
-                _port_dd_frac = max(_port_dd_frac_inst, max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10)))
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
