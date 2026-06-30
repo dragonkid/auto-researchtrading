@@ -1832,7 +1832,35 @@ class Strategy:
                 # scale-in accel now depends on short-term slope agreement (entry voter
                 # slope reused), layered on the long-window trend gate.
                 _pos_dir_acc = 1.0 if current_pos > 0 else -1.0
-                _slope_conf = max(0.0, np.tanh(_lr_slope * _pos_dir_acc / 0.0004))
+                # Exp1 (architectural, indep): MULTI-WINDOW slope-confirmation for the
+                # win-accelerator, replacing the single 16-bar _lr_slope. _lr_slope (line
+                # ~655) is the SAME single-window OLS slope shared with entry voter index 4
+                # (line ~718) -> its per-bar AR(1) noise couples directly into _win_accel ->
+                # _entry_full_bars_dyn wobbles bar-to-bar -> scale-in pace tracking error ->
+                # rally stability penalty (rally stab 0.7953 sits just below the 0.80 knee,
+                # the residual wobble the 702c0366 entry-side breaker keep did NOT touch).
+                # The EXIT subsystem already replaced this EXACT single-window slope with a
+                # 3-window 12/16/22 MEAN for the SAME noise-decoupling reason (line ~2091:
+                # "Single _lr_slope (16-bar) is shared with entry voter -- coupling entry &
+                # exit noise. Computing slopes at 12/16/22 ... decouples exit-noise from
+                # entry-noise"). Apply the SAME validated decoupling to the accelerator's
+                # slope-conf: a momentary 1-bar dip in ONE window is averaged with the other
+                # two -> only SUSTAINED slope weakening (across all windows) gates the
+                # accelerator off -> the gate amount is bar-to-bar STABLE under AR(1) ->
+                # _win_accel stable -> scale-in pace stable -> rally stability up. Same
+                # /0.0004 scale the de-risk cushion's _dr_slope_conf uses (line ~2690, the
+                # exit subsystem's own multi-window slope-conf) -> comparable magnitude,
+                # consistent calibration. New cross-component data dep: the scale-in
+                # accelerator's slope-confirmation now reads a 3-window mean (decoupled
+                # from the entry voter's single-window slope) instead of reusing _lr_slope.
+                # Direction-agnostic general principle (no regime label): acceleration is
+                # earned by a SUSTAINED multi-window slope confirmation, not a single noisy
+                # window. Byte-identical in chop (_win_accel base 0 via _trend_strength_w
+                # gate -> multiplicative 0 regardless of _slope_conf).
+                _hl2_acc = (bd.history["high"].values + bd.history["low"].values) / 2.0
+                _acc_slopes = [_fast_slope(np.log(_hl2_acc[-_w:])) for _w in (12, 16, 22)]
+                _acc_slope_mean = float(np.mean(_acc_slopes))
+                _slope_conf = max(0.0, np.tanh(_acc_slope_mean * _pos_dir_acc / 0.0004))
                 _win_accel = _win_accel * _slope_conf
                 # Exp5 (architectural, indep): adaptive acceleration floor + stronger
                 # magnitude. Exp3/Exp4 validated the accelerator (rally +0.021, bull
