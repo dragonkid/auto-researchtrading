@@ -2134,8 +2134,42 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                # Exp2 (architectural, indep): ASYM-EMA on the EXIT-PATH DD-fraction input +
+                # MTM-PATH-CHOP gate on the tightening magnitude. The prior session's asym-EMA-
+                # exit-path branch (reverted) CLEARED rally stab past the 0.80 knee (fall-instant
+                # gives zero-lag DD detection for rally's fast deep DD cycles) BUT hit the
+                # bull/rally/sideways OVERLAP WALL: no separator on the ct/DD-depth/blend axes
+                # distinguished bull's ct-short-WINNERS (need tightening OFF, they recover) from
+                # rally's ct-short-LOSERS (need tightening ON, they give back). The prior
+                # session-summary's explicit untested lead: "a separator on a DIFFERENT axis (e.g.
+                # position PnL trajectory) MIGHT break the wall." ROUTE the exit-path DD-fraction
+                # through the existing asym-EMA _equity_ema_atten (fall-instant/rise-slow, reuse
+                # validated state -- no new EMA, the entry breaker already proved this exact
+                # smoothing clears rally stab) AND gate the tightening MAGNITUDE on the held
+                # position's MTM-path-efficiency (chop). The separator: rally's losing pullback
+                # shorts have CHOPPY MTM (low efficiency, whipsaw ~breakeven losers -> tightening
+                # fires, caps the DD from riding them); bull's winning pullback shorts have SMOOTH
+                # MTM (high efficiency, clean trend winners -> tightening SPARED -> they recover
+                # as before, bull stab held). Distinct from the walled ct/DD-depth/blend
+                # separators: MTM-efficiency is a per-POSITION trajectory signal (the same axis
+                # the validated MTM-chop emission throttle and tp-harvest small-pos exemption use
+                # to cleanly separate mixed's dead capital from smooth winners). Continuous tanh
+                # on 1-eff over the 12-bar pos_pnl path; byte-identical at portfolio peak
+                # (dd_frac=0 -> no tightening either way) and for smooth winners (eff~1 -> chop~0
+                # -> gate~0 -> tightening magnitude ~0 -> byte-identical). Two coordinated edits:
+                # (a) DD-fraction source _equity_ema -> _equity_ema_atten (asym-EMA, clears rally
+                # stab); (b) tightening x MTM-chop gate (protects bull/sideways smooth winners).
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
+                _pp_hist_ex = self._pnl_path.get(symbol, [])
+                _mtm_chop_ex = 0.0
+                if len(_pp_hist_ex) >= 4:
+                    _ppa_ex = np.array(_pp_hist_ex)
+                    _net_ex = abs(_ppa_ex[-1] - _ppa_ex[0])
+                    _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
+                    _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
+                    _mtm_chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
+                _tighten_gate = 0.50 + 0.50 * _mtm_chop_ex  # 0.5 smooth winners (partial spare) -> 1.0 choppy (full tighten)
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
@@ -2535,7 +2569,7 @@ class Strategy:
                     # size scale-down) from the maxed giveback-tolerance tightening.
                     # Byte-identical at portfolio peak (dd_frac=0 -> factor 1.0). Same
                     # leverage-coupled DD-fraction scale as giveback tightening.
-                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
+                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * _tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
