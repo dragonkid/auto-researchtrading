@@ -1741,37 +1741,6 @@ class Strategy:
                 # only (floor at baseline MAG; never shrinks below the fe6acd4d keep).
                 # Smooth tanh on margin/0.40 (same scale as _bull_conv_atten; no new
                 # boundary). Direction-agnostic (uses own-side margin).
-                # Exp3 (architectural, indep): PERSISTENT-DOWNTREND TREND-ALIGNED-SHORT
-                # first-bar entry boost. Exp1/Exp2 showed crash is return-limited (Sh1.307,
-                # 100pct WR, DD2.83pct huge headroom below the 10pct cutoff): extending crash
-                # shorts captured +0.019-0.022 raw REAL, but the time-pressure EXTENSION
-                # axis leaked into sideways/bull (any extension on their anti-overstay
-                # window costs raw). Switch to the proven FIRST-BAR-ONLY SIZING axis (the
-                # validated safe family: changes to first-bar commitment help, sustained
-                # sizing hurts). A SHORT entry (bear side) in a PERSISTENT multi-day
-                # DOWNTREND is crash's trend-aligned winning trade (100pct WR); larger first-
-                # bar commitment captures more of the confirmed downtrend move -> higher
-                # crash APY (return_bonus, v3 rewards APY 11-36x over DD shaving). Gated on
-                # the VALIDATED _down_persist duration-count (fraction of last PERSIST_WINDOW
-                # bars where ret_vlong<0): crash ~0.9 (multi-month bear), bull/sideways/rally
-                # ~0.3 (transient pullback dips) -> the gate is ~0 for non-crash -> byte-
-                # identical; mixed ~0.5 (oscillating) -> gate ~0 -> byte-identical. The boost
-                # is BEAR-only (bear entry in persistent downtrend = crash trend-aligned short);
-                # a bull entry in a persistent downtrend would be a counter-trend dead-cat
-                # bounce -> NOT boosted (the _vd_ct_shrink already SHRINKS those). Trend-
-                # aligned longs in a persistent UPTREND (rally/bull) are NOT persistent
-                # downtrend -> _down_persist low -> byte-identical. _down_persist is a general
-                # market-state duration statistic (NOT a regime label): it reads "fraction of
-                # last 48 bars the 96-bar trend was down" -> a slow, noise-robust (each input
-                # bar carries ~1/96 of AR(1) noise) quantity with no decision boundary that
-                # flips under AR(1). First-bar-only (respects the validated winning axis),
-                # bear-side-only (isolates the crash trend-aligned short from bull ct longs),
-                # small +0.06 max (size changes are delicate; crash DD2.83pct has headroom but
-                # first-bar magnitude scales the whole hold -> conservative). Continuous tanh
-                # on _down_persist (no boundary). New cross-component data dep: bear first-bar
-                # size depends on persistent-downtrend duration x trend-alignment (bear entry
-                # in downtrend).
-                _pd_short_boost = 1.0 + 0.06 * max(0.0, np.tanh((_down_persist - 0.70) / 0.12)) * max(0.0, np.tanh(-ret_vlong / 0.03))
                 _persist_margin_side = _bull_margin if (_bull_ready and _bull_admit) else _bear_margin
                 # Branch step3: gate the conviction-scale on _down_persist<0.75 to EXCLUDE
                 # crash (persistent downtrend _down_persist~0.9 per diagnostics) from the
@@ -1794,7 +1763,7 @@ class Strategy:
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _pd_short_boost
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
