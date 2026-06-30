@@ -2487,6 +2487,27 @@ class Strategy:
                     # tanh, no new decision boundary. ret_vlong is already computed (96-bar OLS,
                     # noise-robust). Targets mixed (binding); protects all trend-aligned regimes.
                     _ts_supp = (1.0 - max(0.0, min(1.0, np.tanh(-self._mae.get(symbol, 0.0) / abs(STOP_LOSS_PCT) / 0.2)))) * max(0.0, np.tanh(ret_vlong * (1.0 if current_pos > 0 else -1.0) / 0.04)) * max(0.0, min(1.0, np.tanh((_tp_ratio - 2.8) / 0.5)))
+                    # Exp3 branch step7: PROFIT-VELOCITY weakening of _ts_supp (ride-winners
+                    # harvest path, NOT the de-risk cushion). Steps1-6 established a
+                    # STRUCTURAL COUPLING WALL: the velocity factor on the de-risk cushion
+                    # perturbs SOME regime's exit timing no matter how gated (bull/sideways
+                    # share the low-vol+trend+deep envelope with rally/mixed), and any bound
+                    # weak enough to spare the others is too weak to help rally/mixed (step6
+                    # byte-identical rally/mixed, stab moved to bull). ROUTE CHANGE: _ts_supp
+                    # only fires at DEEP peaks (_tp_ratio > 2.8, a NARROWER condition than the
+                    # de-risk cushion which fires on ALL held positions) -> the velocity
+                    # weakening fires only at deep-peak harvest events, isolating mixed's deep
+                    # oscillating peaks from sideways's shallow mean-reverters (which never
+                    # reach _tp_ratio 2.8). Weaken _ts_supp (harvest more) when the deep-peak
+                    # winner is PLATEAUING (pos_pnl below its EMA = momentum exhausted at the
+                    # peak -> the re-peak is a real local top, harvest it) vs keep full
+                    # suppression when RISING (still extending, let-run). Byte-identical for
+                    # shallow winners (_tp_ratio<2.8 -> _ts_supp 0 anyway) and rising peaks.
+                    # New cross-component data dep: tp-harvest suppression depends on profit
+                    # velocity at the peak. Smooth tanh, no boundary; direction-agnostic.
+                    _pnl_ema_dr_ts = self._pnl_ema_dr.get(symbol, pos_pnl)
+                    _ts_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr_ts) / 0.01))  # 1 rising, 0 plateau
+                    _ts_supp = _ts_supp * (1.0 - 0.30 * (1.0 - _ts_vel))  # weaken up to 30% on plateau; rising -> unchanged
                     # Exp1 (architectural): portfolio-DD-adaptive relaxation of the
                     # trend-extension harvest suppression. _ts_supp normally PREVENTS
                     # harvesting clean trend-aligned deep-peak winners (let them run).
@@ -2651,57 +2672,7 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp3 branch step3: PROFIT-VELOCITY on the de-risk cushion,
-                        # MULTIPLICATIVE form (restored from step1) BUT VOL-GATED on LOW
-                        # vol_ratio (the validated bull/(rally,mixed) separator). Step1
-                        # (ungated multiplicative) moved rally +0.029 + mixed +0.0025 BUT
-                        # regressed bull -0.277: plateau->fast-cut fired in bull's healthy
-                        # grind-up plateaus. Step2 (boost-only) recovered crash/sideways
-                        # BUT lost the rally/mixed gains (boost too weak at saturation).
-                        # KEY INSIGHT from step1/step2: the rally/mixed gain IS the
-                        # plateau->fast-cut (multiplicative-to-zero) direction, which
-                        # OVER-de-risks bull's legitimate plateaus. The validated
-                        # separator is VOL REGIME (bull HIGH-vol SHARP vs rally/mixed
-                        # LOW-vol GRIND, per scale-in quantization keep + opp-gate DVP
-                        # keep). VOL-GATE the velocity factor so multiplicative-to-zero
-                        # fires ONLY in the calm grind (rally/mixed: plateau = real
-                        # reversal -> cut) and is ~0 in the sharp high-vol regime (bull:
-                        # plateau = healthy consolidation -> ride, baseline cushion).
-                        # _vlong_vol_gate ~0 vol_ratio>=1.2 (bull), ~1 vol_ratio<=0.8
-                        # (rally/mixed grind). Byte-identical to 05532576 baseline for
-                        # high-vol (vol-gate~0 -> velocity factor 1.0 -> baseline k).
-                        # Smooth tanh (no boundary); direction-agnostic; profit-gated.
-                        _pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
-                        _dr_pnl_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr) / 0.01))
-                        # Exp3 branch step5: add PROFIT-DEPTH gate to the velocity factor
-                        # (step4 magnitude-floor did not spare sideways -- sideways has
-                        # ret_vlong episodes crossing 0.03). Sideways mean-reverters are
-                        # SHALLOW winners (pos_pnl < 1.5x stop) that plateau constantly;
-                        # mixed/rally's beneficial trend winners are DEEP (pos_pnl > 1.5x
-                        # stop). Gate the plateau->fast-cut on DEEP profit only so sideways
-                        # shallow mean-reverters are byte-identical to baseline (no velocity
-                        # factor). _pnl_scale = tanh(pos_pnl/|stop|); at pos_pnl=1.5xstop
-                        # _pnl_scale~0.905, so gate on (_pnl_scale-0.85)/0.10 -> ~0 shallow,
-                        # ~1 deep. Combined with vol-gate + magnitude-floor: plateau->fast-
-                        # cut fires ONLY for DEEP winners in LOW-vol SOLID-trend (mixed/rally
-                        # rally-phase longs). Byte-identical for bull (vol-gate), sideways
-                        # (shallow profit OR low magnitude), ct (align~0), shallow winners.
-                        _dr_mag_floor = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _dr_pos_dir) - 0.03) / 0.02)))
-                        _dr_depth_gate = max(0.0, min(1.0, np.tanh((max(0.0, _pnl_scale) - 0.85) / 0.10)))
-                        # Exp3 branch step6: BOUND the velocity factor magnitude. Step5's
-                        # full-to-zero factor (kills cushion completely on plateau) crashed
-                        # sideways stab even when gated. Bound the max cushion reduction to
-                        # 30% (factor min 0.7) so the exit-timing perturbation is sub-noise
-                        # for sideways while rally/mixed deep-trend plateauing winners still
-                        # get a MILD cut (30% cushion reduction vs 100%). The structural
-                        # coupling (sideways and rally/mixed share the low-vol+trend+deep
-                        # envelope) means a full cut cannot isolate them; a BOUNDED mild
-                        # cut trades rally/mixed gain magnitude for sideways stab tolerance.
-                        # Smooth (bounded tanh), no new boundary. Byte-identical when any
-                        # gate is 0 (vol-gate bull, mag-floor sideways noise, depth shallow,
-                        # align ct) OR when rising (vel~1 -> factor 1.0).
-                        _dr_vel_factor = 1.0 - 0.30 * _vlong_vol_gate * _dr_mag_floor * _dr_depth_gate * (1.0 - _dr_pnl_vel)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vel_factor  # baseline in bull/sideways/shallow/rising/ct; MILD cut (max 30%) in deep rally/mixed solid-trend plateau
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf (BASELINE restored; step7 moves velocity to _ts_supp)
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
