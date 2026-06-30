@@ -208,6 +208,28 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Exp2 (architectural, this session): portfolio-DD-gated _target_ema alpha BOOST. The
+# asym-EMA on the exit-path DD-fraction is PROVEN (across 2 sessions, row 1773/1781) to
+# clear rally stab past the 0.80 knee BUT walled by the bull/rally/sideways overlap on the
+# TIGHTENING axis (the tightening fires portfolio-wide during DD and all 3 regimes have
+# ct/losing positions during DD-recovery bars). This takes the SAME validated DD signal
+# but routes it as an alpha BOOST on the ct-only _target_ema (NOT as a tightening trigger):
+# during portfolio DD (rally pullbacks = the DD source AND the rally-stab wobble source),
+# strengthen the smoothing on ct held positions so the position-value variance is damped
+# MORE exactly when it's worst. Structurally different from the walled exit-path branch:
+# (a) ct-only by construction (alpha 0 for trend-aligned -> boost*0=0 -> byte-identical for
+# bull longs / crash shorts that are NOT in portfolio DD during their regimes); (b) does
+# NOT fire any tightening trigger portfolio-wide (no giveback/tp-harvest perturbation ->
+# no bull/sideways overlap); (c) boosts an ALREADY-ACTIVE ct-only smoothing (does not turn
+# smoothing ON/OFF on a subset of bars, the failure mode of every conditional alpha-CUT).
+# The 702c0366 keep proved portfolio DD concentrates in rally (rally DD 5.06pct vs bull/
+# crash/sideways 1.8-2.8pct) so the boost fires primarily on rally ct shorts. Leverage-
+# coupled scale (same discipline as PORT_DD_GIVEBACK_SCALE: 2x size -> 2x DD fraction ->
+# scale by LEVERAGE_K to keep activation DD-LEVEL invariant). The boost multiplies the
+# ct-gated alpha (cannot exceed the 0.99 ceiling; it just lets alpha REACH ceiling faster
+# during DD, so it is bounded and cannot over-smooth trend-aligned regimes).
+TE_DD_BOOST_MAX = 0.30   # max fractional alpha boost at deep DD (boost factor 1.0 -> 1.30 at saturation)
+TE_DD_BOOST_SCALE = 0.012  # base DD-fraction at which boost saturates (scaled by LEVERAGE_K, same as PORT_DD_GIVEBACK_SCALE)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2831,6 +2853,22 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                # Exp2 (architectural, this session): portfolio-DD-gated alpha BOOST on the
+                # ct-only _target_ema. The asym-EMA exit-path mechanism is PROVEN to clear
+                # rally stab past 0.80 but walled by the bull/rally/sideways overlap on the
+                # TIGHTENING axis. This routes the SAME validated DD signal as an alpha BOOST
+                # (not a tightening trigger): during portfolio DD (rally pullbacks = the DD
+                # source AND the rally-stab wobble source), strengthen the ct-only smoothing
+                # so position-value variance is damped MORE exactly when worst. CT-only by
+                # construction (_te_alpha already 0 for trend-aligned -> boost*0=0 -> byte-
+                # identical for bull longs/crash shorts); no portfolio-wide tightening
+                # trigger (no giveback/tp-harvest perturbation -> no bull/sideways overlap);
+                # boosts an already-active smoothing (does not turn it ON/OFF on a subset of
+                # bars, the failure mode of every conditional alpha-CUT). Leverage-coupled
+                # DD-fraction scale (same as PORT_DD_GIVEBACK_SCALE). The boost factor (1 +
+                # MAX*tanh(...)) is bounded so alpha cannot exceed the 0.99 ceiling's reach.
+                _te_dd_boost = 1.0 + TE_DD_BOOST_MAX * max(0.0, np.tanh(_port_dd_frac / (TE_DD_BOOST_SCALE * LEVERAGE_K)))
+                _te_alpha = _te_alpha * _te_dd_boost
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
