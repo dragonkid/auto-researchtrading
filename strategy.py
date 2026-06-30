@@ -206,22 +206,6 @@ CONC_EXP_MAX_SHRINK = 0.35  # max first-bar shrink at full concentration (-> 0.6
 NET_TILT_FLOOR = 0.10 * LEVERAGE_K   # net |tilt|/equity below which no shrink (scaled by LEVERAGE_K for decision invariance)
 NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ramp (scaled by LEVERAGE_K)
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
-# Exp2 (architectural, indep, this session): NET-TILT SIGNAL temporal smoothing. The
-# keep (05532576) net-tilt shrink is computed from the INSTANTANEOUS book net tilt
-# (long_notional - short_notional)/equity, which is bar-noisy under AR(1) perturbation:
-# the OTHER symbols' positions wobble -> the net-tilt wobbles -> the shrink amount
-# wobbles -> the first-bar entry size wobbles -> tracking error -> rally stability
-# penalty (rally stab 0.7975, just below the 0.80 knee; the keep note's documented
-# rally stab cliff). Temporally smoothing the net-tilt SIGNAL with a short EMA makes
-# the shrink AMOUNT bar-to-bar stable while preserving the over-exposure depth that
-# drives the trim -- the same noise-robustness discipline as PORT_DD_GIVEBACK_EQUITY_SPAN
-# (a noisy instantaneous signal -> noisy shrink -> exit/entry-timing noise -> stability
-# penalty; smoothing the AMOUNT-input preserves the depth signal). Byte-identical when
-# the book is steady (crash/sideways/mixed never build sustained net-tilt -> ~0 -> EMA
-# of ~0 = ~0). Distinct from target_ema/exit_press_ema (those smooth UPSTREAM signals
-# or the emitted position LEVEL): this smooths the PORTFOLIO net-tilt INPUT to the
-# entry-size shrink, a new smoothing point. New state + new control-flow data dep.
-NET_TILT_EMA_SPAN = 4  # short EMA span for the net-tilt signal (noise-robustness vs entry-lag trade-off; ~4 bars damps single-bar position wobble while preserving the multi-bar pile-up depth signal)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
 MIN_VOTES = 2.92  # scaled for 7 voters
@@ -317,14 +301,6 @@ class Strategy:
         # the grid turns off permanently for it.
         self._churn_hist = {}
         self._peak_equity = 0.0  # portfolio-DD circuit-breaker on entry size
-        # Exp2 (architectural, indep, this session): portfolio-level net-tilt EMA. The
-        # instantaneous net-tilt (long-short)/equity is bar-noisy under AR(1) (other
-        # symbols' positions wobble) -> the net-tilt shrink amount wobbles -> rally
-        # first-bar entry size wobbles -> stability penalty. EMA-smoothing the net-tilt
-        # signal makes the shrink AMOUNT bar-stable while preserving the pile-up depth.
-        # Single portfolio-level scalar (net-tilt is identical across symbols in a bar).
-        self._net_tilt_ema = 0.0
-        self._net_tilt_first_sym = 0  # bar_count guard: update the portfolio net-tilt EMA once per bar
         # Exp1 branch step3: EMA-smoothed equity for the giveback-tightening DD
         # fraction. Instantaneous equity is bar-noisy -> tightening amount noisy ->
         # exit-timing noise -> stability penalty (step1 cost). Smoothing the equity
@@ -1427,20 +1403,7 @@ class Strategy:
                 # extra directional-risk trim. Composed multiplicatively with _conc_shrink
                 # (independent signals: gross-concentration vs net-direction). Sparing
                 # magnitude (max 0.20) since it rides on top of _conc_shrink.
-                _net_tilt_inst = (_long_notional - _short_notional) / max(equity, 1e-10)
-                # Exp2 (architectural, indep, this session): EMA-smooth the net-tilt SIGNAL
-                # (portfolio-wide; identical across symbols in a bar -> update once per bar
-                # via a first-symbol guard keyed on bar_count). Smoothing the AMOUNT-input
-                # damps the bar-to-bar shrink wobble (rally stab cliff source) while preserving
-                # the multi-bar pile-up depth. The SMOOTHED tilt drives both bull/bear shrinks.
-                _nt_alpha = 2.0 / (NET_TILT_EMA_SPAN + 1)
-                if self._net_tilt_first_sym == self.bar_count:
-                    # already updated this bar (a prior symbol in the loop) -> reuse EMA
-                    _net_tilt = self._net_tilt_ema
-                else:
-                    self._net_tilt_first_sym = self.bar_count
-                    self._net_tilt_ema = _nt_alpha * _net_tilt_inst + (1.0 - _nt_alpha) * (self._net_tilt_ema if self._net_tilt_ema != 0.0 else _net_tilt_inst)
-                    _net_tilt = self._net_tilt_ema
+                _net_tilt = (_long_notional - _short_notional) / max(equity, 1e-10)
                 _net_tilt_shrink_bull = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 _net_tilt_shrink_bear = 1.0 - NET_TILT_MAX_SHRINK * max(0.0, np.tanh((-_net_tilt - NET_TILT_FLOOR) / NET_TILT_SCALE))
                 # Exp8 (architectural, indep): volume-spike ENTRY shrink. The Exp4 keep
