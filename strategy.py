@@ -2177,7 +2177,7 @@ class Strategy:
                 # invariant). General principle (no regime label): partial asym smoothing.
                 _port_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _port_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                _port_dd_frac = 0.5 * _port_dd_frac_sym + 0.5 * _port_dd_frac_asym
+                _port_dd_frac = 0.7 * _port_dd_frac_sym + 0.3 * _port_dd_frac_asym
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
