@@ -2194,9 +2194,26 @@ class Strategy:
                 # invariant). General principle (no regime label): partial asym smoothing.
                 _port_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _port_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                _port_dd_frac = 0.7 * _port_dd_frac_sym + 0.3 * _port_dd_frac_asym  # branch step9: blend back to 0.3 asym (depth-dependent rise alpha handles separation, less asym weight spares sideways/bull)
+                _port_dd_frac = _port_dd_frac_asym  # branch step12: full asym (ct gate spares trend-aligned positions, so over-tightening risk on sideways/bull is gone -> use full asym for max rally ct-short tightening)
                 self._prev_port_dd_frac_exit = _port_dd_frac  # branch step8: cache for next bar's rise-alpha depth gate
-                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
+                # branch step12: COUNTER-TREND GATE on the giveback-tightening MAGNITUDE.
+                # The tightening fires for ALL held positions when portfolio DD is elevated. The
+                # sideways regression (-0.011) is from sideways TREND-ALIGNED winners getting
+                # over-tightened (sideways has shallow DD -> tightening active -> harvests sideways
+                # winners early -> Sharpe 1.970->1.955). The rally stab benefit comes specifically
+                # from tightening COUNTER-TREND positions (rally pullback shorts = the rally stab
+                # source, same family as _target_ema's ct gate). Gate the tightening MAGNITUDE by
+                # the validated fast-saturating /0.01 ret_vlong ct indicator (same as _target_ema /
+                # _ct_hold_sat): full tightening for ct positions (rally shorts), ~0 tightening for
+                # trend-aligned positions (sideways winners, bull longs, crash shorts -> byte-identical
+                # giveback -> run). Per-position (uses current_pos sign vs ret_vlong). Continuous
+                # tanh, no boundary. Distinct from step3's deep-DD gate (which delayed activation ->
+                # bull stab crash): this gates by POSITION ct status, not DD depth, so bull's trend-
+                # aligned longs are spared regardless of DD depth. General principle (no regime
+                # label): giveback-tightening engages on counter-trend-at-multi-day positions (the
+                # stab source), not trend-aligned winners.
+                _ct_tighten_gate = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _ct_tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
@@ -2596,7 +2613,9 @@ class Strategy:
                     # size scale-down) from the maxed giveback-tolerance tightening.
                     # Byte-identical at portfolio peak (dd_frac=0 -> factor 1.0). Same
                     # leverage-coupled DD-fraction scale as giveback tightening.
-                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
+                    # branch step12: SAME ct gate as giveback-tightening (consistent: both
+                    # exit-path DD adjustments engage only on ct-at-multi-day positions).
+                    _dd_tp_relax = 1.0 - PORT_DD_TP_HARVEST_RELAX * _ct_tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_TP_HARVEST_SCALE * LEVERAGE_K)))
                     _ts_supp = _ts_supp * _dd_tp_relax
                     # Exp5 (architectural, indep): raise tp_harvest base magnitude 0.30 -> 0.45.
                     # Prior session walled magnitude raise at 0.50 (crash stability collapsed
