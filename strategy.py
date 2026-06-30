@@ -1486,19 +1486,7 @@ class Strategy:
                 _vol_long_m = max(float(np.mean(bd.history["volume"].values[-18:])), 1e-10)
                 _vol_trend_r = (_vol_recent_m - _vol_long_m) / _vol_long_m  # + rising, - declining
                 _vd_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
-                # Exp3 (architectural simplification): REMOVED the symmetric _vol_decline_shrink
-                # (replaced with 1.0). It shrank ALL declining-volume entries up to 0.15,
-                # INCLUDING trend-aligned pullback longs (winning trades) -- the symmetric
-                # coverage is structurally wrong on the trend-aligned side. The direction-
-                # aware _vd_ct_shrink (Exp6, line ~1508) is the REFINEMENT: it shrinks ONLY
-                # the counter-trend side (the losing entries) on declining volume. With the
-                # ct refinement in place, the symmetric term is redundant on the ct side
-                # (double-shrinks losers) and harmful on the trend-aligned side (shrinks
-                # winners). Test: if score-neutral or positive, the symmetric term was
-                # dead/harmful code (keep the simpler version, better OOS generalization);
-                # if negative, the symmetric trend-aligned shrink was load-bearing. Code-
-                # structure removal: -1 multiplicative term in the entry-size chain.
-                _vol_decline_shrink = 1.0
+                _vol_decline_shrink = 1.0 - 0.15 * _vd_trend_w * max(0.0, min(1.0, np.tanh(-_vol_trend_r / 0.30)))
                 # Exp6 (architectural, indep): counter-trend volume-decline ADDITIONAL shrink,
                 # gated on the MULTI-DAY (ret_vlong) trend. Exp3's symmetric decline-shrink is
                 # gated by the 20-bar _vd_trend_w, which goes to ~0 during a rally pullback
