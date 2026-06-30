@@ -439,6 +439,33 @@ class Strategy:
             self._equity_ema_atten = 0.05 * equity + 0.95 * _prev_eq_atten  # step7: slow-rise 0.1->0.05 (test if more smoothing improves margin)
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
+        # Exp2 (architectural, indep): ASYMMETRIC fast-fall/slow-rise EMA for the EXIT-
+        # PATH portfolio-DD-fraction input. The 702c0366 keep applied the asym-EMA
+        # (fall-instant / rise-slow) to the ENTRY breaker's DD-fraction (_equity_ema_atten
+        # above) and proved it load-bearing for bull stab (rise-smoothing kills AR(1)
+        # recovery-bounce wobble) + rally (fall-zero-lag avoids stale-shrink on fast DD
+        # cycles). The keep EXPLICITLY left the EXIT-PATH DD-fraction (line ~2137, used by
+        # giveback-tightening + tp-harvest-relax on HELD positions) on the OLD symmetric
+        # span-3 _equity_ema (line 385). That exit-path DD-fraction DIRECTLY modulates the
+        # giveback tolerance + tp-harvest suppression on HELD positions -- including rally's
+        # held counter-trend shorts, the binding rally-stab source (_target_ema smooths the
+        # emitted level but the giveback/tp-harvest PATHS are a separate, un-smoothed source
+        # of held-position-value variance under AR(1)). Apply the SAME validated asym shape
+        # to a DEDICATED exit-path EMA state (independent of the entry breaker's _equity_ema
+        # _atten so the exit path can be tuned/relaxed without disturbing the entry-side
+        # keep). Fall-instant (zero lag -> real DD deepens -> giveback tightens immediately,
+        # no stale over-tightening on recovery); rise-slow (smooths the noisy recovery phase
+        # -> the giveback/tp-harvest tightening AMOUNT is bar-to-bar stable under AR(1) ->
+        # exit-timing variance down -> stability up). Same alpha 0.05 rise as the keep's
+        # optimum. Byte-identical at portfolio peak (dd_frac=0 -> no tightening either way).
+        # Direction-agnostic (no regime label): regime effects fall out of each regime's
+        # portfolio-DD dynamics. NEW cross-component data dep: exit-path giveback/tp-harvest
+        # DD-input now uses asym-EMA (was symmetric span-3).
+        _prev_eq_exit = getattr(self, "_equity_ema_exit", equity)
+        if equity <= _prev_eq_exit:
+            self._equity_ema_exit = equity  # fast-fall: instant, zero lag
+        else:
+            self._equity_ema_exit = 0.05 * equity + 0.95 * _prev_eq_exit  # slow-rise (keep's validated alpha 0.05)
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
@@ -2134,7 +2161,10 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                # Exp2 (this session): use the ASYM fast-fall/slow-rise exit-path EMA
+                # (_equity_ema_exit, computed at line ~444) instead of the symmetric span-3
+                # _equity_ema. Same mechanism (702c0366 keep) applied to the EXIT-path DD input.
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
