@@ -2272,7 +2272,32 @@ class Strategy:
                 _vlong_vol_gate = max(0.0, min(1.0, (1.2 - vol_ratio) / 0.4))  # ~0 vol_ratio>=1.2, ~1 vol_ratio<=0.8
                 _vlong_boost_vb = 0.30 * _vlong_vol_gate * _ret_vlong_term_vb  # small additive boost when multi-day confirms AND low-vol grind
                 _trend_align_vb = min(1.0, _ret_long_term_vb + _vlong_boost_vb)
-                _opp_atten = 1.0 - 0.50 * _trend_align_vb  # max 50% attenuation in strong trend-aligned
+                # Exp5 (architectural, indep): DVP24-CONFIRMATION CAP-RAISE on opp-atten.
+                # The opp-atten is capped at 0.50 (max 50pct attenuation of opp-bias in
+                # strong trend-aligned). The 85a2e23e keep note: "_opp_atten saturates at
+                # the 50pct cap". Raising the cap UNCONDITIONALLY was walled (9c04a2ee:
+                # opp-bias every-bar path cannot isolate bull from mixed -> bull stab
+                # regression). HERE the cap raise is CONDITIONAL on the validated 24-bar
+                # own-DVP confirmation envelope (vol-gate x ret_vlong trend-align x DVP24-
+                # confirm x multi-day magnitude floor) -- the SAME envelope the 85a2e23e
+                # keep validated on the opp-GATE floor path. When own 24-bar buy-side
+                # volume STILL confirms the held direction AND the position is trend-aligned
+                # in a low-vol grind with solid multi-day magnitude, raise the cap 0.50->0.60
+                # (10pct extra attenuation = less opp-bias exit pressure -> ride the confirmed
+                # winner longer on the opp-BIAS every-bar path). Byte-identical when the
+                # envelope fails (cap stays 0.50). Distinct from 9c04a2ee (which raised
+                # _opp_trend_amp magnitude, a different sub-parameter). The cap lever is
+                # fresh (0 prior hits on opp_atten cap). Continuous tanh, no boundary.
+                _vb_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _dvp24_vb_n = 24
+                _dvp24_vb_c = closes[-_dvp24_vb_n - 1:]
+                _dvp24_vb_v = bd.history["volume"].values[-_dvp24_vb_n:]
+                _dvp24_vb_rets = np.sign(np.diff(_dvp24_vb_c))
+                _dvp24_vb = float(np.sum(_dvp24_vb_v * _dvp24_vb_rets) / max(np.sum(_dvp24_vb_v), 1e-10))
+                _dvp24_vb_conv = max(0.0, np.tanh(_vb_pos_dir * _dvp24_vb / 0.15))
+                _dvp24_vb_mag = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _vb_pos_dir) - 0.03) / 0.02)))
+                _opp_atten_cap = 0.50 + 0.10 * _vlong_vol_gate * _ret_vlong_term_vb * _dvp24_vb_conv * _dvp24_vb_mag
+                _opp_atten = 1.0 - _opp_atten_cap * _trend_align_vb  # max 50pct (baseline) or 60pct when DVP24 confirms
                 # Architectural: trend-magnitude amp on opp_bias (NEW data dep at fusion).
                 # In chop (low abs(ret_long)), opp-voter spikes are themselves noise (no
                 # directional backing) — mute opp_bias contribution. In trends, opp-voter
