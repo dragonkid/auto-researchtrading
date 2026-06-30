@@ -248,25 +248,6 @@ ENTRY_FULL_BARS = 3  # bars to reach full position (linear scale-in over 3 bars)
 # crossing level (0.0 == the old _strong_min admission boundary).
 ENTRY_ACCUM_RHO = 0.5
 ENTRY_ACCUM_THRESH = 0.0
-# Exp1 (architectural, indep): COUNTER-TREND-CONDITIONED entry accumulator RHO.
-# The entry-readiness EMA (ENTRY_ACCUM_RHO) smooths the conviction margin out of
-# the entry decision, but with a SINGLE symmetric RHO it smooths trend-aligned and
-# counter-trend entries identically. Rally's instability is driven by fast
-# counter-trend re-entries (bear-in-uptrend = rally pullback shorts during bursts,
-# the documented losing-trade drag). A ct entry's conviction margin is noisier AND
-# the entry is lower-quality (fighting the multi-day trend), so the readiness
-# crossing is more noise-sensitive. Raise the EMA memory (RHO) SPECIFICALLY for ct
-# entries -> the readiness signal must be sustained LONGER before a ct entry is
-# admitted -> filters noise-driven ct re-entries -> higher rally stab (the binding
-# constraint, 0.7953 just below the 0.80 knee). Trend-aligned entries (bull longs
-# in uptrend, crash shorts in downtrend, rally trend longs) keep RHO=0.5 ->
-# byte-identical timing on the entries that carry raw (Sharpe). The ct indicator
-# uses the validated fast-saturating /0.01 ret_vlong scale (rally's solidly-
-# positive ret_vlong sits in the flat saturated tail -> near-constant 1, not a
-# noise-tracking quantity). ct-RHO blends continuously between ENTRY_ACCUM_RHO
-# (trend-aligned, gate 0) and ENTRY_ACCUM_RHO_CT (deep ct, gate 1) via the ct
-# indicator so there is no decision boundary.
-ENTRY_ACCUM_RHO_CT = 0.70
 
 # Exp1 (architectural): PERSISTENCE-COUNT weak-trend separator parameters. The
 # prior-session headroom-boost branch (7 failed attempts) gated a mixed entry-
@@ -885,20 +866,8 @@ class Strategy:
             # (the persist gate's purpose) is preserved — the EMA crosses the threshold only
             # after margin has been positive ~2 bars. New per-symbol state.
             _acc_b, _acc_s = self._entry_accum.get(symbol, (0.0, 0.0))
-            # Exp1: COUNTER-TREND-CONDITIONED accumulator RHO. Bull entry is ct when
-            # the multi-day trend is DOWN (bull-in-downtrend = crash dead-cat longs);
-            # bear entry is ct when the multi-day trend is UP (bear-in-uptrend = rally
-            # pullback shorts). Each side's RHO blends toward ENTRY_ACCUM_RHO_CT
-            # proportional to its own ct indicator (fast-saturating /0.01 ret_vlong,
-            # near-constant noise-free). Trend-aligned side -> RHO=ENTRY_ACCUM_RHO
-            # (byte-identical timing); ct side -> higher RHO (slower readiness crossing
-            # -> filters noise-driven ct re-entries -> rally stab up).
-            _bull_ct_ind = max(0.0, np.tanh(-ret_vlong / 0.01))  # ~1 bull entry in multi-day downtrend
-            _bear_ct_ind = max(0.0, np.tanh(ret_vlong / 0.01))   # ~1 bear entry in multi-day uptrend (rally pullback shorts)
-            _rho_b = ENTRY_ACCUM_RHO + (ENTRY_ACCUM_RHO_CT - ENTRY_ACCUM_RHO) * _bull_ct_ind
-            _rho_s = ENTRY_ACCUM_RHO + (ENTRY_ACCUM_RHO_CT - ENTRY_ACCUM_RHO) * _bear_ct_ind
-            _acc_b = _rho_b * _acc_b + (1.0 - _rho_b) * _bull_margin
-            _acc_s = _rho_s * _acc_s + (1.0 - _rho_s) * _bear_margin
+            _acc_b = ENTRY_ACCUM_RHO * _acc_b + (1.0 - ENTRY_ACCUM_RHO) * _bull_margin
+            _acc_s = ENTRY_ACCUM_RHO * _acc_s + (1.0 - ENTRY_ACCUM_RHO) * _bear_margin
             self._entry_accum[symbol] = (_acc_b, _acc_s)
             _bull_ready = _acc_b >= ENTRY_ACCUM_THRESH
             _bear_ready = _acc_s >= ENTRY_ACCUM_THRESH
