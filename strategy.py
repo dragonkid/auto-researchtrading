@@ -332,18 +332,6 @@ class Strategy:
         # Exp9: sustain the Exp8 volume-spike entry shrink through scale-in (cached at
         # entry, deterministic). Keeps a spike-chasing entry smaller for the whole hold.
         self._vol_shrink_held = {}
-        # Exp1 (architectural, this session): PORTFOLIO NET-DIRECTIONAL-TILT entry shrink
-        # CACHED AT ENTRY and SUSTAINED through scale-in. The keep (05532576) applies the
-        # net-tilt shrink (_net_tilt_shrink_bull/bear) to the FIRST entry bar only; scale-in
-        # then ramps the position back toward un-shrunk `size` over 2-3 bars (the documented
-        # Exp5 pattern for _conc_shrink_held), undoing the directional-risk trim during the
-        # hold. Sustaining the entry-time net-tilt shrink through scale-in (cached at entry,
-        # applied to full_target, same mechanism as _conc_shrink_held/_vol_shrink_held) keeps
-        # a tilted book's entries proportionally smaller for the whole hold -> amplifies the
-        # over-exposure trim that produced the keep's rally/bull Sharpe gains. Sanctioned
-        # untested lead (a) from the 05532576 session-summary. Deterministic (set once at
-        # entry, noise-robust). Reset on full exit; default 1.0.
-        self._net_tilt_shrink_held = {}
         # Exp3 (architectural): PORTFOLIO consecutive-loss streak counter. Mirrors
         # max_consecutive_losses (computed over chronological trade_pnls across all
         # symbols in prepare.py). Increment on any closed losing trade, reset on a win.
@@ -1725,12 +1713,10 @@ class Strategy:
                     target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._net_tilt_shrink_held[symbol] = _net_tilt_shrink_bull  # Exp1: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
                     target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
-                    self._net_tilt_shrink_held[symbol] = _net_tilt_shrink_bear  # Exp1: cache for scale-in sustain
             elif current_pos != 0:
                 pos_pnl = (mid - self.entry_prices[symbol]) / self.entry_prices[symbol]
                 if current_pos < 0:
@@ -1944,13 +1930,6 @@ class Strategy:
                     # bar 1. A SHRINK sustained (not a boost) -> smaller giveback on the
                     # spike-chasing trade (opposite of the failed xasset-sustain over-commit).
                     _vol_held = self._vol_shrink_held.get(symbol, 1.0)
-                    # Exp1 (this session): sustain the net-directional-tilt entry shrink
-                    # through scale-in (cached at entry, deterministic, same mechanism as
-                    # _conc_held/_vol_held). Keeps a tilted book's entry proportionally
-                    # smaller for the whole hold instead of ramping back to un-shrunk
-                    # `size` after bar 1, amplifying the over-exposure trim through the
-                    # hold. A SHRINK sustained -> smaller giveback on tilt-pile-up entries.
-                    _net_tilt_held = self._net_tilt_shrink_held.get(symbol, 1.0)
                     # Exp5 (architectural, indep, BRANCH CANDIDATE): DIRECTIONAL
                     # multi-day-downtrend-gated sustained persist_boost. Exp2 (this
                     # session, discarded) showed sustaining _persist_boost through scale-in
@@ -2008,7 +1987,7 @@ class Strategy:
                     _persist_down_gate_dur = max(0.0, np.tanh((_down_persist - 0.5) / 0.15))  # base gate: persistent downtrend
                     _persist_sustain_mag = PERSIST_BOOST_MAG + 0.10 * _persist_deep_gate
                     _persist_sustain = 1.0 + _persist_sustain_mag * _weak_persist * _persist_down_gate_dur
-                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _net_tilt_held * _persist_sustain
+                    full_target = (size if current_pos > 0 else -size) * _conc_held * _vol_held * _persist_sustain
                     target = full_target * scale_frac
                     # Don't shrink below current position - this is scale-in, not exit
                     if (current_pos > 0 and target < current_pos) or (current_pos < 0 and target > current_pos):
@@ -3106,7 +3085,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._net_tilt_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
