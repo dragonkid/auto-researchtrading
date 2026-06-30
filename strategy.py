@@ -2159,7 +2159,7 @@ class Strategy:
                 # -> gate~0 -> tightening magnitude ~0 -> byte-identical). Two coordinated edits:
                 # (a) DD-fraction source _equity_ema -> _equity_ema_atten (asym-EMA, clears rally
                 # stab); (b) tightening x MTM-chop gate (protects bull/sideways smooth winners).
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
                 _pp_hist_ex = self._pnl_path.get(symbol, [])
                 _mtm_chop_ex = 0.0
                 if len(_pp_hist_ex) >= 4:
