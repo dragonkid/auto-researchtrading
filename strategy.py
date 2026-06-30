@@ -436,7 +436,7 @@ class Strategy:
         if equity <= _prev_eq_atten:
             self._equity_ema_atten = equity  # fast-fall: instant, zero lag
         else:
-            self._equity_ema_atten = 0.2 * equity + 0.8 * _prev_eq_atten  # step5: slow-rise 0.3->0.2 (more smoothing, amplify bull gain)
+            self._equity_ema_atten = 0.1 * equity + 0.9 * _prev_eq_atten  # step6: slow-rise 0.2->0.1 (push bull gain further)
         _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
 
