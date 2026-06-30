@@ -2168,7 +2168,23 @@ class Strategy:
                 # deep pullbacks. At 5x (rally DD near the 8pct knee) DD relief may now outweigh
                 # the return_reward cost of earlier harvest. Continuous tanh on the DD fraction;
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
-                _port_dd_frac = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
+                # Exp1 branch step2: DD-DEPTH BLEND of the exit-side equity EMA. Step1
+                # (pure asym) over-harvested bull/crash/sideways winners during their
+                # MILD DD episodes (the fast-fall snaps tightening on instantly where the
+                # symmetric span-3 lagged, harvesting trend winners too aggressively).
+                # The rally gain lives at DEEP/FAST DD cycles (rally pullbacks); the
+                # bull/crash/sideways cost is at SHALLOW/mild DD. Blend the two EMAs by
+                # DD depth: at shallow DD use the symmetric _equity_ema (baseline winner-
+                # riding preserved), at deep DD use the asym _equity_ema_exit (zero-lag
+                # fast-fall caps rally's fast cycles sooner). The blend gate is itself
+                # computed from the symmetric EMA's DD fraction (the stable reference),
+                # so the gate doesn't wobble under the asym EMA. Continuous tanh on the
+                # DD fraction (no boundary); leverage-coupled scale (same as the tightening).
+                _exit_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+                _exit_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
+                _asym_blend = max(0.0, min(1.0, np.tanh((_exit_dd_frac_sym - 0.5 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K) / (0.5 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
+                _exit_dd_frac = _exit_dd_frac_sym * (1.0 - _asym_blend) + _exit_dd_frac_asym * _asym_blend
+                _port_dd_frac = _exit_dd_frac
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
