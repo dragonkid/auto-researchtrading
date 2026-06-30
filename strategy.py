@@ -2736,6 +2736,35 @@ class Strategy:
                     # the desired behavior for rally pullback shorts + mixed wrong-side longs).
                     _ret_vlong_term_og = max(0.0, np.tanh(ret_vlong * _pos_dir_og / 0.04))
                     _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _ret_vlong_term_og)
+                    # Exp1 (architectural, indep): CROSS-SYMBOL BTC multi-day trend confirmation
+                    # on the opp-gate graduated-exit protection. NEW cross-symbol data dep on the
+                    # EXIT path: _btc_trend (BTC 96-bar OLS log-HL2 slope*n, the validated market-
+                    # leader structural-direction signal) currently feeds ONLY entry sizing
+                    # (xasset/volume boosts, lines ~1294-1410) -- NEVER the exit decision. The
+                    # opp-gate graduated exit shields trend-aligned+in-profit winners from full
+                    # exit on opp-voter spikes, using OWN-symbol ret_long/ret_vlong. For mixed_2025
+                    # (the binding floor, Sh0.839 return-limited; an oscillating down-year where
+                    # alts' OWN ret_vlong is persistently negative so the own-ret_vlong term above
+                    # contributes ~0 for mixed's held longs), BTC's 96-bar trend is a STRUCTURALLY
+                    # DIFFERENT signal: BTC led the 2025 recovery rallies even as alts oscillated,
+                    # so BTC's multi-day trend can be solidly up during mixed's rally phases when
+                    # the alt's own ret_vlong is near zero or negative. When BTC's multi-day trend
+                    # CONFIRMS the position direction, sustain the graduated protection longer ->
+                    # ride mixed's trend-aligned rally-phase longs longer -> higher mixed Sharpe
+                    # (the validated ride-winners direction on this exact opp-gate path, f7af0069
+                    # opp-gate vlong keep + 85a2e23e own-DVP keep). Same vol-gate envelope as the
+                    # own-ret_vlong boost (low vol_ratio = mixed/rally grind, sparing bull high-
+                    # vol) so it fires in the calm grind where mixed lives and is ~off in bull's
+                    # sharp high-vol regime. Same /0.04 deep-saturating scale as own-ret_vlong (so
+                    # BTC's solid trend sits in the flat tail -> near-constant confirmation, noise-
+                    # free per the validated safe-family lesson). Capped via min(1.0). Byte-
+                    # identical when BTC absent/short (computed once per bar, _btc_trend=0 -> term
+                    # 0 -> no addition) or vol-gate=0 (bull). This is the prior session-summary's
+                    # explicit untested lead: "a CROSS-SYMBOL confirmation MIGHT break the wall" --
+                    # routing a NEW cross-symbol signal into the exit decision (the binding mixed
+                    # floor), not a parameter tweak on an existing axis.
+                    _btc_trend_term_og = max(0.0, np.tanh(_btc_trend * _pos_dir_og / 0.04))
+                    _trend_align_og = min(1.0, _trend_align_og + 0.30 * _vlong_vol_gate * _btc_trend_term_og)
                     _profit_gate_og = max(0.0, np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # [0, ~1] only profit
                     _grad_gate = _trend_align_og * _profit_gate_og  # both required
                     # Exp2 (architectural, indep): 24-bar OWN-DVP-CONFIRMATION on the
