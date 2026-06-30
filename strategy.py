@@ -2194,7 +2194,7 @@ class Strategy:
                 # invariant). General principle (no regime label): partial asym smoothing.
                 _port_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _port_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                _port_dd_frac = 0.5 * _port_dd_frac_sym + 0.5 * _port_dd_frac_asym  # branch step8: blend back to 0.5 (depth-dependent rise alpha handles sideways/rally separation, so more asym weight for rally gain)
+                _port_dd_frac = 0.7 * _port_dd_frac_sym + 0.3 * _port_dd_frac_asym  # branch step9: blend back to 0.3 asym (depth-dependent rise alpha handles separation, less asym weight spares sideways/bull)
                 self._prev_port_dd_frac_exit = _port_dd_frac  # branch step8: cache for next bar's rise-alpha depth gate
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
