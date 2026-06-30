@@ -2651,30 +2651,33 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        # Exp3 (architectural, indep, THIS session): PROFIT-VELOCITY gate
-                        # on the de-risk cushion (4th multiplicative factor). The cushion
-                        # (k>1 -> ride giveback) is currently gated by trend-align +
-                        # profit + slope-conf. A winner whose PROFIT IS STILL RISING
-                        # (pos_pnl above its own recent EMA = accumulating gains) is a
-                        # genuine ongoing momentum winner -> ride the giveback harder
-                        # (stronger cushion). A winner whose profit has PLATEAUED/
-                        # DECAYED (pos_pnl below its EMA = momentum exhausted, giveback
-                        # not a transient pullback but the start of a real reversal) ->
-                        # weaken the cushion -> de-risk faster through the decelerating
-                        # giveback. Mechanism distinct from slope-conf (price slope) and
-                        # _ts_supp (multi-day trend): this keys on the POSITION'S OWN
-                        # realized profit trajectory (pos_pnl vs its EMA), capturing
-                        # momentum decay that price-slope alone misses (a price that
-                        # grinds sideways after a win still has positive slope~0 but
-                        # plateauing pos_pnl -> velocity gate fades). New cross-component
-                        # data dep: de-risk cushion depends on realized profit velocity.
-                        # Smooth tanh (no boundary); direction-agnostic (works for long
-                        # and short winners symmetrically); profit-gated (only fires in
-                        # profit via the existing max(0,_pnl_scale) envelope). Scale
-                        # /0.01 (pos_pnl is a fraction; 1pct above EMA -> ~tanh(1)~0.76).
+                        # Exp3 branch step2: PROFIT-VELOCITY on the de-risk cushion,
+                        # ADDITIVE BOOST-ONLY form (replaces step1's 4th multiplicative
+                        # factor). Step1 (multiplicative _dr_pnl_vel as a 4th factor)
+                        # moved rally +0.029 and mixed (binding) +0.0025 BUT regressed
+                        # bull -0.277 / crash -0.042 / sideways -0.067: the multiplicative
+                        # factor goes to 0 on plateau (pos_pnl ~ EMA) -> KILLS the
+                        # cushion (k->1, linear fast cut) for clean-trend regimes whose
+                        # winners legitimately PLATEAU during healthy grind-up (bull),
+                        # mean-reversion (sideways), or crash trend shorts. The velocity
+                        # signal is real for OSCILLATING regimes (rally/mixed winners
+                        # that should ride while rising, cut when plateauing) but the
+                        # multiplicative-to-zero form over-de-risks clean-trend plateauing
+                        # winners. FIX: keep the baseline cushion (3 original gates:
+                        # trend-align + profit + slope-conf) BYTE-IDENTICAL, and ADD a
+                        # velocity BOOST on top (capped small) so RISING winners get an
+                        # EXTRA cushion while PLATEAUING winners keep the baseline cushion
+                        # (no regression). Boost-only discipline (prior sessions
+                        # validated: boost the target regime, do not gate the others).
+                        # Boost magnitude 0.20 max, profit-gated + trend-align-gated +
+                        # slope-conf-gated so it only strengthens an already-cushioned
+                        # winner that is ALSO still rising -> isolated to the rally/mixed
+                        # oscillating-winner ride path. Smooth tanh (no boundary);
+                        # direction-agnostic; plateau (vel~0) -> boost~0 -> baseline k.
                         _pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
                         _dr_pnl_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr) / 0.01))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_pnl_vel  # 1.0 loss/ct/slope-weak/plateau, up to ~1.6 trend-aligned+profit+slope-conf+rising
+                        _dr_k_base = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # baseline cushion (byte-identical to 05532576 when vel~0)
+                        _dr_k = _dr_k_base + 0.20 * _dr_pnl_vel * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # +0.20 max extra cushion when rising AND trend-aligned AND profit
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
