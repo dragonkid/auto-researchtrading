@@ -2673,28 +2673,25 @@ class Strategy:
                         # Smooth tanh (no boundary); direction-agnostic; profit-gated.
                         _pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
                         _dr_pnl_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr) / 0.01))
-                        # Exp3 branch step4: ADD the ret_vlong MAGNITUDE FLOOR (validated
-                        # 85a2e23e sideways/mixed separator) on top of the vol-gate. Step3
-                        # vol-gate isolated bull (high-vol spared) and recovered rally/mixed
-                        # (low-vol) BUT sideways is ALSO low-vol and got caught (stab crash
-                        # 1.0->0.354): sideways mean-reverters legitimately plateau ->
-                        # fast-cut -> over-de-risk. The validated separator that
-                        # distinguishes mixed's SOLID uptrend legs from sideways NOISE is
-                        # the multi-day trend MAGNITUDE: |ret_vlong*pos_dir|>0.03 (mixed
-                        # rally-phase longs ret_vlong~0.04-0.08 saturate to 1; sideways
-                        # ret_vlong~0 fades to ~0). Gate the velocity factor on BOTH:
-                        # low-vol grind (vol-gate, spares bull) AND multi-day trend magnitude
-                        # (magnitude-floor, spares sideways). Byte-identical to 05532576
-                        # baseline for bull (vol-gate~0), sideways (magnitude-floor~0), ct
-                        # (ret_vlong term ~0 via _dr_align~0), and rising winners (vel~1 ->
-                        # factor 1.0). The plateau->fast-cut fires ONLY in low-vol solid-
-                        # trend (rally/mixed) plateau = the validated mixed lever envelope.
+                        # Exp3 branch step5: add PROFIT-DEPTH gate to the velocity factor
+                        # (step4 magnitude-floor did not spare sideways -- sideways has
+                        # ret_vlong episodes crossing 0.03). Sideways mean-reverters are
+                        # SHALLOW winners (pos_pnl < 1.5x stop) that plateau constantly;
+                        # mixed/rally's beneficial trend winners are DEEP (pos_pnl > 1.5x
+                        # stop). Gate the plateau->fast-cut on DEEP profit only so sideways
+                        # shallow mean-reverters are byte-identical to baseline (no velocity
+                        # factor). _pnl_scale = tanh(pos_pnl/|stop|); at pos_pnl=1.5xstop
+                        # _pnl_scale~0.905, so gate on (_pnl_scale-0.85)/0.10 -> ~0 shallow,
+                        # ~1 deep. Combined with vol-gate + magnitude-floor: plateau->fast-
+                        # cut fires ONLY for DEEP winners in LOW-vol SOLID-trend (mixed/rally
+                        # rally-phase longs). Byte-identical for bull (vol-gate), sideways
+                        # (shallow profit OR low magnitude), ct (align~0), shallow winners.
                         _dr_mag_floor = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _dr_pos_dir) - 0.03) / 0.02)))
-                        # velocity factor: 1.0 (baseline cushion) when high-vol/bull OR
-                        # sideways (low magnitude) OR rising; fades toward 0 (fast cut)
-                        # ONLY in low-vol solid-trend (rally/mixed) plateau.
-                        _dr_vel_factor = 1.0 - _vlong_vol_gate * _dr_mag_floor * (1.0 - _dr_pnl_vel)
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vel_factor  # baseline in bull/sideways/rising/ct; fast-cut in rally/mixed solid-trend plateau
+                        _dr_depth_gate = max(0.0, min(1.0, np.tanh((max(0.0, _pnl_scale) - 0.85) / 0.10)))
+                        # velocity factor: 1.0 (baseline cushion) unless ALL of: low-vol
+                        # grind + solid multi-day trend + DEEP profit + plateauing.
+                        _dr_vel_factor = 1.0 - _vlong_vol_gate * _dr_mag_floor * _dr_depth_gate * (1.0 - _dr_pnl_vel)
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_vel_factor  # baseline in bull/sideways/shallow/rising/ct; fast-cut in deep rally/mixed solid-trend plateau
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
