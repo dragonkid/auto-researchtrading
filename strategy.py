@@ -2182,7 +2182,13 @@ class Strategy:
                 # DD fraction (no boundary); leverage-coupled scale (same as the tightening).
                 _exit_dd_frac_sym = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _exit_dd_frac_asym = max(0.0, 1.0 - self._equity_ema_exit / max(self._peak_equity, 1e-10))
-                _asym_blend = max(0.0, min(1.0, np.tanh((_exit_dd_frac_sym - 0.5 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K) / (0.5 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
+                # step3: lower the blend onset+scale so the asym path engages at SHALLOWER
+                # DD where rally's ~5pct cycles sit (step2's 0.5*SCALE*K onset was too deep,
+                # rally reverted to baseline). Onset 0.2*SCALE*K (~0.0096 frac ~= 1pct DD,
+                # below bull/crash/sideways mild episodes so they still start on symmetric)
+                # with a FINER scale 0.2*SCALE*K so the blend saturates by ~3pct DD (rally
+                # fully on asym, milder episodes partially blended). Continuous tanh.
+                _asym_blend = max(0.0, min(1.0, np.tanh((_exit_dd_frac_sym - 0.2 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K) / (0.2 * PORT_DD_GIVEBACK_SCALE * LEVERAGE_K))))
                 _exit_dd_frac = _exit_dd_frac_sym * (1.0 - _asym_blend) + _exit_dd_frac_asym * _asym_blend
                 _port_dd_frac = _exit_dd_frac
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
