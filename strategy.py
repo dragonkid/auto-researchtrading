@@ -2168,7 +2168,7 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _mtm_chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                _tighten_gate = 0.50 + 0.50 * _mtm_chop_ex  # 0.5 smooth winners (partial spare) -> 1.0 choppy (full tighten)
+                _tighten_gate = max(0.0, min(1.0, np.tanh((_mtm_chop_ex - 0.30) / 0.20)))  # 0 smooth winners (fully spared), ~1 deep chop (rally ct losers). onset 0.30 so bull/sideways smooth winners (chop~0) get ZERO tightening.
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
