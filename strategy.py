@@ -146,22 +146,6 @@ PORT_DD_TP_HARVEST_SCALE = 0.012  # base DD-fraction at which relaxation saturat
 LEVERAGE_K = 4.0
 BASE_POSITION_SIZE = 0.065 * LEVERAGE_K
 CALM_BOOST_MAX = 0.8
-# Exp1 (architectural, indep): portfolio EQUITY-CURVE SLOPE parameters. The slow
-# time-derivative of the portfolio equity curve, a portfolio-level signal distinct
-# from the DD-fraction (level distance from peak) used by _port_dd_atten. Window
-# ~24 bars (~1 day) is a NEW timescale (not the 96/48-bar per-symbol windows nor
-# the span-3 _equity_ema) chosen to capture the portfolio's multi-bar P&L
-# trajectory: short enough to register regime transitions (a crash leg developing,
-# a rally grinding up), long enough to average single-bar AR(1) noise (each input
-# bar's equity is a portfolio-level aggregate of 3 symbols -> already ~1/sqrt(3)
-# noise per bar -> a 24-bar OLS slope is ~1/sqrt(72) noise-attenuated, near-constant
-# under AR(1) -> noise-robust). LEVERAGE_K-coupled scale (same decision-invariance
-# discipline: 2x size -> 2x equity returns for a given move -> scale slope by
-# LEVERAGE_K to keep activation invariant). PORT_EQ_SLOPE_MAX is the saturation
-# slope (~1% portfolio P&L per window saturates the gate); small max shrink 0.15.
-PORT_EQ_SLOPE_WINDOW = 24
-PORT_EQ_SLOPE_SCALE = 0.02 * LEVERAGE_K   # slope (equity-return-per-window) at which shrink saturates; scaled by LEVERAGE_K for decision invariance
-PORT_EQ_SLOPE_MAX = 0.15                  # max first-bar entry shrink when equity curve is in decline (-> 0.85x)
 # Architectural (this session): LEVERAGE-COUPLED sideways mean-reversion boost. Under v2.2
 # (calmar return_reward, leverage-INVARIANT) the LEVERAGE_K=5 level is no longer optimal:
 # a 5->4 cut gives a real dd_gate gain on rally (DD 6.36->5.09) + bull + crash (prior Exp1
@@ -389,17 +373,6 @@ class Strategy:
         # Mirrors the fe6acd4d keep's |ret_vlong| duration-count principle applied to the
         # SIGN (separates crash's persistent bear from bull's transient pullback dips).
         self._down_vlong_hist = {}
-        # Exp1 (architectural, indep): portfolio EQUITY-CURVE SLOPE state. A rolling
-        # deque of recent equity_ema samples (span PORT_EQ_SLOPE_WINDOW) used to compute
-        # the SLOW time-derivative of the portfolio equity curve. Distinct from
-        # _equity_ema (a span-3 low-pass that feeds only the DD *fraction* = level
-        # distance from peak) and _peak_equity (a high-water mark): the SLOPE is the
-        # rate of P&L CHANGE — orthogonal portfolio-level signal (sanctioned untested
-        # lead from 05532576 keep note (c): "portfolio equity-curve timescale NOT
-        # 96/48-bar"). A portfolio below peak but RECOVERING (positive slope) carries
-        # different risk than one still DECLINING (negative slope) — the level-based
-        # _port_dd_atten cannot distinguish them. New portfolio-level data dep.
-        self._equity_curve_hist = []
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -410,28 +383,6 @@ class Strategy:
         # fraction only; _peak_equity still uses instantaneous for the entry circuit).
         _eq_alpha = 2.0 / (PORT_DD_GIVEBACK_EQUITY_SPAN + 1)
         self._equity_ema = _eq_alpha * equity + (1.0 - _eq_alpha) * (self._equity_ema if self._equity_ema > 0 else equity)
-        # Exp1 (architectural, indep): portfolio EQUITY-CURVE SLOPE. Maintain a
-        # rolling window of _equity_ema samples and compute the OLS slope of the
-        # normalized equity curve (equity_ema / peak_equity) over PORT_EQ_SLOPE_WINDOW
-        # bars. This is the SLOW time-derivative of the portfolio P&L trajectory --
-        # a portfolio-level signal genuinely orthogonal to the DD-fraction (level
-        # distance from peak) that _port_dd_atten uses. Normalizing by peak_equity
-        # makes the slope scale-invariant (a 1% equity move is the same signal
-        # regardless of absolute equity). Computed ONCE per bar at portfolio scope
-        # (before the per-symbol loop) -> reused across all symbols (cheap). New
-        # portfolio-level data dep + new control flow (rolling deque maintained
-        # across bars). _port_eq_slope < 0 = portfolio in decline (losing streak
-        # developing); > 0 = recovering. Used as a shrink-only entry gate below.
-        _ech = self._equity_curve_hist
-        _ech.append(self._equity_ema)
-        if len(_ech) > PORT_EQ_SLOPE_WINDOW:
-            _ech = _ech[-PORT_EQ_SLOPE_WINDOW:]
-            self._equity_curve_hist = _ech
-        _port_eq_slope = 0.0
-        if len(_ech) >= 8:
-            _ech_arr = np.asarray(_ech, dtype=float)
-            _ech_norm = _ech_arr / max(self._peak_equity, 1e-10)
-            _port_eq_slope = _fast_slope(_ech_norm) * len(_ech_norm)  # net window return
         # PORT_DD_SCALE: DD-fraction scale for the portfolio-DD circuit-breaker.
         # Scaled by LEVERAGE_K: 2x leverage -> 2x deeper portfolio DD fraction ->
         # scale the tanh threshold by 2x so the breaker activates at the same DD
@@ -1758,30 +1709,12 @@ class Strategy:
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
-                # Exp1 (architectural, indep): portfolio EQUITY-CURVE-SLOPE entry
-                # shrink. The slope (_port_eq_slope, computed once per bar at portfolio
-                # scope above) is the slow time-derivative of the portfolio P&L
-                # trajectory. When the portfolio is in DECLINE (negative slope -- a
-                # losing streak developing, e.g. a crash leg or a rally pullback
-                # sequence biting the book), shrink new-entry first-bar size
-                # (anti-martingale: trade smaller when losing). When recovering or
-                # flat (slope >= 0), no effect (floor 1.0, shrink-only safe family).
-                # Distinct from _port_dd_atten (DD-fraction level distance from peak):
-                # a portfolio below peak but RECOVERING (positive slope) should NOT be
-                # risk-off, while one still DECLINING should shrink -- the level-based
-                # _port_dd_atten cannot distinguish them, so this is additive signal.
-                # Byte-identical when slope >= 0 (recovery/peak/new-high regimes where
-                # bull/rally/crash-uptrend-leg trades mostly fire). Sparing max 0.15,
-                # fast-saturating /PORT_EQ_SLOPE_SCALE (near-constant where it fires,
-                # noise-free per the validated safe-family lesson). Continuous tanh,
-                # no boundary. Direction-agnostic general principle (no regime label).
-                _port_eq_slope_shrink = 1.0 - PORT_EQ_SLOPE_MAX * max(0.0, np.tanh(-_port_eq_slope / PORT_EQ_SLOPE_SCALE))
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost * _port_eq_slope_shrink
+                    target = size * min(0.55, _entry_frac_dyn + _range_bull_adj) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost * _port_eq_slope_shrink
+                    target = -size * min(0.55, _entry_frac_dyn + _range_bear_adj) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _vol_entry_atten * _outcome_size_mult * _port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
