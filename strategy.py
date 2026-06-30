@@ -2168,7 +2168,22 @@ class Strategy:
                     _tot_ex = float(np.sum(np.abs(np.diff(_ppa_ex))))
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _mtm_chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
-                _tighten_gate = max(0.0, min(1.0, np.tanh((_mtm_chop_ex - 0.50) / 0.15)))  # 0 smooth winners (fully spared), ~1 deep chop (rally ct losers, mixed dead capital). onset 0.50 so bull/sideways smooth winners (chop well below 0.50) get ZERO tightening.
+                # Branch step6: LOSS-SIDE gate (replace MTM-chop onset 0.50). Step5 isolated that
+                # the asym-EMA clears rally stab BUT crashes bull/sideways; the MTM-chop gate (any
+                # onset) cannot decouple because bull/sideways/rally ALL have choppy positions during
+                # their respective DD-recovery bars (same overlap wall as prior session's ct/DD-depth/
+                # blend/rise-alpha). Fresh axis: gate the tightening on the position's OWN PnL SIGN.
+                # Rally's losing pullback shorts are UNDERWATER (pos_pnl<0) during portfolio DD;
+                # bull's winning pullback shorts are IN PROFIT (pos_pnl>0) during portfolio DD.
+                # Fire tightening only on LOSING positions (the ct losers that give back) and spare
+                # WINNING positions (let them run, bull held). Structurally different from MTM-chop
+                # (path shape) and ct (fires on both winners and losers). The loss-side gate is the
+                # validated giveback-tightening's natural complement: it already only harvests at
+                # peak giveback; here we make the DD-tightening itself loss-conditional so it never
+                # touches a winning position. Continuous tanh on -pos_pnl/|stop| (0 profit -> 1 deep
+                # loss); byte-identical at portfolio peak (dd_frac=0).
+                _loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 deep loss
+                _tighten_gate = _loss_gate  # fire only on losing positions; winners fully spared
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * _tighten_gate * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
                 _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
