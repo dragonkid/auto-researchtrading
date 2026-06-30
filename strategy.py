@@ -280,6 +280,13 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
+        # Exp3 (architectural, indep, THIS session): per-symbol EMA of pos_pnl (span 4)
+        # for the PROFIT-VELOCITY gate on the de-risk cushion. Distinct from
+        # _smoothed_pnl (1-step lag for peak confirmation) and _pnl_path (12-bar raw
+        # history for MTM-efficiency): this is a proper low-pass on the pos_pnl LEVEL so
+        # that pos_pnl - _pnl_ema_dr measures whether profit is ABOVE its recent trend
+        # (still rising) or below (plateauing/decaying) -> velocity signal.
+        self._pnl_ema_dr = {}
         # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
         # Used by entry-persistence gate to require 2 bars of sustained conviction.
         self._recent_strongs = {}
@@ -1730,6 +1737,11 @@ class Strategy:
                 if len(_pp_hist) > 12:
                     _pp_hist = _pp_hist[-12:]
                 self._pnl_path[symbol] = _pp_hist
+                # Exp3 (this session): EMA of pos_pnl (span 4) for the profit-velocity
+                # gate on the de-risk cushion. Initialized to the first observed pos_pnl.
+                _pnl_ema_alpha_dr = 2.0 / (4.0 + 1.0)
+                _prev_pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
+                self._pnl_ema_dr[symbol] = _pnl_ema_alpha_dr * pos_pnl + (1.0 - _pnl_ema_alpha_dr) * _prev_pnl_ema_dr
 
                 # Architectural simplification: removed _trend_agree scale-in override.
                 # Trend agreement was already filtered at entry time by _bull_admit/_bear_admit
@@ -2639,7 +2651,30 @@ class Strategy:
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
                         _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
-                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
+                        # Exp3 (architectural, indep, THIS session): PROFIT-VELOCITY gate
+                        # on the de-risk cushion (4th multiplicative factor). The cushion
+                        # (k>1 -> ride giveback) is currently gated by trend-align +
+                        # profit + slope-conf. A winner whose PROFIT IS STILL RISING
+                        # (pos_pnl above its own recent EMA = accumulating gains) is a
+                        # genuine ongoing momentum winner -> ride the giveback harder
+                        # (stronger cushion). A winner whose profit has PLATEAUED/
+                        # DECAYED (pos_pnl below its EMA = momentum exhausted, giveback
+                        # not a transient pullback but the start of a real reversal) ->
+                        # weaken the cushion -> de-risk faster through the decelerating
+                        # giveback. Mechanism distinct from slope-conf (price slope) and
+                        # _ts_supp (multi-day trend): this keys on the POSITION'S OWN
+                        # realized profit trajectory (pos_pnl vs its EMA), capturing
+                        # momentum decay that price-slope alone misses (a price that
+                        # grinds sideways after a win still has positive slope~0 but
+                        # plateauing pos_pnl -> velocity gate fades). New cross-component
+                        # data dep: de-risk cushion depends on realized profit velocity.
+                        # Smooth tanh (no boundary); direction-agnostic (works for long
+                        # and short winners symmetrically); profit-gated (only fires in
+                        # profit via the existing max(0,_pnl_scale) envelope). Scale
+                        # /0.01 (pos_pnl is a fraction; 1pct above EMA -> ~tanh(1)~0.76).
+                        _pnl_ema_dr = self._pnl_ema_dr.get(symbol, pos_pnl)
+                        _dr_pnl_vel = max(0.0, np.tanh((pos_pnl - _pnl_ema_dr) / 0.01))
+                        _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf * _dr_pnl_vel  # 1.0 loss/ct/slope-weak/plateau, up to ~1.6 trend-aligned+profit+slope-conf+rising
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
                         target = target * _de_risk
@@ -3085,7 +3120,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._exit_press_ema, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._pnl_ema_dr):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
