@@ -402,12 +402,25 @@ class Strategy:
         # should reduce the bar-to-bar size-variance it injects while preserving the same
         # average activation level (same DD fraction -> same mean shrink, just stable).
         # Byte-identical at portfolio peak (dd_frac=0 -> no shrink either way); leveraged-
-        # coupled scale retained. Span uses PORT_DD_GIVEBACK_EQUITY_SPAN (same validated
-        # EMA span as the giveback-tightening — one noise-robustness discipline for both
-        # portfolio-DD consumers). Distinct from the walled equity-CURVE-SLOPE entry
+        # coupled scale retained. Distinct from the walled equity-CURVE-SLOPE entry
         # shrink (c84577dc: that added a NEW derivative signal; this smooths an EXISTING
         # load-bearing signal's input).
-        _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
+        # Branch step2: DEDICATED SHORTER SPAN for the breaker (was reusing the giveback
+        # span-3). Step1 (span-3) lifted bull stab past the 0.80 knee (+0.008) BUT regressed
+        # rally stab (1.000->0.987): the span-3 EMA LAGS the breaker's DD-detection by ~1 bar,
+        # and rally's portfolio DD episodes (the DD source = rally pullbacks) are FAST/choppy
+        # (3-5 bar swings) -> a stale shrink fires when DD has already partially recovered ->
+        # size wobble during the recovery. The giveback-tightening tolerates span-3 lag
+        # because it gates a SLOW exit-timing decision (giveback harvest at peaks); the
+        # breaker gates FIRST-BAR ENTRY SIZE which needs faster DD response. Use a dedicated
+        # span-1.5 breaker EMA (alpha 0.8, ~0.4-bar lag) computed SEPARATELY so the giveback
+        # span-3 is undisturbed. Faster smoothing keeps the bar-to-bar stability (the bull
+        # gain source: smoothing kills the AR(1) wobble in the shrink amount) while halving
+        # the lag (the rally loss source: stale shrink during fast DD swings).
+        PORT_DD_ATTEN_EQUITY_SPAN = 1.5
+        _atten_alpha = 2.0 / (PORT_DD_ATTEN_EQUITY_SPAN + 1)
+        self._equity_ema_atten = _atten_alpha * equity + (1.0 - _atten_alpha) * (getattr(self, "_equity_ema_atten", 0.0) if self._equity_ema > 0 else equity)
+        _port_dd_frac = max(0.0, 1.0 - self._equity_ema_atten / max(self._peak_equity, 1e-10))
         _port_dd_atten = 1.0 - 1.0 * max(0.0, np.tanh(_port_dd_frac / (0.008 * LEVERAGE_K)))
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
