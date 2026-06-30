@@ -465,7 +465,7 @@ class Strategy:
         if equity <= _prev_eq_exit:
             self._equity_ema_exit = equity  # fast-fall: instant, zero lag
         else:
-            self._equity_ema_exit = 0.05 * equity + 0.95 * _prev_eq_exit  # slow-rise (keep's validated alpha 0.05)
+            self._equity_ema_exit = 0.20 * equity + 0.80 * _prev_eq_exit  # branch step2: faster rise 0.05->0.20 (relax tightening faster during shallow recovery)
 
         # Architectural (Exp3 this session): cross-asset BTC multi-day trend, the market
         # leader's structural direction. Used as a SHRINK-only confirmation gate on ETH/SOL
