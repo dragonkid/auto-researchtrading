@@ -208,25 +208,6 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
-# Architectural (Exp3 this session): MTM-PATH-EFFICIENCY-GATED convex time-pressure ramp.
-# Exp1 (discarded) showed a UNIFORM convex time-ramp (x^1.6) is a real lever for trend
-# regimes (sideways +0.011, crash +0.006 from slower time-exit letting winners run) BUT
-# hurts mixed (-0.009: the convex ramp holds mixed's oscillating dead-capital longs longer
-# -> more giveback) and bull (-0.016: holds correction longs longer) -- the trend/chop
-# overlap wall. This gates the convex cushion on the held position's MTM-path-efficiency
-# (the PROVEN mixed/sideways separator at the emission throttle, branch-step-9 keep):
-# HIGH efficiency (smooth climber = bull/crash/sideways/rally trend winners) -> convex
-# cushion (ride pullback noise through the early-overtime mid-range); LOW efficiency
-# (mixed's whipsaw dead-capital longs) -> LINEAR fast time-exit (no cushion, cut the dead
-# capital at the same bars_held as baseline). Fresh cross-component data dep: the time-
-# pressure activation SHAPE depends on the held position's MTM-path-efficiency (a signal
-# previously used ONLY at the emission reduction-throttle, never at the time-pressure
-# activation). The separator that broke the mixed/sideways overlap at emission is applied
-# to the Exp1 trend/chop overlap at the time-pressure activation. Continuous (smooth
-# efficiency blend); direction-agnostic; byte-identical when _pnl_path < 4 bars (path
-# unavailable, linear ramp). Tests whether the proven separator breaks the Exp1 wall.
-TIME_PRESSURE_CONVEX_K = 1.6     # convex ramp exponent (cushion strength for high-MTM-eff)
-TIME_PRESSURE_EFF_GATE = 0.30    # MTM-eff threshold above which the convex cushion engages
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2224,31 +2205,7 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                # Exp3 (architectural): MTM-PATH-EFFICIENCY-GATED convex time-pressure ramp.
-                # The raw linear ramp x=(bars_held-_max_hold+3)/4 is raised to power
-                # TIME_PRESSURE_CONVEX_K ONLY for held positions whose MTM-path-efficiency
-                # is high (smooth climber = trend winners); low-efficiency (mixed dead-capital
-                # whipsaw) keeps the LINEAR fast-exit ramp (byte-identical to baseline). The
-                # cushion damps the early-overtime mid-range where _max_hold noise translates
-                # 1:1 into position-value wobble (Exp1's trend-regime lever), while the Exp1
-                # mixed/bull cost (slower exit on dead-capital/correction longs) is gated out
-                # by the MTM-efficiency separator. Byte-identical when _pnl_path < 4 bars
-                # (path unavailable -> linear ramp). Fresh cross-component data dep: time-
-                # pressure activation shape depends on the held position's MTM-path-eff.
-                _tp_raw = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
-                _tp_eff_blend = 0.0
-                _ppp_tp = self._pnl_path.get(symbol, [])
-                if len(_ppp_tp) >= 4:
-                    _ppa_tp = np.array(_ppp_tp)
-                    _net_tp = abs(_ppa_tp[-1] - _ppa_tp[0])
-                    _tot_tp = float(np.sum(np.abs(np.diff(_ppa_tp))))
-                    _mtm_eff_tp = _net_tp / max(_tot_tp, 1e-10)
-                    # Blend 0 (linear, low-eff dead capital) -> 1 (convex, high-eff winner)
-                    # via smooth tanh on (eff - threshold); mixed's whipsaw (eff~0.1) -> ~0
-                    # -> linear fast exit; trend winners (eff~0.5-1.0) -> ~1 -> convex cushion.
-                    _tp_eff_blend = max(0.0, min(1.0, np.tanh((_mtm_eff_tp - TIME_PRESSURE_EFF_GATE) / 0.15)))
-                _tp_k = 1.0 + (TIME_PRESSURE_CONVEX_K - 1.0) * _tp_eff_blend  # 1.0 low-eff, 1.6 high-eff
-                _time_pressure = _tp_raw ** _tp_k
+                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
