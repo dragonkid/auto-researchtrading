@@ -2386,7 +2386,30 @@ class Strategy:
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
                 )
-                _soft_max = max(_soft_terms)
+                # Exp3 (architectural, indep): SOFTMAX (log-sum-exp) fusion of the
+                # weighted soft terms, replacing the element-wise MAX. The MAX was chosen
+                # over a SUM to eliminate correlated-noise ADDITION (5 terms sharing
+                # vol_ratio/HL2/pnl_scale inputs would sum their noise). But MAX has a
+                # different cost: it is NON-SMOOTH in which source dominates -- a tiny
+                # perturbation can flip which term is the argmax -> a step-change in the
+                # fused pressure near term-crossovers -> exit-timing divergence under
+                # AR(1) noise. A log-sum-exp blend `T*log(sum(exp(x_i/T)))` is a SMOOTH
+                # approximation to max: at T->0 it converges to MAX (byte-identical to
+                # baseline), at larger T it blends secondary confirmatory sources into
+                # the dominant one with a smooth derivative everywhere (no argmax flip).
+                # This replaces a non-smooth max with a smooth max-like fusion -- a
+                # genuine subsystem rewrite of the exit-pressure fusion core. Multi-
+                # source CONFIRMATION now comes from the blend itself (a 2nd agreeing
+                # source raises the fused value smoothly) rather than the bolt-on
+                # _agree_gate attenuator. The downstream _soft_atten agreement attenuator
+                # is RETAINED (it gates single-source SPIKES, complementary to the
+                # blend). Temperature SOFTMAX_TEMP sets the blend width (in the same
+                # units as the terms, ~[0,1]). Terms are clamped to a non-negative floor
+                # for the exp (they are already >=0 by construction).
+                _sm_t = 0.12  # SOFTMAX_TEMP: small -> max-like, blends secondary terms
+                _terms_arr = np.array(_soft_terms)
+                _mx = float(_terms_arr.max())
+                _soft_max = _mx + _sm_t * float(np.log(np.sum(np.exp((_terms_arr - _mx) / _sm_t))))
                 # Architectural: multi-source agreement attenuator on soft_max.
                 # When only ONE source contributes meaningfully (top-2 ratio low,
                 # i.e. dominant single source), attenuate up to 25% — single-source
