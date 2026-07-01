@@ -1857,17 +1857,10 @@ class Strategy:
                 # Continuous tanh on VoV/median_vol; max +0.6 bars slower at deep VoV for ct
                 # positions only; floored at _accel_floor. min_stab preserved (ct-gate is
                 # noise-immune integer/ret_vlong-derived; VoV is a smooth windowed stat).
-                # Exp2 (architectural, indep): hoist the vol-of-vol (VoV) regime-shift
-                # signal to a SHARED scope so it can feed BOTH the scale-in pace (existing
-                # use) AND the opp-bias fusion (new use below). VoV = std of rolling 6-bar
-                # realized-vol samples / their median; high VoV = a vol-REGIME TRANSITION
-                # (volatility itself is unstable, 2nd-order vol statistic). Distinct from
-                # vol_ratio (1st-order vol level) and _ve_pressure (6/18 vol ratio at one
-                # timescale). Computed unconditionally here (was nested in the scale-in
-                # block); the computation is identical, just moved earlier so _vov_gate is
-                # available at the opp-bias fusion point.
+                # Direction-agnostic general principle (no regime label): cautious scale-in
+                # for counter-trend entries in a vol-flux regime. New cross-timescale x
+                # cross-trend data dep at scale-in pace.
                 _vov_n = 6
-                _vov_gate = 0.0
                 if len(closes) >= 24:
                     _vov_samples = np.array([
                         float(np.std(np.diff(np.log(closes[-(i + _vov_n) - 1: -(i + 1) + 1])))) if i > 0 else float(np.std(np.diff(np.log(closes[-_vov_n - 1:]))))
@@ -2329,19 +2322,7 @@ class Strategy:
                 # abs(ret_long)/0.04. Symmetric counterpart to _chop_amp on own-side
                 # subtraction (chop amplifies own-side hold; chop also mutes opp-side
                 # exit-spike). Multi-variable: adds new factor to opp-side fusion.
-                # Exp2 (architectural, indep): VOL-OF-VOL regime-shift boost to opp_trend_amp.
-                # In pure chop (low |ret_long|) the baseline mutes opp_bias to 0.5 (opp-voter
-                # spikes are noise without directional backing). But during a vol-REGIME
-                # TRANSITION (high VoV = volatility itself unstable), opp-voter spikes are
-                # MORE likely to be genuine reversal signals (the regime is shifting, not
-                # oscillating in a stable chop) -> restore opp_bias toward full strength even
-                # in chop. New cross-component data dep: opp-bias fusion weight depends on
-                # the 2nd-order vol statistic (was 1st-order trend magnitude only). Smooth
-                # tanh blend, no boundary; byte-identical when _vov_gate=0 (stable vol, the
-                # baseline chop value). Direction-agnostic general principle (no regime
-                # label): opp-side exit-signal reliability depends on vol-regime stability.
-                _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1] baseline trend-amp
-                _opp_trend_amp = min(1.0, _opp_trend_amp + 0.30 * _vov_gate)  # VoV regime-shift restores up to +0.30 in chop
+                _opp_trend_amp = 0.5 + 0.5 * max(0.0, np.tanh(abs(ret_long) / 0.04))  # [0.5, ~1]
                 _voter_bias = -0.20 * _chop_amp * max(0.0, np.tanh(_side_margin / 0.30)) + 0.20 * _opp_atten * _opp_trend_amp * max(0.0, np.tanh(_opp_margin / 0.30))
                 # Architectural: volatility-expansion exit pressure (5th source).
                 # When recent 6-bar realized vol substantially exceeds 18-bar
