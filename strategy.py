@@ -2093,6 +2093,41 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp1 (architectural, indep): MULTI-DAY trend-confirmation cushion on
+                # slope-against pressure. _sl_slope_pressure fires when the near-term (12/16/22-
+                # bar) slope turns against the position. A position whose MULTI-DAY (96-bar
+                # ret_vlong) trend STILL CONFIRMS it is more likely experiencing a transient
+                # pullback within an ongoing trend than a genuine reversal -> attenuate the
+                # slope-against pressure so the position rides the short-term dip. A position
+                # that is COUNTER-TREND at the multi-day scale (ret_vlong*pos_dir<0) gets NO
+                # cushion -> full slope-against pressure (exit the wrong-side position fast).
+                # NEW cross-timescale data dep at the slope-against pressure term: the 96-bar
+                # ret_vlong (already computed, noise-robust via 96-bar OLS) modulates the 12-22-
+                # bar slope-against activation. DISTINCT from prior 07de1071 (cross-window
+                # slope-AGREEMENT modulator, -0.0033, bull/mixed inseparable 1:1): that used a
+                # SYMMETRIC pullback-noise indicator (single-window flip) which fires identically
+                # on bull pullback longs (winners that recover) and mixed wrong-side longs
+                # (losers that should exit). ret_vlong*pos_dir is ASYMMETRIC: bull pullback longs
+                # (ret_vlong>0, pos_dir=+1 -> product>0, trend-aligned) get the cushion; mixed
+                # wrong-side longs (ret_vlong<0, pos_dir=+1 -> product<0, ct-at-multi-day) get
+                # NO cushion -> full pressure. This is the VALIDATED separator (de-risk cushion
+                # Exp4 keep ce66fec6, tp-harvest _ts_supp) applied at a NEW location (the direct
+                # slope-against pressure, not the de-risk ramp or tp-harvest gate). DISTINCT from
+                # 77004358 (ret_vlong on the de-risk CUSHION, -0.064 crashed bull via lag holding
+                # losing longs through corrections): there ret_vlong modulated the GRADUATED
+                # de-risk ramp (holds WINNING riders longer through pullbacks -> the lag cost);
+                # here ret_vlong modulates the slope-against DIRECT pressure which fires on
+                # LOSING positions mid-pullback (a different bar population -- the cushion
+                # attenuates the slope-against signal that would EXIT a losing trend-aligned
+                # position, not the cushion that holds a winning one). Cushion is profit-side-
+                # neutral (applies to any slope-against pressure regardless of pos_pnl sign) but
+                # the trend-confirmation gate is what makes it regime-selective. Continuous tanh
+                # on ret_vlong*pos_dir/0.03 (fast-saturating, near-constant where it fires,
+                # noise-free per the validated lesson); max attenuation 0.30 (-> 0.70x pressure).
+                # Byte-identical when ret_vlong=0 (sideways ~flat multi-day) or product<0 (ct).
+                _pos_dir_sl = 1.0 if current_pos > 0 else -1.0
+                _sl_trend_conf = max(0.0, np.tanh(ret_vlong * _pos_dir_sl / 0.03))  # 0 ct/flat, ~1 trend-aligned
+                _sl_slope_pressure = _sl_slope_pressure * (1.0 - 0.30 * _sl_trend_conf)
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
