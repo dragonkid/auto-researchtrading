@@ -2758,48 +2758,7 @@ class Strategy:
                     # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
-                    # Exp1 (architectural, indep): PARTNER-ALT OPEN-POSITION UNREALIZED-PnL
-                    # confirmation on the opp-gate exit-FRACTION FLOOR (the uncapped ride-
-                    # winners lever, same as _dvp24_floor_lower). NEW cross-symbol data dep
-                    # on a signal no prior exit experiment reads: the partner alt's CURRENT
-                    # open-position unrealized PnL (coincident broad-market confirmation).
-                    # Prior cross-symbol exit experiments read BTC PRICE trend (row 1774:
-                    # regressed mixed -- the 96-bar lag confirms the WRONG side for mixed's
-                    # dead-capital longs) or aggregate book LOSS (a292f44d: inert -- exits
-                    # are staggered so same-sign positions are not simultaneously losing at
-                    # meaningful stop pressure). THIS reads the partner alt's COINCIDENT
-                    # unrealized PnL sign+magnitude (NOT a lagging multi-bar trend, NOT a
-                    # loss-amplifier): when BOTH alts currently hold same-direction positions
-                    # IN PROFIT, the broad alt-trend is confirmed NOW -> ride this winner
-                    # longer (lower exit-frac floor -> less trimming on opp-voter spikes ->
-                    # higher mixed Sharpe, the binding floor + validated ride-winners
-                    # direction). Byte-identical when partner absent/short/no-position or
-                    # partner PnL<=0 (not confirmed) or this position is counter-trend/
-                    # sideways (envelope gates 0). Same validated envelope as _dvp24:
-                    # vol-gate (low-vol grind, spares bull high-vol) x ret_vlong trend-align
-                    # (spares sideways + ct) x mag-gate (isolates solid trend legs). The
-                    # partner-PnL signal is COINCIDENT (resolves this bar from current
-                    # partner mark), not a 24-bar lag -> no sideways exit-timing divergence
-                    # (the _dvp24 lag-induced sideways stab 1.0->0.44 failure mode). Deep-
-                    # saturated /0.15 on partner PnL/|stop| (near-constant where it fires,
-                    # noise-free per the validated safe-family lesson). Small +0.15 max
-                    # floor-lowering (bounds combined floor-lowering at 0.30 = floor 0.10).
-                    _partner_pnl_lower = 0.0
-                    _partner_sym = "SOL" if symbol == "ETH" else "ETH"
-                    if _partner_sym in portfolio.positions and _partner_sym in self.entry_prices:
-                        _pp_pos = portfolio.positions.get(_partner_sym, 0.0)
-                        if _pp_pos != 0.0 and _partner_sym in bar_data:
-                            _pp_mid = bar_data[_partner_sym].close
-                            _pp_ep = self.entry_prices[_partner_sym]
-                            _pp_pnl = (_pp_mid - _pp_ep) / _pp_ep
-                            if _pp_pos < 0:
-                                _pp_pnl = -_pp_pnl  # signed: + = partner winning in its direction
-                            # Same-direction confirmation: partner winning in the SAME direction
-                            # as this position (both longs or both shorts = broad trend).
-                            _pp_same_dir = 1.0 if (_pp_pos > 0) == (current_pos > 0) else -1.0
-                            _pp_conv = max(0.0, np.tanh(_pp_pnl * _pp_same_dir / 0.15))
-                            _partner_pnl_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _pp_conv * _dvp24_mag_gate
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower - _partner_pnl_lower
+                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
