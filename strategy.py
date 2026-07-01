@@ -2822,32 +2822,21 @@ class Strategy:
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
                 _te_alpha = min(0.99, _te_alpha * (1.0 + 0.40 * _te_churn_boost))
-                if _te_alpha > 0.0:
-                    _prev_te = self._target_ema.get(symbol, target)
-                    target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
-                self._target_ema[symbol] = target
-
-                # Exp3 (architectural, indep): FEED-FORWARD 3-bar MEDIAN filter on the
-                # emitted held-target LEVEL (applied AFTER the _target_ema, BEFORE the
-                # emission grid). The _target_ema is a backward-looking LOW-PASS that
-                # raises rally stability but incurs LAG on winner->loser transitions (the
-                # stab/raw tension: 2nd-order EMA +0.0029 stab / -0.0378 raw; zero-lag
-                # double-EMA catastrophic; slew-limiter redundant). A MEDIAN-of-3 is
-                # structurally distinct: it has ZERO LAG for monotone moves (the median of
-                # 3 rising values is the middle one -> tracks the rise) and ONLY rejects
-                # isolated spikes (an outlier replaced by its neighbors). So a monotone
-                # trend-aligned winner's shrinking target tracks the shrink with no delay
-                # (no raw cost on loser exits), while an isolated AR(1) spike in the
-                # held level gets collapsed (stability gain). This is the sanctioned
-                # untested lead: a NON-TEMPORAL feed-forward attenuator on the rally
-                # held-level cascade. Distinct from the per-resize grid (quantizes resize
-                # DELTA onto a lattice, not the held level) and from temporal EMAs.
-                # Gated to high-churn ct positions (rally's binding stability population
-                # -- burst ct re-entries whose scale-in resizes cascade most under AR(1)).
-                # Trend-aligned holds (ct gate 0) -> no median -> byte-identical by
-                # construction. Same-sign resizes only (full exits/flips exempt -- risk
-                # transitions must hit exact target). New control flow: a feed-forward
-                # spike filter stage between the EMA and the emission grid.
+                # Exp3 / BRANCH step6: FEED-FORWARD 3-bar MEDIAN on the RAW target BEFORE
+                # the _target_ema (median-then-EMA, replaces the opener's post-EMA median).
+                # The _target_ema is a backward-looking LOW-PASS that raises rally stability
+                # but incurs LAG on winner->loser transitions (the stab/raw tension). A
+                # MEDIAN-of-3 has ZERO LAG for monotone moves (median of 3 rising values =
+                # the middle -> tracks the rise) and ONLY rejects isolated AR(1) spikes.
+                # Applying it BEFORE the EMA means the EMA smooths an already-spike-FREE
+                # signal: the EMA's _prev_te no longer carries the previous bar's spike ->
+                # the EMA's lag on spike-driven wobble is reduced -> the stab/raw tension
+                # eases (stability gain WITHOUT the raw cost of lagging spike-driven
+                # transitions). This is structurally distinct from a post-EMA median (which
+                # attenuates the EMA OUTPUT -- downstream of the lag) -- here we attenuate
+                # the EMA INPUT, preventing the spike from entering the EMA state at all.
+                # Gated to high-churn ct positions (rally's binding population); trend-
+                # aligned (ct gate 0) byte-identical by construction. Sign-preserving snap.
                 _ct_mf_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
                 _mf_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting (noise-immune integer gate)
                 if _ct_mf_str > 0.0 and _mf_churn > 0.0:
@@ -2858,14 +2847,14 @@ class Strategy:
                     self._target_hist[symbol] = _th
                     if len(_th) >= 3:
                         _med = float(np.median(_th))
-                        # Snap toward the median only when it preserves sign (never cross
-                        # zero -- a median of mixed-sign values would flip direction).
                         if (_med > 0) == (target > 0) and _med != 0:
                             target = _med
                 else:
-                    # ct gate off -> byte-identical path; still reset history so a
-                    # transition INTO ct doesn't median against stale trend-aligned levels.
                     self._target_hist[symbol] = []
+                if _te_alpha > 0.0:
+                    _prev_te = self._target_ema.get(symbol, target)
+                    target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
+                self._target_ema[symbol] = target
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
