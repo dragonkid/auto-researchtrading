@@ -208,6 +208,20 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Architectural (Exp1 this session): CONVEX time-pressure activation ramp exponent. The
+# time-pressure ramp is currently LINEAR: _time_pressure = (bars_held - _max_hold + 3)/4,
+# so a unit of _max_hold noise (driven by _hold_adj/_ct_hold_sat/_vol_hold_ext, all price-
+# derived) maps 1:1 into time-pressure in the MID-RANGE [0,1] -> position-value wobble via
+# _w_time -> equity tracking error (rally stab's root currency; time-pressure is the
+# documented anti-overstay for rally/sideways stability). A CONVEX ramp (x^k, k>1) holds
+# time-pressure near-zero through the early-overtime mid-range (absorbing _max_hold noise)
+# then ramps sharply as bars_held approaches saturation -> the decisive late-overtime cut
+# is preserved (same _time_pressure=1 at saturation) while the noise-translating mid-range
+# is damped. Mirrors the validated de-risk convex cushion (DERISK_CONVEX_AMP) on the
+# time-pressure ACTIVATION shape (fresh control-flow change: 0 prior experiments on the
+# time-pressure ramp shape; prior time-pressure work tuned _max_hold level/windows, never
+# the ramp FUNCTION). Direction-agnostic; affects only the activation curve, not _max_hold.
+TIME_PRESSURE_CONVEX_K = 1.6  # ramp exponent 1.0->1.6 (convex = damp early-overtime mid-range)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2205,7 +2219,16 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Exp1 (architectural): CONVEX time-pressure activation. The raw linear ramp
+                # x = (bars_held - _max_hold + 3)/4 in [0,1] is raised to power TIME_PRESSURE_CONVEX_K
+                # so the mid-range (where _max_hold noise dominates) is damped toward 0 while the
+                # saturation point (x=1 -> 1^k=1, unchanged) and the zero point (x<=0 -> 0) are
+                # preserved. The decisive late-overtime cut fires at the same bars_held; only the
+                # noise-translating early-overtime slope is flattened. Continuous (smooth x^k),
+                # direction-agnostic, no new boundary. New control flow: time-pressure activation
+                # function shape changes from linear to convex.
+                _tp_raw = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                _time_pressure = _tp_raw ** TIME_PRESSURE_CONVEX_K
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
