@@ -280,9 +280,6 @@ class Strategy:
         self.smoothed_trend = {}
         # Two prior pnl bars for confirmed-peak gate (need 2 rising bars to update).
         self._smoothed_pnl = {}
-        # Architectural: per-symbol recent voter strong-sum history (3-bar rolling).
-        # Used by entry-persistence gate to require 2 bars of sustained conviction.
-        self._recent_strongs = {}
         # Architectural: per-symbol per-voter directional history (8-bar rolling).
         # Used to compute per-voter directional persistence (fraction of last
         # K bars where voter signal sign matched). High-persistence voters
@@ -786,14 +783,6 @@ class Strategy:
             # Code-structure removal: 14 lines + 3 cross-bar volume reads.
             _bull_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bull_confs, _voter_weights))
             _bear_strong = sum(max(0.0, (c - 0.5) ** 5 * 97.66) * w for c, w in zip(_bear_confs, _voter_weights))
-            # Architectural: VWAP post-admission SIZE multiplier. VWAP semantically
-            # Architectural: maintain rolling 3-bar history of strong-sums per symbol.
-            # Used to gate flips on sustained conviction (filters single-bar noise spikes).
-            _hist = self._recent_strongs.get(symbol, [])
-            _hist.append((_bull_strong, _bear_strong))
-            if len(_hist) > 3:
-                _hist = _hist[-3:]
-            self._recent_strongs[symbol] = _hist
             # Sideways-aware strong-sum threshold: tighten in low-trend regimes to filter
             # noisy entries; relax in trends. Uses continuous rsi_trend_str interpolation.
             _strong_min = STRONG_WEIGHT_MIN + 0.20 * (1.0 - rsi_trend_str)
@@ -954,24 +943,6 @@ class Strategy:
                 # (_entry_frac_dyn + _range_bull_adj) remained. Adding 0.0 is a pure
                 # no-op. Removing follows the 12b6bc63/Exp4 byte-identical simplification
                 # precedent (score holds, simpler = better OOS generalization).
-                # Architectural: entry-persistence gate. Reuses the rolling _hist
-                # (3-bar strong-sum history maintained for flip sustenance) to
-                # require ENTRY-side conviction to be sustained over 2 bars before
-                # admission. Filters single-bar noise spikes that currently drive
-                # high turnover (~9k+ trades). Continuous: persistence factor uses
-                # min over last 2 bars; gate fires when min >= sustain_factor *
-                # _strong_min.
-                # Architectural: TREND-aware persistence gate (new dependency).
-                # In strong trends (high abs(ret_long)), a sudden conviction spike
-                # is itself signal — relax persistence to admit fast entries.
-                # In chop (low abs(ret_long)), keep strict persistence to filter
-                # single-bar noise. Replaces vol-conditioning (which couples to
-                # market vol regardless of direction) with trend-magnitude. The
-                # vol gate kept as additive (high-vol crash gets some relaxation
-                # via trend magnitude already, but vol-relaxation preserved as
-                # protective in fast crashes). Continuous tanh on abs(ret_long).
-                # New cross-timescale data dependency: entry gate strictness on
-                # long-window trend strength.
                 # Exp2 redesign: the entry-persistence (min-over-2) gate AND the
                 # max(curr,prev) anti-dip admission are both SUBSUMED by the EMA-of-margin
                 # readiness gate (_bull_ready/_bear_ready, computed near the margins above).
