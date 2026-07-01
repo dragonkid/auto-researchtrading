@@ -2821,7 +2821,7 @@ class Strategy:
                 # boost multiplies 0) byte-identical; low-churn (len<=1 -> churn boost ~0)
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
-                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.40 * _te_churn_boost))
+                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.60 * _te_churn_boost))  # branch step9: 0.40->0.60 (pre-EMA median makes input spike-free -> EMA can smooth harder)
                 # Exp3 / BRANCH step6: FEED-FORWARD 3-bar MEDIAN on the RAW target BEFORE
                 # the _target_ema (median-then-EMA, replaces the opener's post-EMA median).
                 # The _target_ema is a backward-looking LOW-PASS that raises rally stability
