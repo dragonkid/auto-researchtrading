@@ -208,6 +208,21 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Architectural (Exp2b this session): CONVEX opp-gate exit-fraction in opp-margin. The
+# graduated opp-gate exit-fraction maps opp-margin (opposite-side reversal conviction) to
+# exit-fraction LINEARLY: _opp_exit_frac_grad = 0.4 + 0.6*tanh(margin/0.30). So a weak-to-
+# moderate opp-voter spike (noise-prone, esp. crash dead-cat bounces + mixed oscillation
+# opp-spike) maps 1:1 into position trimming -> exits winning trend positions on weak
+# reversal noise. A CONVEX mapping (x^k, k>1 on the tanh term) holds the exit-fraction near
+# the 0.4 floor through the weak/moderate-margin mid-range (rides winners through opp-spike
+# noise) then ramps sharply toward 1.0 only at STRONG reversal conviction -> the decisive
+# full-exit on genuine reversal is preserved (1.0^k=1.0) while the noise-translating mid-
+# range is damped. The FLOOR direction (ride winners) is the validated mixed lever (4
+# confirmation signals walled the floor-lowering, but none changed the margin->exit-fraction
+# FUNCTION shape -- 0 prior on the shape). Fresh decision-architecture change to the opp-
+# gate exit curve (prior opp-gate work lowered the floor via confirmation signals or raised
+# the ceiling, never changed the FUNCTION). Direction-agnostic; affects only the curve shape.
+OPP_EXIT_CONVEX_K = 1.6  # opp-margin->exit-fraction exponent 1.0->1.6 (convex = ride through weak opp-spike)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2758,7 +2773,13 @@ class Strategy:
                     # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
+                    # Exp2b (architectural): CONVEX opp-margin->exit-fraction mapping. Raise
+                    # the linear tanh term to power OPP_EXIT_CONVEX_K so the weak/moderate-
+                    # margin mid-range (opp-spike noise) stays near the 0.4 floor (ride winners)
+                    # while the strong-reversal saturation (1.0^k=1.0, full exit) is preserved.
+                    # Only the curve SHAPE changes (0 prior on the shape); floor/ceiling fixed.
+                    _opp_margin_t = max(0.0, min(1.0, np.tanh(_opp_margin / 0.30)))
+                    _opp_exit_frac_grad = 0.4 + 0.6 * (_opp_margin_t ** OPP_EXIT_CONVEX_K) - _dvp24_floor_lower
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
