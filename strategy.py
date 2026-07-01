@@ -2371,34 +2371,6 @@ class Strategy:
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
-                # Exp3 (architectural, indep): PEAK-RECENCY gating of the volume-climax exit
-                # pressure. A volume climax (z>2 spike) semantically means different things
-                # depending on WHERE in the hold's PnL path it occurs: (a) AT A FRESH PEAK
-                # (pos_pnl near peak_pnl, small giveback) = a blow-off-top / capitulation-buy
-                # spike at the exhaustion high -> the STRONGEST harvest signal (lock the peak
-                # before the pullback); (b) MID-PULLBACK (pos_pnl well below peak, large
-                # giveback) = the position is ALREADY being harvested by _pp_pressure's giveback
-                # ramp -> the volume climax adds redundant/duplicate pressure that amplifies
-                # noise-driven exit-timing variance (the stability penalty's currency) without
-                # adding signal. Gate _vc_pressure by peak-recency = how close pos_pnl is to the
-                # current peak (1 - giveback_ratio, normalized): FULL vc_pressure at the peak
-                # (blow-off detection), fading toward ~0.4x deep in pullback (pp_pressure takes
-                # over, vc contributes only a residual regime-shift alert). New cross-component
-                # data dep: vc_pressure magnitude depends on (vol_z, pos_pnl, peak_pnl) -- was
-                # vol_z only. Continuous tanh on (1 - giveback_ratio)/0.3 (smooth, no boundary);
-                # floor 0.4 so a deep-pullback climax still contributes a residual alert (a vol
-                # spike during a pullback can still signal regime-shift / second leg). Profit-side
-                # only (the _w_vc = max(0,_pnl_scale) gate unchanged). Byte-identical when not in
-                # profit (giveback_ratio undefined -> gate floored at the peak-recency=1 branch
-                # since peak_pnl<=0 -> the _pp_activation path doesn't fire anyway). Direction-
-                # agnostic general principle (no regime label): a volume climax at a peak is a
-                # stronger exhaustion signal than one mid-pullback.
-                _vc_peak_recency = 1.0  # default at-peak (no giveback yet, or fresh entry)
-                if self.peak_pnl.get(symbol, 0.0) > 1e-9:
-                    _vc_gr = max(0.0, min(1.0, _giveback / max(self.peak_pnl[symbol], _pp_min)))
-                    _vc_peak_recency = 1.0 - _vc_gr  # 1 at peak, 0 at full giveback
-                _vc_recency_gate = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_vc_peak_recency / 0.3)))
-                _vc_pressure = _vc_pressure * _vc_recency_gate
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
