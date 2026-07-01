@@ -2996,6 +2996,27 @@ class Strategy:
                     _mtm_eff_ex = _net_ex / max(_tot_ex, 1e-10)
                     _chop_ex = max(0.0, min(1.0, 1.0 - _mtm_eff_ex))
                 _small_pos_exempt = _chop_ex > 0.30 and abs(current_pos) < 2.0 * _grid_c
+                # Exp5 (architectural, this session): DIRECTION-AWARE persistent-downtrend
+                # SHORT exemption from the calm grid (crash sample_factor lever). Exp4
+                # diagnosed that crash's 49->50 trade gap is GRID-absorbed (the calm grid
+                # snaps crash's small trend-aligned-short reductions to the same lattice
+                # point -> emitted target unchanged -> no trade emitted), NOT emission-
+                # threshold-absorbed. Exempt crash's trend-aligned SHORTS (pos_dir=-1 AND
+                # _down_persist>0.65 -- the validated 52a3e671 signal) from the calm grid
+                # so their micro-reductions emit at the continuous level -> +1-2 trades ->
+                # sample_factor 0.9899 -> 1.0 -> crash +1.01%. Direction-aware separator
+                # avoids bull/sideways (bull pullback LONGS are pos_dir=+1 -> wrong
+                # direction; sideways ret_vlong~0 -> _down_persist ~0.5 -> no match) and
+                # rally (uptrend -> _down_persist low). Risk: lose crash's grid fee-saving
+                # (row 466: calm grid saved crash raw +0.081 via churn cut); net of
+                # +sample_factor (+1.01pct) vs -fee drag (the micro-reductions are sub-$1
+                # but the LEVERAGE_K-scaled emission threshold filters the smallest). New
+                # cross-component data dep: calm-grid application depends on (pos_dir,
+                # _down_persist) conjunction for shorts.
+                _crash_short_exempt = (current_pos < 0
+                                       and max(0.0, np.tanh((_down_persist - 0.65) / 0.12)) > 0.50
+                                       and abs(current_pos) < 2.0 * _grid_c)
+                _small_pos_exempt = _small_pos_exempt or _crash_short_exempt
                 if _grid_c > 0 and not _small_pos_exempt:
                     _qt_c = round(target / _grid_c) * _grid_c
                     if (_qt_c > 0) == (target > 0) and _qt_c != 0:
