@@ -588,6 +588,32 @@ class Strategy:
             _atr_pct_e = np.mean(_tr_e) / mid
             # Anchor: 0.42 * ATR_pct, clamped to [0.0035, 0.008] keeps within original range
             _base_thresh_dyn = max(0.0040, min(0.0080, 0.45 * _atr_pct_e))
+            # Exp2 (architectural, indep): VOL-OF-VOL regime-state modulation of the
+            # ATR entry threshold. ATR(14) is a backward-looking mean that LAGS vol-
+            # regime transitions: when the 6-bar realized vol sharply exceeds the 18-bar
+            # (vol expansion = a regime shift in progress), the ATR threshold is stale
+            # (too low for the new higher-vol regime) AND voter signals are noisier (vol-
+            # transitions destabilize price-derived voters, per the documented 02c058e3
+            # wall). Require a LARGER move to enter during vol-regime transitions: raise
+            # _base_thresh_dyn by up to +20% via a continuous tanh on the vol-expansion
+            # ratio. NEW cross-timescale data dep at the entry threshold: the 6/18-bar
+            # vol-of-vol ratio (regime-state detector) modulates the ATR-anchored level.
+            # DISTINCT from prior VoV uses: 02c058e3 (VoV boost to opp_trend_amp at EXIT
+            # fusion, catastrophic -0.175, amplified exit-noise on bull/mixed) and the
+            # vol-of-vol x ct-gate keep fb29965f (VoV on scale-in PACE + adverse-freeze,
+            # a held-position path). VoV has NEVER modulated the ENTRY THRESHOLD level
+            # (prior entry-threshold work tuned ATR window/multi-window/anchor; never
+            # coupled it to the vol-regime-state). The threshold RAISES (stricter
+            # admission) during transitions -> filters low-quality transition-bar entries
+            # (the 02c058e3 finding that voter signals are noisier then), distinct from
+            # 02c058e3 which AMPLIFIED exit activation on the same bars (wrong direction).
+            # Byte-identical when vol_expansion <= 1.0 (tanh(-0.3/0.4)~0 -> no raise).
+            # Continuous (smooth tanh, no boundary); symmetric (both long/short).
+            _vol6_th = max(np.std(np.diff(np.log(closes[-7:-1]))), 1e-6)
+            _vol18_th = max(np.std(np.diff(np.log(closes[-19:-1]))), 1e-6)
+            _vol_exp_th = _vol6_th / _vol18_th
+            _vov_thresh_boost = 1.0 + 0.20 * max(0.0, np.tanh((_vol_exp_th - 1.3) / 0.4))
+            _base_thresh_dyn = max(0.0040, min(0.0080, _base_thresh_dyn * _vov_thresh_boost))
             dyn_threshold = _base_thresh_dyn * (0.10 + vol_ratio * 0.90) ** 0.85
             dyn_threshold = max(DYN_THRESHOLD_FLOOR, min(DYN_THRESHOLD_CEIL, dyn_threshold))
 
