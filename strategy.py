@@ -2836,7 +2836,7 @@ class Strategy:
                 # boost multiplies 0) byte-identical; low-churn (len<=1 -> churn boost ~0)
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
-                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.20 * _te_churn_boost))
+                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.40 * _te_churn_boost))
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
