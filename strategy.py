@@ -383,10 +383,6 @@ class Strategy:
         # scale-in resizes of burst ct re-entries cascade most under AR(1) noise). Trend-
         # aligned positions (ct gate 0) byte-identical by construction. Reset on full exit.
         self._target_hist = {}
-        # Branch step8: per-symbol 3-bar POST-EMA target history for the median-EMA-median
-        # sandwich (post-EMA OUTPUT spike rejection). Separate from _target_hist (pre-EMA
-        # INPUT spike rejection).
-        self._target_post_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -2859,25 +2855,6 @@ class Strategy:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
-                # Branch step8: POST-EMA median (median-EMA-median sandwich). The pre-EMA
-                # median (above) rejects INPUT spikes -> raw gain (step6 rally raw +0.0055).
-                # The post-EMA median rejects OUTPUT spikes that the EMA itself injects via
-                # its bar-to-bar state propagation (the EMA of a spike-free input can still
-                # wobble if _prev_te carried residual spike from 2 bars ago) -> stab gain
-                # (opener's mechanism). Two-stage feed-forward: input spike rejection +
-                # output spike rejection. Same gate (high-churn ct) and sign-preserving snap.
-                if _ct_mf_str > 0.0 and _mf_churn > 0.0:
-                    _tph = self._target_post_hist.get(symbol, [])
-                    _tph.append(target)
-                    if len(_tph) > 3:
-                        _tph = _tph[-3:]
-                    self._target_post_hist[symbol] = _tph
-                    if len(_tph) >= 3:
-                        _pmed = float(np.median(_tph))
-                        if (_pmed > 0) == (target > 0) and _pmed != 0:
-                            target = _pmed
-                else:
-                    self._target_post_hist[symbol] = []
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
@@ -3177,7 +3154,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._target_post_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
