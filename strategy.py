@@ -2372,37 +2372,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp4 (architectural, indep): MTM-PATH-CHOP as a 6th exit soft-term in
-                # the MAX fusion. The MTM-path-efficiency (|net pos_pnl| / sum|delta| over
-                # the 12-bar pos_pnl path, already tracked in _pnl_path) is currently used
-                # ONLY at the emission-reduction throttle (post-exit-decision, line ~3050).
-                # A position whose MTM path is CHOPPY (low efficiency = whipsaw dead
-                # capital, oscillating around breakeven with little net progress) is a
-                # stalled position that should face elevated EXIT PRESSURE, not just a
-                # gentler emission resize. Adding it as a MAX-fusion soft term cuts dead
-                # capital at the EXIT DECISION -- a structurally distinct layer from the
-                # emission throttle. Gated COUNTER-TREND-AT-MULTI-DAY (ret_vlong*pos_dir
-                # <0, the validated mixed/sideways-vs-trend separator): mixed's wrong-side
-                # longs in a downtrend (ret_vlong<0, pos_dir=+1 -> product<0) get the
-                # pressure; trend-aligned winners (bull/rally longs, crash shorts ->
-                # product>0) get ~0 (spared). Smooth tanh on the chop level + fast-
-                # saturating /0.01 ct-at-multi-day gate (near-constant, noise-free per
-                # the validated safe-family lesson). Profit-side weight (lock the dead
-                # capital's modest gain before it gives back; don't punish losers --
-                # slope-against handles them). New exit-pressure source + new control
-                # flow at the fusion. Targets mixed (the binding low-Sharpe regime).
-                _ppp_x = self._pnl_path.get(symbol, [])
-                _mtm_pressure = 0.0
-                if len(_ppp_x) >= 4 and pos_pnl > 0:
-                    _ppa_x = np.array(_ppp_x)
-                    _net_x = abs(_ppa_x[-1] - _ppa_x[0])
-                    _tot_x = float(np.sum(np.abs(np.diff(_ppa_x))))
-                    _mtm_eff_x = _net_x / max(_tot_x, 1e-10)
-                    _chop_x = max(0.0, min(1.0, 1.0 - _mtm_eff_x))
-                    _pos_dir_x = 1.0 if current_pos > 0 else -1.0
-                    _ct_vlong_x = max(0.0, np.tanh(-_pos_dir_x * ret_vlong / 0.01))
-                    _mtm_pressure = 0.45 * _chop_x * _ct_vlong_x
-                _w_mtm = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2416,7 +2385,6 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
-                    _w_mtm * _mtm_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
