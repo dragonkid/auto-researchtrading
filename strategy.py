@@ -2849,13 +2849,7 @@ class Strategy:
                 # transitions must hit exact target). New control flow: a feed-forward
                 # spike filter stage between the EMA and the emission grid.
                 _ct_mf_str = max(0.0, np.tanh(-_pos_dir_te * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day (noise-free fast-saturating)
-                # Branch step4: lower churn-gate onset from len>=1.5 to len>=1.0 with gentler
-                # saturation (/0.8). Between opener (len>=1.5, too narrow -- excluded rally's
-                # len=2 ct entries) and step2 (no gate, too broad -- len=1 lone entries crashed
-                # via exit-lag). At len=2: opener 0.17, step4 0.47 (partial median); len=1: opener
-                # 0.09, step4 0.22 (mild); len>=3: both ~1 (full). Captures rally's len=2 burst
-                # entries while keeping len=1 mostly excluded.
-                _mf_churn = max(0.0, np.tanh((len(_eh) - 1.0) / 0.8))  # ~0 len<=1, partial len=2, ~1 len>=3
+                _mf_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting (noise-immune integer gate)
                 if _ct_mf_str > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
