@@ -383,6 +383,12 @@ class Strategy:
         # scale-in resizes of burst ct re-entries cascade most under AR(1) noise). Trend-
         # aligned positions (ct gate 0) byte-identical by construction. Reset on full exit.
         self._target_hist = {}
+        # Branch step5: per-symbol 3-bar _exit_slope history for a feed-forward median on
+        # the exit-slope INPUT (drives _sl_slope_pressure loss-exit + _dr_slope_conf de-risk
+        # cushion). A second feed-forward attenuator on a DIFFERENT noise source (slope-
+        # driven exit timing, vs the held-level median). Stacks with the opener. Gated on
+        # high-churn ct (rally binding population). Reset on full exit.
+        self._exit_slope_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -2074,6 +2080,35 @@ class Strategy:
                     _ll = _fast_slope(np.log(_hl2[-_w:]))
                     _slopes.append(_ll)
                 _exit_slope = float(np.mean(_slopes))
+                # Branch step5: FEED-FORWARD 3-bar MEDIAN on the _exit_slope INPUT (the
+                # mean of 12/16/22-bar OLS slopes). _exit_slope drives _sl_slope_pressure
+                # (loss-exit path -- the binding exit for rally ct LOSERS) AND _dr_slope_conf
+                # (de-risk cushion gate). Under AR(1) close noise, the 12/16/22-bar slopes
+                # wobble bar-to-bar -> _exit_slope wobbles -> exit TIMING diverges across the
+                # noise ensemble -> tracking error. A median-of-3 on _exit_slope collapses
+                # isolated single-bar slope spikes (the dominant AR(1) noise mode at sub-
+                # 5bps) with ZERO lag for monotone slope trends (median of 3 rising slopes =
+                # the middle -> tracks the trend). DISTINCT from the held-target median
+                # (opener): that attenuates the held-LEVEL cascade; this attenuates the
+                # exit-TIMING cascade on the slope-driven exit path. Stacks multiplicatively
+                # (two independent noise sources). Gated on high-churn ct (rally binding
+                # population); trend-aligned (ct gate 0) byte-identical by construction.
+                # _exit_slope is already a cross-window MEAN (12/16/22); the median-of-3 is
+                # a TEMPORAL spike-rejector on top of the cross-window averager -- rejects
+                # single-bar spikes that survive the cross-window mean.
+                _pos_dir_es = 1.0 if current_pos > 0 else -1.0
+                _ct_es_str = max(0.0, np.tanh(-_pos_dir_es * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct (noise-free fast-saturating)
+                _es_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting (noise-immune integer)
+                if _ct_es_str > 0.0 and _es_churn > 0.0:
+                    _esh = self._exit_slope_hist.get(symbol, [])
+                    _esh.append(_exit_slope)
+                    if len(_esh) > 3:
+                        _esh = _esh[-3:]
+                    self._exit_slope_hist[symbol] = _esh
+                    if len(_esh) >= 3:
+                        _exit_slope = float(np.median(_esh))
+                else:
+                    self._exit_slope_hist[symbol] = []
                 _slope_against = -_exit_slope if current_pos > 0 else _exit_slope
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
@@ -3165,7 +3200,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._exit_slope_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
