@@ -845,6 +845,51 @@ class Strategy:
             _streak_ct_admit = max(0.0, np.tanh((self._loss_streak - 1) / 2.0))
             _bull_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(-ret_vlong / 0.01))
             _bear_strong_min *= 1.0 + 0.10 * _streak_ct_admit * max(0.0, np.tanh(ret_vlong / 0.01))
+            # Exp1 (architectural, indep): CROSS-SYMBOL DIRECTIONAL CONSENSUS admission gate.
+            # NEW cross-symbol data dependency at the ADMISSION DECISION (not size). Every
+            # prior cross-symbol signal (BTC-trend, partner-lead, partner-vol, partner-DVP,
+            # alt own-trend, net-tilt, gross-concentration) gates first-bar ENTRY SIZE after
+            # admission; NONE gates the admission threshold itself (grep "cross-symbol consensus
+            # admission" = 0 prior experiments). A per-symbol-only admission gate cannot tell a
+            # BROAD-MARKET conviction move (BTC+ETH+SOL all voting same direction = high-quality
+            # confirmed trend entry) from an IDIOSYNCRATIC one (only this symbol firing = noise/
+            # fakeout more likely). The partner alts' net directional conviction is computable
+            # directly from bar_data[partner] (all symbols' full history is available each bar);
+            # no inter-symbol state needed (noise-robust: reads partner closes, not partner
+            # decisions). Mechanism: partner 12-bar net return signed by entry direction; average
+            # over the other two symbols; continuous tanh on the average. AGREE (broad-market
+            # conviction) -> relax admission up to 8% (high-quality entries easier to admit);
+            # DISAGREE/FLAT (idiosyncratic) -> tighten up to 8% (filter single-symbol fakeouts).
+            # Symmetric, continuous, direction-agnostic (no regime label). Distinct from the
+            # walled _xasset size boost (price-agreement -> SIZE; this is consensus -> ADMISSION).
+            # Composes multiplicatively with the existing _freq/trend/ct/streak admission factors.
+            _consensus_n = 12
+            _own_dir_bull = 1.0
+            _own_dir_bear = -1.0
+            _cons_sum_bull = 0.0
+            _cons_sum_bear = 0.0
+            _cons_cnt = 0
+            for _psym in ACTIVE_SYMBOLS:
+                if _psym == symbol or _psym not in bar_data:
+                    continue
+                _pbd = bar_data[_psym].history
+                if len(_pbd) < _consensus_n + 1:
+                    continue
+                _pc = _pbd["close"].values
+                _pret = (_pc[-1] - _pc[-_consensus_n - 1]) / _pc[-_consensus_n - 1]
+                # partner return signed by entry direction; /0.03 deep-saturated (validated
+                # safe-family scale, same as xasset /0.03 strong-agreement gate -> near-constant
+                # noise-free magnitude, not a noise-tracking wobble)
+                _cons_sum_bull += np.tanh(_pret / 0.03)   # +1 if partner up (confirms bull)
+                _cons_sum_bear += np.tanh(-_pret / 0.03)   # +1 if partner down (confirms bear)
+                _cons_cnt += 1
+            _consensus_bull = (_cons_sum_bull / _cons_cnt) if _cons_cnt > 0 else 0.0  # [-1, +1]
+            _consensus_bear = (_cons_sum_bear / _cons_cnt) if _cons_cnt > 0 else 0.0
+            # Relax on agreement (positive), tighten on disagreement (negative). Max 8% each way.
+            _bull_strong_min *= 1.0 - 0.08 * max(0.0, _consensus_bull)
+            _bull_strong_min *= 1.0 + 0.08 * max(0.0, -_consensus_bull)
+            _bear_strong_min *= 1.0 - 0.08 * max(0.0, _consensus_bear)
+            _bear_strong_min *= 1.0 + 0.08 * max(0.0, -_consensus_bear)
             # Conviction margins (relative excess of strong-sum over its admission threshold).
             # Computed at top-level so they are available to both entry and flip paths.
             _bull_margin = (_bull_strong - _bull_strong_min) / max(_bull_strong_min, 1e-6)
