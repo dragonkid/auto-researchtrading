@@ -95,27 +95,7 @@ PEAK_PROFIT_GIVEBACK = 0.22
 # Falls to PEAK_PROFIT_GIVEBACK (no effect) when portfolio is at its peak.
 PORT_DD_GIVEBACK_TIGHTEN = 0.50   # max fractional reduction of giveback at deep DD (probing higher; step3 mag0.40 gave +0.0124 keep, rally DD 6.80pct has headroom below 8pct knee)
 PORT_DD_GIVEBACK_SCALE = 0.012    # base DD-fraction at which tightening saturates (scaled by LEVERAGE_K at use: 2x size -> 2x DD fraction -> scale to keep the DD-LEVEL activation invariant, same discipline as _port_dd_atten)
-PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal that drives the rally DD relief)
-# Exp1 (this session, architectural): PORTFOLIO-DD-HEADROOM giveback WIDENING (the
-# symmetric inverse of PORT_DD_GIVEBACK_TIGHTEN). The existing tightening HARVESTS
-# winners faster during portfolio DD (caps rally DD from riding winners through deep
-# pullbacks). The structurally-distinct counterpart: when the portfolio is NOT in
-# drawdown (at peak, dd_frac~0), there is DD HEADROOM -> WIDEN the giveback tolerance
-# so decisive winners ride deeper pullbacks before harvest -> larger realized wins ->
-# higher APY (the dominant score lever per the v3 formula: Sharpe/APY gains outweigh
-# DD reduction 11-36x on 4/5 regimes). mixed_2025 is the binding floor (0.534, half
-# the next-weakest) with 100pct WR but tiny APY (4.6pct), stability 1.0, DD 2.77pct
-# (huge headroom below the 5pct dd_gate knee) -> riding its decisive winners longer
-# raises APY at preserved Sharpe (100pct WR means no loser risk; only the winners get
-# bigger). The widening fires at portfolio PEAK (dd_frac=0) and fades to 0 by a small
-# DD fraction, so it is byte-identical during any meaningful DD (the tightening still
-# fires there; widening floored at 0). Leverage-coupled scale (same discipline as
-# TIGHTEN: 2x size -> 2x DD fraction -> scale keeps activation DD-LEVEL invariant).
-# Distinct from the walled c84577dc equity-CURVE-SLOPE entry shrink (that added a NEW
-# derivative signal; this modulates an EXISTING giveback tolerance via an EXISTING DD
-# signal's complement). Continuous tanh; no new boundary (uses the same _port_dd_frac).
-PORT_DD_GIVEBACK_WIDEN = 0.35   # max fractional INCREASE of giveback at portfolio peak (dd_frac~0), fading to 0 by PORT_DD_GIVEBACK_WIDEN_SCALE; below TIGHTEN (0.50) since the downside of over-riding a genuine reversal (a winner that does NOT come back) is a real loss whereas the downside of premature harvest is only a smaller win
-PORT_DD_GIVEBACK_WIDEN_SCALE = 0.008 * 1.0  # base DD-fraction below which widening is near-full (small: only at/near peak; scaled by LEVERAGE_K at use, same discipline as TIGHTEN_SCALE)
+PORT_DD_GIVEBACK_EQUITY_SPAN = 3  # EMA span for smoothing the equity used in the DD fraction (noise-robustness: a noisy instantaneous equity -> noisy tightening amount -> exit-timing noise -> stability penalty; smoothing makes the tightening AMOUNT bar-to-bar stable under AR(1) perturbation while preserving the pullback-depth signal)
 # Architectural (Exp1 this session): PORTFOLIO-DD-ADAPTIVE PROFIT-TARGET HARVEST.
 # The giveback-tightening mechanism above is at its confirmed local optimum (mag
 # 0.50; 0.60 cliffs rally stability below the 0.80 knee + collapses sideways), so
@@ -2136,13 +2116,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp1: portfolio-DD-HEADROOM giveback widening (inverse of _pp_tighten).
-                # At portfolio peak (dd_frac~0) the widening is near-full; fades to 0 by a
-                # small DD fraction so during any meaningful DD only the tightening fires.
-                # _pp_headroom_widen in [1.0, 1+WIDEN]; multiply with _pp_tighten (which is
-                # ~1 at peak -> product WIDEN dominates at peak; ~TIGHTEN-only during DD).
-                _pp_headroom_widen = 1.0 + PORT_DD_GIVEBACK_WIDEN * (1.0 - min(1.0, _port_dd_frac / max(PORT_DD_GIVEBACK_WIDEN_SCALE * LEVERAGE_K, 1e-10)))
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_headroom_widen
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
