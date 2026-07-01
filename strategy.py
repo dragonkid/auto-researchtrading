@@ -2673,27 +2673,7 @@ class Strategy:
                         # separate computation (3-window mean already available -> no new price-
                         # derived reads, just a new gate source at the de-risk decision). Same
                         # /0.0004 scale (comparable magnitude). Smooth tanh, direction-agnostic.
-                        # Exp2 (architectural, indep): MEDIAN-of-3-windows slope for the de-risk
-                        # cushion gate ONLY (separate from the shared _exit_slope MEAN used by
-                        # _sl_slope_pressure at line ~2095). The shared _exit_slope was chosen as
-                        # MEAN over median in a prior session (line ~2087 comment: "mean averages
-                        # out window-specific noise better than median in low-vol where all 3
-                        # slopes are small and noise-dominated; median can flip on a single
-                        # window") -- BUT that reasoning is for the DIRECT pressure use
-                        # (_sl_slope_pressure ramps on the slope VALUE; a single-window flip
-                        # moves the ramp). The de-risk GATE use has the OPPOSITE need: _dr_slope_conf
-                        # is a tanh ACTIVATION (cushion on/off), and the Exp5 keep ce66fec6 measured
-                        # that the SINGLE 16-bar slope was "sensitive to MOMENTARY 1-bar dips" ->
-                        # those dip bars got cut slightly faster -> rally -0.000251 regression.
-                        # ce66fec6 fixed it by switching to the multi-window MEAN; the MEDIAN is
-                        # the next structural step: robust to ONE of three windows flipping (the
-                        # momentary-dip failure mode) while the MEAN is still pulled by the outlier.
-                        # For the GATE (not the pressure ramp), median's robustness is the wanted
-                        # property. Compute a SEPARATE median so _sl_slope_pressure (direct ramp,
-                        # mean is correct there) is byte-identical; only the de-risk cushion gate
-                        # switches to median. Same /0.0004 scale. The 3 slopes are already computed
-                        # in the _slopes list at line ~2091-2094 (reused, no new price-derived reads).
-                        _dr_slope_conf = max(0.0, np.tanh(float(np.median(_slopes)) * _dr_pos_dir / 0.0004))
+                        _dr_slope_conf = max(0.0, np.tanh(_exit_slope * _dr_pos_dir / 0.0004))
                         _dr_k = 1.0 + DERISK_CONVEX_AMP * max(0.0, _pnl_scale) * _dr_align * _dr_slope_conf  # 1.0 loss/ct/slope-weak, up to ~1.6 trend-aligned+profit+smoother-slope-conf
                         _de_risk = 1.0 - _dr_x ** _dr_k
                         _de_risk = max(0.0, min(1.0, _de_risk))
