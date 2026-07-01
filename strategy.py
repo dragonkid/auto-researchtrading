@@ -988,8 +988,25 @@ class Strategy:
                 # softening actually functional.
                 _bull_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bull_margin - 0.3) / 0.3))
                 _bear_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bear_margin - 0.3) / 0.3))
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _bull_relax
-                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * _bear_relax
+                # Exp3 (architectural, indep): MULTI-DAY-TREND-ADAPTIVE trend-deadzone width.
+                # The trend-deadzone gate (TREND_GATE_DEADZONE=0.018) is currently a CONSTANT
+                # width -- entries are admitted when |smoothed_trend| exceeds a fixed band.
+                # In a STRONG multi-day trend (high |ret_vlong|), counter-trend entries are
+                # lower-quality (fighting a confirmed multi-day trend) -> deadzone should be
+                # TIGHTER (harder to admit ct noise; protects bull/crash/rally trend legs from
+                # ct re-entry churn). In a WEAK multi-day trend (mixed's oscillating down year,
+                # low |ret_vlong|), entries are oscillation trades but mixed is 100pct WR -> a
+                # WIDER deadzone admits MORE of these winning oscillation entries -> higher mixed
+                # APY (the dominant score lever; mixed binding floor 0.534, APY 4.6pct, 100pct
+                # WR, DD 2.77pct huge headroom). New cross-timescale data dep at the admission
+                # gate: deadzone WIDTH scales with multi-day trend magnitude (was constant).
+                # Continuous tanh on |ret_vlong|/0.03; range [0.7x, 1.3x] the base deadzone.
+                # No new decision boundary (scales the existing smooth deadzone). Direction-
+                # agnostic (uses |ret_vlong|, both sides symmetric). ret_vlong is the validated
+                # 96-bar OLS slope (noise-robust, already computed).
+                _dz_adapt = 1.0 + 0.30 * (1.0 - 2.0 * max(0.0, min(1.0, np.tanh(abs(ret_vlong) / 0.03))))  # ~1.3 weak multi-day (mixed), ~0.7 strong trend (bull/crash/rally)
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _dz_adapt * _bull_relax
+                _bear_admit = _trend_biased < TREND_GATE_DEADZONE * _dz_adapt * _bear_relax
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
                 # count gate since both derive from the same _bull_confs values. Removing the count
