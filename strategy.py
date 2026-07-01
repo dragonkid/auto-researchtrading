@@ -570,6 +570,28 @@ class Strategy:
             closes = bd.history["close"].values
             mid = bd.close
             realized_vol = max(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))), 1e-6)
+            # Exp4 (architectural, indep): FEED-FORWARD 3-bar MEDIAN on the realized_vol
+            # INPUT (sanctioned untested lead from prior session: "a feed-forward median on
+            # the vol_ratio INPUT isophor to the held-target -- a per-channel median NOT a
+            # temporal EMA; median-of-N rejects spikes without the EMA's multi-channel lag
+            # propagation that walled Exp1 vol_ratio EMA-smoothing"). The prior session
+            # WALLED temporal EMA-smoothing of vol_ratio (bull -0.221/sideways -0.168 from
+            # input-smoothing LAG on vol-regime transitions propagating to ~8 sizing
+            # channels). A MEDIAN-of-3 is FEED-FORWARD (lag-free for monotone vol-regime
+            # transitions: median of 3 rising values = the middle -> tracks the rise) and
+            # ONLY rejects isolated single-window spikes (an outlier 24-bar-window std
+            # replaced by its neighbors). This is the SAME validated mechanism as the
+            # 0be567b8 keep's pre-EMA median on the held-target (lag-free spike rejection),
+            # applied to the vol_ratio INPUT before it fans out to ~8 sizing channels.
+            # Distinct from the walled EMA (backward-looking -> lags vol transitions ->
+            # multi-channel lag cost). Median over the current + 2 prior overlapping
+            # 24-bar windows (offset by 1 bar each); vol_ratio computed from the median
+            # realized_vol. Byte-identical when the 3 windows agree (stable vol regimes).
+            if len(closes) >= VOL_LOOKBACK + 3:
+                _rv0 = float(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 1:-1]))))
+                _rv1 = float(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 2:-2]))))
+                _rv2 = float(np.std(np.diff(np.log(closes[-VOL_LOOKBACK - 3:-3]))))
+                realized_vol = max(np.median([_rv0, _rv1, _rv2]), 1e-6)
             # Architectural: per-symbol adaptive vol baseline. Replace constant TARGET_VOL
             # with long-window (200-bar) realized vol blended with TARGET_VOL anchor at
             # 0.5 weight. Long-window vol is each symbol's structural baseline (BTC ~0.012,
