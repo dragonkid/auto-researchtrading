@@ -2131,32 +2131,7 @@ class Strategy:
                 # leverage-coupled scale keeps activation DD-LEVEL invariant; 0 at portfolio peak.
                 _port_dd_frac = max(0.0, 1.0 - self._equity_ema / max(self._peak_equity, 1e-10))
                 _pp_tighten = 1.0 - PORT_DD_GIVEBACK_TIGHTEN * max(0.0, np.tanh(_port_dd_frac / (PORT_DD_GIVEBACK_SCALE * LEVERAGE_K)))
-                # Exp1 (architectural, indep): LOW-VOL × DD-HEADROOM giveback WIDENING.
-                # mixed_2025 is the binding floor (score 0.534, Sharpe 0.839, APY 4.6pct,
-                # 100pct WR, DD 2.77pct -- huge headroom below the 5pct dd_gate knee). The
-                # strategy harvests winners too early there: 100pct WR but tiny APY means
-                # every winner is cut at a small profit and the rest of the year sits in dead
-                # capital. The existing _pp_tighten ONLY shrinks giveback during DD (helps
-                # rally); there is NO structural inverse that WIDENS giveback when there is
-                # DD headroom to spare. Add the inverse: when the portfolio is NOT in
-                # drawdown (large headroom = (1 - dd_frac) near 1) AND vol_ratio is low
-                # (calm grind = mixed/rally regime; the validated bull/rally vol separator),
-                # WIDEN the giveback tolerance so winners ride longer -> larger realized
-                # return per winning trade -> higher APY/Sharpe in the under-traded low-vol
-                # regime. Distinct from the walled _pm_trend_atten (uses |ret_long|; mixed
-                # is multi-day DOWN so ret_long is modest there -- magnitude gate does not
-                # separate mixed). vol_ratio is the separator: mixed LOW-vol grind vs bull
-                # HIGH-vol sharp. Byte-identical at deep DD (headroom~0 -> widen~0 -> the
-                # _pp_tighten dominates as before) AND at high vol_ratio (gate~0 -> no
-                # widen -> bull/crash high-vol winners keep baseline harvest timing ->
-                # protects bull/crash which already have strong Sharpe). Continuous tanh on
-                # both axes (no boundary). New data dep: giveback tolerance depends on
-                # vol-regime x DD-headroom interaction (a structural inverse of the existing
-                # DD-tightening, on the same _pp_giveback_eff variable).
-                _pp_headroom = 1.0 - _port_dd_frac  # ~1 at peak (max headroom), ~0 in deep DD
-                _pp_vol_gate = max(0.0, min(1.0, (1.0 - vol_ratio) / 0.5))  # ~1 vol_ratio<=0.5, ~0 vol_ratio>=1.0
-                _pp_widen = 1.0 + 0.35 * _pp_headroom * _pp_vol_gate  # max +35pct giveback tolerance
-                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten * _pp_widen
+                _pp_giveback_eff = PEAK_PROFIT_GIVEBACK * _pp_tighten
                 _pp_lower = _pp_giveback_eff * (1.0 - _pp_band)
                 # Architectural: smooth pp-activation ramp replacing hard binary gate.
                 # Original: pp_pressure = 0 below peak == _pp_min, full ramp above. Hard
