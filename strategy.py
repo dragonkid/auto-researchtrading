@@ -2430,31 +2430,6 @@ class Strategy:
                 # EMA state + branch; all ct-gated -> only rally + bull ct-shorts affected.
                 _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
                 _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
-                # Exp3 (architectural, indep): PROFIT-GRADUATED loss-gate on the
-                # voter_bias_ema alpha (mirrors the validated _target_ema loss-gate at
-                # line ~2818-2819: _te_alpha * (1.0 - 0.50*_te_loss_gate)). The
-                # voter_bias_ema (cfc48165 keep) is the load-bearing bull stability
-                # mechanism: it smooths the additive voter_bias for COUNTER-TREND held
-                # positions (rally pullback shorts, bull ct shorts during corrections).
-                # Currently it smooths ct WINNERS and ct LOSERS at the SAME alpha (0.5).
-                # The _target_ema (the other load-bearing ct EMA) already has a loss-gate
-                # that cuts alpha for LOSING ct positions so losers track the raw shrinking
-                # target faster -> de-risk/exit sooner -> smaller losses -> rally raw up.
-                # The voter_bias_ema does NOT have this gate: a losing ct position's
-                # voter_bias (which ADDS to exit pressure via +0.20*opp_atten*opp_margin)
-                # is smoothed at full alpha -> the exit signal LAGS for losers -> losing
-                # rally pullback shorts are held longer -> larger realized losses -> lower
-                # rally Sharpe. Mirror the validated loss-gate: cut voter_bias_ema alpha up
-                # to 50% for deep losers so the opp-side exit signal tracks raw faster ->
-                # faster exit on losing ct positions -> smaller losses -> rally raw up.
-                # Winning ct holds keep full alpha (preserve the position-value consistency
-                # that holds bull stability above baseline). Smooth tanh on pos_pnl/|stop|
-                # (no decision boundary -- profit-continuous); trend-aligned (gate 0 ->
-                # alpha 0) byte-identical. SAME form as _target_ema's loss-gate (validated,
-                # not the walled _target_ema alpha-CUT/BOOST which modified the BASE alpha
-                # magnitude -- this modifies the loss-CONDITIONING of a DIFFERENT EMA).
-                _vb_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
-                _exit_ema_alpha = _exit_ema_alpha * (1.0 - 0.50 * _vb_loss_gate)
                 _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
                 self._voter_bias_ema[symbol] = _voter_bias
