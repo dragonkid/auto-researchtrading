@@ -208,6 +208,21 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Architectural (Exp5 this session): MTM-PATH-EFFICIENCY extension to the single-source
+# soft-pressure attenuator. The _soft_atten single-source attenuation (line ~2411) currently
+# fires ONLY in chop (_chop_atten_w = 1 - tanh(|ret_long|/0.04); 1 in chop, 0 in trend). In
+# trends, single-source pressure is treated as real (slope reversal alone = genuine break).
+# But mixed's dead-capital longs (low MTM-eff whipsaw) can have MODERATE ret_long during
+# local bounces -> _chop_atten_w ~0 -> single-source pressure (often time-only, the bar-
+# counter noise-prone source) fires unattenuated -> noise-driven exits on mixed dead capital.
+# Extend the attenuation gate to ALSO fire for low-MTM-eff positions (the proven mixed
+# separator): single-source pressure on a low-eff (dead-capital) position is noise-prone
+# regardless of the ret_long chop/trend regime -> attenuate. High-eff (smooth climber)
+# trend positions keep the chop-only gate (trend single-source = real). Fresh cross-component
+# data dep: the single-source attenuator's activation depends on the held position's MTM-path-
+# efficiency (0 prior on _soft_atten x MTM-eff). Tests whether attenuating single-source
+# pressure on mixed dead-capital moves mixed (the binding floor, stab 1.0 = raw problem).
+SOFT_ATTEN_EFF_GATE = 0.30  # MTM-eff below which single-source attenuation fires (dead capital)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2406,6 +2421,24 @@ class Strategy:
                 # genuine trend break). Mute the attenuator's effect by trend strength
                 # so it operates only in chop where single-source spikes ARE noise.
                 _chop_atten_w = 1.0 - max(0.0, np.tanh(abs(ret_long) / 0.04))  # 1 in chop, 0 in trend
+                # Exp5 (architectural): MTM-PATH-EFFICIENCY extension to the single-source
+                # attenuator gate. mixed's dead-capital longs (low MTM-eff whipsaw) can have
+                # moderate ret_long during local bounces -> _chop_atten_w ~0 -> single-source
+                # pressure (often time-only, bar-counter noise-prone) fires unattenuated ->
+                # noise-driven exits on mixed dead capital. Extend the gate to ALSO fire for
+                # low-MTM-eff positions: single-source pressure on dead capital is noise-prone
+                # regardless of the ret_long regime. High-eff trend positions keep chop-only
+                # gating. Byte-identical when _pnl_path < 4 bars (gate unchanged). Fresh
+                # cross-component dep: single-source attenuator depends on held MTM-eff.
+                _ppp_sa = self._pnl_path.get(symbol, [])
+                if len(_ppp_sa) >= 4:
+                    _ppa_sa = np.array(_ppp_sa)
+                    _net_sa = abs(_ppa_sa[-1] - _ppa_sa[0])
+                    _tot_sa = float(np.sum(np.abs(np.diff(_ppa_sa))))
+                    _mtm_eff_sa = _net_sa / max(_tot_sa, 1e-10)
+                    # Dead-capital blend: 0 high-eff (smooth climber), 1 low-eff (whipsaw).
+                    _dead_cap_blend = max(0.0, min(1.0, np.tanh((SOFT_ATTEN_EFF_GATE - _mtm_eff_sa) / 0.15)))
+                    _chop_atten_w = max(_chop_atten_w, _dead_cap_blend)
                 # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
