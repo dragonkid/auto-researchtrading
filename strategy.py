@@ -2123,22 +2123,6 @@ class Strategy:
                 _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
-                # Exp4 (architectural, indep): PROFIT-MAGNITUDE-ADAPTIVE pp_band width.
-                # The giveback-pressure ramp width (_pp_band) is currently vol-only
-                # (0.10..0.30). A DEEP winner (peak >> _pp_min, high _profit_magnitude)
-                # has already proven a strong trend extension -> give it a WIDER band so
-                # pp_pressure ramps more gradually (more giveback tolerance before the
-                # pressure saturates) -> lets the deep winner ride more pullback noise
-                # before harvest -> higher Sharpe in trend regimes (bull/crash/rally
-                # deep trend longs/shorts). A modest winner (peak ~ _pp_min) keeps the
-                # baseline narrow band (tight trailing, lock small wins fast). New cross-
-                # component data dep: pp_band width depends on realized profit magnitude
-                # (was vol-only). Continuous tanh on _profit_magnitude (no boundary;
-                # smooth in peak_pnl). Byte-identical when _profit_magnitude=0 (peak ==
-                # _pp_min, the modest-winner baseline value -> +0 width). Trend-agnostic
-                # general principle (no regime label): deep winners earn wider giveback
-                # tolerance. Small +0.06 max widening (bounds the band at 0.10..0.36).
-                _pp_band = _pp_band + 0.06 * max(0.0, min(1.0, np.tanh(_profit_magnitude / 1.5)))
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
                 # down from its peak, shrink the effective giveback tolerance so pp_pressure
                 # harvests winners faster (locks gains) -> caps DD from riding winners through
