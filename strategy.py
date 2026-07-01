@@ -2442,7 +2442,30 @@ class Strategy:
                 # vol-conditioned (de_floor, _w_pp gate, slope band, pp band), the additional
                 # ad-hoc band-pass on _exit_thresh is redundant. Keeping scale-in-winning bonus
                 # unchanged (load-bearing for early winning protection).
-                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / ENTRY_FULL_BARS) if _scale_in_winning else 1.0
+                # Exp1 (architectural, indep): couple the scale-in-winning exit-protection
+                # WINDOW to the DYNAMIC scale-in pace (_entry_full_bars_dyn) instead of the
+                # constant ENTRY_FULL_BARS=3. The scale-in pace is already vol/PnL-adaptive
+                # (_entry_full_bars_dyn ranges ~1.3 strong-trend .. 3.0+ chop via win_accel/
+                # vov_gate/_accel_floor), so a strong-trend winner finishes scaling in at
+                # ~1.5 bars but the exit-protection ramp kept referencing the fixed 3-bar
+                # window -> the protection faded over 3 bars regardless of how fast the
+                # position actually reached full size. Structurally this left fast-scale-in
+                # trend winners (rally grind, bull) protected from soft-pressure exits for
+                # ~1.5 EXTRA bars past their actual scale-in completion (over-protection ->
+                # giveback through pullbacks) while slow-scale-in chop positions were
+                # under-protected (protection fading before they reached full size). The
+                # fix makes the protection-ramp horizon MATCH the realized scale-in
+                # horizon: a position that scales in over _entry_full_bars_dyn bars gets
+                # the +0.20 exit-thresh bonus fading across THAT same window. New cross-
+                # component data dep at the exit decision: exit-threshold protection
+                # window depends on the scale-in pace (was constant). Continuous (the ramp
+                # is max(0, 1 - bars_held/dyn), no boundary; smooth in _entry_full_bars_dyn
+                # which is itself smooth). Byte-identical when _entry_full_bars_dyn == 3.0
+                # (the baseline chop value where dyn == the old constant). Trend regimes
+                # (dyn<3) get a SHORTER protection window -> exit soft-pressure earlier ->
+                # less giveback; slow-scale-in (dyn>3 rare via vov) gets longer protection.
+                _si_win_horizon = _entry_full_bars_dyn if _entry_full_bars_dyn > 0 else ENTRY_FULL_BARS
+                _exit_thresh = 1.0 + 0.20 * max(0.0, 1.0 - bars_held / _si_win_horizon) if _scale_in_winning else 1.0
                 # Stop-loss exemption: when _sl_pressure is near saturation, force standard threshold.
                 if _sl_pressure >= 0.95:
                     _exit_thresh = 1.0
