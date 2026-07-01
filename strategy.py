@@ -2191,40 +2191,6 @@ class Strategy:
                 # routing (vs Exp3's mid-slope linear shortening).
                 _ct_hold_sat = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
                 _max_hold = HOLD_DECAY_START + (1.0 / HOLD_DECAY_RATE) + _hold_adj - 2.0 * _ct_hold_sat
-                # Exp1 (architectural, indep): POS_PNL-TRAJECTORY-GATED time-pressure onset.
-                # NEW data dependency: _max_hold now also reads the held position's OWN
-                # realized pos_pnl path (the _pnl_path 12-bar state, already maintained for
-                # the emission MTM-chop throttle). Compute a "climb rate" = fraction of the
-                # last 6 pos_pnl samples that made a NEW rolling high (positions still
-                # trending INTO profit climb fast; stagnating/oscillating dead capital does
-                # not). EXTEND _max_hold for climbers (let trend winners run longer before
-                # time-pressure cuts them -- captures more trend return); CONTRACT for
-                # stagnators (dead capital that is oscillating without new highs should be
-                # cut FASTER -- less giveback -> higher Sharpe on the dead-capital population).
-                # Distinct from prior walled max_hold extensions which used PRICE-DERIVED
-                # gates (trend-align/slope-conf/profit-magnitude -- all walled by the
-                # bull/rally overlap on price signals); this reads the position's OWN
-                # realized PnL trajectory, a per-position state no price-derived signal
-                # captures. Target: mixed dead capital (oscillating, no new highs -> shorter
-                # hold -> faster cut -> less MTM oscillation giveback -> higher Sharpe)
-                # while trend winners (climbing -> longer hold -> more return). The climb
-                # rate is a smooth count (no boundary that flips under AR(1) close noise --
-                # pos_pnl is the position's mark-to-market on the bar's mid; a new high is a
-                # monotone event relative to the path, not a threshold crossing).
-                _ppp_tp = self._pnl_path.get(symbol, [])
-                if len(_ppp_tp) >= 4:
-                    _ppp_arr = np.array(_ppp_tp)
-                    _n_climb = 0
-                    _n_check = min(6, len(_ppp_arr) - 1)
-                    for _i in range(1, _n_check + 1):
-                        if _ppp_arr[-1 - _i] >= np.max(_ppp_arr[-1 - _i:]):
-                            _n_climb += 1
-                    _climb_rate = _n_climb / max(_n_check, 1)  # in [0, 1]
-                    # Extend up to +2 bars for full climbers; contract up to -1.5 for
-                    # stagnators. Smooth tanh on (climb_rate - 0.5) so 0.5 (mixed) ~ neutral,
-                    # >0.5 (climbing) extends, <0.5 (stagnating) contracts.
-                    _traj_adj = 2.0 * np.tanh((_climb_rate - 0.5) / 0.20)
-                    _max_hold = _max_hold + _traj_adj
                 # Exp (architectural, indep): VOL-NORMALIZED time-pressure activation.
                 # NEW data dep in the time-pressure subsystem: max_hold (in BAR units) is
                 # currently vol-blind — 6 bars in calm sideways == 6 bars in crash, but 6
