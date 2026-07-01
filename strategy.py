@@ -2422,20 +2422,7 @@ class Strategy:
                 # bull). So the keep combination is: remove exit-pressure EMA (capture
                 # rally +0.003), keep voter_bias EMA (hold bull at baseline). Removes one
                 # EMA state + branch; all ct-gated -> only rally + bull ct-shorts affected.
-                # Exp1 (architectural, indep): FAST-SATURATING ct gate /0.04 -> /0.01 (the
-                # validated noise-robustness upgrade applied to the sister _target_ema by
-                # keep 3a2e1537, untested on this EMA). At /0.04 rally's solidly-positive
-                # ret_vlong (~0.02-0.04) sits in the LINEAR mid-slope of tanh, so AR(1)
-                # close noise makes the ct-pos-strength -- and thus the EMA alpha -- wobble
-                # bar-to-bar -> the smoothing AMOUNT is noise-sensitive -> exit-timing
-                # divergence -> rally stability penalty (the binding constraint, stab 0.795
-                # below the 0.80 knee). At /0.01 the same ret_vlong range sits in the FLAT
-                # saturated tail (sensitivity ~0.4 vs ~5 at /0.04) -> alpha is a near-
-                # CONSTANT ~0.5 for ct positions -> the smoothing AMOUNT is bar-to-bar
-                # stable under AR(1) while preserving the same mean activation level (same
-                # ct gate -> same mean alpha, just stable). Byte-identical for trend-aligned
-                # (ct gate 0 either way -> alpha 0); low-ret_vlong sideways spared.
-                _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
+                _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
                 _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
                 _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
