@@ -3141,6 +3141,22 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
+            # Exp6 (architectural, indep): PORTFOLIO-EQUITY-TREND emission threshold
+            # modulator. NEW portfolio-state control-flow dep at the emission layer: when
+            # the portfolio equity EMA is trending UP (winning -- entries are capturing
+            # real edge), lower the emission threshold so same-sign resizes execute more
+            # freely (capture more of confirmed edge -> higher APY, the dominant score
+            # lever; mixed binding floor 0.534 APY 4.6pct 100pct WR). When flat/down, keep
+            # baseline (don't over-trade a stagnant book). Uses the _equity_ema_atten
+            # already computed at top of on_bar (asymmetric fast-fall/slow-rise EMA); its
+            # ratio to the portfolio peak indicates the equity trend (ratio rising = winning).
+            # Compute a short trend signal: how close equity_ema is to peak (1.0 = at peak
+            # = winning; <1.0 = in DD = stagnant). Lower the threshold proportionally when
+            # at/above peak. Continuous tanh; floor 0.6*LEVERAGE_K so emission never fully
+            # opens (noise protection retained). Distinct from the ct-at-multi-day reduction
+            # (different signal, different population); composes multiplicatively.
+            _eq_trend = max(0.0, min(1.0, np.tanh((self._equity_ema_atten / max(self._peak_equity, 1e-10) - 0.97) / 0.02)))  # ~0 below 0.97 (in DD), ~1 at peak (winning)
+            _emit_thresh *= 1.0 - 0.20 * _eq_trend
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
