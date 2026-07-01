@@ -321,15 +321,6 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
-        # Exp1 (this session): per-symbol 2nd-order EMA of the EMITTED target (the
-        # EMA-of-the-EMA). Enables a zero-lag double-EMA correction (2*ema1 - ema2)
-        # on the counter-trend held level: damps the VELOCITY of position-value
-        # changes (each resize's first-bar jump is a velocity spike under AR(1)
-        # noise) WITHOUT adding the pure lag of a 1st-order EMA. The sanctioned
-        # untested lead ("a 2nd-order smoothing" on the held-level cascade, distinct
-        # from the 1st-order _target_ema which only smooths the LEVEL). Gated by the
-        # same ct-only _te_alpha (trend-aligned byte-identical); reset on full exit.
-        self._target_ema2 = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2848,27 +2839,7 @@ class Strategy:
                 _te_alpha = min(0.99, _te_alpha * (1.0 + 0.40 * _te_churn_boost))
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
-                    # 1st-order EMA of the emitted target (smooths the LEVEL).
-                    _ema1 = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
-                    # Exp1 (architectural, indep): 2nd-order zero-lag double-EMA.
-                    # EMA-of-the-EMA mirrors the 1st-order persistence convention
-                    # (alpha weights the previous value = lag). The zero-lag
-                    # combination 2*ema1 - ema2 has a DIFFERENT impulse response
-                    # than a 1st-order EMA: it damps the RATE OF CHANGE (velocity)
-                    # of the held position value, not the level. Under AR(1) noise
-                    # the cascade root is the velocity spike on each ct resize's
-                    # first bar (the keep 3a2e1537 diagnosis: high-churn ct
-                    # re-entries' scale-in resizes cascade most). Damping velocity
-                    # directly targets that root while the zero-lag form avoids the
-                    # over-smoothing LAG that held ct losers bigger-longer -> the
-                    # raw cost that caps 1st-order alpha at 0.99. New control flow:
-                    # a 2nd cascaded EMA state + a zero-lag combination. Gated by
-                    # the same ct-only _te_alpha (trend-aligned byte-identical);
-                    # reset on full exit. The sanctioned untested lead.
-                    _prev_te2 = self._target_ema2.get(symbol, _ema1)
-                    _ema2 = (1.0 - _te_alpha) * _ema1 + _te_alpha * _prev_te2
-                    self._target_ema2[symbol] = _ema2
-                    target = 2.0 * _ema1 - _ema2
+                    target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
 
             # Architectural subsystem redesign (execution/order-emission layer):
@@ -3169,7 +3140,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._target_ema2, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
