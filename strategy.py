@@ -581,33 +581,11 @@ class Strategy:
             # (constant 0.005) with per-symbol ATR-derived threshold. SOL (higher ATR)
             # needs larger move to trigger entry, BTC (lower ATR) smaller — structural
             # noise-floor scaling. ATR(14) computed on history high/low/prev-close.
-            # Exp3 (architectural, indep): MULTI-WINDOW ATR (mean of 14/24/34-bar) for the
-            # entry threshold, replacing the single 14-bar ATR. The 14-bar ATR_pct feeds
-            # the entry admission threshold (_base_thresh_dyn) which is a DECISION BOUNDARY
-            # -- a single 14-bar window's TR mean wobbles under AR(1) close noise (the
-            # prev-close term shifts when closes shift) -> the threshold wobbles bar-to-bar
-            # -> admission timing divergence across the noise ensemble (stability tracking
-            # error). The exit-side slope subsystem already uses a 3-window 12/16/22 MEAN
-            # for exactly this reason (mean averages out window-specific noise better than
-            # a single window). Apply the SAME multi-window mean discipline to the ATR
-            # threshold: mean of ATR(14), ATR(24), ATR(34) -> each window's noise carries
-            # ~1/3 weight -> bar-to-bar threshold variance reduced ~1/sqrt(3). Longer
-            # windows (24/34) are smoother (more TR samples) so they pull the mean toward
-            # the structural ATR level, damping 14-bar noise spikes. The mean (not median)
-            # is the validated aggregator for multi-window noise reduction in this codebase
-            # (prior session confirmed mean-over-median for both slope uses). New cross-
-            # window data dep at the entry admission boundary. Continuous (smooth in each
-            # window's TR mean; no new decision boundary). Byte-identical window-set if all
-            # three windows were already 14 (they are not, so this changes the threshold
-            # level slightly toward the longer-window structural ATR).
-            _atr_ws = (14, 24, 34)
-            _tr_e_all = []
-            for _aw in _atr_ws:
-                _ah = bd.history["high"].values[-_aw:]
-                _al = bd.history["low"].values[-_aw:]
-                _ac = closes[-_aw - 1:-1]
-                _tr_e_all.append(np.mean(np.maximum(_ah - _al, np.maximum(np.abs(_ah - _ac), np.abs(_al - _ac)))))
-            _atr_pct_e = float(np.mean(_tr_e_all)) / mid
+            _atr_high_e = bd.history["high"].values[-14:]
+            _atr_low_e = bd.history["low"].values[-14:]
+            _atr_close_e = closes[-15:-1]
+            _tr_e = np.maximum(_atr_high_e - _atr_low_e, np.maximum(np.abs(_atr_high_e - _atr_close_e), np.abs(_atr_low_e - _atr_close_e)))
+            _atr_pct_e = np.mean(_tr_e) / mid
             # Anchor: 0.42 * ATR_pct, clamped to [0.0035, 0.008] keeps within original range
             _base_thresh_dyn = max(0.0040, min(0.0080, 0.45 * _atr_pct_e))
             dyn_threshold = _base_thresh_dyn * (0.10 + vol_ratio * 0.90) ** 0.85
