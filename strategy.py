@@ -321,22 +321,6 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
-        # Exp1 (architectural, indep): 2nd-order CASCADED LOW-PASS on the ct held
-        # target. New per-symbol state _target_ema2 = EMA of the 1st-order _target_ema.
-        # This is the sanctioned untested lead ("a NON-EMA NON-SIZE mechanism on the
-        # held-level cascade") -- specifically the DAMPING-FORM 2nd order, NOT the
-        # extrapolating zero-lag form (2*ema1-ema2) that was catastrophic (580d641e,
-        # MaxDD exploded: it re-injects the high-freq component a low-pass removes).
-        # A cascaded low-pass ema2 = EMA(ema1) is a steeper LOW-PASS: it attenuates
-        # high-freq position-value velocity MORE than a single EMA at equal lag,
-        # WITHOUT extrapolating -> further dampens the high-churn ct resize cascade
-        # that is rally's binding stability population (keep 3a2e1537). The 2nd-stage
-        # alpha is SMALLER than the 1st (0.30*ct_str, capped) so it only adds extra
-        # attenuation where the cascade is worst (deep ct + high churn), and is ~0 for
-        # trend-aligned / low-churn (byte-identical by construction). Applied AFTER
-        # the 1st-order EMA so the proven keep smoothing is preserved exactly; the 2nd
-        # stage is a pure additional damping on top.
-        self._target_ema2 = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2857,23 +2841,6 @@ class Strategy:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
-                # Exp1 (architectural, indep): 2nd-order CASCADED LOW-PASS damping stage.
-                # ema2 = EMA(ema1) -- a steeper low-pass that further attenuates high-freq
-                # position-value velocity (the high-churn ct resize cascade) WITHOUT
-                # extrapolating (distinct from the disproven zero-lag 2*ema1-ema2 form).
-                # 2nd-stage alpha is SMALLER than the 1st and scaled by the SAME ct-str +
-                # churn gate (so it is ~0 for trend-aligned/low-churn = byte-identical by
-                # construction, and only adds extra damping where the cascade is worst).
-                # Capped 0.30 (well below the 0.99 1st-stage cap so the 2nd stage is a
-                # GENTLE additional low-pass, not a re-smoothing that re-introduces lag
-                # cost on ct losers -- the documented raw-cost tension). Pure damping:
-                # output stays between the 1st-stage ema and the raw target, never
-                # overshoots. New state _target_ema2, new control flow.
-                _te2_alpha = min(0.30, 0.30 * _ct_te_str * (1.0 - 0.50 * _te_loss_gate) * (1.0 + 0.40 * _te_churn_boost))
-                if _te2_alpha > 0.0:
-                    _prev_te2 = self._target_ema2.get(symbol, target)
-                    target = (1.0 - _te2_alpha) * target + _te2_alpha * _prev_te2
-                self._target_ema2[symbol] = target
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
@@ -3173,7 +3140,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._target_ema2, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
