@@ -208,6 +208,23 @@ NET_TILT_SCALE = 0.10 * LEVERAGE_K   # tanh saturation scale of the net-tilt ram
 NET_TILT_MAX_SHRINK = 0.50            # max first-bar shrink at full net-tilt (-> 0.50x); raised 0.40->0.50 (step6: linear scaling held at 0.40, push toward +0.003 keep threshold, monitor rally stab cliff)
 # Architectural (Exp2 this session): convex de-risk ramp exponent amp on profit side.
 DERISK_CONVEX_AMP = 0.6  # profit-side ramp exponent 1.0->1.6 (convex = hold through mid-range noise)
+# Architectural (Exp4 this session): MTM-EFF x VOL-REGIME-GATED convex time-pressure ramp.
+# Exp1 (discarded): uniform convex time-ramp -> trend regimes gain (sideways +0.011, crash
+# +0.006) BUT mixed/bull cost (trend/chop overlap). Exp3 (discarded): MTM-eff gate saved
+# mixed (-0.0093 -> -0.0012, low-eff dead-capital -> linear) BUT bull still regressed -0.016
+# (bull pullback longs are HIGH-MTM-eff smooth-climbing -> absorb the cushion cost). The
+# remaining wall: MTM-eff does NOT separate bull pullback longs (high-eff) from rally/
+# sideways trend winners (high-eff). The validated bull/rally separator is VOL REGIME
+# (scale-in quantization keep: bull HIGH-vol SHARP uptrend vs rally LOW-vol GRIND). This
+# gates the convex cushion on BOTH: high-MTM-eff (saves mixed dead-capital) AND low-vol
+# grind (saves bull high-vol pullback longs). Bull pullback longs (high-eff, HIGH-vol) ->
+# linear fast exit (spared); rally/sideways trend winners (high-eff, LOW-vol) -> convex
+# cushion (ride pullback noise). Combines the two PROVEN separators (MTM-eff for mixed,
+# vol-regime for bull/rally) to break Exp3's wall. Fresh multi-variable cross-component
+# data dep: time-pressure activation shape depends on MTM-eff x vol-regime conjunction.
+TIME_PRESSURE_CONVEX_K = 1.6     # convex ramp exponent (cushion strength)
+TIME_PRESSURE_EFF_GATE = 0.30    # MTM-eff threshold for the cushion (saves mixed dead-capital)
+TIME_PRESSURE_VOL_GATE = 1.0     # vol_ratio below which the cushion engages (saves bull high-vol)
 MIN_VOTES = 2.92  # scaled for 7 voters
 FLIP_MIN_VOTES = 2.80  # scaled for 7 voters
 # Exp1 (this session): MTM-path-efficiency reduction-throttle amplitude. At the
@@ -2205,7 +2222,27 @@ class Strategy:
                 # term in the time-pressure activation. No per-regime labels.
                 _vol_hold_ext = max(0.0, np.tanh((vol_ratio - 1.0) / 0.5))
                 _max_hold *= 1.0 + 0.12 * _vol_hold_ext
-                _time_pressure = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                # Exp4 (architectural): MTM-EFF x VOL-REGIME-GATED convex time-pressure ramp.
+                # Raw linear ramp x raised to power TIME_PRESSURE_CONVEX_K only when the held
+                # position is BOTH high-MTM-eff (smooth climber, saves mixed dead-capital) AND
+                # in a low-vol grind (saves bull high-vol pullback longs). The two proven
+                # separators (MTM-eff for mixed, vol-regime for bull/rally) gate the cushion so
+                # it engages only for rally/sideways low-vol trend winners. Byte-identical when
+                # _pnl_path < 4 bars (linear). Fresh: time-pressure shape depends on MTM-eff x
+                # vol-regime conjunction.
+                _tp_raw = max(0.0, min(1.0, (bars_held - _max_hold + 3.0) / 4.0))
+                _tp_eff_blend = 0.0
+                _ppp_tp = self._pnl_path.get(symbol, [])
+                if len(_ppp_tp) >= 4:
+                    _ppa_tp = np.array(_ppp_tp)
+                    _net_tp = abs(_ppa_tp[-1] - _ppa_tp[0])
+                    _tot_tp = float(np.sum(np.abs(np.diff(_ppa_tp))))
+                    _mtm_eff_tp = _net_tp / max(_tot_tp, 1e-10)
+                    _tp_eff_blend = max(0.0, min(1.0, np.tanh((_mtm_eff_tp - TIME_PRESSURE_EFF_GATE) / 0.15)))
+                # Vol-regime gate: ~1 low-vol grind (rally/sideways), ~0 high-vol sharp (bull/crash).
+                _tp_vol_blend = max(0.0, min(1.0, (TIME_PRESSURE_VOL_GATE + 0.2 - vol_ratio) / 0.4))
+                _tp_k = 1.0 + (TIME_PRESSURE_CONVEX_K - 1.0) * _tp_eff_blend * _tp_vol_blend
+                _time_pressure = _tp_raw ** _tp_k
 
                 # PnL-conditioned exit-pressure weighting (architectural change to fusion):
                 # In profit (pos_pnl > 0), peak-profit dominates — preserve gains via giveback.
