@@ -2113,27 +2113,6 @@ class Strategy:
                 # Low vol -> narrower band (closer to binary, less near-giveback oscillation).
                 # High vol -> wider band (absorbs giveback-ratio noise from price chop).
                 _pp_min = PEAK_PROFIT_MIN_BASE * max(0.6, min(2.0, vol_ratio ** 0.5))
-                # Exp6 (architectural, this session): DIRECTION-AWARE persistent-
-                # downtrend pp_min lowering for trend-aligned SHORTS (crash return
-                # lever). Crash is return-limited (Sh1.31, 100pct WR, lumpy returns;
-                # DD 2.83pct huge headroom below 5pct knee). pp_pressure activates at
-                # peak>=_pp_min; crash's trend-aligned SHORTS (the persistent-bear
-                # winners) may benefit from EARLIER pp_pressure activation (lower
-                # _pp_min) -> more gain-locking at modest peaks -> smoother realized
-                # return -> higher Sharpe (crash is return-limited by lumpy returns
-                # per row 538 D4 diagnostic). Direction-aware: pos_dir=-1 (short) AND
-                # _down_persist>0.65 (persistent downtrend) targets crash shorts
-                # specifically; bull pullback LONGS (pos_dir=+1) -> wrong direction;
-                # sideways (ret_vlong~0) -> _down_persist ~0.5 -> no match; rally
-                # (uptrend) -> _down_persist low -> no match. Max 20% lowering (caps
-                # how far _pp_min drops so activation doesn't fire trivially early).
-                # _down_persist is the validated 52a3e671 keep signal (48-bar fraction
-                # of ret_vlong<0 bars, noise-immune). New cross-component data dep:
-                # pp_min activation depends on (pos_dir, _down_persist) conjunction.
-                if current_pos < 0:
-                    _crash_short_pp = max(0.0, np.tanh((_down_persist - 0.65) / 0.12))
-                    _pp_min = _pp_min * (1.0 - 0.20 * _crash_short_pp)
-                    _pp_min = max(_pp_min, 0.5 * PEAK_PROFIT_MIN_BASE)  # floor
                 _giveback = max(0.0, self.peak_pnl[symbol] - pos_pnl)
                 _giveback_ratio = _giveback / max(self.peak_pnl[symbol], _pp_min)
                 # Architectural: profit-magnitude-aware giveback amplification
