@@ -2093,6 +2093,29 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
+                # Exp2 (architectural, indep): CHURN-CT-LOSER slope-against pressure AMPLIFIER.
+                # rally's binding stability population is the HIGH-CHURN counter-trend re-entries
+                # (burst-bar pullback shorts, len(_eh)>=3): the noise-cascade positions whose
+                # scale-in resizes drive rally's tracking error (the keep 3a2e1537 diagnosis).
+                # The _target_ema smooths their held LEVEL; THIS amplifies their slope-against
+                # EXIT DECISION so a slope reversal (the first reliable exit signal) drives the
+                # noise-cascade ct LOSER to full-exit faster -> smaller realized loss -> less
+                # equity-return variance under AR(1) noise -> rally stability up. Distinct from
+                # the keep (different layer: exit-decision pressure vs held-level smoothing).
+                # Gated on the SAME noise-IMMUNE integer churn count the validated rally-stab
+                # family uses (len(_eh), fast-saturating /0.6) x the validated multi-day ct
+                # indicator (ret_vlong*pos_dir<0, fast-saturating /0.01 near-constant noise-free)
+                # x LOSING (pos_pnl<0 -- only amplify the losers, not the rare ct winners).
+                # Byte-identical when churn~0 (low-churn regimes + rally quiet stretches),
+                # ct indicator 0 (trend-aligned bull longs / crash shorts), or winning (the
+                # slope-against on a winning trend pullback is real giveback, not a loser cut).
+                # Max +0.30 pressure amplification (one-sided positive, never reduces pressure).
+                _pos_dir_sp = 1.0 if current_pos > 0 else -1.0
+                _ct_loser_amp_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
+                _ct_loser_amp_ct = max(0.0, np.tanh(-_pos_dir_sp * ret_vlong / 0.01))  # ~0 trend-aligned, ~1 ct-at-multi-day
+                _ct_loser_amp_loss = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
+                _ct_loser_amp = 0.30 * _ct_loser_amp_churn * _ct_loser_amp_ct * _ct_loser_amp_loss
+                _sl_slope_pressure = min(1.0, _sl_slope_pressure * (1.0 + _ct_loser_amp))
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
