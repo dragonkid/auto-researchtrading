@@ -2337,6 +2337,25 @@ class Strategy:
                 _vol_expansion = _vol_6 / _vol_18
                 # Activate above 1.3x, saturate near 2.0x. Smooth via tanh.
                 _ve_pressure = 0.6 * max(0.0, np.tanh((_vol_expansion - 1.3) / 0.4))
+                # Exp2 (architectural, indep): TREND-CONFIRMATION gate on vol-expansion exit
+                # pressure. NEW data dep at the ve_pressure source (grep "vol expansion direction"
+                # / "trend-confirming vol" = 0 prior experiments). _ve_pressure fires symmetrically
+                # on vol-of-vol ratio regardless of DIRECTION -- but a vol expansion that
+                # ACCOMPANIES a price move WITH the position (trend acceleration: a rally long
+                # catching an up-move, a crash short catching a down-move) is a HIGH-QUALITY
+                # continuation, not exhaustion -- the winner should RIDE the accelerating trend,
+                # not get harvested. A vol expansion in chop/adverse (slope against position) IS
+                # genuine exhaustion -> full harvest. Gate _ve_pressure by whether the multi-window
+                # exit slope CONFIRMS the position: attenuate up to 50% when slope is strongly with
+                # the position (trend-confirming vol spike -> ride), keep full when slope is flat/
+                # against (chop/adverse vol spike -> harvest). Continuous tanh on _exit_slope signed
+                # by pos_dir (/0.0004, same scale as _dr_slope_conf). No new boundary; direction-
+                # agnostic (no regime label). Targets mixed (chop/adverse vol spikes still harvest
+                # -> cut mixed's adverse-move losers) while protecting rally/bull trend longs (vol
+                # spike during trend continuation gets ridden -> higher Sharpe by holding winners).
+                _ve_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _ve_trend_conf = max(0.0, np.tanh(_exit_slope * _ve_pos_dir / 0.0004))  # 0 flat/against, 1 strong-with
+                _ve_pressure = _ve_pressure * (1.0 - 0.50 * _ve_trend_conf)
                 # Profit-side weight: only fire when in profit (lock gains on
                 # regime shift); don't punish losing positions for vol expansion
                 # since slope-against already handles adverse moves.
