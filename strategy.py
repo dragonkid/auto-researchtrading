@@ -2424,6 +2424,24 @@ class Strategy:
                 # EMA state + branch; all ct-gated -> only rally + bull ct-shorts affected.
                 _ct_pos_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.04))
                 _exit_ema_alpha = 0.5 * _ct_pos_str  # 0 trend-aligned, up to 0.5 counter-trend
+                # Exp4 (architectural, indep): CHURN-CONCENTRATED voter_bias_ema alpha boost
+                # (direct validated-pattern analog of keep 3a2e1537 on the sister _target_ema).
+                # The voter_bias_ema smooths the additive _voter_bias exit term (line 2428),
+                # using the SAME _ct_pos_str gate and the SAME 0.5 alpha cap as _target_ema did
+                # pre-keep. The keep proved concentrating smoothing UP on HIGH-CHURN ct
+                # positions (burst bars, len(_eh)>=3, the noise-cascade population whose
+                # scale-in resizes drive rally's tracking error) lifts rally stability, while
+                # sparing low-churn ct (less over-smoothing lag). Apply the identical
+                # treatment here: boost _exit_ema_alpha UP when churn is high, keep baseline
+                # when low. rally's high-churn ct re-entries get stronger exit-bias smoothing
+                # -> less exit-TIMING divergence under AR(1) noise -> rally stability up (the
+                # binding constraint, stab 0.795 below the 0.80 knee). Uses the SAME noise-
+                # IMMUNE integer churn count (len(_eh), fast-saturating /0.6, the validated
+                # rally-stab gate family). Max +0.40 alpha boost, capped at the 0.5 hard
+                # ceiling. Byte-identical for trend-aligned (ct gate 0 -> alpha 0 -> boost
+                # multiplies 0); low-churn ct (len<=1 -> churn boost ~0) ~byte-identical.
+                _vb_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
+                _exit_ema_alpha = min(0.5, _exit_ema_alpha * (1.0 + 0.40 * _vb_churn_boost))
                 _prev_vb = self._voter_bias_ema.get(symbol, _voter_bias)
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
                 self._voter_bias_ema[symbol] = _voter_bias
