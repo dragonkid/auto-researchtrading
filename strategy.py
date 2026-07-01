@@ -2160,6 +2160,33 @@ class Strategy:
                 _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
+                # Exp5 (architectural, indep): MTM-CHOP AMPLIFICATION of _pp_pressure (a
+                # DOMINANT flowing exit term for mixed, per Exp4's structural insight).
+                # Exp4 added MTM-chop as a 6th MAX-fusion term and it was INERT on mixed
+                # (never exceeded the existing 5 dominant terms -> never the MAX). The
+                # structural lesson: to reach a regime whose exits are dominated by
+                # existing pressures, AMPLIFY a flowing term rather than add a competing
+                # one. _pp_pressure (giveback) is the dominant exit for mixed's oscillating
+                # dead-capital longs (they peak modestly, give back, re-peak). Amplify it
+                # up to +40% for CHOPPY (low MTM-efficiency) COUNTER-TREND-AT-MULTI-DAY
+                # positions (ret_vlong*pos_dir<0, the validated mixed/sideways-vs-trend
+                # separator): mixed's wrong-side longs in a downtrend get harvested faster
+                # at the EXIT decision (the giveback that already dominates them, now
+                # stronger -> exits earlier -> less oscillation -> higher Sharpe). Trend-
+                # aligned smooth winners (bull/rally/crash -> high MTM-eff -> chop~0 AND
+                # ct gate ~0 -> amplification ~1.0 -> byte-identical-ish). Profit-side
+                # (giveback only fires in profit). Tests Exp4's structural insight directly.
+                if _pp_pressure > 0.0 and pos_pnl > 0:
+                    _ppp_a = self._pnl_path.get(symbol, [])
+                    if len(_ppp_a) >= 4:
+                        _ppa_a = np.array(_ppp_a)
+                        _net_a = abs(_ppa_a[-1] - _ppa_a[0])
+                        _tot_a = float(np.sum(np.abs(np.diff(_ppa_a))))
+                        _mtm_eff_a = _net_a / max(_tot_a, 1e-10)
+                        _chop_a = max(0.0, min(1.0, 1.0 - _mtm_eff_a))
+                        _pos_dir_a = 1.0 if current_pos > 0 else -1.0
+                        _ct_vlong_a = max(0.0, np.tanh(-_pos_dir_a * ret_vlong / 0.01))
+                        _pp_pressure = _pp_pressure * (1.0 + 0.40 * _chop_a * _ct_vlong_a)
 
                 # Time pressure: wider smooth ramp (4 bars) to reduce noise sensitivity
                 # Uses same robust median exit-slope for consistency within exit subsystem.
