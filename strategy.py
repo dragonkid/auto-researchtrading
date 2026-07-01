@@ -2093,24 +2093,6 @@ class Strategy:
                 _slope_thresh = 0.0003 + 0.0003 * max(0.0, min(1.0, (0.7 - vol_ratio) / 0.3))
                 _slope_band = 0.20 + 0.30 * max(0.0, min(1.0, (0.9 - vol_ratio) / 0.4))
                 _sl_slope_pressure = max(0.0, min(1.0, (_slope_against - (1.0 - _slope_band/2) * _slope_thresh) / (_slope_band * _slope_thresh)))
-                # Exp5 (architectural, indep): CONVEX slope-against pressure ramp. The
-                # baseline _sl_slope_pressure is a LINEAR ramp in slope-against (x in
-                # [0,1]). A LINEAR ramp translates mid-range slope-against noise 1:1 into
-                # exit-pressure wobble -> equity-curve tracking error (the stability
-                # penalty's root currency), the SAME structural argument that made the
-                # de-risk convex cushion (DERISK_CONVEX_AMP, k>1) a validated stability
-                # lever. Apply the SAME convex transform to the slope-against ramp: hold
-                # near-zero pressure through MODERATE slope-against (absorb transient
-                # mid-slope noise without shrinking/raising exit pressure) then ramp
-                # SHARPLY as slope-against saturates (the decisive strong-slope-against
-                # cut is preserved at x=1, only the mid-range RESPONSE is damped). k=1.4
-                # (milder than the de-risk cushion's 1.6 since slope-against is a faster-
-                # timescale signal; milder convexity avoids over-holding through genuine
-                # moderate-slope reversals). New control flow: slope-against pressure
-                # function shape changes from linear to convex. Continuous (smooth x^k, no
-                # new boundary); direction-agnostic; byte-identical at x=0 and x=1 (the
-                # ramps agree at the endpoints, differ only in the mid-range).
-                _sl_slope_pressure = _sl_slope_pressure ** 1.4 if _sl_slope_pressure > 0 else 0.0
                 # Architectural simplification: removed trend-aligned slope-pressure attenuation.
                 # Parallel reasoning to _scale_in_w removal (a44612e keep): slope-against IS
                 # signal not noise. Trend-aligned positions facing slope-against during
