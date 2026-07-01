@@ -3107,29 +3107,6 @@ class Strategy:
                 _ct_vlong_em = max(0.0, np.tanh(-_pos_dir_em * ret_vlong / 0.01))
                 if _ct_vlong_em > 0.50:
                     _emit_thresh = 0.7 * LEVERAGE_K
-            # Exp4 (architectural, this session): DIRECTION-AWARE persistent-downtrend
-            # emission threshold lowering for trend-aligned SHORTS. Crash has 49 trades
-            # (below the 50-trade sample_factor knee, sqrt(49/50)=0.9899 -> crash score
-            # capped ~1.01% below its Sharpe potential). Adding 1-2 trades to crash lifts
-            # sample_factor to 1.0 -> crash +1.01% -> ~+0.010 score. Prior sessions
-            # confirmed the bull/crash separator wall on _down_persist ALONE (bull's multi-
-            # week pullbacks saturate _down_persist at any window). THIS adds the untested
-            # DIRECTION conjunction: pos_dir=-1 (short) AND _down_persist high (persistent
-            # downtrend). Crash's reductions are trend-aligned SHORTS (pos_dir=-1, ret_vlong
-            # <0) in a persistent bear -> matches. Bull's pullback LONGS (pos_dir=+1) do NOT
-            # match (wrong direction) -> the separator that avoids the bull/crash down_persist
-            # overlap. Rally (uptrend, ret_vlong>0) shorts are counter-trend -> _down_persist
-            # low -> no match. Sideways (flat) -> _down_persist ~0.5 -> no match. Lowers the
-            # threshold for small trend-aligned-short reductions in a persistent bear so crash's
-            # currently grid-absorbed micro-reductions emit -> +1-2 trades -> sample_factor
-            # 0.9899 -> 1.0. Same 0.7*LEVERAGE_K floor as the ct path. _down_persist is the
-            # validated 52a3e671 keep signal (48-bar fraction of ret_vlong<0 bars, noise-
-            # immune integer-count aggregation). New cross-component data dep: emission
-            # threshold depends on (pos_dir, _down_persist) conjunction.
-            if _is_resize and current_pos < 0 and abs(current_pos) < 2.0 * _grid_em:
-                _short_down_persist = max(0.0, np.tanh((_down_persist - 0.65) / 0.12))
-                if _short_down_persist > 0.50:
-                    _emit_thresh = min(_emit_thresh, 0.7 * LEVERAGE_K)
             if abs(target - current_pos) > _emit_thresh:
                 signals.append(Signal(symbol=symbol, target_position=target))
                 if target == 0:
