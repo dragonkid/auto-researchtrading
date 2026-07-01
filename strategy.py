@@ -2837,6 +2837,26 @@ class Strategy:
                 # byte-identical-ish.
                 _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
                 _te_alpha = min(0.99, _te_alpha * (1.0 + 0.40 * _te_churn_boost))
+                # Exp3 (architectural, indep): LOW-CHURN-LOSER alpha ATTENUATION (the inverse
+                # of the keep 3a2e1537 churn-boost). The keep concentrated smoothing UP on
+                # high-churn ct (where the cascade is worst) and noted the raw gain came from
+                # "sparing the low-churn ct losers the lag cost" (less over-smoothing lag ->
+                # smaller realized losses -> higher rally Sharpe). The keep BOOSTED high-churn
+                # but did not push the inverse: CUT alpha BELOW the 0.50 loss-gate floor for
+                # LOW-CHURN losers, where smoothing helps least (few resize events -> little
+                # cascade to damp) but the lag cost (holding the losing ct position bigger
+                # longer -> larger realized loss) remains. Steepen the loss-gate for low-churn
+                # ct losers: alpha *= (1 - 0.30*(1-_te_churn_boost)*loss_gate) on top of the
+                # base 0.50 loss-gate, reaching ~0.80 total alpha cut for a deep-loss low-churn
+                # ct (vs 0.50 baseline). The cut is GATED on ct (only ct positions smooth at
+                # all -> trend-aligned alpha=0 either way, byte-identical) and applies only to
+                # the LOW-churn partition (1-_te_churn_boost ~1 at len<=1, ~0 at burst). Net:
+                # less lag on low-churn ct losers -> smaller realized losses -> rally raw up
+                # (the keep's raw-gain axis amplified), while high-churn keeps the boosted
+                # smoothing (stability). Amplify-only on the loss-gate (never raises alpha
+                # above the keep's level; floor at 0). New cross-component data dep: target-EMA
+                # loss-gate steepness depends on the inverse churn partition.
+                _te_alpha = _te_alpha * (1.0 - 0.30 * (1.0 - _te_churn_boost) * _te_loss_gate)
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
