@@ -2853,10 +2853,10 @@ class Strategy:
                 if _ct_mf_str > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
-                    if len(_th) > 5:
-                        _th = _th[-5:]
+                    if len(_th) > 3:
+                        _th = _th[-3:]
                     self._target_hist[symbol] = _th
-                    if len(_th) >= 5:
+                    if len(_th) >= 3:
                         _med = float(np.median(_th))
                         # Snap toward the median only when it preserves sign (never cross
                         # zero -- a median of mixed-sign values would flip direction).
