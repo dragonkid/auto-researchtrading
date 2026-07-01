@@ -2841,6 +2841,33 @@ class Strategy:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
+                # Exp2 (architectural, indep): FEED-FORWARD SLEW-RATE LIMITER (velocity
+                # clamp) on the ct held target. A 1st-order EMA is a LINEAR low-pass:
+                # it attenuates ALL changes (lag on small changes too). The AR(1) rally
+                # cascade root is the VELOCITY SPIKE on each high-churn ct resize's first
+                # bar (the keep 3a2e1537 diagnosis). A slew limiter is structurally
+                # distinct: it passes small changes UNMODIFIED (zero lag on the slow
+                # component) and CLIPS only the per-bar change that exceeds a max step.
+                # This damps the spike (the cascade driver) without the over-smoothing
+                # lag that held ct losers bigger-longer -> the raw cost capping 1st-order
+                # alpha at 0.99. Gated by the SAME ct condition + churn boost (the binding
+                # stability population; trend-aligned byte-identical, low-churn ~0). Max
+                # step = SLEW_MAX_FRAC * |current_pos| * churn_boost (scales with position
+                # size so it is meaningful across equity levels; churn-gated so low-churn
+                # ct holds pass through). Symmetric (clips both growth and shrink so it
+                # never blocks a risk-reducing exit more than a growth step). Snap is
+                # toward prev_te (the already-smoothed level), never across zero (target
+                # keeps the sign of the raw target). New control flow + new cross-
+                # component data dep (per-bar velocity gated on own churn). The sanctioned
+                # "feed-forward position-value" lead, in DAMPING (not extrapolation) form.
+                if _te_churn_boost > 0.0:
+                    _prev_te_sl = self._target_ema.get(symbol, target)
+                    _max_step = 0.08 * abs(current_pos) * _te_churn_boost
+                    _delta = target - _prev_te_sl
+                    if abs(_delta) > _max_step:
+                        _clamped = _prev_te_sl + np.sign(_delta) * _max_step
+                        if (_clamped > 0) == (target > 0) and abs(_clamped) <= abs(current_pos) * 1.5:
+                            target = _clamped
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
