@@ -2628,6 +2628,32 @@ class Strategy:
                         # Continuous tanh on (ret_long * pos_dir / 0.04).
                         _dr_pos_dir = 1.0 if current_pos > 0 else -1.0
                         _dr_align = max(0.0, np.tanh(ret_long * _dr_pos_dir / 0.04))  # 0 ct, 1 trend-aligned
+                        # Exp1 (architectural, indep): VOL-GATED multi-day ret_vlong
+                        # confirmation on the de-risk convex cushion trend-align factor.
+                        # The f7af0069 keep validated this exact transformation on the
+                        # opp-bias trend-align path (line ~2322): _trend_align_vb =
+                        # min(1.0, ret_long_term + 0.30*vlong_vol_gate*ret_vlong_term).
+                        # The de-risk cushion (k>1 -> hold trend-aligned winners near full
+                        # size through giveback noise, the validated stability lever) gates
+                        # ONLY on 20-bar ret_long*pos_dir here. For mixed's trend-aligned
+                        # rally-phase longs (oscillating year, modest 20-bar ret_long ->
+                        # _dr_align ~0.3-0.6 -> partial cushion), the more-stable 96-bar
+                        # ret_vlong SUSTAINS confirmation through local pullbacks (doesn't
+                        # flicker off) -> strengthens the cushion when both agree -> ride
+                        # mixed winners longer -> higher mixed Sharpe (the binding floor 0.534,
+                        # same ride-winners mechanism as the f7af0069/85a2e23e keeps). VOL-GATE
+                        # (low vol_ratio = mixed/rally grind) spares bull (high-vol SHARP 2021
+                        # where ret_vlong lag holds losing longs through corrections -> stab
+                        # crash, the documented wall). Capped via min(1.0) so strong-trend
+                        # regimes (bull/crash/rally longs: ret_long term already ~1 -> cap ->
+                        # no change) are BYTE-IDENTICAL. ct positions (ret_vlong*pos_dir<0 ->
+                        # term 0) get NO boost -> linear fast cut preserved (rally pullback
+                        # shorts + mixed wrong-side longs). _vlong_vol_gate already computed
+                        # at line ~2320; ret_vlong is already computed (96-bar OLS, noise-robust).
+                        # Continuous tanh, no new decision boundary. Targets mixed (binding);
+                        # protects all trend-aligned regimes by the cap + vol-gate.
+                        _ret_vlong_term_dr = max(0.0, np.tanh(ret_vlong * _dr_pos_dir / 0.04))
+                        _dr_align = min(1.0, _dr_align + 0.30 * _vlong_vol_gate * _ret_vlong_term_dr)
                         # Exp4 (architectural, indep): SLOPE-CONFIRMATION gate on the de-risk
                         # convex cushion. The cushion (k>1 -> hold near full size through
                         # moderate giveback, the validated stability lever) was gated only on
