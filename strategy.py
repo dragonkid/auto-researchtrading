@@ -296,13 +296,6 @@ class Strategy:
         # high — addresses turnover as a cost driver via direct feedback on the
         # entry decision boundary.
         self._entry_bar_history = {}
-        # Exp4 (architectural, indep): per-symbol rolling LOSING-exit bar history (30-bar
-        # window). Distinct from _entry_bar_history (ALL entries): this tracks only bars at
-        # which a CLOSED LOSING trade exited. Used to gate _freq_factor on recent entry
-        # OUTCOMES (tighten admission more when recent entries were churny LOSERS, not just
-        # frequent). New cross-component data dep: trade-frequency regulator reads recent
-        # entry PnL outcomes (was count-only).
-        self._entry_loss_bar_history = {}
         # Branch step 4: per-symbol CUMULATIVE-max churn (int) for the persistent
         # churn gate on the low-churn coarse grid — once a symbol bursts (len(_eh)>=3),
         # the grid turns off permanently for it.
@@ -813,28 +806,6 @@ class Strategy:
             while _eh and self.bar_count - _eh[0] > 30:
                 _eh.pop(0)
             _freq_factor = 1.0 + 0.20 * max(0.0, np.tanh((len(_eh) - 1.5) / 2.0))
-            # Exp4 (architectural, indep): OUTCOME-CONDITIONED trade-frequency regulator.
-            # The count-based _freq_factor above tightens admission when recent entry DENSITY
-            # is high (>=2 in 30 bars) -- treating all frequent entries alike. But a run of
-            # recent LOSING entries (churny losers, the rally pullback-short re-entry cluster
-            # pattern) is stronger evidence of over-trading than a run of winners (legitimate
-            # trend-following re-entries). Gate an ADDITIONAL admission tightening on the
-            # fraction of recent entries that closed at a loss: a high loss-fraction among
-            # recent entries -> tighten MORE (filter the marginal losers that extend a losing
-            # churn); a high win-fraction -> keep baseline _freq_factor (legitimate re-entries
-            # pass). New cross-component data dep: admission threshold depends on recent
-            # entry PnL outcomes (was count-only). Continuous tanh on loss-fraction/0.4 (smooth,
-            # no boundary); max +0.10 additional tighten (small -- rides on top of the validated
-            # count-based _freq_factor, which is load-bearing per the b7aa839 removal discard).
-            # Byte-identical when no recent losing exits (loss-fraction 0 -> factor 1.0).
-            # Self-measured behavioral gate (recent own-trade outcomes), NOT a regime label.
-            _elh = self._entry_loss_bar_history.setdefault(symbol, [])
-            while _elh and self.bar_count - _elh[0] > 30:
-                _elh.pop(0)
-            _recent_losses = len(_elh)
-            _recent_entries = len(_eh)
-            _loss_frac = (_recent_losses / _recent_entries) if _recent_entries > 0 else 0.0
-            _freq_factor = _freq_factor * (1.0 + 0.10 * max(0.0, min(1.0, np.tanh((_loss_frac - 0.30) / 0.40))))
             # Architectural simplification: removed _portfolio_freq_factor (cross-symbol
             # entry frequency regulator). Per-symbol _freq_factor already captures
             # local churn at each symbol — the portfolio-level addition at >=5 entries/30bars
@@ -3141,10 +3112,6 @@ class Strategy:
                         # max_consecutive_losses over chronological trade_pnls).
                         if _exit_pnl_signed < 0:
                             self._loss_streak += 1
-                            # Exp4: record this bar as a losing-exit bar for the per-symbol
-                            # 30-bar rolling loss-fraction consumed by _freq_factor.
-                            _elh_rec = self._entry_loss_bar_history.setdefault(symbol, [])
-                            _elh_rec.append(self.bar_count)
                         else:
                             self._loss_streak = 0
                     for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
