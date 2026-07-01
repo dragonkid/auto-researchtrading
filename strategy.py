@@ -2372,6 +2372,39 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp2 (architectural, indep): DIRECTIONAL BODY-PRESSURE (DBP) exit source
+                # (7th soft MAX source). NEW orthogonal candle-structure data dep, DISTINCT
+                # from the walled inside-bar-contraction (6a0694dd, -0.0728, bull crashed
+                # -0.416: UNSIGNED contraction fired on bull grinding consolidation = normal
+                # CONTINUATION). DBP is SIGNED and DIRECTIONAL: _dbp = mean over 3 bars of
+                # (close-open)/(high-low), signed by position direction (pos_dir). For a
+                # held LONG, fading conviction = recent bars closing BELOW open (negative
+                # raw body) -> exit pressure; for a SHORT, fading conviction = bars closing
+                # ABOVE open. CRITICAL BULL-SPARING PROPERTY: bull-2021's grinding uptrend
+                # bars close ABOVE open (positive raw body for longs) -> DBP < 0 activation
+                # gate -> DBP ~ 0 -> BYTE-IDENTICAL for bull (avoids the 6a0694dd wall where
+                # UNSIGNED contraction fired on bull's normal consolidation). The signal fires
+                # ONLY when recent bars OPPOSE the position direction (genuine conviction
+                # fade), not on consolidation. Mechanism: a winner whose recent bars show
+                # adverse intrabar conviction (closing against the entry) is losing momentum
+                # -> harvest before giveback. Distinct from slope (interbar trajectory),
+                # pp (peak giveback magnitude), time (duration), ve (vol-of-price), vc
+                # (volume level). Price-only (no volume/funding dep). Profit-side only (lock
+                # winners; losers handled by slope-against/stop). 3-bar mean for noise-
+                # robustness (single-bar body flips under AR(1)); deep-saturated onset
+                # (activate below -0.30 body, saturate at -0.60 -> near-constant where it
+                # fires, noise-free per the validated safe-family lesson). Continuous tanh,
+                # no boundary. New exit-pressure source + new control flow in the MAX fusion.
+                _dbp_high = bd.history["high"].values[-3:]
+                _dbp_low = bd.history["low"].values[-3:]
+                _dbp_open = bd.history["open"].values[-3:]
+                _dbp_close = closes[-3:]
+                _dbp_span = np.maximum(_dbp_high - _dbp_low, 1e-10)
+                _dbp_raw = float(np.mean((_dbp_close - _dbp_open) / _dbp_span))  # [-1,+1], 3-bar mean
+                _dbp_pos_dir = 1.0 if current_pos > 0 else -1.0
+                _dbp_adverse = -_dbp_pos_dir * _dbp_raw  # >0 when bars close against position
+                _dbp_pressure = 0.45 * max(0.0, min(1.0, np.tanh((_dbp_adverse - 0.30) / 0.30)))
+                _w_dbp = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2385,6 +2418,7 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
+                    _w_dbp * _dbp_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
