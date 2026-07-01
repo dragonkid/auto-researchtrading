@@ -2142,7 +2142,38 @@ class Strategy:
                 # → 1 line; eliminates the interpolation table that duplicates smoothing
                 # already provided by peak_pnl's high-water-mark mechanic.
                 _pp_ratio = self.peak_pnl[symbol] / max(_pp_min, 1e-6)
-                _pp_activation = 1.0 if _pp_ratio >= 1.0 else 0.0
+                # Exp2 (architectural, indep): PROFIT-SLOPE-GATED pp_activation onset.
+                # The pp_activation threshold is currently a fixed binary peak >= _pp_min
+                # (peak_pnl >= _pp_min -> pp_pressure eligible). For positions whose pos_pnl
+                # is RISING FAST (strong recent profit slope = a genuine momentum winner,
+                # not a choppy peak), the first peak crossing _pp_min is more likely a noise
+                # spike on a still-rising winner -> harvesting there cuts a strong trend
+                # short (mixed's tiny-win profile: 100pct WR but APY 4.6pct = winners cut
+                # too early). Raise the effective activation onset for fast-rising winners:
+                # a position needs a BIGGER peak before pp_pressure becomes eligible, giving
+                # strong winners more runway. Compute the recent pos_pnl slope over the
+                # maintained 12-bar _pnl_path (last 3 bars slope, normalized by stop). A
+                # position rising at ~1*stop over 3 bars (strong winner) -> onset raised up
+                # to 1.3x _pp_min; flat/declining (choppy peak, mixed's wrong-side longs that
+                # ARE ct) -> onset unchanged (baseline 1.0x). This is MECHANICALLY DISTINCT
+                # from giveback widening (which lowers _pp_lower = tolerance for giveback
+                # before pp fires): this raises the activation ONSET (peak magnitude required
+                # before pp_pressure is eligible AT ALL). Slope-continuous (tanh, no boundary);
+                # uses _pnl_path (already maintained for the emission throttle). Profit-side
+                # only (pos_pnl > 0); losers (pos_pnl <= 0) keep baseline onset. New cross-
+                # component data dep: pp_activation threshold depends on the held position's
+                # own recent profit trajectory slope.
+                _pp_onset_mult = 1.0
+                if pos_pnl > 0:
+                    _ppp_sl = self._pnl_path.get(symbol, [])
+                    if len(_ppp_sl) >= 3:
+                        _ppa_sl = _ppp_sl[-3:]
+                        _pnl_slope = (_ppa_sl[-1] - _ppa_sl[0]) / 3.0
+                        # strong-ramp gate: 0 at flat/declining, ~1 at slope ~ +1/3*stop per bar
+                        _strong_winner = max(0.0, min(1.0, np.tanh(_pnl_slope / (abs(STOP_LOSS_PCT) / 3.0))))
+                        _pp_onset_mult = 1.0 + 0.30 * _strong_winner
+                _pp_act_threshold = 1.0 * _pp_onset_mult
+                _pp_activation = 1.0 if _pp_ratio >= _pp_act_threshold else 0.0
                 _pp_raw = max(0.0, min(1.0, (_giveback_ratio - _pp_lower) / (_pp_giveback_eff * _pp_band)))
                 _pp_pressure = _pp_raw * _pp_activation
 
