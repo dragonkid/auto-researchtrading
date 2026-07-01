@@ -2120,34 +2120,7 @@ class Strategy:
                 # timescale data dependency: pp amplification depends on
                 # long-window trend magnitude. Continuous via tanh.
                 _profit_magnitude = max(0.0, self.peak_pnl[symbol] / max(_pp_min, 1e-6) - 1.0)
-                # Exp2 (architectural, indep): MULTI-DAY TREND-ALIGNMENT attenuation of giveback
-                # amplification (replaces 20-bar abs(ret_long) trend-MAGNITUDE). The attenuation
-                # (which REDUCES giveback amplification to let winners ride pullbacks) should fire
-                # only for genuine TREND-ALIGNED-AT-MULTI-DAY winners (bull longs in uptrend, crash
-                # shorts in downtrend, rally longs in uptrend -- ret_vlong*pos_dir>0), NOT for
-                # positions that are COUNTER-TREND at the multi-day scale but bouncing locally
-                # (mixed's wrong-side longs: ret_vlong<0, pos_dir=+1 -> product<0). Under the old
-                # abs(ret_long) gate, mixed's bounce longs had LARGE 20-bar ret_long during local
-                # up-swings -> attenuation fired -> LESS giveback amplification -> the LOSING
-                # wrong-side longs rode the bounce giveback LONGER (the intrinsic mixed drag:
-                # oscillating paper PnL re-peaks instead of being trimmed). Switching to multi-day
-                # trend-ALIGNMENT (ret_vlong*pos_dir, the SAME validated signal the tp-harvest
-                # _ts_supp fix at line ~2506 uses to catch mixed's wrong-side longs): mixed's ct
-                # longs get alignment~0 -> NO attenuation -> FULL giveback amplification -> trimmed
-                # at the bounce peaks -> convert oscillating paper to realized -> lower MTM
-                # oscillation -> higher mixed Sharpe (the binding floor 0.534, raw==score stab 1.0).
-                # Trend-aligned regimes (bull/crash/rally longs) keep full attenuation (ride
-                # pullback giveback) -> byte-identical-ish (their ret_vlong*pos_dir is solidly >0 ->
-                # the /0.03 gate saturates to ~1 -> same attenuation as the old abs(ret_long) gate
-                # for these strong-trend regimes). Direction-agnostic general principle (no regime
-                # label): the giveback-riding attenuation is earned by trading WITH the multi-day
-                # trend, not by a 20-bar magnitude that fires on counter-trend bounces. Continuous
-                # tanh, no new decision boundary. ret_vlong already computed (96-bar OLS,
-                # noise-robust). New cross-timescale + directional data dep in the giveback path
-                # (was 20-bar magnitude-only).
-                _pm_pos_dir = 1.0 if current_pos > 0 else -1.0
-                _pm_align = max(0.0, np.tanh(ret_vlong * _pm_pos_dir / 0.03))  # 0 ct-at-multi-day, ~1 trend-aligned
-                _pm_trend_atten = 1.0 - 0.7 * _pm_align  # in [0.3, 1]: 0.3 trend-aligned (ride), 1.0 ct (full trim)
+                _pm_trend_atten = 1.0 - 0.7 * max(0.0, np.tanh((abs(ret_long) - 0.04) / 0.08))  # in [0.3, 1], gated above 0.04
                 _giveback_ratio = _giveback_ratio * (1.0 + 0.18 * _pm_trend_atten * np.tanh(_profit_magnitude / 0.7))
                 _pp_band = 0.10 + 0.20 * min(1.0, vol_ratio)
                 # Exp1: portfolio-DD-adaptive giveback tightening. As the portfolio draws
