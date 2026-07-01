@@ -886,6 +886,24 @@ class Strategy:
             in_cooldown = False
 
             calm_boost = 1.0 + CALM_BOOST_MAX * max(0.0, 1.0 - max(0.5, max(np.std(np.diff(np.log(closes[-VOL_SHORT_LOOKBACK - 1:-1]))), 1e-6) / max(np.std(np.diff(np.log(closes[-VOL_LONG_LOOKBACK - 1:-1]))), 1e-6))) ** 0.85 * min(1.0, max(0.0, (1.7 - vol_ratio) / 0.4))
+            # Exp5 (architectural, indep): CHURN-GATED calm_boost ATTENUATION. The calm_boost
+            # (max +0.8 in calm regimes) is a major size driver for rally's low-vol grind ->
+            # larger positions whose VALUE wobbles under AR(1) noise as vol_ratio wobbles
+            # bar-to-bar -> position-value variance on exactly the noise-cascade population.
+            # The keep 3a2e1537 established that rally's binding stability population is the
+            # HIGH-CHURN ct re-entries (burst bars, len(_eh)>=3): these fire DURING bursts
+            # where the calm low-vol regime still holds (vol_ratio stays low across a rally
+            # pullback burst) so calm_boost stays high -> amplifies the size of the noise-
+            # cascade re-entries. Attenuate calm_boost for high-churn (the validated noise-
+            # IMMUNE integer gate, len(_eh)/0.6 fast-saturating): smaller size on the burst
+            # re-entries -> smaller position-value wobble under noise -> rally stability up.
+            # Byte-identical for low-churn (len<=1 -> attenuation 0 -> calm_boost unchanged:
+            # bull/crash/sideways whose entries are rare keep the full calm_boost; rally's
+            # quiet stretches between bursts also keep it). Continuous tanh, shrink-only
+            # (caps at 1.0), max -0.30 attenuation at deep churn. New cross-component data
+            # dep: calm_boost magnitude depends on the symbol's own recent entry density.
+            _calm_churn_atten = 1.0 - 0.30 * max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
+            calm_boost = 1.0 + (calm_boost - 1.0) * _calm_churn_atten
 
             sideways_boost = 1.0 + SIDEWAYS_BOOST_MAX * (1.0 - rsi_trend_str ** 1.45)
 
