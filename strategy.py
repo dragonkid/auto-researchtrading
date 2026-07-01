@@ -1137,39 +1137,6 @@ class Strategy:
                 # first-bar size depends on conviction margin above floor.
                 _bull_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bull_margin / 0.40))
                 _bear_conv_atten = 0.70 + 0.30 * max(0.0, min(1.0, _bear_margin / 0.40))
-                # Exp1 (architectural, indep): MUTUAL-WEAKNESS conviction attenuator.
-                # New data dependency: the MIN of both strong-sums (bilateral conviction
-                # floor), distinct from _quality_atten (opp/own RATIO -- fires when opp
-                # side is RELATIVELY strong) and _conv_atten (own-side MARGIN above floor).
-                # When BOTH bull_strong and bear_strong sit low (below ~1.5x strong_min),
-                # voters are bilaterally weak -- a low-edge chop zone where admitted
-                # entries are timing-noise-driven (mixed's wrong-side longs in a down
-                # oscillating year; sideways dead-capital). Shrink first-bar size
-                # continuously by how low the WEAKER side's conviction is. Decisive
-                # one-sided entries (one strong, one weak -> min high OR one near 0 ->
-                # the bilateral floor is the weak side which is genuinely low, but a
-                # near-zero opp_strong with high own_strong is a HIGH-quality one-sided
-                # entry, NOT mutual weakness) -- so gate on BOTH sides being non-trivially
-                # low: attenuate only when min_strong is low AND the max is ALSO modest
-                # (both sides weak = genuine uncertainty, not one-sided conviction).
-                # Smooth tanh on min(strongs)/floor; trend-aligned strong-trend regimes
-                # (bull/crash/rally) have one side dominant -> max high -> the both-weak
-                # gate floors out -> byte-identical-ish. Targets mixed's bilateral-chop
-                # entries without regime labels.
-                _mw_floor = 1.5 * _strong_min
-                _mw_min = min(_bull_strong, _bear_strong)
-                _mw_max = max(_bull_strong, _bear_strong)
-                # both-weak indicator: 1 when both below floor (genuine uncertainty),
-                # ramps to 0 as EITHER side exceeds floor (one-sided conviction emerging).
-                # Use the min so it releases as the weaker side strengthens.
-                _mw_both = max(0.0, min(1.0, (_mw_floor - _mw_min) / max(_mw_floor, 1e-6)))
-                # Only attenuate when the STRONGER side is ALSO below ~2x floor (genuine
-                # bilateral weakness, not a one-sided entry where the weak side happens
-                # to be near 0). Prevents penalizing high-quality one-sided entries.
-                _mw_qualify = max(0.0, min(1.0, (2.0 * _mw_floor - _mw_max) / max(_mw_floor, 1e-6)))
-                _mutual_weak_atten = 1.0 - 0.20 * _mw_both * _mw_qualify
-                _bull_conv_atten *= _mutual_weak_atten
-                _bear_conv_atten *= _mutual_weak_atten
                 # Architectural: churn-gated first-bar entry SIZE attenuator (shrink,
                 # don't block). The diagnostic (c265424d) proved fast re-entries are the
                 # entire rally instability; BLOCKING them (branch) gave PERFECT rally
