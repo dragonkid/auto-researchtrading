@@ -372,6 +372,13 @@ class Strategy:
         # Mirrors the fe6acd4d keep's |ret_vlong| duration-count principle applied to the
         # SIGN (separates crash's persistent bear from bull's transient pullback dips).
         self._down_vlong_hist = {}
+        # Exp1 (architectural, indep): per-symbol EMA-smoothed vol_ratio INPUT for the
+        # sizing/threshold pipeline. Feed-forward noise-reduction on the 24-bar realized
+        # vol ratio; propagates through ~8 downstream channels (dyn_threshold, combined_mult,
+        # entry frac, pp bands, etc). Reset on full exit so re-entry rebuilds from fresh
+        # (mirrors _entry_accum reset discipline; prevents stale vol memory carrying across
+        # holds). See the smoothing block at vol_ratio computation for the mechanism.
+        self._vol_ratio_ema = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -569,6 +576,35 @@ class Strategy:
             _baseline_vol = max(np.std(np.diff(np.log(closes[-_long_n - 1:-1]))), 1e-6)
             _target_vol_dyn = 0.7 * TARGET_VOL + 0.3 * _baseline_vol
             vol_ratio = realized_vol / _target_vol_dyn
+            # Exp1 (architectural, indep): EMA-SMOOTH the vol_ratio INPUT (feed-forward
+            # noise-reduction on a 24-bar price-derived quantity). vol_ratio currently
+            # reads INSTANTANEOUS 24-bar realized vol / target_vol -> AR(1) close noise
+            # perturbs the 24-bar std every bar -> vol_ratio wobbles -> the wobble
+            # propagates through ~8 downstream sizing/threshold channels (dyn_threshold,
+            # _smooth_alpha, _entry_frac_dyn, combined_mult, pp bands, _band_half,
+            # _cap_base, _vol_w_pp_gate) -> each emits a bar-to-bar size variation that
+            # is CORRELATED (all driven by the same vol_ratio noise) -> equity-curve
+            # tracking error (the stability penalty's root currency). Smoothing the
+            # INPUT (vol_ratio itself) is FEED-FORWARD noise-reduction: unlike a
+            # held-level temporal EMA it adds NO transition lag on winner->loser regime
+            # changes (vol_ratio is a per-bar INPUT to sizing, not the held position LEVEL
+            # -- smoothing it shrinks the size-DREAM of inputs without delaying exits on
+            # real adverse moves), so it does NOT incur the stab/raw tension that walled
+            # held-level smoothing (zero-lag double-EMA catastrophic, 2nd-order EMA
+            # stab+0.0029/raw-0.0378, slew-limiter redundant). Distinct from the walled
+            # equity-curve-slope entry shrink (c84577dc: that ADDED a derivative signal;
+            # this smooths an EXISTING load-bearing input). NEW data dep: ~8 downstream
+            # components now read a temporally-smoothed vol_ratio (was instantaneous).
+            # Span 6 (~2.5x the 24-bar vol window's effective sample): enough to damp
+            # sub-5bps AR(1) noise flips without materially lagging genuine vol-regime
+            # transitions (a real vol shift moves vol_ratio by ~0.3, far above the
+            # ~0.02 bar-to-bar noise the span-6 EMA attenuates). Continuous (smooth,
+            # no boundary); byte-identical for a constant-vol regime (vol_ratio unchanged
+            # -> EMA of a constant is the constant).
+            _vr_alpha = 2.0 / (6 + 1)
+            _vr_prev = self._vol_ratio_ema.get(symbol, vol_ratio)
+            vol_ratio = _vr_alpha * vol_ratio + (1.0 - _vr_alpha) * _vr_prev
+            self._vol_ratio_ema[symbol] = vol_ratio
 
             # Vol-adaptive smoothing: more in calm (span~3), less in choppy (span~2)
             # vol_ratio < 0.7 (calm): alpha=0.5 (span=3); vol_ratio > 1.2 (choppy): alpha=0.67 (span=2)
@@ -3140,7 +3176,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._vol_ratio_ema):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
