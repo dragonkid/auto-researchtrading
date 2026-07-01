@@ -2811,6 +2811,32 @@ class Strategy:
                 # alpha up to 50%. Trend-aligned (gate 0 -> alpha 0) byte-identical.
                 _te_loss_gate = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 loss
                 _te_alpha = _te_alpha * (1.0 - 0.50 * _te_loss_gate)
+                # Exp5 (architectural, indep): CHURN-CONCENTRATED target-EMA alpha. The
+                # _target_ema is the proven rally-stab lever (smoothing the counter-trend
+                # held-position LEVEL dampens the noise-driven position-value cascade that is
+                # rally's tracking-error root). It currently smooths ALL ct positions uniformly
+                # (alpha = 0.99 * ct_str * (1 - 0.5*loss_gate)). But rally's binding stability
+                # population is the HIGH-CHURN ct re-entries (burst bars, len(_eh)>=3): these
+                # are the positions whose scale-in resizes cascade most under AR(1) noise (each
+                # re-entry's first-bar + scale-in produces a fresh position-value wobble). A
+                # low-churn ct position (a single isolated ct hold) has fewer resize events ->
+                # less smoothing needed. Concentrate the smoothing on the HIGH-churn ct
+                # population: boost alpha UP (toward the 0.99 cap) when churn is high, keep
+                # baseline alpha when churn is low. This should push rally stability past the
+                # 0.80 knee more efficiently than uniform smoothing (more smoothing exactly
+                # where the cascade is worst) while SPARING the low-churn ct positions (less
+                # over-smoothing lag -> less rally raw cost from holding ct losers bigger
+                # longer). New cross-component data dep: target-EMA alpha depends on the
+                # position's own recent entry density (was ct-str + loss-gate only). Uses the
+                # noise-IMMUNE integer churn count len(_eh) (the validated rally-stab gate
+                # family: grid/deadband/churn_size_atten all use len(_eh) -- noise-free, no
+                # boundary that flips under AR(1)). Continuous tanh on (len(_eh)-1.5)/0.6 (same
+                # fast-saturating scale as _churn_dz); max +0.20 alpha boost at deep churn,
+                # capped at the 0.99 hard ceiling. Trend-aligned (ct_str 0 -> alpha 0 ->
+                # boost multiplies 0) byte-identical; low-churn (len<=1 -> churn boost ~0)
+                # byte-identical-ish.
+                _te_churn_boost = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))  # ~0 low churn, ~1 bursting
+                _te_alpha = min(0.99, _te_alpha * (1.0 + 0.20 * _te_churn_boost))
                 if _te_alpha > 0.0:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
