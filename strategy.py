@@ -2213,24 +2213,22 @@ class Strategy:
                 # Stop-loss and time pressure stay at unit weight (protective + structural).
                 # Smooth transition via tanh of pos_pnl scaled by stop magnitude.
                 _pnl_scale = np.tanh(pos_pnl / abs(STOP_LOSS_PCT))   # in [-1, 1]
-                # Architectural simplification: removed _scale_in_w slope-pressure
-                # attenuator. The 0.5..1.0 ramp dampened slope-against pressure during
-                # scale-in to "let positions reach full size." But early scale-in slope
-                # reversals are signal — counter-trend-emerging entries should exit
-                # FAST, not survive until full commit. The attenuator structurally
-                # opposes the slope-against early-warning function. Code-structure
-                # removal: 1 cross-bar dependency on bars_held removed from _w_slope
-                # and _w_pp; both revert to single-factor weights.
-                _scale_in_w = 1.0
+                # Exp6 (architectural simplification, indep): REMOVED dead _scale_in_w
+                # = 1.0 stub. The prior _scale_in_w slope-pressure attenuator (0.5..1.0
+                # ramp dampening slope-against during scale-in) was removed in a prior
+                # simplification but the =1.0 stub and its multiplicative use in _w_pp
+                # remained. Multiplying by 1.0 is a pure no-op. Removing follows the
+                # 12b6bc63/Exp4/Exp5 byte-identical simplification precedent. (_scale_in_winning
+                # at line ~2440 is a SEPARATE variable, unaffected.)
                 _w_slope = 1.0 + 0.15 * max(0.0, -_pnl_scale)  # heavier in loss
                 # Architectural: vol-conditioned profit-side _w_pp.
-                # Low vol (sideways/rally): _w_pp simplified to _scale_in_w (no extra boost).
+                # Low vol (sideways/rally): _w_pp simplified (no extra boost).
                 #   Peak-profit pressure already amplifies via _profit_magnitude + _pp_activation.
                 # High vol (crash): restore profit-side amplification — crash recovery profits
                 #   are short-lived and need fast giveback locking.
                 # Continuous tanh on (vol_ratio - 1.0)/0.4 — smooth transition around vol_ratio=1.
                 _vol_w_pp_gate = max(0.0, np.tanh((vol_ratio - 1.0) / 0.4))  # in [0, ~1]
-                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate) * _scale_in_w
+                _w_pp    = (1.0 + 0.20 * max(0.0, _pnl_scale) * _vol_w_pp_gate)
                 # Architectural: trend-magnitude-attenuated time-pressure weight.
                 # In strong trends (high |ret_long|), trend-aligned winning
                 # positions should hold longer — time pressure is noise in trend
