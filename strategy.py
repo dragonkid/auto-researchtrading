@@ -2758,7 +2758,27 @@ class Strategy:
                     # noise stays in the fade region -> DVP floor-lowering ~0 for sideways.
                     _dvp24_mag_gate = max(0.0, min(1.0, np.tanh((abs(ret_vlong * _pos_dir_og) - 0.03) / 0.02)))
                     _dvp24_floor_lower = 0.15 * _vlong_vol_gate * _ret_vlong_term_og * _dvp24_conv * _dvp24_mag_gate
-                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower
+                    # Exp1 (architectural, indep): OWN-SIDE-MARGIN floor-lower on the opp-gate
+                    # graduated exit fraction. The opp-gate trims a trend-aligned+in-profit winner
+                    # on an opposite-side voter spike; the trim AMOUNT currently keys on the
+                    # OPPOSITE-side margin only (how strong the reversal evidence is). It ignores
+                    # the position's OWN remaining conviction: a winner whose own-side voters STILL
+                    # strongly validate it (high _side_margin) is more likely facing a noise spike
+                    # than a real reversal -> trim LESS (ride the still-validated winner); a winner
+                    # whose own conviction is fading (low _side_margin) is genuinely losing support
+                    # -> trim MORE (the baseline behavior, since the term vanishes at low margin).
+                    # New cross-component data dep: opp-gate exit fraction depends on own-side
+                    # margin (currently opp-margin only). Direction: LOWER the exit-fraction floor
+                    # (less trimming) by own-side margin -- the SAME validated direction as
+                    # _dvp24_floor_lower (ride confirmed winners longer). Continuous tanh on
+                    # _side_margin/0.30 (same scale as the opp-margin term -> comparable magnitude);
+                    # max 0.15 floor-lower (same cap as dvp24). Byte-identical when _side_margin<=0
+                    # (no own-side conviction -> no floor-lower -> baseline trim). The 0.4 base
+                    # floor is preserved by max(0.4, ...) so the term can never push trimming below
+                    # the base floor (it only relaxes trimming above it).
+                    _own_margin_floor_lower = 0.15 * max(0.0, min(1.0, np.tanh(_side_margin / 0.30)))
+                    _opp_exit_frac_grad = 0.4 + 0.6 * max(0.0, min(1.0, np.tanh(_opp_margin / 0.30))) - _dvp24_floor_lower - _own_margin_floor_lower
+                    _opp_exit_frac_grad = max(0.4, _opp_exit_frac_grad)
                     # Blend: full exit (1.0) by default, graduated only when both gates hold.
                     _opp_exit_frac = 1.0 + (_opp_exit_frac_grad - 1.0) * _grad_gate
                     target = current_pos * (1.0 - _opp_exit_frac)
