@@ -321,6 +321,24 @@ class Strategy:
         # target (final level). Smooths bar-to-bar position-value wobble for
         # counter-trend held positions only; reset on full exit.
         self._target_ema = {}
+        # Exp2 (architectural, indep): 2nd-order CASCADED LOW-PASS on the ct held
+        # target, WINNER-ONLY. Iterates the Exp1 signal: the 2nd-order damping stage
+        # DID raise rally stability (+0.0029 stab_factor) but cost rally raw -0.0378
+        # (extra lag held ct LOSERS bigger longer -> larger realized losses, the
+        # documented stab/raw tension the keep 3a2e1537 sat at the sweet spot of).
+        # The fix: apply the 2nd damping stage ONLY to WINNING ct positions (pos_pnl>0)
+        # where extra smoothing does NOT delay loser exits. Losing ct positions get
+        # 2nd-stage alpha=0 -> track the raw (shrinking) target -> exit/stop faster ->
+        # smaller losses -> rally raw cost ELIMINATED at the source. The 1st-order
+        # _target_ema already loss-gates (cuts alpha 50% for losers); the 2nd stage
+        # goes FURTHER (alpha 0 for losers, full damping only for winners). This
+        # preserves the stab gain (winning ct held-value wobble still damped) while
+        # cutting the raw cost. ema2 = EMA(ema1) -- a steeper LOW-PASS (more high-freq
+        # attenuation, NO extrapolation), distinct from the disproven zero-lag form
+        # 2*ema1-ema2 (580d641e catastrophic extrapolator). 2nd-stage alpha capped 0.30
+        # (gentle), gated by ct-str + churn + WINNER-only (loss_gate -> alpha 0).
+        # Trend-aligned/low-churn byte-identical by construction (ct-str gate 0).
+        self._target_ema2 = {}
         # Exp5 (this session): per-symbol concentration shrink CACHED AT ENTRY. The
         # Exp4 governor shrinks only the first bar; scale-in then ramps the position
         # back to un-shrunk `size` over 2-3 bars, undoing the concentration reduction.
@@ -2841,6 +2859,19 @@ class Strategy:
                     _prev_te = self._target_ema.get(symbol, target)
                     target = (1.0 - _te_alpha) * target + _te_alpha * _prev_te
                 self._target_ema[symbol] = target
+                # Exp2 (architectural, indep): 2nd-order cascaded low-pass, WINNER-ONLY.
+                # Iterates Exp1: ema2=EMA(ema1) raised rally stab +0.0029 but raw -0.0378
+                # (lag held ct losers bigger). Fix: 2nd-stage alpha -> 0 for LOSERS via
+                # (1 - loss_gate) so losing ct tracks the raw shrinking target -> exits
+                # fast -> no lag cost; WINNING ct keeps the extra damping -> stab gain
+                # preserved. Pure damping (no extrapolation); capped 0.30. New state
+                # _target_ema2, new control flow. Byte-identical for trend-aligned/low-
+                # churn (ct-str gate 0) AND for losing ct (loss_gate -> alpha 0).
+                _te2_alpha = min(0.30, 0.30 * _ct_te_str * (1.0 - _te_loss_gate) * (1.0 + 0.40 * _te_churn_boost))
+                if _te2_alpha > 0.0:
+                    _prev_te2 = self._target_ema2.get(symbol, target)
+                    target = (1.0 - _te2_alpha) * target + _te2_alpha * _prev_te2
+                self._target_ema2[symbol] = target
 
             # Architectural subsystem redesign (execution/order-emission layer):
             # churn-gated proportional trade-admission deadband. The order-emission
@@ -3140,7 +3171,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._target_ema2, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
