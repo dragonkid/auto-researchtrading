@@ -2357,6 +2357,19 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # Exp2 (architectural simplification, indep): DISABLE _vc_pressure from
+                # the MAX fusion (set _w_vc=0). The volume-climax exit source was added
+                # under the OLD scoring (DD/calmar-focused) to harvest rally tops before
+                # pullback giveback. Under v3 scoring, Sharpe/APY dominate 11-36x over DD
+                # reduction, and a volume-spike z>2 trigger is a NOISE-PRONE single-bar
+                # signal (the 20-bar vol_std denominator wobbles under AR(1) -> vol_z
+                # threshold-crossing flips the pressure on/off bar-to-bar -> position-value
+                # cascade -> stability cost). Test whether the term is still net-positive
+                # at the current baseline: if removing it (MAX falls back to the strongest
+                # of the other 4 price-derived sources) holds or improves composite, the
+                # term is dead-weight under v3; if composite regresses it is load-bearing.
+                # Structural change to the MAX fusion's term set (5 terms -> 4 effective).
+                _w_vc = 0.0
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
