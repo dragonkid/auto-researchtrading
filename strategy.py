@@ -2426,7 +2426,7 @@ class Strategy:
                     _cl_mtm_eff = _cl_net / max(_cl_tot, 1e-10)
                     _cl_chop = max(0.0, min(1.0, 1.0 - _cl_mtm_eff))
                 _cl_chop_gate = max(0.0, min(1.0, (_cl_chop - 0.20) / 0.30))  # ~0 smooth (<0.2 chop), ~1 choppy (>0.5)
-                _cl_pressure = 1.10 * _cl_adverse * _cl_grind_gate * _cl_chop_gate
+                _cl_pressure = 1.30 * _cl_adverse * _cl_grind_gate * _cl_chop_gate
                 _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
