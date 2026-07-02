@@ -2357,6 +2357,29 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
+                # BRANCH OPENER (architectural, builds on this-session Exp2 signal):
+                # VOL-REGIME GATE on _vc_pressure. Exp2 (DISABLE _vc_pressure entirely)
+                # MEASURED: bull -0.0234 (term LOAD-BEARING for bull: volume-climax
+                # harvest at sharp uptrend tops locks gains before pullback) BUT mixed
+                # +0.0013 REAL (Sh 0.839->0.841: the volume z>2 trigger cuts mixed's
+                # non-peak positions on volume spikes -- dead-capital trims that don't
+                # help mixed, since mixed's peaks are already harvested by _pp_pressure/
+                # _ts_supp). The SEPARATOR: bull's volume-climax tops occur in a HIGH-vol
+                # SHARP uptrend (vol_ratio>1.0); mixed's volume spikes occur in a LOW-vol
+                # down-year chop (vol_ratio<0.8). Gate _w_vc by a high-vol ramp: FULL at
+                # vol_ratio>=1.2 (bull sharp tops keep the harvest), fading to 0 at
+                # vol_ratio<=0.8 (mixed/rally low-vol chop -> _vc_pressure OFF -> mixed's
+                # non-peak volume-spike cuts removed -> mixed Sh up). Continuous tanh on
+                # (vol_ratio-0.8)/0.4 (no boundary; the validated vol-regime separator
+                # family used by _grind_gate, _sq vol-gate, _pp band). rally (vol_ratio
+                # ~0.7-0.9 in grinding stretches, higher in pullbacks) gets partial->full
+                # activation: rally's genuine volume-climax tops (high-vol pullback bars)
+                # keep the harvest, rally's low-vol grind bars get it faded. Targets mixed
+                # (the +0.0013 signal) while preserving bull (the -0.0234 load-bearing
+                # harvest). New cross-component data dep: _vc_pressure weight depends on
+                # vol regime (was profit-side only).
+                _vc_vol_gate = max(0.0, min(1.0, np.tanh((vol_ratio - 0.8) / 0.4)))
+                _w_vc = _w_vc * _vc_vol_gate
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
