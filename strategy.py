@@ -2355,7 +2355,7 @@ class Strategy:
                 _vol_mean_e = float(np.mean(_vol_arr_e))
                 _vol_std_e = max(float(np.std(_vol_arr_e)), 1e-10)
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
-                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.5) / 1.0)))  # branch step5: raise vol_z onset 2.0->2.5, sharper /1.0 (fire only on STRONGEST volume climaxes; spare mixed's moderate vol spikes that sit in the vol-gate partial-activation band vol_ratio 0.8-1.2)
+                _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
                 # BRANCH OPENER (architectural, builds on this-session Exp2 signal):
                 # VOL-REGIME GATE on _vc_pressure. Exp2 (DISABLE _vc_pressure entirely)
