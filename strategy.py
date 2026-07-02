@@ -2386,11 +2386,11 @@ class Strategy:
                 # same exhaustion signal regardless of regime. Byte-identical when close_loc
                 # is mid-range (no conviction either way -> gate 0). Same 0.60 max as
                 # _ve_pressure/_cross parity. _cl_exit_span reused from entry's _close_loc.
-                _cl_close_e = closes[-3:]
-                _cl_high_e = bd.history["high"].values[-3:]
-                _cl_low_e = bd.history["low"].values[-3:]
+                _cl_close_e = closes[-5:]
+                _cl_high_e = bd.history["high"].values[-5:]
+                _cl_low_e = bd.history["low"].values[-5:]
                 _cl_span_e = np.maximum(_cl_high_e - _cl_low_e, 1e-10)
-                _close_loc_e = float(np.mean((_cl_close_e - _cl_low_e) / _cl_span_e))  # [0,1], 3-bar mean
+                _close_loc_e = float(np.mean((_cl_close_e - _cl_low_e) / _cl_span_e))  # [0,1], 5-bar mean
                 # long + close near low (close_loc->0) = distribution; short + close near high (->1)
                 _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
                 # adverse = (long & close near low) | (short & close near high)
