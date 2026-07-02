@@ -1685,10 +1685,11 @@ class Strategy:
                 _dvp_trend_w = max(0.0, np.tanh(abs(ret_long) / 0.04))  # 0 chop, ~1 trend
                 _dvp_er_w = max(0.0, min(1.0, np.tanh(_er / 0.25)))  # ~0 chop, ~1 directional grind
                 _dvp_bull_vlong = max(0.0, np.tanh(ret_vlong / 0.03))  # multi-day uptrend (excludes crash bounces)
+                _dvp_bear_vlong = max(0.0, np.tanh(-ret_vlong / 0.03))  # multi-day downtrend (symmetric; fires for crash persistent bear)
                 _dvp_bull_conv = max(0.0, np.tanh(_dvp / 0.15))   # buy-side volume pressure
                 _dvp_bear_conv = max(0.0, np.tanh(-_dvp / 0.15))  # sell-side volume pressure
                 _dvp_boost_bull = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bull_vlong * _dvp_bull_conv
-                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_conv
+                _dvp_boost_bear = 1.0 + 0.05 * _dvp_trend_w * _dvp_er_w * _dvp_bear_vlong * _dvp_bear_conv
                 # Exp1 (architectural): PERSISTENCE-COUNT-gated return-seeking first-
                 # bar size boost. The DURATION-fraction _weak_persist (sanctioned
                 # untested separator, results.tsv line 1476) gates a small first-bar
@@ -1760,6 +1761,26 @@ class Strategy:
                 # at full DVP confirmation + full weak_persist.
                 _persist_dvp_dir = _dvp if (_bull_ready and _bull_admit) else -_dvp  # own-side DVP (buy for long entry, sell for short)
                 _persist_dvp_conv = max(0.0, np.tanh(_persist_dvp_dir / 0.15))  # [0, ~1] deep-saturated
+                # branch step4: MULTI-DAY TREND-CONFIRMATION gate on the DVP amplifier
+                # (the crash-leak fix). step2 (down_gate) crash still regressed -0.0014;
+                # step3 (tighter down_gate) was byte-identical -> crash leak is NOT from
+                # down_persist dips. Re-analysis: crash's LOSING entries are dead-cat-bounce
+                # LONGS during the persistent bear (ret_vlong<0). The amplifier fired on
+                # these (buy-side DVP confirms the bounce + weak_persist>0 in crash weak-
+                # trend stretches) -> bigger crash dead-cat longs -> lower crash Sharpe.
+                # FIX: gate the amplifier on multi-day trend-confirmation of the ENTRY
+                # direction -- _dvp_bull_vlong (ret_vlong>0) for long entries,
+                # _dvp_bear_vlong (ret_vlong<0) for short entries. mixed's winning longs
+                # form during RALLY PHASES (ret_vlong>0 during up-legs) -> _dvp_bull_vlong
+                # fires -> amplifier ON -> mixed gain kept. crash's dead-cat longs
+                # (ret_vlong<0) -> _dvp_bull_vlong=0 -> amplifier OFF -> crash leak fixed.
+                # crash's trend-aligned SHORTS (ret_vlong<0, the winners) get _dvp_bear_vlong
+                # firing -> amplifier ON -> bigger crash shorts -> higher crash APY (crash
+                # return-limited Sh1.31 DD2.83pct huge headroom -> HELPS crash). Symmetric
+                # multi-day confirmation (no regime label). Defined _dvp_bear_vlong at the
+                # DVP block (was missing in step3 -> -999 on short entries).
+                _persist_dvp_vlong = _dvp_bull_vlong if (_bull_ready and _bull_admit) else _dvp_bear_vlong  # multi-day trend confirmation of entry direction
+                _persist_dvp_conv = _persist_dvp_conv * _persist_dvp_vlong  # gate on multi-day trend confirmation
                 # branch step2: gate the DVP amplifier on _persist_down_gate (the validated
                 # mixed/crash separator). step1 (opener) fired the amplifier on weak_persist
                 # alone, which let crash's brief weak-trend consolidation stretches (within
