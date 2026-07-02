@@ -1738,12 +1738,47 @@ class Strategy:
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
                 _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
+                # Exp1 (architectural, indep): CONVICTION-GATED entry_frac_dyn cap
+                # relief. NEW control-flow dependency: the entry-frac CEILING (the
+                # min(0.55, _entry_frac_dyn) cap on first-bar commitment) has been a
+                # fixed 0.55 constant. The prior session proved the _persist_boost
+                # amplifier raises mixed Sharpe REAL (+0.014, mixed 0.534->0.543) via
+                # the ENTRY path (entries bypass the grid, unlike the grid-absorbed
+                # sustain path). The branch plateaued at composite +0.0028 below the
+                # +0.003 keep threshold because ONLY mixed gained (std rose with mixed
+                # in composite=mean-0.3*std, offsetting ~70pct of the mean gain). The
+                # cross-experiment diagnosis (verifiable): crash entries are cap-BOUND
+                # at 0.55 (crash strong-trend high-conviction -> _entry_frac_dyn at the
+                # 0.55 ceiling -> the persist_boost amplifier is absorbed by the cap for
+                # crash), so crash COULD NOT benefit from the amplifier. mixed chop has
+                # _entry_frac_dyn BELOW 0.55 so the amplifier has room. STRUCTURAL FIX:
+                # raise the effective cap toward 0.60 ONLY for entries where the
+                # persist_boost is ACTIVE (high-conviction x weak_persist x down_gate =
+                # the mixed/crash winning-entry population). The cap relief is GATED on
+                # _persist_boost>1 (i.e. the boost fired), so trend regimes (bull/rally/
+                # sideways: _weak_persist~0 -> _persist_boost~1.0 -> relief 0 -> cap
+                # stays 0.55) are BYTE-IDENTICAL. The relief magnitude scales with how
+                # much the boost fired (continuous, no boundary): bigger boost -> bigger
+                # relief. This lets the amplifier reach crash (crash 100pct WR, DD 2.83pct
+                # huge headroom below 5pct knee, return-limited Sh1.31) AND keeps mixed's
+                # gain (mixed's _entry_frac_dyn below 0.55 -> cap relief inert for mixed
+                # where _entry_frac_dyn<0.55, but for the high-conviction mixed entries
+                # where _entry_frac_dyn is near 0.55 it lifts the ceiling -> more headroom
+                # for the amplifier). TWO regimes gain (crash + mixed) -> mean up, std
+                # roughly flat (two lowest moving up together narrows the spread that
+                # drives the std penalty) -> composite crosses +0.003. Direction-agnostic
+                # general principle (no regime label): the entry-frac cap is relieved
+                # for high-conviction weak-trend entries (the validated persist_boost
+                # population). New cross-component data dep: entry-frac cap depends on
+                # persist_boost activation (was constant 0.55).
+                _cap_relief = 0.05 * max(0.0, min(1.0, (_persist_boost - 1.0) / 0.10))
+                _entry_frac_cap = min(0.60, 0.55 + _cap_relief)
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    target = size * min(_entry_frac_cap, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
-                    target = -size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
+                    target = -size * min(_entry_frac_cap, _entry_frac_dyn) * _cooldown_factor * _bear_ct_atten * _bear_ct_vlong * _bear_consensus_atten * _bear_quality_atten * _outcome_size_mult *_port_dd_atten * _bear_conv_atten * _churn_size_atten * _churn_ct_atten_bear * _tq_atten * _xasset_bear * _conc_shrink_bear * _net_tilt_shrink_bear * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bear * _vol_rise_boost_bear * _vol_partner_boost_bear * _vol_btc_boost_bear * _btcvol_partner_boost_bear * _partnervol_btc_boost_bear * _close_conv_boost_bear * _dvp_boost_bear * _btcdvp_boost_bear * _partnerdvp_boost_bear * _streak_ct_shrink_bear * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bear
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
             elif current_pos != 0:
