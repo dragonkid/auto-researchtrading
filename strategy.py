@@ -2842,68 +2842,56 @@ class Strategy:
                 if _ct_mf_str > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
-                    if len(_th) > 5:
-                        _th = _th[-5:]
+                    if len(_th) > 3:
+                        _th = _th[-3:]
                     self._target_hist[symbol] = _th
-                    # Exp1 (architectural, indep): 5-window HAMPEL conditional outlier
-                    # rejection, replacing the always-on 3-bar median. The 0be567b8 keep
-                    # validated the pre-EMA spike-rejection MECHANISM (preventing AR(1)
-                    # close-noise spikes from entering the _target_ema state -> EMA lag on
-                    # spike-driven wobble is reduced -> rally stab/raw tension eases). The
-                    # 3-bar always-median has TWO structural limits: (a) it ALWAYS replaces
-                    # target with the middle of 3 -> a 1-bar LAG on every monotone ramp
-                    # (median of 3 rising values = the middle, not the newest) -> small raw
-                    # cost on sustained ct-loser shrink ramps; (b) it cannot reject 2-bar
-                    # spike CLUSTERS (a 2-bar cluster corrupts 2/3 of a 3-window -> median
-                    # is one of the spikes -> no rejection). A 5-window HAMPEL filter is
-                    # strictly more general: replace target with the local median ONLY when
-                    # |target - median| > k*MAD (median absolute deviation). On a MONOTONE
-                    # ramp the newest value is within k*MAD of the median (the 5 values are
-                    # a monotone sequence -> MAD ~ the step size -> the newest is ~1 step
-                    # from the median, well inside k=3 thresholds) -> NO replacement ->
-                    # byte-identical to the raw target -> ZERO lag (fixes limit a). An
-                    # isolated AR(1) spike deviates by >> k*MAD -> replaced by the median
-                    # (same as 3-median, fixes limit b for single spikes). A 2-bar spike
-                    # cluster: the 5-window median is still a clean neighbor value (robust
-                    # to 2/5 outliers) AND both spike bars deviate from the clean median by
-                    # > k*MAD -> BOTH replaced -> fixes limit b for clusters (the 3-median
-                    # missed these entirely). So Hampel dominates 3-median: zero lag on
-                    # monotone (raw gain), equal-or-better spike rejection (stab gain).
-                    # Window 5 (not 3) is required so the median is robust to 2-bar clusters
-                    # (3-window median is corrupted by 2 spikes); 5 was the width the
-                    # always-median over-lagged at (5-bar always-median replaced EVERY bar
-                    # -> monotone lag accumulated), but Hampel only replaces OUTLIERS so
-                    # the 5-window's monotone lag is zero (no replacement). Wider 7-window
-                    # would make the median robust to 3-bar clusters but slows the MAD
-                    # estimate's response to genuine vol-regime shifts; 5 is the Hampel
-                    # standard. k=3.0 is the conventional Hampel threshold (3-sigma equiv
-                    # under the MAD~0.6745*std relation); tight enough to pass monotone
-                    # steps (step/MAD ratio ~1.4 << 3), loose enough to flag genuine AR(1)
-                    # spikes (spike/MAD ratio >> 3). Sign-preserving snap (same safety as
-                    # the 3-median: never flips target sign). New control flow (CONDITIONAL
-                    # replacement vs always-replace) + new computation (MAD) + wider window
-                    # (5 vs 3) + new behavior (monotone byte-identical to raw). Targets
-                    # rally stability (0.7956 below 0.80 knee -> stab_factor 0.985) AND
-                    # rally raw (1.051534; zero monotone lag vs 3-median's 1-bar lag).
-                    if len(_th) >= 5:
-                        _th_a = np.array(_th)
-                        _h_med = float(np.median(_th_a))
-                        _h_mad = float(np.median(np.abs(_th_a - _h_med)))
-                        # k*MAD threshold; floor so a zero-MAD (perfectly flat or monotone-
-                        # constant) window never triggers (== comparison would be == on
-                        # exact tie -> use > strict; flat window -> deviation 0 -> no replace).
-                        # Branch step2: k 3.0->1.5. Step1 (k=3.0) showed rally stab +0.0017
-                        # (cleaner EMA input) BUT raw -0.0493: k=3 too LOOSE -- only rejects
-                        # >3-sigma deviations, letting mid-range AR(1) noise pass that the
-                        # always-3-median rejected unconditionally -> mid-range noise enters
-                        # EMA state -> EMA lag on wobble is back -> raw down. Tighten k to
-                        # 1.5 to reject more spikes (recover 3-median raw protection) while
-                        # preserving zero monotone lag (monotone step/MAD ratio ~1.0-1.4 <<
-                        # 1.5). Tighter k (1.0) would over-reject monotone ramps.
-                        _h_thresh = 1.5 * _h_mad
-                        if _h_thresh > 0.0 and abs(target - _h_med) > _h_thresh:
-                            if (_h_med > 0) == (target > 0) and _h_med != 0:
-                                target = _h_med
+                    # Exp1 (architectural, indep) / BRANCH: MONOTONE-GATED conditional
+                    # median replacing the always-on 3-bar median. The 0be567b8 keep
+                    # validated pre-EMA spike rejection (preventing AR(1) close-noise
+                    # spikes from entering the _target_ema state -> EMA lag on spike-driven
+                    # wobble is reduced -> rally stab/raw tension eases). The 3-bar
+                    # always-median ALWAYS replaces target with the middle of 3 -> a 1-bar
+                    # LAG on every monotone ramp (median of 3 rising values = the middle,
+                    # not the newest) -> small raw cost on sustained ct-loser shrink ramps.
+                    # BRANCH step1 (Hampel, k=3 then k=1.5) attempted to fix this via
+                    # deviation-from-median gating but REGRESSED rally raw -0.0493:
+                    # Hampel's conditional (only replace outliers) lets the entire non-
+                    # outlier mid-range noise band pass UNFILTERED, whereas the 3-median
+                    # rejects everything to the middle -> mid-range noise enters EMA state
+                    # -> EMA lag on wobble returns -> raw down (k threshold tuning could
+                    # NOT recover this: k->0 = always-median = the width-5 over-lag wall).
+                    # Step3 RECONCEPTUALIZES the conditional axis: gate on DIRECTION
+                    # CONSISTENCY (monotonicity), not deviation magnitude. A 3-window
+                    # [t-2, t-1, t] is MONOTONE if both consecutive diffs have the same sign
+                    # (or zero) = a genuine ramp (no spike/reversal present). On a monotone
+                    # ramp the newest value IS the right value (no spike to reject) ->
+                    # keep raw target -> ZERO lag (fixes the 3-median's ramp lag cost that
+                    # motivated the branch). When the window is NON-MONOTONE (diff signs
+                    # disagree = a reversal/spike embedded in the 3 bars) -> replace with
+                    # the median (reject the spike, same as 3-median). This is the SAME
+                    # width (3) as the proven 3-median so the median is the same value when
+                    # it fires; only the FIRING CONDITION changes (always -> only-when-non-
+                    # monotone). On pure monotone ramps: byte-identical to raw (zero lag).
+                    # On isolated spikes: byte-identical to 3-median (median replaces). The
+                    # only behavioral difference vs 3-median is on monotone ramps (raw kept
+                    # not median-lagged) -- exactly the targeted raw gain, with NO change to
+                    # spike-rejection behavior (so no stab regression from lost filtering).
+                    # Sign-preserving snap (same safety: never flips target sign). New
+                    # control flow (monotone-direction test gates the replacement). Targets
+                    # rally raw (zero monotone lag) while preserving rally stab (spike
+                    # rejection unchanged on non-monotone windows).
+                    if len(_th) >= 3:
+                        _v0, _v1, _v2 = _th[0], _th[1], _th[2]
+                        _d1 = _v1 - _v0
+                        _d2 = _v2 - _v1
+                        # monotone: both diffs same sign (or at least one zero = flat ramp).
+                        # Non-monotone: diffs have opposite strict sign (a direction change
+                        # = spike/reversal embedded in the window).
+                        _is_monotone = (_d1 >= 0 and _d2 >= 0) or (_d1 <= 0 and _d2 <= 0)
+                        if not _is_monotone:
+                            _med = float(np.median(_th))
+                            if (_med > 0) == (target > 0) and _med != 0:
+                                target = _med
                 else:
                     self._target_hist[symbol] = []
                 if _te_alpha > 0.0:
