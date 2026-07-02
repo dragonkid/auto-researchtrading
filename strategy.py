@@ -2357,77 +2357,6 @@ class Strategy:
                 _vol_z = (float(bd.history["volume"].values[-1]) - _vol_mean_e) / _vol_std_e
                 _vc_pressure = 0.50 * max(0.0, min(1.0, np.tanh((_vol_z - 2.0) / 1.5)))
                 _w_vc = max(0.0, _pnl_scale)  # profit-side only
-                # Exp2 (architectural, indep): CLOSE-LOCATION exit-pressure source (7th soft
-                # source). NEW cross-data-type dep in the EXIT subsystem: the close-location
-                # value (close_loc = (close-low)/(high-low), in [0,1]) is a pure intrabar
-                # CONVICTION signal already used at ENTRY (line ~1615, _close_loc) but NEVER
-                # in the exit-pressure fusion. All 5 existing soft sources (slope/pp/time/
-                # ve/vc) measure multi-bar DIRECTION (slope), position-level MAGNITUDE (pp),
-                # bar-COUNT (time), or vol/volume MAGNITUDE (ve/vc) -- NONE measures WHERE
-                # WITHIN THE BAR the close lands. A held LONG whose recent bars close NEAR THE
-                # LOWS (close_loc -> 0) shows intrabar SELLING pressure: buyers cannot hold
-                # the close up despite the net slope. This is an exhaustion/reversal signature
-                # orthogonal to slope (a bar can close near the low with flat or even positive
-                # multi-bar slope during distribution). Mechanism for mixed_2025 (binding
-                # floor, Sh0.839, 100pct-long-in-a-down-year micro-peaks whose MTM oscillates
-                # +30%->+24%->re-peak): the down-legs of mixed's oscillation show closes near
-                # the lows (distribution into the bounce peaks failing) -> a close-loc exit
-                # source trims the dead-capital long at the distribution bar BEFORE the deeper
-                # giveback -> converts paper to realized at a higher point -> cuts the MTM
-                # oscillation amplitude -> higher mixed Sharpe (the 11-36x dominant lever per
-                # v3 scoring; APY 4.6pct has huge headroom, DD 2.77pct far below 5pct knee).
-                # Profit-side gated like _ve_pressure/_vc_pressure (lock gains / trim dead-
-                # capital winners showing distribution; do NOT punish losers -- slope-against
-                # handles adverse own-symbol moves). Noise-robust: 3-bar MEAN close_loc (same
-                # window as the validated entry signal; a 3-bar mean averages single-bar AR(1)
-                # close noise -> the close-loc pressure is bar-stable). Continuous tanh, no
-                # boundary. Direction-agnostic: fires on close-loc-against-position (long +
-                # close near low, short + close near high); trend-aligned distribution is the
-                # same exhaustion signal regardless of regime. Byte-identical when close_loc
-                # is mid-range (no conviction either way -> gate 0). Same 0.60 max as
-                # _ve_pressure/_cross parity. _cl_exit_span reused from entry's _close_loc.
-                _cl_close_e = closes[-3:]
-                _cl_high_e = bd.history["high"].values[-3:]
-                _cl_low_e = bd.history["low"].values[-3:]
-                _cl_span_e = np.maximum(_cl_high_e - _cl_low_e, 1e-10)
-                _close_loc_e = float(np.mean((_cl_close_e - _cl_low_e) / _cl_span_e))  # [0,1], 3-bar mean
-                # long + close near low (close_loc->0) = distribution; short + close near high (->1)
-                _pos_dir_cl = 1.0 if current_pos > 0 else -1.0
-                # adverse = (long & close near low) | (short & close near high)
-                _cl_adverse = max(0.0, np.tanh(((0.40 - _close_loc_e) if _pos_dir_cl > 0 else (_close_loc_e - 0.60)) / 0.15))
-                # BRANCH step2: LOW-VOL-GRIND gate on the close-loc pressure. Opener leaked
-                # bull -0.0016: bull is a HIGH-VOL SHARP uptrend whose continuation bars often
-                # close off the high (normal pullback-within-uptrend that recovers fast) -> the
-                # close-loc trim sold dip-recovery bars. The validated bull/mixed+rally separator
-                # is VOL REGIME (the MTM-chop throttle's _grind_gate, the scale-in quantization
-                # keep separator): bull-2021 HIGH-vol sharp vs mixed/rally LOW-vol grind. Gate the
-                # close-loc pressure on low vol_ratio so it fires in the calm grind (mixed/rally
-                # distribution) and ~off in the sharp high-vol regime (bull continuation bars).
-                # Continuous tanh, no boundary. Byte-identical at vol_ratio>=1.3 (gate 0).
-                _cl_grind_gate = max(0.0, min(1.0, (1.3 - vol_ratio) / 0.5))
-                # BRANCH step5: MTM-PATH-CHOP gate (replaces pure magnitude push). Step4 showed
-                # the grind gate protects bull (high-vol) but NOT sideways which is ALSO low-vol
-                # grind -> magnitude 1.30 over-trimmed sideways mean-reversion chop (stab 1.0->
-                # 0.915). The validated sideways/mixed separator is the held position's MTM-path
-                # efficiency (the _pnl_path signal, line ~3073): sideways winners are SMOOTH
-                # climbers (high MTM-eff -> chop~0), mixed's dead-capital longs are CHOPPY
-                # whipsaws (low MTM-eff -> chop~1). Gate the close-loc pressure on chop so it
-                # fires only on choppy held positions (mixed dead capital) and spares smooth
-                # sideways winners (chop~0 -> gate 0 -> byte-identical). This is the SAME
-                # separator the emission throttle uses; it cleanly distinguishes the two low-vol
-                # regimes by the held position's OWN trajectory, not by market regime. Compute
-                # chop inline (the _pnl_path state is maintained at line ~1757, before this block).
-                _cl_pp = self._pnl_path.get(symbol, [])
-                _cl_chop = 0.0
-                if len(_cl_pp) >= 4:
-                    _cl_ppa = np.array(_cl_pp)
-                    _cl_net = abs(_cl_ppa[-1] - _cl_ppa[0])
-                    _cl_tot = float(np.sum(np.abs(np.diff(_cl_ppa))))
-                    _cl_mtm_eff = _cl_net / max(_cl_tot, 1e-10)
-                    _cl_chop = max(0.0, min(1.0, 1.0 - _cl_mtm_eff))
-                _cl_chop_gate = max(0.0, min(1.0, (_cl_chop - 0.20) / 0.30))  # ~0 smooth (<0.2 chop), ~1 choppy (>0.5)
-                _cl_pressure = 1.20 * _cl_adverse * _cl_grind_gate * _cl_chop_gate
-                _w_cl = max(0.0, _pnl_scale)  # profit-side only
                 # Architectural fusion change: element-wise MAX replaces weighted sum.
                 # Old: weighted sum of 6 soft terms (slope+pp+time+ve+ep+ar) with pnl-scaled
                 # weights. All 6 terms share vol_ratio, HL2/closes, and pnl_scale as input —
@@ -2441,7 +2370,6 @@ class Strategy:
                     _w_time * _time_pressure,
                     _w_ve * _ve_pressure,
                     _w_vc * _vc_pressure,
-                    _w_cl * _cl_pressure,
                 )
                 _soft_max = max(_soft_terms)
                 # Architectural: multi-source agreement attenuator on soft_max.
