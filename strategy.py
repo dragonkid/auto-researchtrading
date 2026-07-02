@@ -2842,8 +2842,8 @@ class Strategy:
                 if _ct_mf_str > 0.0 and _mf_churn > 0.0:
                     _th = self._target_hist.get(symbol, [])
                     _th.append(target)
-                    if len(_th) > 3:
-                        _th = _th[-3:]
+                    if len(_th) > 5:
+                        _th = _th[-5:]
                     self._target_hist[symbol] = _th
                     # Exp1 (architectural, indep) / BRANCH: MONOTONE-GATED conditional
                     # median replacing the always-on 3-bar median. The 0be567b8 keep
@@ -2915,8 +2915,30 @@ class Strategy:
                             _step_ratio = abs(_d2) / max(abs(_d1), 1e-12)
                             if _step_ratio > 3.0:
                                 _smooth = True
+                        # Branch step5: use a 5-WINDOW median for the replacement VALUE
+                        # (not the 3-window) when smoothing fires. The 3-median (baseline)
+                        # has a structural blind spot: a 2-BAR spike cluster corrupts 2/3
+                        # of a 3-window -> the median IS one of the spikes -> NO rejection.
+                        # The monotone-gate (step3/4) inherits this when it uses the 3-
+                        # window median. A 5-window median is robust to 2/5 outliers (the
+                        # 3 clean neighbors dominate -> median is a clean value) AND both
+                        # spike bars in a 2-bar cluster deviate from it -> BOTH get replaced
+                        # when they subsequently trigger the gate. This catches 2-bar spike
+                        # clusters that baseline 3-median MISSES -> stab ABOVE baseline ->
+                        # the path to real +0.003 keep (step4 matched baseline raw exactly
+                        # but stab was a hair below; the 2-bar-cluster catch lifts stab above
+                        # baseline without raw cost, since normal monotone ramps still pass
+                        # through un-smoothed (zero lag) and isolated spikes still get the
+                        # same clean replacement). Window 5 is the Hampel standard (robust
+                        # to 2 outliers); 7 would catch 3-bar clusters but slows the median's
+                        # response to genuine vol shifts and the over-lag risk on the few
+                        # bars that DO get smoothed. Window 5 used ONLY for the replacement
+                        # VALUE; the gate (monotone + ramp-outlier) still uses the 3-window
+                        # diffs (fast detection). Falls back to 3-window median if <5 bars
+                        # of history (cold start).
                         if _smooth:
-                            _med = float(np.median(_th))
+                            _med_arr = _th if len(_th) >= 5 else _th[-3:]
+                            _med = float(np.median(_med_arr))
                             if (_med > 0) == (target > 0) and _med != 0:
                                 target = _med
                 else:
