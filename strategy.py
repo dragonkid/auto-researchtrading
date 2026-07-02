@@ -988,26 +988,7 @@ class Strategy:
                 # softening actually functional.
                 _bull_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bull_margin - 0.3) / 0.3))
                 _bear_relax = 1.0 + 0.50 * max(0.0, min(1.0, (_bear_margin - 0.3) / 0.3))
-                # Exp2 (architectural, indep, this session): MULTI-DAY-DOWNTREND-DURATION
-                # narrowing of the bull trend-deadzone admission gate. Exp1 (this session,
-                # discarded byte-identical) proved the bull uptrend-relaxation of
-                # _bull_strong_min is NOT load-bearing for mixed's bounce longs; mixed's
-                # longs enter via THIS trend-deadzone relaxation (a high-conviction bounce
-                # long with _trend_biased slightly positive passes _bull_admit via the
-                # _bull_relax widened deadzone, even though the 96-bar ret_vlong is solidly
-                # negative = the entry is counter-trend at the multi-day scale). Route the
-                # validated _down_persist (48-bar fraction where ret_vlong<0; mixed~0.7,
-                # bull~0.3, rally~0.0) -- already used by SIZE paths and proven a clean mixed
-                # separator -- to the deadzone WIDTH itself: in a persistent downtrend,
-                # narrow the bull deadzone so bounce longs need a more decisively positive
-                # _trend_biased to admit. Byte-identical when _down_persist is low
-                # (bull/rally/sideways _down_persist<0.45 -> factor 1.0). Smooth tanh fade
-                # on the 0.45 knee, max 50% deadzone narrowing at deep downtrend (mixed).
-                # New cross-timescale data dep at the admission boundary mixed's longs
-                # actually pass through. Bear deadzone unchanged (mixed is 100pct long, the
-                # bear gate is not the leak).
-                _bull_dz_downpersist = 1.0 - 0.50 * max(0.0, min(1.0, np.tanh((_down_persist - 0.45) / 0.10)))
-                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _bull_relax * _bull_dz_downpersist
+                _bull_admit = _trend_biased > -TREND_GATE_DEADZONE * _bull_relax
                 _bear_admit = _trend_biased < TREND_GATE_DEADZONE * _bear_relax
                 # Architectural simplification: removed redundant bull_votes>=MIN_VOTES count gate.
                 # The strong-sum gate (_bull_strong >= _bull_strong_min) is highly correlated with the
