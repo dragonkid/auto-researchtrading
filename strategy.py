@@ -1768,7 +1768,20 @@ class Strategy:
                 _frac_dd_headroom = 1.0 - max(0.0, min(1.0, np.tanh(_port_dd_frac / (0.005 * LEVERAGE_K))))
                 _frac_trend_align = 0.0  # set per-entry-direction below
                 if _bull_ready and _bull_admit:
-                    target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
+                    # branch step3: re-add bull-side boost GATED ON WEAK multi-day trend
+                    # (mixed's regime). Exp3 ungated bull boost gave mixed +0.0090 REAL
+                    # but rally -0.06 DD cliff (rally ret_vlong~0.027 strong -> bigger boost
+                    # -> DD 5.06->5.22pct past 5pct knee). The separator: mixed's rally-
+                    # phase longs are WEAK-uptrend (ret_vlong~0.006), rally's grinding longs
+                    # are STRONG-uptrend (ret_vlong~0.027). Gate on 1-tanh(|ret_vlong|/0.02):
+                    # ~1 weak (mixed), ~0 strong (rally/bull). Combined with DD-headroom
+                    # gate, boosts mixed's weak-uptrend longs at peak without rally's strong-
+                    # uptrend longs. Sideways (ret_vlong~0 -> weak gate ~1 BUT trend_align
+                    # ~0 -> boost 0) byte-identical.
+                    _frac_weak_vlong = 1.0 - max(0.0, np.tanh(abs(ret_vlong) / 0.02))
+                    _frac_trend_align = max(0.0, np.tanh(ret_vlong / 0.02))  # bull long aligned with uptrend
+                    _entry_frac_boost_bull = 1.0 + 0.10 * _frac_trend_align * _frac_weak_vlong * _frac_dd_headroom
+                    target = size * min(0.55, _entry_frac_dyn * _entry_frac_boost_bull) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
                     self._vol_shrink_held[symbol] = _vol_entry_spike  # Exp9: cache for scale-in sustain
                 elif _bear_ready and _bear_admit:
