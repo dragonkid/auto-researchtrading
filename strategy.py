@@ -383,33 +383,6 @@ class Strategy:
         # scale-in resizes of burst ct re-entries cascade most under AR(1) noise). Trend-
         # aligned positions (ct gate 0) byte-identical by construction. Reset on full exit.
         self._target_hist = {}
-        # Exp1 (this session, architectural): per-symbol 3-bar FEED-FORWARD MEDIAN on the
-        # FUSED _exit_pressure signal (max(sl, soft_max) + voter_bias), applied at the
-        # UPSTREAM fusion bottleneck BEFORE the full-exit threshold (line ~2536) and the
-        # de-risk ramp (line ~2575). The 0be567b8 keep established the mechanism: a
-        # feed-forward (non-temporal, lag-free) 3-bar median at a fusion bottleneck breaks
-        # the stab/raw tension that walled all temporal smoothing (zero lag for monotone
-        # pressure rises -> only rejects isolated AR(1) spikes). That keep applied it to
-        # the EMITTED TARGET (downstream). This applies the SAME validated mechanism at a
-        # structurally DISTINCT insertion point: the fused exit-pressure signal itself.
-        # DISTINCTNESS from the target median: the downstream target median is structurally
-        # EXEMPT from smoothing full-exits (target==0) and sign-flips (risk transitions
-        # must hit exact target). A spike in an upstream soft source (volume climax, slope
-        # dip, opp-voter spike) that crosses the FULL-EXIT threshold (_exit_pressure>=1.0)
-        # or the DE-RISK FLOOR produces a full-exit or de-risk JUMP that the downstream
-        # target median cannot recover (it never sees a non-zero target to median). Median-
-        # filtering the FUSED PRESSURE before it reaches those thresholds catches
-        # threshold-crossing spikes the downstream median structurally misses. DISTINCTNESS
-        # from the walled temporal _exit_pressure EMA (removed 15bbb2ba as net-negative):
-        # that was a backward-looking LOW-PASS (lag on monotone pressure rises -> held
-        # losers bigger longer -> rally raw cost); a feed-forward median has ZERO LAG for
-        # monotone rises (median of 3 rising values = the middle -> tracks the rise) and
-        # ONLY rejects isolated spikes. New per-symbol state + new control-flow dependency
-        # at the exit-decision boundary. Gated to high-churn ct positions (rally's binding
-        # stability population: the scale-in resizes + re-entries whose exit-timing
-        # cascades most under AR(1) noise). Trend-aligned (ct gate 0) byte-identical by
-        # construction. Reset on full exit.
-        self._ep_hist = {}
 
     def on_bar(self, bar_data, portfolio):
         signals = []
@@ -2440,31 +2413,6 @@ class Strategy:
                 _voter_bias = (1.0 - _exit_ema_alpha) * _voter_bias + _exit_ema_alpha * _prev_vb
                 self._voter_bias_ema[symbol] = _voter_bias
                 _exit_pressure = max(_sl_pressure, _soft_max) + _voter_bias
-                # Exp1 (this session, architectural): FEED-FORWARD 3-bar MEDIAN on the
-                # FUSED _exit_pressure at the upstream bottleneck (0be567b8 keep mechanism
-                # applied at a distinct insertion point). Gated to high-churn ct positions
-                # (rally's binding stability population) via the SAME noise-immune gates as
-                # the target median (_ct_mf_str ret_vlong ct gate + _mf_churn integer churn).
-                # Trend-aligned (ct gate 0) byte-identical by construction. The median is
-                # sign-compatible (pressure >= 0 always) so no sign-preservation guard
-                # needed. Byte-identical for trend-aligned regimes (bull/crash/sideways,
-                # where ct gate 0 -> median skipped).
-                _ep_ct_str = max(0.0, np.tanh(-(1.0 if current_pos > 0 else -1.0) * ret_vlong / 0.01))
-                _ep_churn = max(0.0, np.tanh((len(_eh) - 1.5) / 0.6))
-                if _ep_ct_str > 0.0 and _ep_churn > 0.0:
-                    _eph = self._ep_hist.get(symbol, [])
-                    _eph.append(_exit_pressure)
-                    if len(_eph) > 3:
-                        _eph = _eph[-3:]
-                    self._ep_hist[symbol] = _eph
-                    if len(_eph) >= 3:
-                        _ep_med = float(np.median(_eph))
-                        # Spike rejection only: take the median (middle value) which tracks
-                        # monotone pressure rises (zero lag) and replaces only isolated
-                        # spikes. Pressure is non-negative so no sign guard needed.
-                        _exit_pressure = _ep_med
-                else:
-                    self._ep_hist[symbol] = []
                 # Architectural: pos_pnl-gated scale-in exit threshold ramp.
                 # During scale-in (bars_held <= ENTRY_FULL_BARS) AND winning (pos_pnl > 0),
                 # raise the exit threshold from 1.0 to 1.2 along a smooth linear ramp
@@ -3206,7 +3154,7 @@ class Strategy:
                             self._loss_streak += 1
                         else:
                             self._loss_streak = 0
-                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist, self._ep_hist):
+                    for _d in (self.entry_prices, self.peak_pnl, self.entry_bar, self._smoothed_pnl, self._mae, self._voter_bias_ema, self._target_ema, self._conc_shrink_held, self._vol_shrink_held, self._pnl_path, self._target_hist):
                         _d.pop(symbol, None)
                     self.exit_bar[symbol] = self.bar_count
                     # Branch step2: reset readiness accumulator on full exit so re-entry
