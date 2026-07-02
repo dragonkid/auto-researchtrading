@@ -1737,7 +1737,31 @@ class Strategy:
                 # Amplify-only (floor 1.0 baseline MAG).
                 _persist_down_gate = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.65) / 0.10)))
                 _persist_conv_scale = 1.0 + 0.50 * max(0.0, min(1.0, _persist_margin_side / 0.40)) * _persist_down_gate
-                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale
+                # Exp5 (architectural, indep): OWN-DVP-CONFIRMATION amplifier on the
+                # persist_boost magnitude. The _persist_boost fires for mixed (weak_persist
+                # high, the fe6acd4d keep mechanism) and is the entry-side mixed lever
+                # (entries bypass the grid so this is NOT grid-absorbed unlike the
+                # sustain path). mixed is 100pct WR (Sh0.839 APY4.6pct DD2.77pct -- the
+                # binding floor with HUGE DD headroom below the 5pct knee). Per scoring v3
+                # return_bonus = log(2+APY/10), raising mixed's APY at preserved Sharpe is
+                # the highest-leverage score move (APY gain dominates 11-36x). Amplify the
+                # persist boost magnitude when the own-12-bar DVP CONFIRMS the entry
+                # direction (buy-side for long, sell-side for short): a weak-trend bounce
+                # entry with own-volume confirmation is a higher-quality bounce (real
+                # participation, not a fade) -> bigger first-bar commitment -> higher APY
+                # at preserved Sharpe (mixed is 100pct WR so bigger winners = pure APY
+                # gain). Gated on _weak_persist (the validated mixed isolator) so trend
+                # regimes (weak_persist~0) are byte-identical. Deep-saturated /0.15
+                # (near-constant where it fires, noise-free per validated safe-family).
+                # Amplify-only (floor at baseline PERSIST_BOOST_MAG; never shrinks). New
+                # cross-component data dep: persist_boost magnitude depends on own-DVP x
+                # weak_persist interaction (was weak_persist x conviction only). Direction-
+                # agnostic (own-side DVP confirms own-side entry). Max +50pct magnitude
+                # at full DVP confirmation + full weak_persist.
+                _persist_dvp_dir = _dvp if (_bull_ready and _bull_admit) else -_dvp  # own-side DVP (buy for long entry, sell for short)
+                _persist_dvp_conv = max(0.0, np.tanh(_persist_dvp_dir / 0.15))  # [0, ~1] deep-saturated
+                _persist_dvp_amp = 1.0 + 0.50 * _persist_dvp_conv * _weak_persist  # amplify-only, gated on weak_persist
+                _persist_boost = 1.0 + PERSIST_BOOST_MAG * _weak_persist * _persist_conv_scale * _persist_dvp_amp
                 if _bull_ready and _bull_admit:
                     target = size * min(0.55, _entry_frac_dyn) * _cooldown_factor * _bull_ct_atten * _bull_ct_vlong * _bull_consensus_atten * _bull_quality_atten * _outcome_size_mult *_port_dd_atten * _bull_conv_atten * _churn_size_atten * _churn_ct_atten_bull * _tq_atten * _xasset_bull * _conc_shrink_bull * _net_tilt_shrink_bull * _vol_entry_spike * _vol_decline_shrink * _vd_ct_shrink_bull * _vol_rise_boost_bull * _vol_partner_boost_bull * _vol_btc_boost_bull * _btcvol_partner_boost_bull * _partnervol_btc_boost_bull * _close_conv_boost_bull * _dvp_boost_bull * _btcdvp_boost_bull * _partnerdvp_boost_bull * _streak_ct_shrink_bull * _persist_boost
                     self._conc_shrink_held[symbol] = _conc_shrink_bull
