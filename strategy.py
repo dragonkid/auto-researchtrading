@@ -830,24 +830,7 @@ class Strategy:
             # Continuous tanh on long-window trend direction, max 15% threshold increase.
             # New cross-component data dep: admission threshold depends on trend direction
             # for counter-trend side. Multi-variable: both bull and bear strong_min modified.
-            # Exp1 (architectural, indep, this session): MULTI-DAY-DOWNTREND-DURATION fade
-            # of the bull uptrend-relaxation. The 20-bar ret_long relaxation above fires on
-            # mixed's local bounce bars (ret_long>0 during multi-day-downtrend bounces) ->
-            # admits the marginal bounce longs that are mixed's binding floor (Sh 0.84, 100pct-
-            # long-in-a-down-year book). The validated _down_persist (fraction of last
-            # PERSIST_WINDOW bars where ret_vlong<0; mixed~0.7, bull~0.3, rally~0.0) is the
-            # noise-robust multi-day downtrend-duration separator ALREADY computed at line ~663
-            # and routed to SIZE paths (_persist_conv_scale, _persist_down_gate_dur). Routing
-            # it to the ADMISSION gate is a NEW control-flow dependency: admission relaxation
-            # now depends on multi-day downtrend duration (was 20-bar ret_long only). Fade
-            # the relaxation by _down_persist so it survives full-strength in genuine uptrends
-            # (bull/rally _down_persist~0 -> factor 1.0 -> byte-identical) but is progressively
-            # removed in persistent downtrends (mixed _down_persist~0.7 -> factor 0.7 -> bull
-            # relaxation attenuated 30pct -> tighter admission on mixed's bounce longs). Smooth
-            # tanh fade on the 0.45 knee (full relaxation below _down_persist~0.45, fading to ~0
-            # by ~0.75 = mixed's band). New cross-timescale data dep at admission boundary.
-            _bull_relax_downpersist = 1.0 - max(0.0, min(1.0, np.tanh((_down_persist - 0.45) / 0.10)))
-            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * _bull_relax_downpersist * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
+            _bull_strong_min = _strong_min * _freq_factor * (1.0 - 0.10 * max(0.0, np.tanh(ret_long / 0.04))) * (1.0 + 0.15 * max(0.0, np.tanh(-ret_long / 0.04)))
             _bear_strong_min = _strong_min * _freq_factor * (1.0 + 0.15 * max(0.0, np.tanh(ret_long / 0.04)))
             # Exp5 (architectural, indep): COUNTER-TREND-specific loss-streak admission
             # tightening (admission counterpart to Exp3's ct size shrink). After a
