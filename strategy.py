@@ -2394,26 +2394,6 @@ class Strategy:
                 # Attenuator: scaled by chop weight — in chop 0.75x at single, 1.0x at agree;
                 # in trend approaches 1.0x always (no attenuation)
                 _soft_atten = 1.0 - 0.25 * (1.0 - _agree_gate) * _chop_atten_w
-                # Exp2 (architectural, indep): LOSS-EXEMPTION on the multi-source
-                # agreement attenuator. The attenuator reduces single-source exit
-                # pressure by up to 25% in chop (where single-source spikes are noise
-                # for WINNERS). But for LOSING positions, single-source slope-against
-                # pressure is the signal to trim dead capital -- reducing it lets
-                # mixed_2025's losing oscillating longs ride longer through down-legs
-                # -> more dead capital -> lower mixed Sharpe (the binding floor Sh0.839).
-                # Exempt losing positions (pos_pnl<0) from the attenuator so they get
-                # FULL single-source pressure -> trim dead capital faster -> smaller
-                # realized losses -> higher Sharpe. Winners keep the attenuator
-                # (single-source spikes on winners ARE noise). Smooth tanh on
-                # -pos_pnl/|stop| (no decision boundary -- profit-continuous); ramps
-                # the attenuation AMOUNT down as the position goes underwater, full
-                # exemption deep in loss. New cross-component data dep: the multi-source
-                # agreement attenuator now depends on pos_pnl sign. Trend regimes
-                # unaffected (_chop_atten_w~0 -> attenuator already ~1.0). Loss-side
-                # only (risk-reducing: trims losers faster, never amplifies exits on
-                # winners). Direction-agnostic general principle (no regime label).
-                _loss_exempt = max(0.0, -np.tanh(pos_pnl / abs(STOP_LOSS_PCT)))  # 0 profit, ~1 deep loss
-                _soft_atten = 1.0 - (1.0 - _soft_atten) * (1.0 - _loss_exempt)
                 _soft_max = _soft_max * _soft_atten
                 # Architectural simplification (this session, branch step3): REMOVE ONLY
                 # the exit-pressure EMA (on _soft_max), KEEP the voter_bias EMA (on the
