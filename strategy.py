@@ -2565,32 +2565,6 @@ class Strategy:
                     _ta_de_align = max(0.0, np.tanh(ret_long * (1.0 if current_pos > 0 else -1.0) / 0.04))
                     _ta_de_profit = max(0.0, _pnl_scale)
                     _de_floor -= 0.10 * _ta_de_align * _ta_de_profit
-                    # Exp1 (architectural, indep): CLOSE-LOCATION distribution raiser on
-                    # the de-risk floor. NEW routing of the close-loc intrabar conviction
-                    # signal (validated at ENTRY as _close_conv_boost; the close-loc EXIT-
-                    # pressure branch plateaued at +0.0014 because the MAX fusion picks
-                    # only the strongest source per bar so a 7th source wins few bars).
-                    # Routing close-loc as a de-risk-floor RAISER bypasses the MAX ceiling:
-                    # it modifies the de-risk RAMP activation, not the MAX pressure. When
-                    # an in-profit position's recent closes land AGAINST its direction (a
-                    # long closing near its lows = intrabar distribution/selling; a short
-                    # closing near its highs = intrabar absorption/buying), the bar is a
-                    # distribution/exhaustion bar -> raise the de-risk floor so the ramp
-                    # engages EARLIER -> trim before the giveback deepens -> lock gains.
-                    # For mixed_2025's oscillating longs, distribution bars (close near
-                    # low after a local peak) precede the giveback that drives its low
-                    # Sharpe -> trimming at the distribution bar cuts the re-peak churn.
-                    # Fires ONLY when already in profit (_pnl_scale>0) AND under exit
-                    # pressure (the de-risk branch only runs when _exit_pressure >= the
-                    # floor). The 3-bar mean _close_loc is noise-robust (single-bar close
-                    # position flips under AR(1); the 3-bar mean is the validated close-loc
-                    # family). Direction-agnostic general principle (no regime label):
-                    # distribution against the held direction raises the de-risk floor.
-                    # Smooth tanh, no new decision boundary. The raiser is capped (max
-                    # +0.08) so it does not invert the floor's loss/profit structure.
-                    _cl_de_profit = max(0.0, _pnl_scale)  # in-profit only
-                    _cl_de_dist = _cl_bear_conv if current_pos > 0 else _cl_bull_conv  # distribution against position direction
-                    _de_floor += 0.08 * _cl_de_dist * _cl_de_profit
                     # Architectural: fresh-entry exemption from de-risk path. Bars 0-1
                     # of an entry get binary-exit-only behavior (exit on full pressure
                     # or no exit). Partial exits during scale-in conflict with the
