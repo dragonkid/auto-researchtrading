@@ -2156,25 +2156,7 @@ class Strategy:
                 # shortening is attenuated by min(1, vol_ratio) — slope noise in
                 # rally would otherwise create noise-driven early time exits.
                 # Extension (slope-agrees) remains unchanged (bull/crash extended hold).
-                # Exp3 (architectural, indep): replace LINEAR _short_atten = min(1, vol_ratio)
-                # with a FAST-SATURATING tanh form: _short_atten = tanh(vol_ratio/0.6).
-                # Rationale: the linear form leaves rally's low-but-NONZERO vol chop
-                # (vol_ratio~0.7-0.9) at 70-90% slope-against shortening -> the noise-driven
-                # early time-exit attenuation is INCOMPLETE in exactly rally's binding
-                # regime (the slope-against signal in rally chop is noise-dominated, not
-                # signal-dominated, yet still shortens max_hold by 70-90%). A fast-saturating
-                # tanh (/0.6) reaches ~0.83 at vol_ratio=0.8 and ~0.96 at 1.0 -> STRONGER
-                # attenuation across rally's whole low-vol chop band, routing fewer slope-
-                # against bars through early time-exits -> fewer noise-driven exit-timing
-                # divergences -> higher rally stability (the raw 1.051534 vs final 1.035957
-                # gap, stab 0.985186). High-vol (crash/bear, vol_ratio>1.2) saturates to ~1.0
-                # (byte-identical-ish: full slope-against shortening on signal-dominated
-                # bars); sideways (vol_ratio~0.5) gets ~0.60 (was 0.50 -- marginally more
-                # attenuation, sideways slope-against is also noise). Structural change to
-                # the hold-shortening FUNCTION FORM (linear -> fast-saturating), not a
-                # parameter tweak. Targets rally stability; protects high-vol regimes by
-                # saturation.
-                _short_atten = max(0.0, min(1.0, np.tanh(vol_ratio / 0.6)))
+                _short_atten = min(1.0, vol_ratio)
                 _hold_adj = MOMENTUM_HOLD_BONUS * _slope_strength * (1.0 if _slope_agrees else -_short_atten)
                 # Exp5 (this session): FAST-SATURATING counter-trend max_hold shortening.
                 # Re-attempt of Exp3 (which raised rally raw +0.0064 by cutting ct losers
